@@ -206,6 +206,14 @@ def test_gnu_builtins(t : T?) {
         let nested = "#define C(x) __builtin_classify_type(x)\n#define T(a, b) __builtin_types_compatible_p(a, b)\n"
         rejects(t, "classify_split", nested + "#define BOTH(a, b) (C(a) + C(b))\nint main(void) \{ int i = 0; double d = 0; return BOTH(i, d) - 9; \}\n", "two `__builtin_classify_type` of one macro expansion that clang values apart are not lowered")
         rejects(t, "compatible_split", nested + "#define BOTH(a, b, c) (T(a, b) + T(a, c))\nint main(void) \{ return BOTH(int, int, char) - 1; \}\n", "two `__builtin_types_compatible_p` of one macro expansion that clang values apart are not lowered")
+        // clang's 4 is not GCC's 1: a plain, a qualified and a typedef'd `_Bool`; a pointer to one is clang's value
+        let of_bool = "`__builtin_classify_type` of a `_Bool` is not lowered (clang's value is not GCC's)"
+        rejects(t, "classify_bool", "int main(void) \{ _Bool b = 1; return __builtin_classify_type(b) - 1; \}\n", of_bool)
+        rejects(t, "classify_const_bool", "int main(void) \{ const _Bool b = 1; return __builtin_classify_type(b) - 1; \}\n", of_bool)
+        rejects(t, "classify_bool_typedef", "typedef _Bool flag;\nint main(void) \{ flag b = 1; return __builtin_classify_type(b) - 1; \}\n", of_bool)
+        runs_clean(t, "classify_bool_pointer", "int main(void) \{ _Bool b = 1; _Bool *p = &b; return __builtin_classify_type(p) - 5; \}\n")
+        // a pasted spelling is no token of the file's text: the pass gives the trait no value
+        rejects(t, "compatible_pasted", "#define TC(a, b) __builtin_types_##compatible_p(a, b)\nint main(void) \{ return TC(int, int) - 1; \}\n", "`__builtin_types_compatible_p`: libclang gives no value at this location")
         let refused = "over an enum or a `_Bool` is not lowered yet"
         rejects(t, "overflow_enum", "enum E \{ A, B \};\nint main(void) \{ enum E e = B; int r; return __builtin_add_overflow(e, 1, &r); \}\n", "`__builtin_add_overflow` {refused}")
         rejects(t, "overflow_bool", "int main(void) \{ _Bool b = 1; int r; return __builtin_sub_overflow(1, b, &r); \}\n", "`__builtin_sub_overflow` {refused}")
