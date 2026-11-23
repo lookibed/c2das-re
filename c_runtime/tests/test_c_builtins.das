@@ -7,7 +7,8 @@ require c_runtime/c_bounds
 require ../../probes/_daslang_child.das
 
 //! The GCC builtins the converter maps by name (`converter/tests/fixtures/p5_gnu_shims.c` calls
-//! each the way the converter spells it): the answers C gives at both operand widths.
+//! each the way the converter spells it): the answers C gives at both operand widths. The checked
+//! arithmetic is spelled as `converter/tests/fixtures/p7_overflow_builtins.c` converts.
 
 [test]
 def test_c_builtins(t : T?) {
@@ -66,5 +67,68 @@ def test_c_builtins(t : T?) {
         let r = runtime_child("unreachable", "options gen2\nrequire c_runtime/c_builtins\n[export]\ndef main : int \{\n    print(\"before\\n\")\n    c_unreachable()\n    return 0\n\}\n", false)
         t |> equal(r.rc, 3)
         t |> equal(r.out, "before\n")
+    }
+}
+
+[test]
+def test_c_overflow(t : T?) {
+    t |> run("the exact result fits: no flag, whatever the operands' types") @(t : T?) {
+        var r : int
+        var wide : int64
+        var u : uint
+        var big : uint64
+        unsafe {
+            t |> equal(c_add_overflow(2147483647, 1, addr(wide)), false)
+            t |> equal(wide, 2147483648l)
+            t |> equal(c_add_overflow(-1, 1u, addr(u)), false)
+            t |> equal(u, 0u)
+            t |> equal(c_sub_overflow(0u, 1, addr(r)), false)
+            t |> equal(r, -1)
+            t |> equal(c_mul_overflow(int16(-32768), int16(-32768), addr(r)), false)
+            t |> equal(r, 1073741824)
+            t |> equal(c_mul_overflow(-9223372036854775807l - 1l, -1, addr(big)), false)
+            t |> equal(big, 0x8000000000000000ul)
+            t |> equal(c_mul_overflow(0xFFFFFFFFl, 0x100000001l, addr(big)), false)
+            t |> equal(big, 0xFFFFFFFFFFFFFFFFul)
+        }
+    }
+    t |> run("the exact result does not fit: the flag, and the result cut to its type") @(t : T?) {
+        var r : int
+        var wide : int64
+        var u : uint
+        var big : uint64
+        var small : int8
+        var byte : uint8
+        unsafe {
+            t |> equal(c_add_overflow(2147483647, 1, addr(r)), true)
+            t |> equal(r, -2147483647 - 1)
+            t |> equal(c_sub_overflow(0u, 1, addr(u)), true)
+            t |> equal(u, 0xFFFFFFFFu)
+            t |> equal(c_mul_overflow(int8(-128), int8(-128), addr(small)), true)
+            t |> equal(small, int8(0))
+            t |> equal(c_add_overflow('a', int8(-128), addr(byte)), true)
+            t |> equal(byte, 225u8)
+            // a carry out of the low 64 bits, a borrow into them, a product past 128 bits' sign
+            t |> equal(c_add_overflow(0xFFFFFFFFFFFFFFFFul, 0xFFFFFFFFFFFFFFFFul, addr(big)), true)
+            t |> equal(big, 0xFFFFFFFFFFFFFFFEul)
+            t |> equal(c_sub_overflow(-1, 0xFFFFFFFFFFFFFFFFul, addr(wide)), true)
+            t |> equal(wide, 0l)
+            t |> equal(c_mul_overflow(0xFFFFFFFFFFFFFFFFul, 0xFFFFFFFFFFFFFFFFul, addr(big)), true)
+            t |> equal(big, 1ul)
+            t |> equal(c_mul_overflow(0xFFFFFFFFFFFFFFFFul, 0xFFFFFFFFFFFFFFFFul, addr(wide)), true)
+            t |> equal(c_mul_overflow(0x100000000l, 0x100000000l, addr(big)), true)
+            t |> equal(big, 0ul)
+            t |> equal(c_mul_overflow(-9223372036854775807l - 1l, -1, addr(wide)), true)
+            t |> equal(wide, -9223372036854775807l - 1l)
+            t |> equal(c_mul_overflow(-9223372036854775807l - 1l, 0xFFFFFFFFFFFFFFFFul, addr(wide)), true)
+        }
+    }
+    t |> run("an operand as the result, as `__builtin_add_overflow(a, n, &a)` converts") @(t : T?) {
+        var a = 0xFFFFFFFEu
+        unsafe {
+            t |> equal(c_add_overflow(a, 1, addr(a)), false)
+            t |> equal(c_add_overflow(a, 2, addr(a)), true)
+        }
+        t |> equal(a, 1u)
     }
 }

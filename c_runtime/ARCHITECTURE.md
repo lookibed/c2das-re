@@ -44,8 +44,13 @@ chartered here.
   select it through the argument's type), `c_clrsb` counting every bit but the sign for 0 and -1
   since das's `clz` of zero is not the width (`probes/test_scalars.das`); `c_bswap16/32/64`;
   `c_signbit` reading the sign bit of a `float` or `double`; `c_unreachable`, which ends the run
-  as `c_abort` does; and `c_prefetch`, `[sideeffects]` so das keeps the call and its arguments'
-  effects (`probes/test_functions.das`).
+  as `c_abort` does; `c_prefetch`, `[sideeffects]` so das keeps the call and its arguments'
+  effects (`probes/test_functions.das`); and `c_add_overflow`, `c_sub_overflow` and
+  `c_mul_overflow`, GCC's checked arithmetic, generic over the types of the two operands and of
+  the object the result pointer names, each any das integer: the exact result is held as 128
+  bits of two's complement (an operand's high 64 bits are its sign), cut to the result's type
+  and stored, and the flag is whether the stored value widened again differs from it. The low
+  128 bits tell a 64-bit result's fit for every pair of 64-bit operands of either sign.
 - `c_runtime/c_args.das` - C's `main(argc, argv)`: `c_runtime_init(name)`, which the converted
   module's `main` calls first, builds the argument vector once in C-allocator memory (`malloc`),
   `name` (the C source's stem) then each argument `get_user_args` gives (after `--` under the
