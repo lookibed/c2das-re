@@ -72,3 +72,50 @@ def c_unreachable {
 def c_prefetch(_addr : auto; _rw : int = 0; _locality : int = 3) {
     pass
 }
+
+// an integer operand's low 64 bits in two's complement, and the 64 bits above them: its sign
+def private wide_low(x : int8 | int16 | int | int64) : uint64 => uint64(int64(x))
+
+def private wide_low(x : uint8 | uint16 | uint | uint64) : uint64 => uint64(x)
+
+def private wide_high(x : int8 | int16 | int | int64) : uint64 => int64(x) < 0l ? ~0ul : 0ul
+
+def private wide_high(x : uint8 | uint16 | uint | uint64) : uint64 => 0ul
+
+// the high 64 bits of the 128-bit product of `a` and `b`
+def private mul_high(a, b : uint64) : uint64 {
+    let a_lo = a & 0xFFFFFFFFul
+    let a_hi = a >> 32ul
+    let b_lo = b & 0xFFFFFFFFul
+    let b_hi = b >> 32ul
+    let cross = ((a_lo * b_lo) >> 32ul) + ((a_lo * b_hi) & 0xFFFFFFFFul) + ((a_hi * b_lo) & 0xFFFFFFFFul)
+    return a_hi * b_hi + ((a_lo * b_hi) >> 32ul) + ((a_hi * b_lo) >> 32ul) + (cross >> 32ul)
+}
+
+// the 128-bit value `high:low` stored in `res` cut to its type: true when the cut changed it,
+// which is GCC's overflow flag
+def private store_wide(low, high : uint64; var res : auto(TR)?) : bool {
+    *res = TR(low)
+    return wide_low(*res) != low || wide_high(*res) != high
+}
+
+//! `__builtin_add_overflow`, `__builtin_sub_overflow` and `__builtin_mul_overflow`, and their
+//! typed spellings (`__builtin_sadd_overflow`, `__builtin_umulll_overflow`): the sum, difference
+//! or product of `a` and `b` as integers of unbounded width, stored in `res` cut to its type,
+//! and whether the stored value differs from it. The three types are any of das's integers,
+//! each its own; the exact value is held in 128 bits of two's complement, which the product of
+//! two 64-bit operands of either sign fits closely enough to tell.
+def c_add_overflow(a : auto(TA); b : auto(TB); var res : auto(TR)?) : bool {
+    let low = wide_low(a) + wide_low(b)
+    return store_wide(low, wide_high(a) + wide_high(b) + (low < wide_low(a) ? 1ul : 0ul), res)
+}
+
+def c_sub_overflow(a : auto(TA); b : auto(TB); var res : auto(TR)?) : bool {
+    let low = wide_low(a) - wide_low(b)
+    return store_wide(low, wide_high(a) - wide_high(b) - (wide_low(a) < wide_low(b) ? 1ul : 0ul), res)
+}
+
+def c_mul_overflow(a : auto(TA); b : auto(TB); var res : auto(TR)?) : bool {
+    let low = wide_low(a) * wide_low(b)
+    return store_wide(low, mul_high(wide_low(a), wide_low(b)) + wide_high(a) * wide_low(b) + wide_low(a) * wide_high(b), res)
+}
