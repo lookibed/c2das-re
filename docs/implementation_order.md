@@ -4329,6 +4329,8 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Why the -exe tier is slower than the JIT (a generic x86-64 target, or the C runtime's slots filled at start-up),
   predicted before it is timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_e.md`, sha256
   `7cfa33c726210c299b538934de3bcdb7f48ba268d69e8679a0ab7d8e27cc83f6`.
+  The share of -E printing in the old JIT gap, measured directly in the same job as count mode, predicted before it
+  is timed: `/root/notes/research/chibicc_pp/agents/pool_hash/predictions_print.md`, sha256 `351f2421abf64f7f51e8a457754d5c84c055c2d5ba29e443041ca26de39f0712`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
