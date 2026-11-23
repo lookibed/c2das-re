@@ -62,7 +62,6 @@ let RULES <- [
     Rule(pattern = "__label__|[=,(\{:?]\\s*&&\\s*[A-Za-z_]|\\breturn\\s+&&|goto\\s*\\*", feature = "address of a label and local labels", reason = "labels as values through the switch re-dispatch and local labels are not lowered yet", phase = "P7.6"),
     Rule(kind = RuleKind.attributes, feature = "__attribute__", reason = "an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet", phase = "P7.6"),
     Rule(kind = RuleKind.layout, feature = "packed or aligned layout", reason = "a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet", phase = "P7.6"),
-    Rule(pattern = "__builtin_(add|sub|mul)_overflow", feature = "GCC overflow builtins", reason = "the checked arithmetic builtins are not lowered yet", phase = "P7.6"),
     Rule(pattern = "__builtin_(setjmp|longjmp)\\b", feature = "__builtin_setjmp", reason = "the builtin setjmp pair through the setjmp lowering is not lowered yet", phase = "P7.6"),
     Rule(kind = RuleKind.builtins, feature = "__builtin_* calls", reason = "a builtin outside the emitter's shim list is not lowered yet", phase = "P7.6")
 ]
@@ -78,8 +77,9 @@ let LAYOUT_ATTRIBUTES <- {"aligned", "packed"}
 let DROPPED_ATTRIBUTES <- {"noinline", "noclone", "noipa", "unused", "used", "noreturn", "const", "pure", "always_inline", "nothrow", "cold", "hot", "visibility", "format", "nonnull", "malloc", "warn_unused_result", "deprecated", "weak", "optimize", "may_alias", "section", "leaf", "no_instrument_function", "alloc_size", "returns_nonnull", "nodebug", "fallthrough", "externally_visible", "gnu_inline", "mode"}
 
 //! The builtins the converter lowers (`converter/ARCHITECTURE_EMITTER.md`, the shim list): the
-//! libc twins, the hints and the c_runtime builtins.
-let MAPPED_BUILTINS <- {"alloca", "abort", "exit", "memcpy", "memmove", "memset", "memcmp", "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strchr", "printf", "sprintf", "snprintf", "malloc", "calloc", "free", "abs", "copysign", "fabs", "expect", "constant_p", "prefetch", "unreachable", "trap", "huge_val", "offsetof", "va_start", "va_end", "va_copy", "va_arg", "va_list", "c23_va_start", "signbit", "signbitf", "bswap16", "bswap32", "bswap64", "ffs", "ffsl", "ffsll", "ctz", "ctzl", "ctzll", "clz", "clzl", "clzll", "popcount", "popcountl", "popcountll", "parity", "parityl", "parityll", "clrsb", "clrsbl", "clrsbll"}
+//! libc twins, the hints, the c_runtime builtins and the checked arithmetic, and the three the
+//! dumper folds (`converter/ARCHITECTURE_DUMPER_TAGS.md`, folded builtins).
+let MAPPED_BUILTINS <- {"alloca", "abort", "exit", "memcpy", "memmove", "memset", "memcmp", "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strchr", "printf", "sprintf", "snprintf", "malloc", "calloc", "free", "abs", "copysign", "fabs", "expect", "constant_p", "prefetch", "unreachable", "trap", "huge_val", "offsetof", "va_start", "va_end", "va_copy", "va_arg", "va_list", "c23_va_start", "signbit", "signbitf", "bswap16", "bswap32", "bswap64", "ffs", "ffsl", "ffsll", "ctz", "ctzl", "ctzll", "clz", "clzl", "clzll", "popcount", "popcountl", "popcountll", "parity", "parityl", "parityll", "clrsb", "clrsbl", "clrsbll", "add_overflow", "sub_overflow", "mul_overflow", "sadd_overflow", "saddl_overflow", "saddll_overflow", "uadd_overflow", "uaddl_overflow", "uaddll_overflow", "ssub_overflow", "ssubl_overflow", "ssubll_overflow", "usub_overflow", "usubl_overflow", "usubll_overflow", "smul_overflow", "smull_overflow", "smulll_overflow", "umul_overflow", "umull_overflow", "umulll_overflow", "classify_type", "types_compatible_p", "choose_expr"}
 
 //! Every attribute name in `text`'s `__attribute__((...))` lists, underscores stripped
 //! (`__noinline__` is `noinline`).
