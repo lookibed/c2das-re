@@ -10,6 +10,16 @@ typedef int aligned16 __attribute__((aligned(16)));
 #define WIDE(x) (__extension__ (long long) (x))
 __extension__ typedef long long wide_t;
 __extension__ static long long big = 1LL << 40;
+#include <stdarg.h>
+/* a whole `typeof` as a type operand is the type clang resolves */
+static double pick(int n, ...) {
+    double x = 0;
+    va_list ap;
+    va_start(ap, n);
+    x = va_arg(ap, typeof(x));
+    va_end(ap);
+    return x + (double) sizeof(typeof(x)) + (double) _Alignof(typeof(n));
+}
 static typeof(big) twice(typeof(int) n) {
     typeof(n * 2LL) r = n;
     return r * 2;
@@ -21,7 +31,7 @@ int main(void) {
     printf("%d %d %d %d\n", (int)__alignof__(char), (int)__alignof__(double), (int)__alignof(struct S), (int)__alignof__(long long));
     printf("%d %d %d\n", (int)__alignof__(c), (int)__alignof__(s), (int)__alignof__(arr));
     printf("%d %d %d\n", (int)__alignof__(func), (int)__alignof__(aligned16), (int)__alignof__(int[4]));
-    printf("%d\n", (int)BOTH(int, double));
+    printf("%d %g\n", (int)BOTH(int, double), pick(1, 2.5));
     typeof(s) s2 = { 'b', 2.5 };
     __typeof__(arr[0]) *p = &arr[1];
     SWAP(s, s2);

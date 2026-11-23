@@ -97,6 +97,10 @@ def test_torture_filter_rows(t : T?) {
     t |> run("the first rule wins: a 128-bit integer before an attribute") @(t : T?) {
         t |> equal(feature_of("__int128 x __attribute__((constructor));"), "__int128")
     }
+    t |> run("a function defined inside a function is clang's to refuse; one at the file's level is not") @(t : T?) {
+        t |> equal(feature_of("void foo(void)\n\{\n  int jj __attribute__((aligned(16)));\n  void bar ()\n    \{\n      jj = -20;\n    \}\n  bar ();\n\}"), "nested function")
+        t |> equal(feature_of("void\nfoo (void)\n\{\n  int jj = 0;\n  if (jj) \{\n    jj = 1;\n  \}\n\}"), "")
+    }
     t |> run("the GNU keywords and a case range are lowered: no rule names them") @(t : T?) {
         t |> equal(feature_of("int f(int x) \{ switch (x) \{ case 1 ... 5: return (int) __alignof__(typeof(x)); \} return __extension__ 0; \}"), "")
         t |> equal(feature_of("__typeof(1) x __attribute__((constructor));"), "__attribute__")

@@ -49,12 +49,17 @@ spelling.
 clang resolves a `typeof`, and the dump desugars the whole spelling of a type (`typeof (x)` beside
 `int`), but spells one under a declarator by its operand (`typeof (x) *`, `typeof (big)
 (typeof(int))`). The libclang pass notes the canonical spelling of every `typeof` under the type of
-a declaration, a cast and a compound literal of the program, through pointers, arrays and function
-types, keyed by clang's spelling of the `typeof` (`register_typeof`), and the type reader puts that
-spelling in the place of each `typeof (...)` before it reads the text (`without_typeof`). Two of
-one spelling that name different types (`typeof (x)` in two functions whose `x` differ), and one
-the pass never met, fail closed; so does a `typeof` of a function, an array or a pointer to one
-under a declarator, whose type no text in its place spells. A name that only holds the word
+a declaration, a cast and a compound literal, through pointers, arrays and function types, keyed
+by clang's spelling of the `typeof` (`register_typeof`); once the program spells one, a second
+walk notes those of every file of the unit (`note_typeofs`), since a header's declaration gives a
+program expression its type. The type reader puts the canonical spelling in the place of each
+`typeof (...)` before it reads the text (`without_typeof`). A spelling resolves only when every
+place that spells it names one type: two that name different types (`typeof (x)` in two functions
+whose `x` differ) fail closed, and so does one under a declarator in the operand of `sizeof`,
+`_Alignof` or `va_arg`, where libclang gives the pass no type and another scope's declaration
+could answer for it (a whole `typeof` there is desugared by the dump). A `typeof` of a function,
+an array or a pointer to one under a declarator, whose type no text in its place spells, fails
+closed too. A name that only holds the word
 (`my_typeof_t`, C23's `typeof_unqual`) is no `typeof`.
 
 GNU `__alignof__` (clang's trait `__alignof`) is the preferred alignment, and of an expression
