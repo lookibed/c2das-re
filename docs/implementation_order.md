@@ -4341,6 +4341,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   fixes), predicted before they are timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_fast.md`, sha256
   `8048ee04c74cb46c2bec2c5925e9019f6a17d0a53ebc51861d06d694da0bcd67`; `/root/notes/research/chibicc_pp/agents/pool_hash/predictions_finalfast.md`, sha256
   `8e075795b25502bee1965df2bc99e383e75d7df03ab48c3a2e27ef919a6dd805`.
+  The finalfast file gained, still before any timing, a correction of its final-vs-L4 figures once count mode was
+  found to skip the token conversion under patch 0004 (fixed in both trees: c2das-final d6c7b5d, c2das-finalfast
+  f02f2aa); now sha256 `bafcf2654909fd7bf9d281cbe26a1fb622c9eb8b5f1da604ba899207940b461d`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
