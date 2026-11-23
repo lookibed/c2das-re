@@ -31,7 +31,6 @@
 20040302-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 20040308-1	variable-length array in a struct	the pinned clang refuses the input and the pipeline has no other frontend	never
 20040520-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
-20040709-1	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
 20040709-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20041019-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20041124-1	_Complex	complex arithmetic is not lowered yet	P7.5
@@ -158,7 +157,6 @@ alias-4	__attribute__	an attribute outside the dumper's dropped list (linkage, r
 align-nest	variable-length array in a struct	the pinned clang refuses the input and the pipeline has no other frontend	never
 alloca-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 built-in-setjmp	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
-builtin-types-compatible-p	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
 cmpdi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 cmpsf-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 cmpsi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -203,7 +201,6 @@ pr105984	GCC builtins clang does not know	the pinned clang refuses the input and
 pr108064	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr108292	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr108498-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
-pr108789	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr109040	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr110252-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr110817-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
@@ -212,7 +209,6 @@ pr110817-3	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr114552	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr115033	permissive input	clang declares no `__builtin_exit`, and its default refuses the implicit declaration; under the permissive flags the emitter maps it to `exit`	P7.8
 pr17377	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
-pr19449	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
 pr22061-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 pr22061-3	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 pr22061-4	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
@@ -253,7 +249,6 @@ pr60003	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is 
 pr60960	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr61375	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
 pr63302	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
-pr64006	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr64242	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
 pr65053-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr65053-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
@@ -263,12 +258,10 @@ pr65427	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr65648	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr65956	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr68328	inline asm	machine code or register binding; no emulation exists in the das runtime	never
-pr68381	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr70460	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 pr70903	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr71083	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr71494	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
-pr71554	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr71626-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr77718	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr78726	inline asm	machine code or register binding; no emulation exists in the das runtime	never
@@ -281,7 +274,6 @@ pr84169	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
 pr84521	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
 pr84524	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr84748	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
-pr85095	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr85156	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr85169	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr85331	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
@@ -289,15 +281,9 @@ pr85582-2	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
 pr85582-3	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
 pr85756	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr88904	inline asm	machine code or register binding; no emulation exists in the das runtime	never
-pr89434	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
-pr90311	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
-pr91450-1	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
-pr91450-2	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
-pr91635	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr92618	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr92904	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
 pr93213	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
-pr93494	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr93945	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr94130	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr94412	GNU vector extension	GNU vector types are not lowered yet	P7.6
