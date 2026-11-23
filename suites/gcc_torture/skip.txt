@@ -4,11 +4,14 @@
 # test that merely does not pass yet is not listed; the ratchet reports it.
 20000412-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20000717-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+20000822-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 20001009-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 20001111-1	permissive input	clang declares no `__builtin_exit`, and its default refuses the implicit declaration; under the permissive flags the emitter maps it to `exit`	P7.8
 20010122-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
+20010209-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 20010325-1	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
 20010518-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
+20010605-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 20010605-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20010904-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20010904-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
@@ -20,12 +23,14 @@
 20020819-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20030222-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 20030323-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
+20030501-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 20030811-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
 20030910-1	_Complex	complex arithmetic is not lowered yet	P7.5
 20031211-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20040223-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20040302-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 20040308-1	variable-length array in a struct	the pinned clang refuses the input and the pipeline has no other frontend	never
+20040520-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 20040709-1	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
 20040709-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20041019-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -47,6 +52,7 @@
 20071210-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 20071220-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 20071220-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+20090219-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 20100430-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20120427-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20120427-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -65,13 +71,14 @@
 920501-3	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 920501-4	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 920501-5	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
-920501-7	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920501-7	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 920501-9	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 920520-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 920603-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+920612-2	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 920721-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 920721-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
-920721-4	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+920721-4	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 920728-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 920730-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 920731-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -79,14 +86,14 @@
 920908-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 920909-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 921013-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
-921017-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921017-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 921110-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 921123-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 921124-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 921202-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 921207-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 921208-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
-921215-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+921215-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 921218-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 921218-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 930106-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -112,6 +119,7 @@
 930921-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 930929-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 930930-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+931002-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 931009-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 931012-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 931017-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -156,7 +164,7 @@ cmpsf-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which
 cmpsi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 cmpsi-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 comp-goto-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
-comp-goto-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+comp-goto-2	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 complex-1	_Complex	complex arithmetic is not lowered yet	P7.5
 complex-2	_Complex	complex arithmetic is not lowered yet	P7.5
 complex-4	_Complex	complex arithmetic is not lowered yet	P7.5
@@ -176,13 +184,19 @@ loop-3b	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which
 loop-3c	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 memcpy-bi	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 mod-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
-nest-align-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
-nestfunc-5	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
-nestfunc-6	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+nest-align-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+nest-stdar-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+nestfunc-1	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+nestfunc-2	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+nestfunc-3	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+nestfunc-5	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+nestfunc-6	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+nestfunc-7	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 packed-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 packed-aligned	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr103052	permissive input	clang declares no `__builtin_exit`, and its default refuses the implicit declaration; under the permissive flags the emitter maps it to `exit`	P7.8
 pr103376	inline asm	machine code or register binding; no emulation exists in the das runtime	never
+pr103405	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 pr104604	_Complex	complex arithmetic is not lowered yet	P7.5
 pr105613	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
 pr105984	GCC builtins clang does not know	the pinned clang refuses the input and the pipeline has no other frontend	never
@@ -200,10 +214,12 @@ pr115033	permissive input	clang declares no `__builtin_exit`, and its default re
 pr17377	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
 pr19449	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
 pr22061-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
+pr22061-3	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
+pr22061-4	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 pr22141-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr23135	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr23467	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
-pr24135	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+pr24135	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 pr29006	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr38151	_Complex	complex arithmetic is not lowered yet	P7.5
 pr38533	inline asm	machine code or register binding; no emulation exists in the das runtime	never
@@ -251,7 +267,7 @@ pr68381	GCC overflow builtins	the checked arithmetic builtins are not lowered ye
 pr70460	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 pr70903	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr71083	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
-pr71494	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
+pr71494	nested function	a function defined inside a function is GNU C, which the pinned clang refuses, and the pipeline has no other frontend	never
 pr71554	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr71626-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr77718	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
