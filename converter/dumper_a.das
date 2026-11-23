@@ -872,15 +872,9 @@ def private spelled_from(var d : Dumper; var c : CXCursor; word : string) : bool
     if (!key_exists(d.macro_texts, name)) {
         d.macro_texts[name] = stat(name).is_reg ? fread(name) : ""
     }
-    var same = false
-    peek_data(d.macro_texts[name]) $(text) {
-        let at = int(offset)
-        same = at + length(word) <= length(text)
-        for (idx, ch in range(length(word)), word) {
-            same &&= int(text[at + idx]) == ch
-        }
-    }
-    return same
+    let text = d.macro_texts?[name] ?? ""
+    let at = int(offset)
+    return slice(text, at, min(at + length(word), length(text))) == word
 }
 
 // whether a `__builtin_constant_p` call sits anywhere under cursor `c`
