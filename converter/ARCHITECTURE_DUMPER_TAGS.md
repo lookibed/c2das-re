@@ -69,3 +69,16 @@ evaluator over the node (`register_trait_value`, keyed like a `__builtin_constan
 an `alignof_v` with that value, so the emitter spells das's alignment of the type where the two
 agree and the value elsewhere (a function's, an aligned declaration's). Two in one macro expansion
 spelled from one token that clang values apart fail closed.
+
+### Folded builtins {#folded-builtins}
+
+`__builtin_classify_type(e)` and `__builtin_types_compatible_p(T, U)` are the `int_lit` of clang's
+value, never derived here: the libclang pass evaluates the node (`register_trait_value`, the key
+and the table `__alignof__` uses) and the dump's node reads it (`dump_folded`), so the operand of
+the first is neither dumped nor evaluated, as C leaves it. libclang shows the trait as an
+unexposed expression, which the pass knows by the text at its spelling location (`spelled_from`).
+Two at one key (one macro expansion spelling both from one token) that clang values apart fail
+closed, and so does a node the pass gave no value. `__builtin_choose_expr(c, a, b)` (clang's
+`ChooseExpr`) is the operand clang chose, by the value the dump gives the `ConstantExpr` over
+`c`: the node of `a` or of `b` itself, an lvalue where it is one, and neither `c` nor the other
+operand is dumped; a condition with no value fails closed.

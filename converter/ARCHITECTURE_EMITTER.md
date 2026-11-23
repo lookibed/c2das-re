@@ -262,7 +262,7 @@ answer as an integer literal (`ARCHITECTURE_DUMPER.md` "`__builtin_constant_p`")
 (`ffs`, `ctz`, `clz`, `popcount`, `parity`, `clrsb`, each with its `l` and `ll` spellings),
 `bswap16/32/64`, `signbit`, `unreachable` and `prefetch` are calls of the
 `c_runtime/c_builtins` piece, the `l` and `ll` spellings reaching the overload of the operand's
-width through the argument's type; `__builtin_trap` is `c_abort`.
+width through the argument's type; `__builtin_trap` is `c_abort`. The checked arithmetic builtins (`__builtin_add_overflow`, `sub`, `mul` and the typed spellings, `__builtin_sadd_overflow` to `__builtin_umulll_overflow`) are `c_add_overflow(a, b, addr(r))` and its siblings there, generic over the three integer types; an enum or `_Bool` operand or result fails closed (`check_overflow_operands`).
 
 Output is assembled as an array of lines joined once (`docs/probe-findings.md` F19); the
 text then goes through the formatter, so spacing is the formatter's and indentation is the

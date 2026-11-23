@@ -855,6 +855,34 @@ def private register_trait_value(var d : Dumper; var c : CXCursor) {
     clang_EvalResult_dispose(res)
 }
 
+// the builtins whose value is clang's fold of the node (`register_trait_value`): a call of the
+// first, and the type trait the second spells, which libclang shows as an unexposed expression
+let CLASSIFY_TYPE = "__builtin_classify_type"
+let TYPES_COMPATIBLE = "__builtin_types_compatible_p"
+
+// whether the text of cursor `c`'s file at its spelling location starts with `word`
+def private spelled_from(var d : Dumper; var c : CXCursor; word : string) : bool {
+    var file : CXFile
+    var line, column, offset : uint
+    clang_getSpellingLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    let name = file_name(file)
+    if (empty(name)) {
+        return false
+    }
+    if (!key_exists(d.macro_texts, name)) {
+        d.macro_texts[name] = stat(name).is_reg ? fread(name) : ""
+    }
+    var same = false
+    peek_data(d.macro_texts[name]) $(text) {
+        let at = int(offset)
+        same = at + length(word) <= length(text)
+        for (idx, ch in range(length(word)), word) {
+            same &&= int(text[at + idx]) == ch
+        }
+    }
+    return same
+}
+
 // whether a `__builtin_constant_p` call sits anywhere under cursor `c`
 def private holds_constant_p(var c : CXCursor) : bool {
     var found = false
@@ -967,9 +995,15 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
             walk_records(d, kid)
         } elif (kind == CXCursorKind.UnexposedExpr) {
             register_offsetof(d, kid)
+            if (spelled_from(d, kid, TYPES_COMPATIBLE)) {
+                register_trait_value(d, kid)
+            }
             walk_records(d, kid)
         } elif (kind == CXCursorKind.CallExpr) {
             register_constant_p(d, kid)
+            if (string(clang_getCursorSpelling(kid)) == CLASSIFY_TYPE) {
+                register_trait_value(d, kid)
+            }
             walk_records(d, kid)
         } elif (kind == CXCursorKind.AsmStmt) {
             register_asm(d, kid)
@@ -2349,6 +2383,9 @@ def private dump_call(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
     if (callee_name((kids as _array)[0]) == CONSTANT_P) {
         return dump_constant_p(d, js, t, at)
     }
+    if (callee_name((kids as _array)[0]) == CLASSIFY_TYPE) {
+        return dump_folded(d, js, t, at, CLASSIFY_TYPE)
+    }
     let library_ret = callee_kind((kids as _array)[0]) == "FunctionDecl" ? d.library_results?[callee_name((kids as _array)[0])] ?? -1 : -1
     var x = new CirExpr(e = "call", t = library_ret >= 0 ? library_ret : t)
     d.dumping_callee = library_ret >= 0
@@ -2397,6 +2434,37 @@ def private dump_constant_p(var d : Dumper; js : JsonValue?; t : int; at : CirLo
         fail(d, "`__builtin_constant_p`: libclang reports no call at this location", at)
     }
     return null
+}
+
+// a `__builtin_classify_type` call or a `__builtin_types_compatible_p` trait (`what`) is the
+// integer literal of clang's fold of the node (`register_trait_value`): its operands are types,
+// or an expression C never evaluates, and are not dumped
+[arch(at="ARCHITECTURE_DUMPER_TAGS.md#folded-builtins")]
+def private dump_folded(var d : Dumper; js : JsonValue?; t : int; at : CirLoc; what : string) : CirExpr? {
+    let key = node_key(d, js)
+    if (!key_exists(d.trait_by_loc, key)) {
+        fail(d, "`{what}`: libclang gives no value at this location", at)
+        return null
+    }
+    let v = d.trait_by_loc?[key] ?? TRAIT_SPLIT
+    if (v == TRAIT_SPLIT) {
+        fail(d, "two `{what}` of one macro expansion that clang values apart are not lowered", at)
+        return null
+    }
+    return new CirExpr(e = "int_lit", t = t, v = "{v}")
+}
+
+// `__builtin_choose_expr(c, a, b)` is the operand clang chose, by the value its dump gives the
+// constant `c`; neither `c` nor the other operand is dumped
+[arch(at="ARCHITECTURE_DUMPER_TAGS.md#folded-builtins")]
+def private dump_choose(var d : Dumper; js : JsonValue?; at : CirLoc) : CirExpr? {
+    let kids = js?["inner"]
+    let chosen = child_count(js) == 3 ? (kids as _array)[0]?["value"] ?? "" : ""
+    if (empty(chosen)) {
+        fail(d, "`__builtin_choose_expr`: the dump gives its condition no value", at)
+        return null
+    }
+    return child_expr(d, kids, chosen == "0" ? 2 : 1)
 }
 
 def private dump_subscript(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
@@ -3151,6 +3219,12 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (key_exists(TYPE_OPERATOR_KINDS, kind)) {
         return dump_type_operator(d, js, kind, t, at)
     }
+    if (kind == "TypeTraitExpr") {
+        return dump_folded(d, js, t, at, TYPES_COMPATIBLE)
+    }
+    if (kind == "ChooseExpr") {
+        return dump_choose(d, js, at)
+    }
     fail(d, "unsupported expression `{kind}`", at)
     return null
 }
@@ -3278,7 +3352,7 @@ def private dump_type_operator(var d : Dumper; js : JsonValue?; kind : string; t
     return new CirExpr(e = "va_arg", t = t, list = list, arg_t = t)
 }
 
-let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr", "CompoundLiteralExpr", "ExprWithCleanups"}
+let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr", "CompoundLiteralExpr", "ExprWithCleanups", "TypeTraitExpr", "ChooseExpr"}
 
 // an optional slot of a statement: clang spells an absent one as `{}`
 def private slot_stmt(var d : Dumper; kids : JsonValue?; idx : int; var ok : bool&) : CirStmt? {
