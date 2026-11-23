@@ -4225,8 +4225,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   next run with no `--filter` and `--update` records the thirteen; the gcc-torture, c-testsuite and
   csmith runs and the readability re-record of this diff are owed with it. Owed here still: the
   `_p` forms (`__builtin_mul_overflow_p`, which clang does not know: the `never` rule keeps
-  them), an enum or `_Bool` operand or result of a checked builtin (refused by name), and every
-  other feature of this row.
+  them), an enum or `_Bool` operand or result of a checked builtin (refused by name),
+  `__builtin_classify_type` of a `_Bool` (refused by name: clang's value is 4, GCC's 1), a
+  `__builtin_types_compatible_p` spelled by token pasting (the libclang pass knows the trait by
+  its file's text, so it gets no value and is refused), a type trait in a `case` label (`case
+  __builtin_types_compatible_p(int, int) + 4:` is refused), and every other feature of this row.
 - **P7.7 goto into a nested body** (P5.1c; P3.3's state-machine lowering, still owed, is owned
   here): the 31 csmith seeds `suites/csmith/skip.txt` lists, and gcc-torture pr38051 and pr43269
   (ordinary failures).

@@ -2379,6 +2379,13 @@ def private dump_call(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
         return dump_constant_p(d, js, t, at)
     }
     if (callee_name((kids as _array)[0]) == CLASSIFY_TYPE) {
+        // clang classifies a `_Bool` as 4 where GCC, the suites' reference, gives 1
+        let operand = nkids > 1 ? (kids as _array)[1]?["type"] : null
+        let spelled = operand?["desugaredQualType"] ?? (operand?["qualType"] ?? "")
+        if (spelled == "_Bool" || spelled |> ends_with(" _Bool")) {
+            fail(d, "`{CLASSIFY_TYPE}` of a `_Bool` is not lowered (clang's value is not GCC's)", at)
+            return null
+        }
         return dump_folded(d, js, t, at, CLASSIFY_TYPE)
     }
     let library_ret = callee_kind((kids as _array)[0]) == "FunctionDecl" ? d.library_results?[callee_name((kids as _array)[0])] ?? -1 : -1

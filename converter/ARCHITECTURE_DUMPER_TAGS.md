@@ -78,7 +78,8 @@ and the table `__alignof__` uses) and the dump's node reads it (`dump_folded`), 
 the first is neither dumped nor evaluated, as C leaves it. libclang shows the trait as an
 unexposed expression, which the pass knows by the text at its spelling location (`spells_types_compatible`).
 Two at one key (one macro expansion spelling both from one token) that clang values apart fail
-closed, and so does a node the pass gave no value. `__builtin_choose_expr(c, a, b)` (clang's
+closed, and so do a node the pass gave no value (a trait spelled by token pasting) and
+`__builtin_classify_type` of a `_Bool`, which clang values 4 and GCC 1. `__builtin_choose_expr(c, a, b)` (clang's
 `ChooseExpr`) is the operand clang chose, by the value the dump gives the `ConstantExpr` over
 `c`: the node of `a` or of `b` itself, an lvalue where it is one, and neither `c` nor the other
 operand is dumped; a condition with no value fails closed.
