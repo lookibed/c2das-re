@@ -4331,6 +4331,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   H9 (the pp-number suffix chain and hide-set/argument lookups behind a first-character check) and H10 (H1 and H2
   together), predicted before they are timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_h9.md`, sha256
   `e4851abba2a135ff9844fab9550b8764f4069ecba04cb63ee9bbce78df0f5916`; H10 appended to the H1/H2 file, now sha256 `53d38001008b0e66c16373a7c7d433c94a0bd76d1deec5df6c1152e246836f68`.
+  The final tree (every correctness fix and extension of the night on L4, branch c2das-final), its speed
+  against L4 predicted before it is timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_final.md`,
+  sha256 `89c3af72e1d9c8f5a6f5b598a16980b5ab37ed5ff5ad7fb8a5b27a527f0ceef6`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
