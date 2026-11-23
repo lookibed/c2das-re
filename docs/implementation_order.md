@@ -4352,6 +4352,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   Why the L4 JIT beat native -O2 on PureDOOM (cross-unit inlining tested with an -flto native build, or the
   heap of a fresh process), predicted before it is timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_lto.md`,
   sha256 `6f1e0f4a2b2e6e36072f31ce599b042ef9d40e965706e8655777a4bdd084afcd`.
+  H32 (the UCN pass jumps from backslash to backslash instead of copying a buffer that holds a \\u somewhere, as
+  sqlite3.c does), predicted before it is timed: `/root/notes/research/chibicc_pp/agents/pool_hash/predictions_h32.md`,
+  sha256 `37b944b506b014743ef44e31c657f825762552d6a2f0fc808f276b77b00e40f7`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
