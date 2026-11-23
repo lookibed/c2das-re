@@ -4319,6 +4319,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   H31 (chibicc's hash table: a final mix of the FNV hash and growth at half full; probes per lookup 5.0 -> 1.1
   measured natively), predicted before it is timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_h31.md`,
   sha256 `b3c2dcaabd4d3f66c5701296248e881ba1a9f7e0546710e2eb31b460efb794bc`.
+  The fast tree (L4 with H1, H2, H3, H4, H9, H31) and the finalfast tree (the final tree with the same speed
+  fixes), predicted before they are timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_fast.md`, sha256
+  `8048ee04c74cb46c2bec2c5925e9019f6a17d0a53ebc51861d06d694da0bcd67`; `/root/notes/research/chibicc_pp/agents/pool_hash/predictions_finalfast.md`, sha256
+  `8e075795b25502bee1965df2bc99e383e75d7df03ab48c3a2e27ef919a6dd805`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
