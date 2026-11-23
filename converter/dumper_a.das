@@ -3207,6 +3207,12 @@ def private dump_decl_ref(var d : Dumper; js : JsonValue?; t : int; at : CirLoc)
     return new CirExpr(e = "ref", t = t, name = bound_name(d, js?["referencedDecl"]), vol = is_volatile_spelling(js))
 }
 
+// the nodes that are the operand clang chose among theirs
+let CHOICE_KINDS <- {"ChooseExpr", "GenericSelectionExpr"}
+
+def private dump_choice(var d : Dumper; js : JsonValue?; kind : string; at : CirLoc) : CirExpr? =>
+    kind == "ChooseExpr" ? dump_choose(d, js, at) : dump_generic(d, js, at)
+
 // the nodes whose value is their one child's
 let VALUE_WRAPPERS <- {"ParenExpr", "ConstantExpr", "PredefinedExpr", "ExprWithCleanups", "MaterializeTemporaryExpr"}
 
@@ -3279,11 +3285,8 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (kind == "TypeTraitExpr") {
         return dump_folded(d, js, t, at, TYPES_COMPATIBLE)
     }
-    if (kind == "ChooseExpr") {
-        return dump_choose(d, js, at)
-    }
-    if (kind == "GenericSelectionExpr") {
-        return dump_generic(d, js, at)
+    if (key_exists(CHOICE_KINDS, kind)) {
+        return dump_choice(d, js, kind, at)
     }
     fail(d, "unsupported expression `{kind}`", at)
     return null
