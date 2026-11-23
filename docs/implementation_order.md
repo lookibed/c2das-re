@@ -4323,6 +4323,11 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   arguments, an upper bound for PP.7's allocation part; H2: an identifier's hash computed once at lexing),
   predicted before they are timed: `/root/notes/research/chibicc_pp/agents/pool_hash/predictions.md`, sha256
   `2eec16f3ed4858206a0081c675adc327be5a81c0fdcaf93d22f7b945c253c40c`.
+  H3 (skip the newline and splice passes when the buffer has nothing for them) and H4 (ctype calls as ASCII
+  comparisons, the cost of calls into the C runtime), and A2 (a cold JIT start split per module against one unit),
+  predicted before they are timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_h3h4.md`, sha256
+  `04d379bd3e5fe99a4744b7d659a7797f3c46cea38557a8e97b2bf83789d440bb`; `/root/notes/research/chibicc_pp/agents/ir/predictions_a2.md`, sha256
+  `914148c714337c9337ab24ac14b8f79c2560cc1e62ad56b25e9c8fd050c48bb3`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
