@@ -4331,6 +4331,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `7cfa33c726210c299b538934de3bcdb7f48ba268d69e8679a0ab7d8e27cc83f6`.
   The share of -E printing in the old JIT gap, measured directly in the same job as count mode, predicted before it
   is timed: `/root/notes/research/chibicc_pp/agents/pool_hash/predictions_print.md`, sha256 `351f2421abf64f7f51e8a457754d5c84c055c2d5ba29e443041ca26de39f0712`.
+  Why the L4 JIT beat native -O2 on PureDOOM (cross-unit inlining tested with an -flto native build, or the
+  heap of a fresh process), predicted before it is timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_lto.md`,
+  sha256 `6f1e0f4a2b2e6e36072f31ce599b042ef9d40e965706e8655777a4bdd084afcd`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
