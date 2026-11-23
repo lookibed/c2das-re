@@ -2014,7 +2014,9 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
     }
     var ok = true
     for (f in d.records[ridx].fields) {
-        let ft = type_from_qual(d, f.spelling, at)
+        let declared = type_from_qual(d, f.spelling, at)
+        // a bitfield of enum type is one of the integer type clang gave the enum
+        let ft = f.is_bitfield && declared >= 0 && d.tu.types[declared].k == "enum" ? enum_integer(d, declared) : declared
         var fld = CirField(name = f.name, t = ft, off = int(f.bit_off / 8l), bit_off = int(f.bit_off), bit_w = f.bit_w, is_bitfield = f.is_bitfield)
         if (ft < 0 || !enum_dims(d, f.loc_key, ft, at, fld.dims)) {
             ok = false
@@ -2037,7 +2039,8 @@ def private record_type(var d : Dumper; qt : string; at : CirLoc) : int {
 }
 
 // an enum type from its definition's libclang entry: the C-IR's enum is the dialect's `int`
-// wide, signed or not as clang chose, so an enum of another width fails closed
+// wide, signed or not as clang chose, so an enum of another width fails closed; an enum with no
+// definition is the dialect's `int`
 def private enum_type(var d : Dumper; qt : string; at : CirLoc) : int {
     let key = "enum:{qt}"
     let known = d.type_index?[key] ?? -1
@@ -2046,8 +2049,9 @@ def private enum_type(var d : Dumper; qt : string; at : CirLoc) : int {
     }
     let eidx = d.enum_by_spelling?[qt] ?? -1
     if (eidx < 0) {
-        fail(d, "`{qt}` has no definition in this file", at)
-        return -1
+        // an enum the unit never defines is incomplete everywhere in it (a GNU extension): clang
+        // lets the program hold pointers to it and nothing else, so its pointee is never read
+        return int_type(d, d.tu.target.int_w, true, "int")
     }
     if (d.enums[eidx].spelling_shared) {
         fail(d, "`{qt}` is defined more than once in this file; same-tag block-scoped enums are not lowered yet", at)
@@ -2061,6 +2065,25 @@ def private enum_type(var d : Dumper; qt : string; at : CirLoc) : int {
     var t = CirType(k = "enum", name = is_unnamed_tag(tag) ? "" : tag, spell = qt, is_signed = d.enums[eidx].underlying_signed)
     t.items := d.enums[eidx].items
     return intern(d, key, t)
+}
+
+// the integer type clang gave enum `t`: the dialect's `int`, or its `unsigned int`
+def private enum_integer(var d : Dumper; t : int) : int =>
+    int_type(d, d.tu.target.int_w, d.tu.types[t].is_signed, d.tu.types[t].is_signed ? "int" : "unsigned int")
+
+// whether clang types as enum `t` an lvalue the C-IR holds as an integer: a bitfield of enum type
+def private is_enum_bitfield(d : Dumper; t : int; lvalue : CirExpr?) : bool =>
+    d.tu.types[t].k == "enum" && d.tu.types[lvalue.t].k == "int"
+
+// `value` converted between an enum and its integer type `t`, or back
+def private enum_converted(t : int; var value : CirExpr?) : CirExpr? =>
+    new CirExpr(e = "cast", t = t, cast_kind = "IntegralCast", a = value)
+
+// `v` as field `pos` of record `rec` holds it: an enum's value in a bitfield of enum type is its
+// integer
+def private field_value(d : Dumper; rec, pos : int; var v : CirExpr?) : CirExpr? {
+    let into_bitfield = pos < length(d.tu.types[rec].fields) && d.tu.types[rec].fields[pos].is_bitfield
+    return into_bitfield && d.tu.types[v.t].k == "enum" ? enum_converted(d.tu.types[rec].fields[pos].t, v) : v
 }
 
 // the enum constants a declarator spells its array dimensions by, one slot per dimension of
@@ -2283,6 +2306,11 @@ def private dump_cast(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
     if (inner == null) {
         return null
     }
+    if (ck == "LValueToRValue" && is_enum_bitfield(d, t, inner)) {
+        // the read of a bitfield of enum type is its integer's, converted to the enum
+        let stored = inner.t
+        return enum_converted(t, new CirExpr(e = "cast", t = stored, cast_kind = ck, a = inner))
+    }
     return new CirExpr(e = "cast", t = t, cast_kind = ck, explicit_cast = node_kind(js) == "CStyleCastExpr", a = inner)
 }
 
@@ -2308,6 +2336,11 @@ def private dump_unary(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : 
     if (a == null) {
         return null
     }
+    if ((opcode == "++" || opcode == "--") && is_enum_bitfield(d, t, a)) {
+        fail(d, "a step of a bitfield of enum type is not lowered yet", at)
+        delete_expr(a)
+        return null
+    }
     return new CirExpr(e = "un", t = t, op = op, a = a)
 }
 
@@ -2327,13 +2360,21 @@ def private dump_binary(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
         delete_expr(a)
         return null
     }
+    let compound = COMPOUND_OPS?[opcode] ?? ""
+    if ((opcode == "=" || !empty(compound)) && is_enum_bitfield(d, t, a)) {
+        // a store into a bitfield of enum type stores the integer and is worth the enum
+        let stored = a.t
+        if (d.tu.types[b.t].k == "enum") {
+            b = enum_converted(stored, b)
+        }
+        return enum_converted(t, new CirExpr(e = "assign", t = stored, op = compound, a = a, b = b))
+    }
     if (opcode == "=") {
         return new CirExpr(e = "assign", t = t, op = "", a = a, b = b)
     }
     if (opcode == ",") {
         return new CirExpr(e = "comma", t = t, a = a, b = b)
     }
-    let compound = COMPOUND_OPS?[opcode] ?? ""
     if (!empty(compound)) {
         return new CirExpr(e = "assign", t = t, op = compound, a = a, b = b)
     }
@@ -2467,6 +2508,19 @@ def private dump_choose(var d : Dumper; js : JsonValue?; at : CirLoc) : CirExpr?
         return null
     }
     return child_expr(d, kids, chosen == "0" ? 2 : 1)
+}
+
+// a C11 generic selection is the result expression of the association clang marks `selected`;
+// the controlling expression, which C never evaluates, and the other associations are not dumped
+[arch(at="ARCHITECTURE_DUMPER_TAGS.md#folded-builtins")]
+def private dump_generic(var d : Dumper; js : JsonValue?; at : CirLoc) : CirExpr? {
+    for (kid in js?["inner"] as _array) {
+        if ((kid?["selected"] ?? false) && child_count(kid) > 0) {
+            return child_expr(d, kid?["inner"], child_count(kid) - 1)
+        }
+    }
+    fail(d, "`_Generic`: the dump marks no association selected", at)
+    return null
 }
 
 def private dump_subscript(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
@@ -2606,7 +2660,9 @@ def private dump_member(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
         delete_expr(base)
         return null
     }
-    return new CirExpr(e = "member", t = t, base = base, field = field, arrow = arrow)
+    // a bitfield of enum type is typed as the field holds it, not as clang types the member
+    let held = d.tu.types[t].k == "enum" && d.tu.types[rec].fields[field].is_bitfield ? d.tu.types[rec].fields[field].t : t
+    return new CirExpr(e = "member", t = held, base = base, field = field, arrow = arrow)
 }
 
 // clang's semantic form: one child per field (an unnamed bitfield has none) or element in
@@ -2649,7 +2705,7 @@ def private dump_init_list(var d : Dumper; js : JsonValue?; t : int; at : CirLoc
             return null
         }
         let pos = k == "struct" ? initialized_field(d.tu.types[t], idx - first) : idx - first
-        x.init_items |> push(CirInitItem(pos = pos, v = v))
+        x.init_items |> push(CirInitItem(pos = pos, v = k == "struct" ? field_value(d, t, pos, v) : v))
     }
     return x
 }
@@ -2695,23 +2751,22 @@ def private dump_union_init(var d : Dumper; js : JsonValue?; t : int; at : CirLo
         return x
     }
     let name = js?["field"]?["name"] ?? ""
-    if (empty(name)) {
-        fail(d, "an initializer of an anonymous member of a union is not dumped yet", at)
+    var v = child_count(js) == 1 ? child_expr(d, js?["inner"], 0) : null
+    if (v == null && child_count(js) == 1) {
         delete_expr(x)
         return null
     }
-    let pos = member_index(d, t, name, -1)
-    if (pos < 0 || child_count(js) != 1) {
+    // an anonymous member (C11 6.7.2.1p13) is the member of its value's record type
+    let pos = v != null ? member_index(d, t, name, v.t) : -1
+    if (pos < 0) {
         fail(d, "a union initializer of {child_count(js)} values for member `{name}` is not dumped yet", at)
         delete_expr(x)
+        if (v != null) {
+            delete_expr(v)
+        }
         return null
     }
-    var v = child_expr(d, js?["inner"], 0)
-    if (v == null) {
-        delete_expr(x)
-        return null
-    }
-    x.init_items |> push(CirInitItem(pos = pos, v = v))
+    x.init_items |> push(CirInitItem(pos = pos, v = field_value(d, t, pos, v)))
     return x
 }
 
@@ -3227,6 +3282,9 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
     if (kind == "ChooseExpr") {
         return dump_choose(d, js, at)
     }
+    if (kind == "GenericSelectionExpr") {
+        return dump_generic(d, js, at)
+    }
     fail(d, "unsupported expression `{kind}`", at)
     return null
 }
@@ -3354,7 +3412,7 @@ def private dump_type_operator(var d : Dumper; js : JsonValue?; kind : string; t
     return new CirExpr(e = "va_arg", t = t, list = list, arg_t = t)
 }
 
-let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr", "CompoundLiteralExpr", "ExprWithCleanups", "TypeTraitExpr", "ChooseExpr"}
+let EXPR_KINDS <- {"IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral", "DeclRefExpr", "ImplicitCastExpr", "CStyleCastExpr", "UnaryOperator", "BinaryOperator", "CompoundAssignOperator", "ConditionalOperator", "CallExpr", "ArraySubscriptExpr", "UnaryExprOrTypeTraitExpr", "ParenExpr", "MemberExpr", "InitListExpr", "OffsetOfExpr", "VAArgExpr", "CompoundLiteralExpr", "ExprWithCleanups", "TypeTraitExpr", "ChooseExpr", "GenericSelectionExpr"}
 
 // an optional slot of a statement: clang spells an absent one as `{}`
 def private slot_stmt(var d : Dumper; kids : JsonValue?; idx : int; var ok : bool&) : CirStmt? {
@@ -4049,14 +4107,21 @@ def private dump_stmt_node(var d : Dumper; js : JsonValue?) : CirStmt? {
     return null
 }
 
-// an expression statement: a statement block (`is_statement_block`) or a comma holding one as
-// statements, any other expression as the `expr` statement
+// an expression statement: a statement block (`is_statement_block`), or a comma, a `void`
+// conditional or an assignment holding one, as statements; any other expression as the `expr`
+// statement
 def private dump_expr_stmt(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
     if (is_statement_block(js)) {
         return dump_statement_block(d, js, at)
     }
     if (is_block_comma(js)) {
         return dump_comma_statements(d, js, at)
+    }
+    if (is_block_conditional(js)) {
+        return dump_conditional_statements(d, js, at)
+    }
+    if (is_block_assignment(js)) {
+        return dump_block_assignment(d, js, at)
     }
     var e = dump_expr(d, js)
     if (e == null) {
@@ -4076,7 +4141,7 @@ def private is_statement_block(js : JsonValue?) : bool {
     if (kind == "StmtExpr") {
         return node_kind((js?["inner"] as _array)[0]) == "CompoundStmt"
     }
-    let unwraps = kind == "ParenExpr" || (kind == "UnaryOperator" && (js?["opcode"] ?? "") == "__extension__") || (kind == "CStyleCastExpr" && (js?["castKind"] ?? "") == "ToVoid")
+    let unwraps = kind == "ParenExpr" || (kind == "UnaryOperator" && (js?["opcode"] ?? "") == "__extension__") || ((kind == "CStyleCastExpr" || kind == "ImplicitCastExpr") && (js?["castKind"] ?? "") == "ToVoid")
     return unwraps && is_statement_block((js?["inner"] as _array)[0])
 }
 
@@ -4121,6 +4186,121 @@ def private dump_comma_statements(var d : Dumper; js : JsonValue?; at : CirLoc) 
         }
         st.body |> push(part)
     }
+    return st
+}
+
+def private is_parenthesized(js : JsonValue?) : bool => node_kind(js) == "ParenExpr" && child_count(js) == 1
+
+// whether `js` is, through parentheses, a conditional of type `void` with a statement block
+// (`is_statement_block`) as an arm
+def private is_block_conditional(js : JsonValue?) : bool {
+    if (is_parenthesized(js)) {
+        return is_block_conditional((js?["inner"] as _array)[0])
+    }
+    if (node_kind(js) != "ConditionalOperator" || child_count(js) != 3 || (js?["type"]?["qualType"] ?? "") != "void") {
+        return false
+    }
+    return is_statement_block((js?["inner"] as _array)[1]) || is_statement_block((js?["inner"] as _array)[2])
+}
+
+// a `void` conditional expression statement holding a statement block is the `if` statement over
+// its arms as statements: it has no value to keep
+def private dump_conditional_statements(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    if (is_parenthesized(js)) {
+        return dump_conditional_statements(d, (js?["inner"] as _array)[0], at)
+    }
+    let kids = js?["inner"]
+    var st = new CirStmt(s = "if", loc = at)
+    st.cond = child_expr(d, kids, 0)
+    if (st.cond != null) {
+        st.then_s = dump_expr_stmt(d, (kids as _array)[1], at)
+    }
+    if (st.then_s != null) {
+        st.else_s = dump_expr_stmt(d, (kids as _array)[2], at)
+    }
+    if (st.else_s == null) {
+        delete_stmt(st)
+        return null
+    }
+    return st
+}
+
+// whether `js` is, through parentheses, an assignment `=` whose right side is, through
+// parentheses, a statement expression `({ ... })`
+def private is_block_assignment(js : JsonValue?) : bool {
+    if (is_parenthesized(js)) {
+        return is_block_assignment((js?["inner"] as _array)[0])
+    }
+    return node_kind(js) == "BinaryOperator" && (js?["opcode"] ?? "") == "=" && child_count(js) == 2 && is_value_block((js?["inner"] as _array)[1])
+}
+
+// whether `js` is, through parentheses, a statement expression
+def private is_value_block(js : JsonValue?) : bool {
+    if (is_parenthesized(js)) {
+        return is_value_block((js?["inner"] as _array)[0])
+    }
+    return node_kind(js) == "StmtExpr" && child_count(js) == 1 && node_kind((js?["inner"] as _array)[0]) == "CompoundStmt"
+}
+
+// whether the expression `js` refers to a declaration named by `names`
+def private refers_to(js : JsonValue?; names : table<string>) : bool {
+    if (node_kind(js) == "DeclRefExpr" && key_exists(names, js?["referencedDecl"]?["name"] ?? "")) {
+        return true
+    }
+    for (idx in range(child_count(js))) {
+        if (refers_to((js?["inner"] as _array)[idx], names)) {
+            return true
+        }
+    }
+    return false
+}
+
+// the assignment `is_block_assignment` accepts, as statements
+def private dump_block_assignment(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
+    if (is_parenthesized(js)) {
+        return dump_block_assignment(d, (js?["inner"] as _array)[0], at)
+    }
+    return dump_block_into(d, (js?["inner"] as _array)[0], (js?["inner"] as _array)[1], at)
+}
+
+// an expression statement `target = ({ ...; v; })` is the block with `target = v` as its last
+// statement: the target is evaluated after the block's statements, an order C leaves open. A
+// target naming a variable the block declares, which the store inside it would bind anew, fails
+// closed, and so does a block that does not end in a value of the target's type
+def private dump_block_into(var d : Dumper; target, value : JsonValue?; at : CirLoc) : CirStmt? {
+    let body = (value?["inner"] as _array)[0]
+    if (is_parenthesized(value)) {
+        return dump_block_into(d, target, body, at)
+    }
+    var declared : table<string>
+    for (idx in range(child_count(body))) {
+        let kid = (body?["inner"] as _array)[idx]
+        continue if (node_kind(kid) != "DeclStmt")
+        for (n in range(child_count(kid))) {
+            declared |> insert((kid?["inner"] as _array)[n]?["name"] ?? "")
+        }
+    }
+    if (refers_to(target, declared)) {
+        fail(d, "a statement expression assigned to an object named like a variable its block declares is not lowered yet", at)
+        return null
+    }
+    var st = dump_compound(d, body, at)
+    if (st == null) {
+        return null
+    }
+    var a = dump_expr(d, target)
+    if (a == null) {
+        delete_stmt(st)
+        return null
+    }
+    let last = length(st.body) - 1
+    if (last < 0 || st.body[last].s != "expr" || st.body[last].e.t != a.t) {
+        fail(d, "a statement expression that does not end in a value of its target's type is not lowered yet", at)
+        delete_expr(a)
+        delete_stmt(st)
+        return null
+    }
+    st.body[last].e = new CirExpr(e = "assign", t = a.t, op = "", a = a, b = st.body[last].e)
     return st
 }
 

@@ -132,7 +132,7 @@ Statements: compound, `DeclStmt` (one `decl` per variable), expression statement
 expression `({ ... })` through parentheses, `__extension__` and a cast to `void` is its block, and
 one that is a comma expression holding such an operand is its operands as statements in order
 (glibc's `assert` without `NDEBUG`, `((void) sizeof (e), __extension__ ({ if (e) ; else
-__assert_fail (...); }))`); a statement expression anywhere else fails closed. Expressions: integer, character, floating (as a
+__assert_fail (...); }))`); one assigned or an arm of a `void` conditional is in `ARCHITECTURE_DUMPER_TAGS.md`, any other fails closed. Expressions: integer, character, floating (as a
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
 comma operators, calls, subscripts, `sizeof` and `_Alignof` (clang's `alignof`, with clang's
@@ -144,8 +144,8 @@ node's type), `InitListExpr` of a record or an array (clang's semantic form,
 one child per field or element, an `ImplicitValueInitExpr` left to the positional zero;
 an array with a trailing run of zeros lists its filler first under `array_filler`, then the
 elements up to the last one written) or of a union (at most one child, the member it
-initializes named under `field`: one item at that member's index, none for `{}`, and a member
-`field` names `""` fails closed) or of a scalar with one child (`T *p = { NULL }`, `int n = { 3
+initializes named under `field`: one item at that member's index, none for `{}`; a member
+`field` names `""` is the anonymous member of the child's record type) or of a scalar with one child (`T *p = { NULL }`, `int n = { 3
 }`, a record's scalar member braced in its list: the child itself, which clang already converted,
 so the braces leave no trace in the C-IR; a scalar's `{}` fails closed), `CompoundLiteralExpr` (the `compound_lit` node over its
 list; a scalar's list, `(int){5}`, holds its one value at position 0, none for `(int){}`),

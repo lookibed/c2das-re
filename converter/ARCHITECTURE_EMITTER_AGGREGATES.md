@@ -28,7 +28,7 @@ record with only unnamed bitfields is a plain struct. Where the layout law pads 
 `ARCHITECTURE.md`), the struct carries `_pad<N> : uint8[n]` fields at those places, `N` counting
 across the record, which no initializer names, so they start at zero (`struct HoldBF { bf : BF;
 y : int16; _pad0 : uint8[2] }` for `struct { struct BF bf; short y; }` under `linux`). A
-bitfield of enum type, a bitfield of a marshal-only record (named or unnamed), a record with
+bitfield of enum type (Dumper A writes none: `ARCHITECTURE_DUMPER_TAGS.md`), a bitfield of a marshal-only record (named or unnamed), a record with
 bitfields no unit assignment reproduces even with padding and byte units (`packed`, with its own
 message, never pointing at the sidecar; a record whose alignment an attribute raises past its
 members' says so; a record declared `packed` or under `#pragma pack(n)` that the law places

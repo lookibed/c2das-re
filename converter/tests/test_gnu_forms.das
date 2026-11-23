@@ -13,7 +13,11 @@ require ../dumper_a.das
 //! switch dispatch, `__alignof__` is clang's value, a `typeof` inside a declarator is the type
 //! libclang resolves, `__extension__` is its operand, `__builtin_classify_type`,
 //! `__builtin_types_compatible_p` and `__builtin_choose_expr` are what clang folded or chose, the
-//! checked arithmetic builtins are calls of `c_runtime/c_builtins`. Each fixture prints what its native build
+//! checked arithmetic builtins are calls of `c_runtime/c_builtins`; and the C11 and GNU forms beside
+//! them: a generic selection is the association clang selected, an enum the unit never defines is
+//! an `int` behind its pointers, a bitfield of enum type is one of the enum's integer, an anonymous
+//! member takes an initializer, a statement expression is statements where its value is assigned
+//! or discarded. Each fixture prints what its native build
 //! prints; the text carries each form, and what the lowering refuses names the construct.
 
 let FIXTURES = "converter/tests/fixtures"
@@ -220,6 +224,46 @@ def test_gnu_builtins(t : T?) {
         rejects(t, "overflow_bool_result", "int main(void) \{ _Bool r; return __builtin_mul_overflow(1, 1, &r); \}\n", "`__builtin_mul_overflow` {refused}")
         // a function of the program whose name ends alike is the program's own
         runs_clean(t, "own_overflow", "enum E \{ A, B \};\nstatic int my_overflow(enum E e, _Bool b) \{ return e == B && b; \}\nint main(void) \{ return my_overflow(B, 1) - 1; \}\n")
+    }
+    rmdir_rec(work_root)
+    work_root = ""
+}
+
+[test]
+def test_c11_forms(t : T?) {
+    t |> run("a generic selection, an incomplete enum, a bitfield of enum type, an anonymous member's initializer and a statement expression") @(t : T?) {
+        let text = same_as_native(t, "p7_c11_forms", "")
+        // the selected association alone: the callee, a value, an lvalue; the controlling `i++` is gone
+        has_text(t, text, "    let picked : int = p7_c11_forms__twice(7)\n    printf(cstr(\"%d %d %d %d %d\\n\"), 1, 2, 3, 4, 9)\n")
+        has_text(t, text, "    printf(cstr(\"%d %d %s\\n\"), picked, i, cstr(\"long\"))\n")
+        has_text(t, text, "    i = 4\n    return i\n")
+        has_text(t, text, "var nowhere : int?\nvar nowhere_const : int?\n")
+        // the field is the enum's integer, signed as clang chose; the units are an integer's
+        has_text(t, text, "[c_bitfields(code = 8, flag = 1, sign = 3)]\nstruct node \{\n    next : node?\n    code, flag : uint\n    sign : int\n\}\n")
+        has_text(t, text, "[c_union(c = 4)]\nstruct packed_code \{\n    c : uint\n")
+        has_text(t, text, "_bits0 = (uint(code.TOP) & 0xffu) | ((1u & 0x1u) << 8u) | ((uint(int(sign.NEG)) & 0x7u) << 9u))")
+        has_text(t, text, "    u.c = uint(code.LOW)\n")
+        // a read converts to the enum, a store from it; a store's value is the member read back
+        has_text(t, text, "    c_switch(enum_from_int(type<code>, int(n.code))) \{\n")
+        has_text(t, text, "    n.code = uint(code.TOP)\n    n.sign = int(sign.NEG)\n    got = enum_from_int(type<code>, int(n.code))\n")
+        has_text(t, text, "    n.code = uint(code.LOW)\n    got = enum_from_int(type<code>, int(n.code))\n    n.code = uint(int(n.code) | 4)\n")
+        has_text(t, text, "    local._anon0 = anon_30(a = 1u8, b = 2u8)\n")
+        has_text(t, text, "    braced._anon0 = anon_30(a = 6u8, b = 5u8)\n    designated._anon0 = anon_30(a = 7u8, b = 8u8)\n")
+        // an assigned block ends in the store, through parentheses; a `void` conditional is an `if`
+        has_text(t, text, "    \{\n        var k : int = n\n        while (k > 10) \{\n            k -= 10\n        \}\n        r = k\n    \}\n")
+        has_text(t, text, "    if (r > 5) \{\n        printf(cstr(\"high %d\\n\"), r)\n    \} else \{\n        var k : int = r\n")
+        has_text(t, text, "    \{\n        let twice_r : int = 2 * r\n        r = twice_r + 1\n    \}\n")
+    }
+    t |> run("what the lowering refuses, each naming the construct") @(t : T?) {
+        let node = "enum E \{ A, B, C \};\nstruct S \{ enum E e : 4; \};\n"
+        rejects(t, "enum_bitfield_step", node + "int main(void) \{ struct S s = \{ A \}; s.e++; return s.e - B; \}\n", "a step of a bitfield of enum type is not lowered yet")
+        rejects(t, "block_into_bitfield", node + "int main(void) \{ struct S s = \{ A \}; s.e = (\{ enum E v = B; v; \}); return s.e - B; \}\n", "a statement expression that does not end in a value of its target's type is not lowered yet")
+        rejects(t, "block_shadows_target", "int main(void) \{ int x = 1; x = (\{ int x = 2; x + 1; \}); return x - 3; \}\n", "a statement expression assigned to an object named like a variable its block declares is not lowered yet")
+        // a value used anywhere else is still no statement
+        rejects(t, "block_operand", "int main(void) \{ int x = 1; return (\{ int y = x; y; \}) - 1; \}\n", "unsupported expression `StmtExpr`")
+        rejects(t, "block_conditional_value", "int main(void) \{ int x = 1; x = x ? (\{ int y = x; y; \}) : 2; return x - 1; \}\n", "unsupported expression `StmtExpr`")
+        // a named member of a union still takes one value
+        runs_clean(t, "union_named", "union U \{ struct \{ char a, b; \}; int whole; \};\nint main(void) \{ union U u = \{ .whole = 3 \}; return u.whole - 3; \}\n")
     }
     rmdir_rec(work_root)
     work_root = ""

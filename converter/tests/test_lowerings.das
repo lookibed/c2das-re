@@ -914,7 +914,6 @@ def p4_union_fixtures(t : T?) {
 
 def p4_bitfield_rejects(t : T?) {
     t |> run("bitfields: what the lowering refuses, each with its reason") @(t : T?) {
-        rejects(t, "bitfield_enum", "enum E \{ A, B \};\nstruct S \{ enum E k : 2; int n; \};\nint main(void) \{ struct S s = \{ B, 2 \}; return s.k + s.n; \}\n", "bitfield `S.k` of enum type is not lowered yet")
         rejects(t, "bitfield_opener_name", "struct S \{ unsigned _bits0 : 3; int n; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s._bits0 + s.n; \}\n", "field `S._bits0` is spelled like a storage or padding name")
         rejects(t, "bitfield_padding_name", "struct S \{ unsigned _1 : 3; int n; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s._1 + s.n; \}\n", "field `S._1` is spelled like a storage or padding name")
         rejects(t, "bitfield_unit_name", "struct S \{ unsigned a : 3; int _bits0; \};\nint main(void) \{ struct S s = \{ 1, 2 \}; return s.a + s._bits0; \}\n", "field `S._bits0` is spelled like a storage or padding name")
@@ -986,7 +985,6 @@ def p4_layout_leftovers(t : T?) {
 
 def p4_union_rejects(t : T?) {
     t |> run("unions: what the union lowering refuses, each with its reason") @(t : T?) {
-        rejects(t, "union_bitfield_enum", "enum E \{ A, B \};\nunion U \{ enum E k : 2; int n; \};\nint main(void) \{ union U u; u.n = 1; return u.k; \}\n", "bitfield `U.k` of enum type is not lowered yet")
         rejects(t, "union_bitfield_align", "union U \{ unsigned align : 3; int n; \};\nint main(void) \{ union U u; u.n = 1; return u.align; \}\n", "bitfield `U.align` is spelled like an argument of `[c_union]`")
         rejects(t, "union_unnamed_only", "union U \{ int : 4; \};\nint main(void) \{ union U u; return (int) sizeof u - 1; \}\n", "union `U` has no member; not lowered yet")
         rejects(t, "union_bitfield_size", "union U \{ unsigned size : 3; int n; \};\nint main(void) \{ union U u; u.n = 1; return u.size; \}\n", "bitfield `U.size` is spelled like an argument of `[c_union]`")
@@ -997,7 +995,6 @@ def p4_union_rejects(t : T?) {
         rejects(t, "union_storage_name", "union S \{ int _storage; char c; \};\nint main(void) \{ union S s; s.c = 1; return s.c; \}\n", "member `S._storage` is spelled like the storage field of `[c_union]`")
         rejects(t, "anon_name", "struct S \{ int _anon1; union \{ int i; \}; \};\nint main(void) \{ struct S s; s.i = 1; return s.i - 1; \}\n", "field `S._anon1` is spelled like the name of an anonymous member")
         rejects(t, "anon_no_name", "struct S \{ int t; struct \{ int : 4; \}; \};\nint main(void) \{ struct S s; s.t = 0; return s.t; \}\n", "anonymous member of `struct S` exposes no field name; not dumped yet")
-        rejects(t, "anon_init", "union U \{ struct \{ int a; \}; int b; \};\nint main(void) \{ union U u = \{ \{ 1 \} \}; return u.a - 1; \}\n", "an initializer of an anonymous member of a union is not dumped yet")
         rejects(t, "anon_macro_two", "#define REC(n) union \{ int n; \}\n#define TWO REC(a); REC(b)\nstruct S \{ TWO; \};\nint main(void) \{ struct S s; s.a = 1; return s.a - 1; \}\n", "anonymous records from one macro expansion are not dumped yet")
         rejects(t, "anon_macro_twou", "#define TWOU union \{ int a; \} u1; union \{ int b; \} u2\nstruct S \{ TWOU; \};\nint main(void) \{ struct S s; s.u1.a = 1; s.u2.b = 2; return s.u1.a - 1; \}\n", "anonymous records from one macro expansion are not dumped yet")
         rejects(t, "zero_length", "struct Z \{ int n; char z[0]; \};\nint main(void) \{ struct Z s; s.n = 0; return s.n; \}\n", "a zero-length array (a GNU extension) is not lowered yet")

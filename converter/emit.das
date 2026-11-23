@@ -4924,6 +4924,9 @@ def private emit_effect(var em : Emitter; tu : CirTu; x : CirExpr?; loc : CirLoc
         em.pre |> push("let {temp_name(em)} = {volatile_load(em, tu, x.a, loc).text}")
     } elif (x.e == "cast" && (x.cast_kind == "ToVoid" || x.cast_kind == "LValueToRValue" || x.cast_kind == "NoOp")) {
         emit_effect(em, tu, x.a, loc)
+    } elif (x.e == "cast" && x.cast_kind == "IntegralCast" && x.a.e == "assign") {
+        // a store into a bitfield of enum type, whose value as the enum is discarded
+        emit_effect(em, tu, x.a, loc)
     } else {
         let e = emit_expr(em, tu, x, loc)
         if (x.e != "ref" && x.e != "int_lit" && x.e != "float_lit") {

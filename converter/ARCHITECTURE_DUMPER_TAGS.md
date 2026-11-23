@@ -82,4 +82,32 @@ closed, and so do a node the pass gave no value (a trait spelled by token pastin
 `__builtin_classify_type` of a `_Bool`, which clang values 4 and GCC 1. `__builtin_choose_expr(c, a, b)` (clang's
 `ChooseExpr`) is the operand clang chose, by the value the dump gives the `ConstantExpr` over
 `c`: the node of `a` or of `b` itself, an lvalue where it is one, and neither `c` nor the other
-operand is dumped; a condition with no value fails closed.
+operand is dumped; a condition with no value fails closed. A C11 generic selection
+(`GenericSelectionExpr`) is likewise the result expression of the association the dump marks
+`selected`, never chosen here: the controlling expression, which C does not evaluate, and the
+other associations are not dumped (`dump_generic`).
+
+### Forms outside C99 that clang accepts
+
+An enum the unit never defines (`enum E *e;` with no `enum E { ... }`, a GNU extension) is
+incomplete everywhere in the unit, so clang lets the program hold pointers to it and nothing
+else: the spelling is the dialect's `int`, and its pointer an `int *` whose pointee is never
+read as the enum.
+
+A bitfield of enum type (implementation-defined, C99 6.7.2.1p4) is a field of the integer type
+clang gave the enum, the dialect's `int` or `unsigned int`, so the layout law and the emitter
+place it as that integer's bitfield, which is clang's layout and extension. The C-IR types the
+`member` node as the field, and the conversions clang leaves implicit are written out as
+`IntegralCast`s: a read is the integer's `LValueToRValue` cast to the enum, a store (`=` or a
+compound one) takes the enum's value cast to the integer and is itself cast to the enum, which
+an expression statement discards, and an initializer's item is cast to the integer. A step
+(`s.e++`) of one fails closed.
+
+A statement expression is statements in two more places than a bare one (section 3 of
+`ARCHITECTURE_DUMPER.md`), both expression statements, through parentheses. `x = ({ ...; v; })`
+is the block with `x = v` in place of its last statement, the target evaluated after the block's
+statements, an order C leaves open; a target naming a variable the block declares, which the
+store inside the block would bind anew, fails closed, and so does a block that does not end in
+a value of the target's type. A conditional of type `void` with a statement expression as an arm
+(`c ? f() : ({ ... })`) is the `if` statement over its arms as statements. Labels and gotos
+inside either are the function's, as in any block.
