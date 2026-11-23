@@ -2,7 +2,6 @@
 # unblocks it (never for a construct no emulation reaches), tab-separated; written by
 # suites/gcc_torture/filter.das over the fetched tree, less the ids expected_pass.txt lists. A
 # test that merely does not pass yet is not listed; the ratchet reports it.
-20000223-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
 20000412-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20000717-3	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20001009-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
@@ -20,7 +19,6 @@
 20020412-1	variable-length array in a struct	the pinned clang refuses the input and the pipeline has no other frontend	never
 20020819-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20030222-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
-20030224-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20030323-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
 20030811-1	return and frame addresses	the das runtime exposes no frame or return addresses; a null mapping would lie to the test	never
 20030910-1	_Complex	complex arithmetic is not lowered yet	P7.5
@@ -28,7 +26,6 @@
 20040223-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20040302-1	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 20040308-1	variable-length array in a struct	the pinned clang refuses the input and the pipeline has no other frontend	never
-20040625-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20040709-1	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
 20040709-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20041019-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -51,11 +48,8 @@
 20071220-1	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 20071220-2	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 20100430-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
-20111212-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
-20120105-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20120427-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 20120427-2	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
-20170401-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20171008-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20190820-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 20230630-2	__attribute__	an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet	P7.6
@@ -153,11 +147,10 @@
 alias-2	__attribute__	an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet	P7.6
 alias-3	__attribute__	an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet	P7.6
 alias-4	__attribute__	an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet	P7.6
-align-3	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
 align-nest	variable-length array in a struct	the pinned clang refuses the input and the pipeline has no other frontend	never
-alloca-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+alloca-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 built-in-setjmp	__builtin_setjmp	the builtin setjmp pair through the setjmp lowering is not lowered yet	P7.6
-builtin-types-compatible-p	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+builtin-types-compatible-p	__builtin_* calls	a builtin outside the emitter's shim list is not lowered yet	P7.6
 cmpdi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 cmpsf-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 cmpsi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
@@ -183,10 +176,9 @@ loop-3b	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which
 loop-3c	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
 memcpy-bi	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 mod-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
-nest-align-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+nest-align-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 nestfunc-5	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 nestfunc-6	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
-packed-1	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 packed-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 packed-aligned	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr103052	permissive input	clang declares no `__builtin_exit`, and its default refuses the implicit declaration; under the permissive flags the emitter maps it to `exit`	P7.8
@@ -213,7 +205,6 @@ pr23135	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr23467	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr24135	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 pr29006	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
-pr34154	GNU case range	`case a ... b` is not lowered yet	P7.6
 pr38151	_Complex	complex arithmetic is not lowered yet	P7.5
 pr38533	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr38969	_Complex	complex arithmetic is not lowered yet	P7.5
@@ -225,7 +216,6 @@ pr41935	variable-length array in a struct	the pinned clang refuses the input and
 pr42248	_Complex	complex arithmetic is not lowered yet	P7.5
 pr43385	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr43560	inline asm	machine code or register binding; no emulation exists in the das runtime	never
-pr45070	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr45695	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr47237	GNU argument forwarding builtins	the pinned clang refuses the input and the pipeline has no other frontend	never
 pr49218	__int128	a 128-bit integer through c_runtime is not built yet	P7.6
@@ -260,14 +250,12 @@ pr68328	inline asm	machine code or register binding; no emulation exists in the 
 pr68381	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr70460	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 pr70903	GNU vector extension	GNU vector types are not lowered yet	P7.6
-pr71083	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
+pr71083	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr71494	address of a label and local labels	labels as values through the switch re-dispatch and local labels are not lowered yet	P7.6
 pr71554	GCC overflow builtins	the checked arithmetic builtins are not lowered yet	P7.6
 pr71626-1	GNU vector extension	GNU vector types are not lowered yet	P7.6
 pr77718	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 pr78726	inline asm	machine code or register binding; no emulation exists in the das runtime	never
-pr79737-1	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
-pr79737-2	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
 pr80421	inline asm	machine code or register binding; no emulation exists in the das runtime	never
 pr80692	non-standard floating types	_Float16, __float128 and _Decimal have no das type and no exact emulation; _Decimal is also an input the pinned clang refuses	never
 pr81588	inline asm	machine code or register binding; no emulation exists in the das runtime	never
@@ -317,9 +305,7 @@ strct-pack-4	packed or aligned layout	a packed record is marshal-only, and an al
 struct-cpy-1	block-scope function declaration	a function declared inside a function body is not lowered yet	P7.5
 struct-ret-2	packed or aligned layout	a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet	P7.6
 tstdi-1	permissive input	the test asks gcc for -std=gnu89 or -fpermissive, which the converter's clang invocation does not pass	P7.8
-va-arg-22	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6
 va-arg-pack-1	GNU argument forwarding builtins	the pinned clang refuses the input and the pipeline has no other frontend	never
 wchar_t-1	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
 widechar-2	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
 widechar-3	wide string literals	a wide string literal is not lowered yet; the emitter fails closed on one	P7.5
-zerolen-2	GNU keywords	typeof, __extension__ and __alignof__ are not lowered yet	P7.6

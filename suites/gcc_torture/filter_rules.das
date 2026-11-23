@@ -59,8 +59,6 @@ let RULES <- [
     Rule(pattern = "__u?int128", feature = "__int128", reason = "a 128-bit integer through c_runtime is not built yet", phase = "P7.6"),
     Rule(pattern = "vector_size", feature = "GNU vector extension", reason = "GNU vector types are not lowered yet", phase = "P7.6"),
     Rule(pattern = "__label__|[=,(\{:?]\\s*&&\\s*[A-Za-z_]|\\breturn\\s+&&|goto\\s*\\*", feature = "address of a label and local labels", reason = "labels as values through the switch re-dispatch and local labels are not lowered yet", phase = "P7.6"),
-    Rule(pattern = "case [^:\n]*\\.\\.\\.", feature = "GNU case range", reason = "`case a ... b` is not lowered yet", phase = "P7.6"),
-    Rule(pattern = "__typeof|\\btypeof *\\(|__extension__|__alignof", feature = "GNU keywords", reason = "typeof, __extension__ and __alignof__ are not lowered yet", phase = "P7.6"),
     Rule(kind = RuleKind.attributes, feature = "__attribute__", reason = "an attribute outside the dumper's dropped list (linkage, run-time behaviour) is not lowered yet", phase = "P7.6"),
     Rule(kind = RuleKind.layout, feature = "packed or aligned layout", reason = "a packed record is marshal-only, and an alignment das cannot spell (a variable's, a record's past its members) is not lowered yet", phase = "P7.6"),
     Rule(pattern = "__builtin_(add|sub|mul)_overflow", feature = "GCC overflow builtins", reason = "the checked arithmetic builtins are not lowered yet", phase = "P7.6"),
