@@ -93,6 +93,10 @@ def test_case_ranges(t : T?) {
         has_text(t, text, "    \} elif (_cond >= 1000000000000000000ul && _cond <= 9999999999999999999ul) \{\n")
         has_text(t, text, "    \} elif (_cond == 18446744073709551615ul) \{\n")
         has_text(t, text, "    if (_cond >= 2147483648u && _cond <= 4294967295u) \{\n")
+        // the ends are held in the controlling type; an empty range is no label
+        has_text(t, text, "    if (_cond >= -2147483647 - 1 && _cond <= -2) \{\n")
+        has_text(t, text, "    \} elif (_cond >= 4294967293u && _cond <= 4294967294u) \{\n")
+        has_text(t, function_text(text, "falls"), "        case(1) \{\n            r += 1\n            r += 10\n            break\n")
         // an enum compares by value
         has_text(t, text, "    if (int(_cond) >= 1 && int(_cond) <= 3) \{\n")
         // the open switch: a goto on the range, the label naming it
@@ -103,7 +107,7 @@ def test_case_ranges(t : T?) {
         has_text(t, text, "        if (_goto == 0 && _cond >= 1 && _cond <= 3) \{\n")
         // no `c_switch` arm spells a range; the switch inside one is its own, and the outer one's
         // ranges are back after it
-        t |> success(!(text |> contains("c_switch(x)")) && !(text |> contains("c_switch(v)")), text)
+        t |> success(!(function_text(text, "chain") |> contains("c_switch")) && !(function_text(text, "wide") |> contains("c_switch")), text)
         has_text(t, text, "            c_switch(y) \{\n")
         has_text(t, function_text(text, "nested"), "        _flag ||= _cond >= 3 && _cond <= 4\n")
         // and after an inner switch with ranges of its own
@@ -133,6 +137,8 @@ def test_gnu_keywords(t : T?) {
         has_text(t, text, "int(uint64(256)), int(uint64(16)), int(uint64(typeinfo alignof(type<int[4]>)))")
         // two in one macro, each spelled by its own token
         has_text(t, text, "uint64(typeinfo alignof(type<int>)) + uint64(typeinfo alignof(type<double>))")
+        // a whole `typeof` as the operand of `va_arg`, `sizeof` and `_Alignof`
+        has_text(t, text, "double(uint64(typeinfo sizeof(type<double>))) + double(uint64(typeinfo alignof(type<int>)))")
         // `typeof` in a function type, a pointer and a macro's local
         has_text(t, text, "def private p7_gnu_keywords__twice(n : int) : int64 \{\n    let r : int64 = int64(n)\n")
         has_text(t, text, "    var p : int? = addr(arr[1])\n")
@@ -153,8 +159,19 @@ def test_gnu_keywords(t : T?) {
     t |> run("what the lowering refuses, each naming the construct") @(t : T?) {
         rejects(t, "alignof_split", "#define D(x) (x(char) + x(double))\nint main(void) \{ return (int)D(__alignof__) - 9; \}\n", "two `__alignof__` of one macro expansion that clang values apart are not lowered")
         rejects(t, "typeof_split", "int f(void) \{ int x = 1; typeof(x) *p = &x; return *p; \}\nint g(void) \{ char x = 2; typeof(x) *p = &x; return *p; \}\nint main(void) \{ return f() + g() - 3; \}\n", "`typeof (x)`: a `typeof` libclang resolves to no one type")
-        // a type name the libclang pass reads no type of
-        rejects(t, "typeof_sizeof", "int main(void) \{ long x = 1; return (int) sizeof(typeof(x) *) - 8; \}\n", "`typeof (x)`: a `typeof` libclang resolves to no one type")
+        // a type operand is no place the libclang pass reads a type of: the spelling of a `typeof`
+        // there is never resolved by another scope's declaration (`f`'s `x` is an `int`)
+        let other_scope = "int f(void) \{ int x = 1; typeof(x) *p = &x; return *p; \}\n"
+        let operand = "a `typeof` under a declarator in the operand of `sizeof`, `_Alignof` or `va_arg` is not lowered yet"
+        rejects(t, "typeof_sizeof", other_scope + "int g(void) \{ double x = 0; return (int) sizeof(typeof(x)[3]); \}\nint main(void) \{ return f() + g() - 25; \}\n", "`typeof (x)[3]`: {operand}")
+        rejects(t, "typeof_alignof", other_scope + "int g(void) \{ double x = 0; return (int) _Alignof(typeof(x)[3]); \}\nint main(void) \{ return f() + g() - 9; \}\n", "`typeof (x)[3]`: {operand}")
+        rejects(t, "typeof_va_arg", "#include <stdarg.h>\n" + other_scope + "static double g(int n, ...) \{ double x = 0; va_list ap; va_start(ap, n); x = *va_arg(ap, typeof(x) *); va_end(ap); return x; \}\nint main(void) \{ double d = 2.0; return f() + (int) g(1, &d) - 3; \}\n", "`typeof (x) *`: {operand}")
+        // a header outside the program spells the same `typeof` for another type
+        mkdir(work_dir("typeof_inc"))
+        fwrite(path_join(work_dir("typeof_inc"), "ext.h"), "extern long gx;\nstruct E \{ typeof(gx) *p; \};\n")
+        rejects(t, "typeof_header", "#include \"../typeof_inc/ext.h\"\nlong gx = 5;\nstatic void set(struct E *e) \{ e->p = &gx; \}\nint main(void) \{ struct E e; set(&e); double gx = 1.0; typeof(gx) *q = &gx; return (int) *e.p - 5 + (int) *q - 1; \}\n", "`typeof (gx)`: a `typeof` libclang resolves to no one type")
+        // an empty range labels nothing, so its statement stands before the switch's first label
+        rejects(t, "empty_range_first", "int main(void) \{ int x = 3; switch (x) \{ case 3 ... 2: return 9; case 3: return 0; default: return 1; \} \}\n", "a statement before the first case label is unreachable; not lowered")
         rejects(t, "typeof_array", "int main(void) \{ int arr[3] = \{ 1, 2, 3 \}; typeof(arr) *p = &arr; return (*p)[0] - 1; \}\n", "`typeof (arr) *`: a `typeof` of a function, an array or a pointer to one (`int[3]`) under a declarator is not lowered yet")
         rejects(t, "typeof_fn_pointer", "static int one(void) \{ return 1; \}\nint main(void) \{ int (*fp)(void) = one; typeof(fp) *pp = &fp; return (*pp)() - 1; \}\n", "`typeof (fp) *`: a `typeof` of a function, an array or a pointer to one (`int (*)(void)`) under a declarator is not lowered yet")
     }

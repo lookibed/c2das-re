@@ -173,6 +173,9 @@ struct Dumper {
     typeof_spellings : table<string; string>
     // those naming a function, an array or a pointer to one, whose spelling takes a declarator
     typeof_declarators : table<string>
+    // the type being read is the operand of a `sizeof`, an `_Alignof` or a `va_arg`, a place the
+    // libclang pass reads no type of: a `typeof` there is never resolved by its spelling
+    type_operand : bool
     // clang's value of each `sizeof`-like expression it folds, by its key (`register_trait_value`),
     // `TRAIT_SPLIT` where two at one key differ: GNU `__alignof` reads it
     trait_by_loc : table<string; int64>
@@ -814,6 +817,23 @@ def private register_typeof(var d : Dumper; var t : CXType) {
     }
 }
 
+// the `typeof`s of cursor `c` when it spells a type: a declaration, a cast, a compound literal
+def private register_typeof_site(var d : Dumper; var c : CXCursor; kind : CXCursorKind) {
+    if (clang_isDeclaration(kind) != 0u || kind == CXCursorKind.CStyleCastExpr || kind == CXCursorKind.CompoundLiteralExpr) {
+        register_typeof(d, kind == CXCursorKind.TypedefDecl ? clang_getTypedefDeclUnderlyingType(c) : clang_getCursorType(c))
+    }
+}
+
+// the same over every cursor of the unit, the files outside the program included: a header's
+// declaration can spell a `typeof` a program expression's type then carries, and a spelling
+// resolves only when every place that spells it names one type
+def private note_typeofs(var d : Dumper; var c : CXCursor) {
+    clang_visitChildren(c) $(var kid, _parent) {
+        register_typeof_site(d, kid, clang_getCursorKind(kid))
+        return CXChildVisitResult.Recurse
+    }
+}
+
 // two `sizeof`-like expressions at one key (one macro expansion spelling both from one token)
 // that clang values apart
 let TRAIT_SPLIT = -1l
@@ -928,9 +948,7 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
         if (kind == CXCursorKind.FunctionDecl) {
             d.unit_names |> insert(string(clang_getCursorSpelling(kid)))
         }
-        if (clang_isDeclaration(kind) != 0u || kind == CXCursorKind.CStyleCastExpr || kind == CXCursorKind.CompoundLiteralExpr) {
-            register_typeof(d, kind == CXCursorKind.TypedefDecl ? clang_getTypedefDeclUnderlyingType(kid) : clang_getCursorType(kid))
-        }
+        register_typeof_site(d, kid, kind)
         if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u) {
             register_record(d, kid)
         } elif (kind == CXCursorKind.EnumDecl && clang_isCursorDefinition(kid) != 0u) {
@@ -1065,6 +1083,9 @@ def private collect_records(var d : Dumper; triple : string; resource_dir : stri
         walk_records(d, root)
         if (!empty(d.shared_tags)) {
             note_shared_exprs(d, root)
+        }
+        if (!empty(d.typeof_spellings)) {
+            note_typeofs(d, root)
         }
         clang_disposeTranslationUnit(unit)
     }
@@ -1774,8 +1795,12 @@ def private without_typeof(var d : Dumper; qual : string; at : CirLoc) : string 
             }
             let leaf = slice(view, from, close + 1)
             let canonical = d.typeof_spellings?[leaf] ?? ""
-            if (empty(canonical)) {
-                fail(d, "`{leaf}`: a `typeof` libclang resolves to no one type (two of this spelling name different types, or it stands where the libclang pass reads no type) is not lowered yet", at)
+            if (d.type_operand) {
+                // another scope's declaration may spell the same `typeof` for another type
+                fail(d, "`{qual}`: a `typeof` under a declarator in the operand of `sizeof`, `_Alignof` or `va_arg` is not lowered yet (the libclang pass reads no type there)", at)
+                ok = false
+            } elif (empty(canonical)) {
+                fail(d, "`{leaf}`: a `typeof` libclang resolves to no one type (two of this spelling name different types, or no declaration or cast spells it) is not lowered yet", at)
                 ok = false
             } elif ((from > 0 || close + 1 < length(view)) && key_exists(d.typeof_declarators, leaf)) {
                 fail(d, "`{qual}`: a `typeof` of a function, an array or a pointer to one (`{canonical}`) under a declarator is not lowered yet", at)
@@ -2403,7 +2428,9 @@ def private dump_sizeof(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) :
     var of_t = -1
     let arg_type = js?["argType"]
     if (is_present(arg_type)) {
+        d.type_operand = true
         of_t = type_from_qual(d, type_spelling(d, arg_type), at)
+        d.type_operand = false
     } elif (child_count(js) > 0) {
         var operand = child_expr(d, js?["inner"], 0)
         if (operand == null) {
@@ -3081,7 +3108,9 @@ def private dump_expr_node(var d : Dumper; js : JsonValue?) : CirExpr? {
         return inner
     }
     d.expr_key = empty(d.shared_tags) ? "" : begin_key(d, js)
+    d.type_operand = kind == "VAArgExpr"
     let t = node_type(d, js, at)
+    d.type_operand = false
     d.expr_key = ""
     if (t < 0) {
         return null
@@ -3794,6 +3823,16 @@ def private is_char_literal(js : JsonValue?) : bool {
     return kind == "CharacterLiteral"
 }
 
+// value `v` as integer type `t` holds it: wrapped to its width, sign-extended when it is signed
+// (a 64-bit type keeps the bits)
+def private held_in(t : CirType; v : int64) : int64 {
+    if (t.k != "int" || t.w >= 64) {
+        return v
+    }
+    let low = v & ((1l << int64(t.w)) - 1l)
+    return t.is_signed && (low >> int64(t.w - 1)) != 0l ? low - (1l << int64(t.w)) : low
+}
+
 def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?>) : bool {
     let at = loc_of(d, js)
     let kind = node_kind(js)
@@ -3809,8 +3848,23 @@ def private dump_case(var d : Dumper; js : JsonValue?; var into : array<CirStmt?
         if (nkids < 1 || !fold_constant(d, (kids as _array)[0], v) || (is_range && (nkids < 3 || !fold_constant(d, (kids as _array)[1], hi)))) {
             return false
         }
-        let is_char = is_char_literal((kids as _array)[0]) && (!is_range || is_char_literal((kids as _array)[1]))
-        into |> push(new CirStmt(s = "case", v = v, is_char = is_char, is_range = is_range, hi = hi, loc = at))
+        var empty_range = false
+        if (is_range) {
+            // clang converts both ends to the controlling type, which is each end's own type here
+            let cond_t = node_type(d, (kids as _array)[0], at)
+            if (cond_t < 0) {
+                return false
+            }
+            v = held_in(d.tu.types[cond_t], v)
+            hi = held_in(d.tu.types[cond_t], hi)
+            let unsigned64 = d.tu.types[cond_t].k == "int" && !d.tu.types[cond_t].is_signed && d.tu.types[cond_t].w >= 64
+            empty_range = unsigned64 ? uint64(v) > uint64(hi) : v > hi
+        }
+        // an empty range labels nothing: its statement stays, reached by falling into it
+        if (!empty_range) {
+            let is_char = is_char_literal((kids as _array)[0]) && (!is_range || is_char_literal((kids as _array)[1]))
+            into |> push(new CirStmt(s = "case", v = v, is_char = is_char, is_range = is_range, hi = hi, loc = at))
+        }
     } else {
         into |> push(new CirStmt(s = "default", loc = at))
     }

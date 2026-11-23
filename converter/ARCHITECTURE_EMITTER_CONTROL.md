@@ -72,8 +72,8 @@ and the text is the one a person writes.
 
 A GNU range `case lo ... hi` is one label whose test is `_cond >= lo && _cond <= hi`, each end a
 literal of the condition's type as a case value is (a `uint64` end past `int64` in decimal, an
-enum's condition compared as `int(_cond)`), so an empty range (`hi` below `lo` in that type)
-matches nothing, as in C. The test stands wherever a case test does: the if-chain, a flag line, a
+enum's condition compared as `int(_cond)`). The C-IR holds no empty range and both ends in the
+controlling type (the dumper's part), so no two labels share a low end. The test stands wherever a case test does: the if-chain, a flag line, a
 plain case, `default`'s match-none test and the goto chain of an open switch, in parentheses
 beside another test of an `||`; an open switch's label comment reads `case lo ... hi`. A switch
 holding a range is never `c_switch` (its arms list values), takes no jump table under any

@@ -27,6 +27,7 @@ int wide(unsigned long long v) {
     case 1000000000000000000ULL ... 9999999999999999999ULL: return 19;
     case 10000000000000000000ULL ... 18446744073709551614ULL: return 20;
     case 18446744073709551615ULL: return 21;
+    case 18446744073709551615ULL ... 12: return 22; /* empty as unsigned: labels nothing */
     default: return 2;
     }
 }
@@ -100,6 +101,34 @@ int nested(int x, int y) {
     default: return 14;
     }
 }
+/* clang converts both ends to the controlling type; an empty range labels nothing, so a plain
+   case of its low end is that case, and its statement is reached only by falling into it */
+int ends(int x) {
+    switch (x) {
+    case 0x80000000 ... 0xFFFFFFFE: return 1;
+    case 3: return 2;
+    case 3 ... 2: return 9;
+    default: return 0;
+    }
+}
+int wraps(unsigned x) {
+    switch (x) {
+    case 7: return 1;
+    case -1 ... 1: return 9;
+    case -1: return 2;
+    case -3 ... -2: return 3;
+    default: return 0;
+    }
+}
+int falls(int x) {
+    int r = 0;
+    switch (x) {
+    case 1: r += 1;
+    case 5 ... 4: r += 10; break;
+    case 5: r += 100;
+    }
+    return r;
+}
 int main(void) {
     for (int i = -5; i < 45; i++) printf("%d:%d,%d ", i, chain(i), fall(i));
     printf("\n%d %d %d %d %d\n", chain('a'), chain('f'), chain('g'), chain('0'), chain('9'));
@@ -110,6 +139,9 @@ int main(void) {
     printf("%d %d %d %d %d %d %d\n", wide(5), wide(10), wide(1000000000000000000ULL), wide(999999999999999999ULL), wide(9999999999999999999ULL), wide(10000000000000000000ULL), wide(18446744073709551615ULL));
     printf("%d %d %d %d\n", uns(0x7FFFFFFFu), uns(0x80000000u), uns(0xFFFFFFFFu), uns(2));
     printf("%d %d %d %d\n", en(A), en(B), en(D), en(F));
+    printf("%d %d %d %d %d\n", ends(3), ends(2), ends(-2), ends(-1), ends(-2147483647 - 1));
+    printf("%d %d %d %d %d %d\n", wraps(-1u), wraps(1), wraps(7), wraps(-2u), wraps(-3u), wraps(-4u));
+    printf("%d %d %d %d\n", falls(1), falls(5), falls(4), wide(12));
     for (int i = 0; i < 14; i++) printf("%d,%d ", open(i, 0), open(i, 1));
     printf("\n");
     for (int i = 0; i < 12; i++) printf("%d ", redispatch(i));
