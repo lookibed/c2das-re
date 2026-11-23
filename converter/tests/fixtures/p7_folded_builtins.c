@@ -31,9 +31,10 @@ int main(void) {
     printf("classify %d %d %d %d %d %d\n", CLASS(i), CLASS(d), CLASS(p), CLASS(s), CLASS(step()), CLASSES(i, steps));
     /* the operand not chosen is never evaluated */
     printf("choose %d %d %s %s\n", __builtin_choose_expr(0, step(), 7), __builtin_choose_expr(-2, 8, step()), PICK(d), PICK(i));
-    /* the chosen operand is the expression itself: an lvalue, a statement */
+    /* the chosen operand is the expression itself: an lvalue, a statement; the trait as one is nothing */
     __builtin_choose_expr(1, i, d) = 9;
     __builtin_choose_expr(0, i, step());
+    __builtin_types_compatible_p(int, long);
     printf("%d %d %d %d\n", i, steps, (int) sizeof sized, chosen_global);
     return 0;
 }
