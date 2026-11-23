@@ -4208,6 +4208,25 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   not folded), an empty range that is its switch's first label (its statement stands before
   every label, the emitter's unreachable-statement refusal), and a plain `case 0x80000000:` on an
   `int` condition, whose value the C-IR keeps unconverted (only a range's ends are converted).
+  Progress (PR #276): `GCC overflow builtins` and the three `__builtin_* calls` are lowered and the
+  overflow filter rule is gone. `__builtin_add_overflow`, `sub`, `mul` and their eighteen typed
+  spellings (`__builtin_sadd_overflow` to `__builtin_umulll_overflow`) are `c_add_overflow(a, b,
+  addr(r))` and its siblings of `c_runtime/c_builtins`, generic over the three integer types: the
+  exact result in 128 bits of two's complement, stored cut to the result's type, the flag whether
+  the cut changed it. `__builtin_classify_type` and `__builtin_types_compatible_p` are the literal
+  of clang's fold of the node (the libclang pass's evaluator, keyed like `__alignof__`), and
+  `__builtin_choose_expr` is the operand clang chose, by the value the dump gives its condition;
+  no operand C leaves unevaluated is dumped. Thirteen ids convert and exit 0 under the
+  interpreter, each run alone: pr108789, pr64006, pr68381, pr71554, pr85095, pr89434, pr90311,
+  pr91450-1, pr91450-2, pr91635, pr93494, builtin-types-compatible-p and pr19449; 20040709-1 gets
+  past `classify_type` and stops at a record aligned past its members, an ordinary failure now.
+  skip.txt is 323 -> 309 lines. Owed by this slice: the ratchet. No suite run judged the ids
+  (`/mnt/d` stood at 7.4 GB, under the 8 GB floor), so `expected_pass.txt` is unchanged and the
+  next run with no `--filter` and `--update` records the thirteen; the gcc-torture, c-testsuite and
+  csmith runs and the readability re-record of this diff are owed with it. Owed here still: the
+  `_p` forms (`__builtin_mul_overflow_p`, which clang does not know: the `never` rule keeps
+  them), an enum or `_Bool` operand or result of a checked builtin (refused by name), and every
+  other feature of this row.
 - **P7.7 goto into a nested body** (P5.1c; P3.3's state-machine lowering, still owed, is owned
   here): the 31 csmith seeds `suites/csmith/skip.txt` lists, and gcc-torture pr38051 and pr43269
   (ordinary failures).
