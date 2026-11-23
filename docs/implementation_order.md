@@ -4360,6 +4360,21 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   jobs at 05:54): the interpreter's node profile, H12's memory under the JIT, H7's translation, the JIT
   equivalence of the final trees, the interp profiles of the fast trees, the oracle of H5 alone, wasm memory beyond
   one line (6.56 GB for one pass of sqlite3.c). Predictions against results: `lex/hyp/verdicts.md` beside the report.
+  **Probe done 2026-11-23** (report for the owner and Boris, Russian: `/root/notes/research/chibicc_pp/report_lexer.md`;
+  the decisions are theirs). Count mode, second exclusive job (quiet at start, 1%): L1-L4 (49 lines) bring native
+  -O2 to 0.77, the JIT to 0.59 (PureDOOM) / 0.75 (sqlite3.c) and interp to 0.61 / 0.67 of chibicc as is; the JIT
+  runs at 0.89 / 1.20 of native on L4, AOT at ~1.0, interp at ~9.5x, wasm at ~40-50x plus a 13 s cold start per
+  load. The old 2.61x was -E printing through c_runtime's das printf (measured in one job: 2.42 / 2.09 with printing,
+  1.16 / 1.24 without). PP.7 is not needed for speed: the allocation bound (H1, an arena, 26 lines, no new
+  representation) gives the JIT 0.78 / 0.88 and interp 0.98 / 1.00; interp is bound by the lexer and the hash table.
+  The remaining JIT gap is the C runtime's string and ctype calls, opaque to LLVM (samples: chibicc's own code 1.05x
+  native, libc calls 1.42x). Every chibicc bug found has a measured fix: the final tree (c2das-final, 679+/93- lines
+  on L4, every correctness fix and extension, including the gcc/clang macro-disabling model that real macro
+  libraries need) has no logic difference on real code and equals clang on 1997 of 2289 units (chibicc as is: 1876).
+  #if: 0 differences on 40 961 real-code expressions with a 5-line fix. Prototypes measured: PP.5 record ~71 lines,
+  PP.2 with dialect tables and error return ~215, the external-lexer seam 54, per-unit reset and freeing ~70 (RSS
+  flat across passes). Predictions against results: 43 hit, 30 near, 31 miss (`lex/hyp/verdicts.md`). Everything
+  stays in the local chibicc clone and the notes; nothing went upstream.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
