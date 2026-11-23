@@ -4337,6 +4337,23 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   H32 (the UCN pass jumps from backslash to backslash instead of copying a buffer that holds a \\u somewhere, as
   sqlite3.c does), predicted before it is timed: `/root/notes/research/chibicc_pp/agents/pool_hash/predictions_h32.md`,
   sha256 `37b944b506b014743ef44e31c657f825762552d6a2f0fc808f276b77b00e40f7`.
+  **Probe done 2026-11-23** (report for the owner and Boris, Russian: `/root/notes/research/chibicc_pp/report2.md`;
+  the decisions are theirs). Count mode (the stream counted and checksummed, not printed), two exclusive jobs,
+  medians of warm passes, PureDOOM / sqlite3.c: chibicc as is - JIT 1.18 / 1.27 of native -O2, interp 12.3 / 10.8,
+  AOT 0.95 / 0.96; the earlier probe's 2.61 was `-E` printing through c_runtime's printf (JIT `-E` 2.39 of native
+  `-E` in the same job). L1-L4 (49+/19- lines): native 0.77, JIT 0.59-0.74, interp 0.61-0.67 of the base. The fast
+  tree (six more fixes, 88+/23-): native 0.81-0.84, JIT 0.65-0.90, interp 0.63-0.86 of L4. PP.7 is not a speed
+  item: the arena H1 (32 lines), an upper bound of its allocation part, gives native 0.84-0.87, JIT 0.77-0.87,
+  interp 0.97-0.99, and the interp profile after L4 is lexer 48%, hash table 16%, token allocation and copy 6%.
+  Every chibicc bug has a measured fix (44 patches: C11 +346/-46, extensions +225/-28, `-E` printing +38/-16);
+  the final tree equals clang and gcc on c-testsuite 220, PureDOOM 62, Lua 34, sqlite 2, gcc-torture 1208 (4 refused
+  by all three) and all 25 hide-set tests, at a cost of +3% to +17% in time. Found: Prosser's hide sets break
+  map-macro, Cloak, metalang99 and exhaust memory on Boost.PP (the gcc/clang model is 41 lines). `#if` under
+  `intmax_t`: 0 differences on 40 961 real-code expressions after a 5-line fix. Prototypes measured: PP.5 ~71
+  lines, PP.2 and dialect ~215, the lexer seam 54, unit isolation and freeing ~70. The JIT's remaining gap is libc
+  calls LLVM cannot fold (own code 1.02-1.05 of native by samples). Not done (a low-memory reap of background
+  jobs at 05:54): the interpreter's node profile, H12's memory under the JIT, H7's translation, the JIT
+  equivalence of the final trees. Predictions against results: `lex/hyp/verdicts.md` beside the report.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
