@@ -1873,8 +1873,8 @@ def private check_overflow_operands(var em : Emitter; tu : CirTu; x : CirExpr; l
     if (!(callee |> ends_with("_overflow")) || libc_module(callee) != "c_runtime/c_builtins") {
         return true
     }
-    for (idx, arg in count(), x.args) {
-        let t = idx == 2 && kind_of(tu, arg.t) == "ptr" ? tu.types[arg.t].to : arg.t
+    for (arg in x.args) {
+        let t = kind_of(tu, arg.t) == "ptr" ? tu.types[arg.t].to : arg.t
         if (kind_of(tu, t) != "int" || is_c_bool(tu, t)) {
             fail(em, "`{callee}` over an enum or a `_Bool` is not lowered yet", loc)
             return false
