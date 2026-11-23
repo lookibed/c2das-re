@@ -4344,6 +4344,9 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   The finalfast file gained, still before any timing, a correction of its final-vs-L4 figures once count mode was
   found to skip the token conversion under patch 0004 (fixed in both trees: c2das-final d6c7b5d, c2das-finalfast
   f02f2aa); now sha256 `bafcf2654909fd7bf9d281cbe26a1fb622c9eb8b5f1da604ba899207940b461d`.
+  Why the -exe tier is slower than the JIT (a generic x86-64 target, or the C runtime's slots filled at start-up),
+  predicted before it is timed: `/root/notes/research/chibicc_pp/agents/ir/predictions_e.md`, sha256
+  `7cfa33c726210c299b538934de3bcdb7f48ba268d69e8679a0ab7d8e27cc83f6`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
