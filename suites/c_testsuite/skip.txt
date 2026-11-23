@@ -1,8 +1,4 @@
 # c-testsuite tests never run, one per line: id, feature, reason, the phase that unblocks it,
 # tab-separated. A test that merely does not pass yet is not listed; the ratchet reports it.
-00209	incomplete enum type	`enum E *e` names an enum with no definition: C99 6.7.2.3 lets `enum E` name only a complete enum (a GNU extension clang accepts); the dumper refuses an enum with no definition	P7.6
 00210	packed or aligned layout	a `packed` union aligned to 1 below its member's 2 (and `stdcall`), GNU attributes; the emitter refuses the layout	P7.6
-00213	statement expression	a GNU statement expression `({ ... })`, clang's `StmtExpr`, which the dumper refuses; the test also jumps by goto into loop bodies, legal C99 that P7.7 owes, so P7.6 alone does not make it pass	P7.6
-00216	anonymous member initializer	an initializer naming an anonymous struct or union member, C11 6.7.2.1p13 (not C99; the test also uses GNU empty structs, range designators and zero-length arrays); the dumper refuses it	P7.6
-00218	bitfield of enum type	a bitfield of enum type, implementation-defined (C99 6.7.2.1p4 names _Bool, signed int and unsigned int or some other implementation-defined type; clang supports it, so the test is non-portable C99, counted as not applicable); the emitter refuses it	P7.6
-00219	_Generic	a C11 generic selection, clang's `GenericSelectionExpr`, which the dumper refuses	P7.6
+00216	zero-length array	a GNU zero-length array (`int r[0]` ending a struct), which the emitter refuses; the test also uses GNU empty structs and range designators, and initializes a flexible array member	P7.6
