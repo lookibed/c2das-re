@@ -77,7 +77,7 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   constructs no emulation reaches (asm with template text or operands, `-finstrument-functions`,
   the argument forwarding builtins, the builtins clang does not know, a variable-length array in
   a block-scope struct, frame and return addresses, the non-standard floating types, atomics and
-  thread-local storage) with the phase `never`, then the rules naming a ledger row (a test asking
+  thread-local storage, a function defined inside a function) with the phase `never`, then the rules naming a ledger row (a test asking
   gcc for `-std=gnu89` or `-fpermissive`, or calling `__builtin_exit`, which only the permissive
   flags declare, under P7.8; `_Complex`, wide literals and a block-scope function declaration
   under P7.5; `__int128`, vectors, labels as values, an attribute
