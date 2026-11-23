@@ -4301,6 +4301,10 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   A fourth fix the profile after the three named (L4: tokenize's prefix checks behind the first character),
   predicted before it is timed: `/root/notes/predictions/2026-11-23-chibicc-lexer-L4.md`, sha256
   `d268cece5620c4ab8f5a5b7cf872bc1c9e507d9daa984500ddc5476944e9a0cd`.
+  Two hypotheses on the next hot spots after L4 (H1: a bump arena for tokens, hide sets and macro
+  arguments, an upper bound for PP.7's allocation part; H2: an identifier's hash computed once at lexing),
+  predicted before they are timed: `/root/notes/research/chibicc_pp/agents/pool_hash/predictions.md`, sha256
+  `2eec16f3ed4858206a0081c675adc327be5a81c0fdcaf93d22f7b945c253c40c`.
 ## Standing dependencies
 
 - P1 c_runtime items are converter-independent — they can proceed in parallel with P0.5.
