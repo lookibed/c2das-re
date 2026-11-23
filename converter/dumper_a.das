@@ -179,6 +179,9 @@ struct Dumper {
     // clang's value of each `sizeof`-like expression it folds, by its key (`register_trait_value`),
     // `TRAIT_SPLIT` where two at one key differ: GNU `__alignof` reads it
     trait_by_loc : table<string; int64>
+    // the text of each file that spells a `__builtin_types_compatible_p`, "" for any other file
+    // (`spells_types_compatible`)
+    trait_texts : table<string; string>
     // the labels of the function being dumped, by the id a GotoStmt names
     label_names : table<string; string>
     // the typedef names whose declaration reaches clang's implicit `__builtin_va_list`, and the
@@ -860,21 +863,19 @@ def private register_trait_value(var d : Dumper; var c : CXCursor) {
 let CLASSIFY_TYPE = "__builtin_classify_type"
 let TYPES_COMPATIBLE = "__builtin_types_compatible_p"
 
-// whether the text of cursor `c`'s file at its spelling location starts with `word`
-def private spelled_from(var d : Dumper; var c : CXCursor; word : string) : bool {
+// whether cursor `c` is spelled from a `__builtin_types_compatible_p` token, by its file's text at
+// the spelling location; the text of a file that never spells one is kept empty, so the pass
+// pays for a comparison only where the trait is used
+def private spells_types_compatible(var d : Dumper; var c : CXCursor) : bool {
     var file : CXFile
     var line, column, offset : uint
     clang_getSpellingLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
     let name = file_name(file)
-    if (empty(name)) {
-        return false
+    if (!key_exists(d.trait_texts, name)) {
+        let text = stat(name).is_reg ? fread(name) : ""
+        d.trait_texts[name] = find(text, TYPES_COMPATIBLE) >= 0 ? text : ""
     }
-    if (!key_exists(d.macro_texts, name)) {
-        d.macro_texts[name] = stat(name).is_reg ? fread(name) : ""
-    }
-    let text = d.macro_texts?[name] ?? ""
-    let at = int(offset)
-    return slice(text, at, min(at + length(word), length(text))) == word
+    return slice(d.trait_texts?[name] ?? "", int(offset), int(offset) + length(TYPES_COMPATIBLE)) == TYPES_COMPATIBLE
 }
 
 // whether a `__builtin_constant_p` call sits anywhere under cursor `c`
@@ -989,7 +990,7 @@ def private walk_records(var d : Dumper; var c : CXCursor) {
             walk_records(d, kid)
         } elif (kind == CXCursorKind.UnexposedExpr) {
             register_offsetof(d, kid)
-            if (spelled_from(d, kid, TYPES_COMPATIBLE)) {
+            if (spells_types_compatible(d, kid)) {
                 register_trait_value(d, kid)
             }
             walk_records(d, kid)
