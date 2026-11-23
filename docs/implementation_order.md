@@ -4181,6 +4181,26 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   `_Generic` (00219, C11) and `bitfield of enum type` (00218, implementation-defined by C99
   6.7.2.1p4). Ordinary failures: `__extension__` from a macro
   (pr58831), an alignment on a variable (pr68532), a record the law cannot place (pr41463).
+  Progress (PR #275): `GNU case range` and `GNU keywords` are lowered and their two filter rules
+  are gone. A range `case lo ... hi` is a C-IR `case` with `hi`, printed as `_cond >= lo && _cond
+  <= hi` in the condition's type in the if-chain, the flag loop and the open switch; a switch
+  holding one is never `c_switch` and takes no jump table under any `switch_dispatch`. `__alignof__`
+  is the value clang's evaluator folds (a declaration's own alignment included). `typeof` already
+  resolved where it is a whole type; under a declarator (`typeof (x) *`, a function type's result)
+  it resolves through libclang's canonical spelling, and fails closed where two of one spelling
+  name different types, where the libclang pass reads no type (a `sizeof`'s operand alone), and
+  for a function, an array or a pointer to one. `__extension__` was already its operand (pr58831
+  passes since P7.5). Passing now: pr34154 (the case range) and align-3 (`__alignof__` of an
+  `aligned` function); the skip audit also joined seven ids the converter already passed under
+  stale `packed or aligned layout` lines (20030224-2, 20040625-1, 20111212-1, 20120105-1,
+  20170401-1, packed-1, pr45070): gcc-torture 1226 -> 1235 passing, 321 -> 307 skip lines. The
+  other nine `GNU keywords` ids stay, each behind what really stops it: alloca-1, nest-align-1
+  (a nested function clang refuses, its line naming the `aligned` its text holds) and pr71083
+  under `packed or aligned layout` (29 lines now); builtin-types-compatible-p under `__builtin_*
+  calls` (3 now, `TypeTraitExpr`); and five ordinary failures no rule names: 20000223-1 (a record
+  with a `long double` member), pr79737-1 and pr79737-2 (P7.9's bitfields), va-arg-22 and
+  zerolen-2 (a zero-length array). Owed here still: every other feature of this row; a range as a
+  `c_switch` arm or a table entry; the `typeof` shapes refused above.
 - **P7.7 goto into a nested body** (P5.1c; P3.3's state-machine lowering, still owed, is owned
   here): the 31 csmith seeds `suites/csmith/skip.txt` lists, and gcc-torture pr38051 and pr43269
   (ordinary failures).
