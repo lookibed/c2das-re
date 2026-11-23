@@ -4188,19 +4188,26 @@ form is the default; a form that slows the JIT or the interpreter on Doom or Lua
   is the value clang's evaluator folds (a declaration's own alignment included). `typeof` already
   resolved where it is a whole type; under a declarator (`typeof (x) *`, a function type's result)
   it resolves through libclang's canonical spelling, and fails closed where two of one spelling
-  name different types, where the libclang pass reads no type (a `sizeof`'s operand alone), and
-  for a function, an array or a pointer to one. `__extension__` was already its operand (pr58831
+  name different types anywhere in the unit, in the operand of `sizeof`, `_Alignof` or `va_arg`
+  (libclang gives no type there), and for a function, an array or a pointer to one. `__extension__` was already its operand (pr58831
   passes since P7.5). Passing now: pr34154 (the case range) and align-3 (`__alignof__` of an
   `aligned` function); the skip audit also joined seven ids the converter already passed under
   stale `packed or aligned layout` lines (20030224-2, 20040625-1, 20111212-1, 20120105-1,
-  20170401-1, packed-1, pr45070): gcc-torture 1226 -> 1235 passing, 321 -> 307 skip lines. The
-  other nine `GNU keywords` ids stay, each behind what really stops it: alloca-1, nest-align-1
-  (a nested function clang refuses, its line naming the `aligned` its text holds) and pr71083
-  under `packed or aligned layout` (29 lines now); builtin-types-compatible-p under `__builtin_*
-  calls` (3 now, `TypeTraitExpr`); and five ordinary failures no rule names: 20000223-1 (a record
+  20170401-1, packed-1, pr45070): gcc-torture 1226 -> 1235 passing. The filter gained a `never`
+  rule `nested function` (26 lines: clang refuses each with "function definition is not allowed
+  here"; 16 were ordinary failures, 10 stood under other lines), so skip.txt is 321 -> 323 lines.
+  The other nine `GNU keywords` ids stay, each behind what really stops it: nest-align-1 under
+  `nested function`; alloca-1 and pr71083 under `packed or aligned layout` (28 lines now);
+  builtin-types-compatible-p under `__builtin_* calls` (3 now, `TypeTraitExpr`); and five ordinary failures no rule names: 20000223-1 (a record
   with a `long double` member), pr79737-1 and pr79737-2 (P7.9's bitfields), va-arg-22 and
   zerolen-2 (a zero-length array). Owed here still: every other feature of this row; a range as a
-  `c_switch` arm or a table entry; the `typeof` shapes refused above.
+  `c_switch` arm or a table entry; the `typeof` shapes refused above; and the loud limits the
+  review of PR #275 listed: a `typeof` of a const object under a declarator ("no one type": the
+  qualified and the bare spelling differ), `const typeof(x) *` (the qualifier's place in the
+  substituted spelling), a case value spelled by `__alignof__` (`case __alignof__(double):` is
+  not folded), an empty range that is its switch's first label (its statement stands before
+  every label, the emitter's unreachable-statement refusal), and a plain `case 0x80000000:` on an
+  `int` condition, whose value the C-IR keeps unconverted (only a range's ends are converted).
 - **P7.7 goto into a nested body** (P5.1c; P3.3's state-machine lowering, still owed, is owned
   here): the 31 csmith seeds `suites/csmith/skip.txt` lists, and gcc-torture pr38051 and pr43269
   (ordinary failures).
