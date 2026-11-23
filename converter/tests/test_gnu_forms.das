@@ -191,6 +191,7 @@ def test_gnu_builtins(t : T?) {
         has_text(t, text, "printf(cstr(\"classify %d %d %d %d %d %d\\n\"), 1, 8, 5, 12, 1, 1 * 100 + 1)")
         has_text(t, text, "printf(cstr(\"choose %d %d %s %s\\n\"), 7, 8, cstr(\"double\"), cstr(\"other\"))")
         has_text(t, text, "    i = 9\n    p7_folded_builtins__step()\n")
+        has_text(t, text, "    let classified : bool = 8 != 0\n")
         has_text(t, text, "var private p7_folded_builtins__sized : uint8[2]\n")
         has_text(t, text, "var private p7_folded_builtins__chosen_global : int = 64\n")
     }

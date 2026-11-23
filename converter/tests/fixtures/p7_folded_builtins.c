@@ -27,6 +27,8 @@ int main(void) {
            __builtin_types_compatible_p(same1, same2), SAME(red, i));
     printf("incompatible %d %d %d %d\n", __builtin_types_compatible_p(char *, const char *), __builtin_types_compatible_p(struct S, int),
            __builtin_types_compatible_p(enum color, char), SAME(i, d));
+    /* a conversion over the call has another value than the call, 1 for 8 */
+    _Bool classified = CLASS(d);
     /* the operand is never evaluated */
     printf("classify %d %d %d %d %d %d\n", CLASS(i), CLASS(d), CLASS(p), CLASS(s), CLASS(step()), CLASSES(i, steps));
     /* the operand not chosen is never evaluated */
@@ -35,6 +37,6 @@ int main(void) {
     __builtin_choose_expr(1, i, d) = 9;
     __builtin_choose_expr(0, i, step());
     __builtin_types_compatible_p(int, long);
-    printf("%d %d %d %d\n", i, steps, (int) sizeof sized, chosen_global);
+    printf("%d %d %d %d %d\n", i, steps, (int) sizeof sized, chosen_global, classified);
     return 0;
 }
