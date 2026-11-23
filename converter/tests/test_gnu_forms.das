@@ -11,7 +11,9 @@ require ../dumper_a.das
 
 //! The GNU forms P7.6 lowers: a case range is a pair of tests in the condition's type under every
 //! switch dispatch, `__alignof__` is clang's value, a `typeof` inside a declarator is the type
-//! libclang resolves, `__extension__` is its operand. Each fixture prints what its native build
+//! libclang resolves, `__extension__` is its operand, `__builtin_classify_type`,
+//! `__builtin_types_compatible_p` and `__builtin_choose_expr` are what clang folded or chose, the
+//! checked arithmetic builtins are calls of `c_runtime/c_builtins`. Each fixture prints what its native build
 //! prints; the text carries each form, and what the lowering refuses names the construct.
 
 let FIXTURES = "converter/tests/fixtures"
@@ -174,6 +176,41 @@ def test_gnu_keywords(t : T?) {
         rejects(t, "empty_range_first", "int main(void) \{ int x = 3; switch (x) \{ case 3 ... 2: return 9; case 3: return 0; default: return 1; \} \}\n", "a statement before the first case label is unreachable; not lowered")
         rejects(t, "typeof_array", "int main(void) \{ int arr[3] = \{ 1, 2, 3 \}; typeof(arr) *p = &arr; return (*p)[0] - 1; \}\n", "`typeof (arr) *`: a `typeof` of a function, an array or a pointer to one (`int[3]`) under a declarator is not lowered yet")
         rejects(t, "typeof_fn_pointer", "static int one(void) \{ return 1; \}\nint main(void) \{ int (*fp)(void) = one; typeof(fp) *pp = &fp; return (*pp)() - 1; \}\n", "`typeof (fp) *`: a `typeof` of a function, an array or a pointer to one (`int (*)(void)`) under a declarator is not lowered yet")
+    }
+    rmdir_rec(work_root)
+    work_root = ""
+}
+
+[test]
+def test_gnu_builtins(t : T?) {
+    t |> run("the folded builtins are clang's values, the chosen operand is the expression itself, and no operand left out is evaluated") @(t : T?) {
+        let text = same_as_native(t, "p7_folded_builtins", "")
+        has_text(t, text, "printf(cstr(\"compatible %d %d %d %d\\n\"), 1, 1, 1, 1)")
+        has_text(t, text, "printf(cstr(\"incompatible %d %d %d %d\\n\"), 0, 0, 0, 0)")
+        // two calls of one expansion spelled from one token, valued alike
+        has_text(t, text, "printf(cstr(\"classify %d %d %d %d %d %d\\n\"), 1, 8, 5, 12, 1, 1 * 100 + 1)")
+        has_text(t, text, "printf(cstr(\"choose %d %d %s %s\\n\"), 7, 8, cstr(\"double\"), cstr(\"other\"))")
+        has_text(t, text, "    i = 9\n    p7_folded_builtins__step()\n")
+        has_text(t, text, "var private p7_folded_builtins__sized : uint8[2]\n")
+        has_text(t, text, "var private p7_folded_builtins__chosen_global : int = 64\n")
+    }
+    t |> run("the checked arithmetic builtins: operands and result of any integer types, the typed spellings, an operand as the result") @(t : T?) {
+        let text = same_as_native(t, "p7_overflow_builtins", "")
+        has_text(t, text, "let o : int = int_of(c_mul_overflow(sc, sc, addr(r)))")
+        has_text(t, text, "o = int_of(c_sub_overflow(1ul, 2ul, addr(ur)))")
+        has_text(t, text, "    n++\n    if (c_add_overflow(a, n, addr(a))) \{\n")
+        has_text(t, text, "require c_runtime/c_builtins\n")
+    }
+    t |> run("what the lowering refuses, each naming the construct") @(t : T?) {
+        let nested = "#define C(x) __builtin_classify_type(x)\n#define T(a, b) __builtin_types_compatible_p(a, b)\n"
+        rejects(t, "classify_split", nested + "#define BOTH(a, b) (C(a) + C(b))\nint main(void) \{ int i = 0; double d = 0; return BOTH(i, d) - 9; \}\n", "two `__builtin_classify_type` of one macro expansion that clang values apart are not lowered")
+        rejects(t, "compatible_split", nested + "#define BOTH(a, b, c) (T(a, b) + T(a, c))\nint main(void) \{ return BOTH(int, int, char) - 1; \}\n", "two `__builtin_types_compatible_p` of one macro expansion that clang values apart are not lowered")
+        let refused = "over an enum or a `_Bool` is not lowered yet"
+        rejects(t, "overflow_enum", "enum E \{ A, B \};\nint main(void) \{ enum E e = B; int r; return __builtin_add_overflow(e, 1, &r); \}\n", "`__builtin_add_overflow` {refused}")
+        rejects(t, "overflow_bool", "int main(void) \{ _Bool b = 1; int r; return __builtin_sub_overflow(1, b, &r); \}\n", "`__builtin_sub_overflow` {refused}")
+        rejects(t, "overflow_bool_result", "int main(void) \{ _Bool r; return __builtin_mul_overflow(1, 1, &r); \}\n", "`__builtin_mul_overflow` {refused}")
+        // a function of the program whose name ends alike is the program's own
+        runs_clean(t, "own_overflow", "enum E \{ A, B \};\nstatic int my_overflow(enum E e, _Bool b) \{ return e == B && b; \}\nint main(void) \{ return my_overflow(B, 1) - 1; \}\n")
     }
     rmdir_rec(work_root)
     work_root = ""

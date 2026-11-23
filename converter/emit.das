@@ -404,7 +404,7 @@ let EMITTED_NAMES <- [VOLATILE_LOAD, VOLATILE_STORE, VA_BEGIN, VA_INT, VA_DOUBLE
 //! The public names of the c_runtime modules a converted module may require, each top-level
 //! function, global, type and call macro of `c_runtime/c_runtime/*.das` (repo root);
 //! `converter/tests/test_link.das` fails when a definition there is missing from it.
-let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CMacroAnnotation", "CSignalHandler", "CStorage", "CSwitchMacro", "CUnionAnnotation", "CVaCursor", "CVaList", "CVaRecord", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_rethrow", "c_jmp_target", "c_long_bits", "c_longjmp", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_switch", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vfscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "fscanf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_r", "va_rest"]
+let C_RUNTIME_EXPORTS <- ["BitAccess", "BitStore", "CBitfieldsAnnotation", "CCompare", "CDoWhileMacro", "CFormatDirective", "CFunctionAnnotation", "CJmpBuf", "CMacroAnnotation", "CSignalHandler", "CStorage", "CSwitchMacro", "CUnionAnnotation", "CVaCursor", "CVaList", "CVaRecord", "CVal", "CVolatileLoadMacro", "C_EINVAL", "C_EOF", "C_SIGNAL_LIMIT", "C_SIG_ERR_BITS", "C_SIG_IGN_BITS", "C_STORAGES", "CstrArrayMacro", "CstrMacro", "EnumFromIntMacro", "IntOfMacro", "VaNone", "VariadicAnnotation", "VariadicCallMacro", "add_bit_pair", "bit_getter", "bit_setter", "c_abort", "c_add_overflow", "c_argc", "c_argv", "c_assert_fail", "c_atexit", "c_bsearch", "c_bswap16", "c_bswap32", "c_bswap64", "c_clrsb", "c_clz", "c_ctz", "c_dialect_spec", "c_do_while", "c_exit", "c_ffs", "c_is_float_conversion", "c_is_int_conversion", "c_is_wide_length", "c_jmp_rethrow", "c_jmp_target", "c_long_bits", "c_longjmp", "c_mul_overflow", "c_parity", "c_parse_directive", "c_popcount", "c_prefetch", "c_qsort", "c_run_atexit", "c_runtime_init", "c_signal", "c_signal_msvc", "c_signbit", "c_sub_overflow", "c_switch", "c_unit_bytes", "c_unreachable", "c_vformat", "c_vfprintf", "c_vfscanf", "c_volatile_load", "c_volatile_load_jit", "c_volatile_read", "c_volatile_store", "c_vprintf", "c_vsnprintf", "c_vsprintf", "c_vsscanf", "cstr", "cstr_array", "end_index", "enum_from_int", "field_index", "fprintf", "fscanf", "int_of", "printf", "register_llvm_code_generators", "snprintf", "sprintf", "sscanf", "storage_of", "storage_of_bytes", "to_cvalist", "va_args", "va_begin", "va_d", "va_i", "va_p", "va_r", "va_rest"]
 
 let PREC_PRIMARY = 14
 let PREC_UNARY = 13
@@ -479,6 +479,29 @@ let C_RUNTIME_CALLS <- {
     "__builtin_unreachable" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_unreachable"),
     "__builtin_prefetch" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_prefetch"),
     "__builtin_trap" => RuntimeCall(piece = "c_runtime/c_exit", das_name = "c_abort"),
+    // the checked arithmetic: the generic spelling takes operands and a result of any integer
+    // types, a typed one (`sadd`, `umulll`) the three clang converted to its prototype
+    "__builtin_add_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_add_overflow"),
+    "__builtin_sadd_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_add_overflow"),
+    "__builtin_saddl_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_add_overflow"),
+    "__builtin_saddll_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_add_overflow"),
+    "__builtin_uadd_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_add_overflow"),
+    "__builtin_uaddl_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_add_overflow"),
+    "__builtin_uaddll_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_add_overflow"),
+    "__builtin_sub_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_sub_overflow"),
+    "__builtin_ssub_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_sub_overflow"),
+    "__builtin_ssubl_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_sub_overflow"),
+    "__builtin_ssubll_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_sub_overflow"),
+    "__builtin_usub_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_sub_overflow"),
+    "__builtin_usubl_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_sub_overflow"),
+    "__builtin_usubll_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_sub_overflow"),
+    "__builtin_mul_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_mul_overflow"),
+    "__builtin_smul_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_mul_overflow"),
+    "__builtin_smull_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_mul_overflow"),
+    "__builtin_smulll_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_mul_overflow"),
+    "__builtin_umul_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_mul_overflow"),
+    "__builtin_umull_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_mul_overflow"),
+    "__builtin_umulll_overflow" => RuntimeCall(piece = "c_runtime/c_builtins", das_name = "c_mul_overflow"),
     // <math.h>'s surface das math covers at `double` (docs/stdlib-examples.md "math.h"), each the
     // function C names, by the same libm (probes/test_stdlib.das)
     "floor" => RuntimeCall(piece = "math", das_name = "math::floor"),
@@ -1842,6 +1865,24 @@ def private pointer_invoke(var em : Emitter; tu : CirTu; ft : int; var args : ar
     return value("invoke({join(args, LIST_SEPARATOR)})", PREC_PRIMARY)
 }
 
+// false with the error set when call `x` is a checked arithmetic builtin (`__builtin_add_overflow`
+// and its siblings) whose operand, or the object its result goes to, is an enum or a `_Bool`:
+// the `c_runtime/c_builtins` generics take das's integers alone
+def private check_overflow_operands(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : bool {
+    let callee = called_name(x)
+    if (!(callee |> ends_with("_overflow")) || libc_module(callee) != "c_runtime/c_builtins") {
+        return true
+    }
+    for (idx, arg in count(), x.args) {
+        let t = idx == 2 && kind_of(tu, arg.t) == "ptr" ? tu.types[arg.t].to : arg.t
+        if (kind_of(tu, t) != "int" || is_c_bool(tu, t)) {
+            fail(em, "`{callee}` over an enum or a `_Bool` is not lowered yet", loc)
+            return false
+        }
+    }
+    return true
+}
+
 def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) : Em {
     if (key_exists(ALLOCA_NAMES, called_name(x))) {
         return emit_alloca(em, tu, x, loc)
@@ -1859,7 +1900,7 @@ def private emit_call(var em : Emitter; tu : CirTu; x : CirExpr; loc : CirLoc) :
         fail(em, "`{va_macro_name(called_name(x))}` used as a value is not lowered yet", loc)
         return value("", PREC_PRIMARY)
     }
-    if (!check_trailing_arguments(em, tu, x, loc)) {
+    if (!check_trailing_arguments(em, tu, x, loc) || !check_overflow_operands(em, tu, x, loc)) {
         return value("", PREC_PRIMARY)
     }
     let name = callee_name(em, tu, x.fn, loc)
