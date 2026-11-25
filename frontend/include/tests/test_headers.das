@@ -39,25 +39,21 @@ let PREDEFINED <- [
 // the language's own names of that shape, which `<assert.h>` reads
 let private LANGUAGE_NAMES <- {"__FILE__", "__LINE__"}
 
-def private header_names(folder, prefix : string; var names : array<string>) {
-    var inscope entries : array<string>
-    dir(folder) $(entry) {
-        entries |> push(clone_string(entry))
-    }
-    sort(entries)
-    for (entry in entries) {
-        if (entry |> ends_with(".h")) {
-            names |> push(prefix + entry)
-        } elif (entry != "." && entry != ".." && entry != "tests" && stat(path_join(folder, entry)).is_dir) {
-            header_names(path_join(folder, entry), "{prefix}{entry}/", names)
+// the headers of the set by the names a program includes them under, sorted
+def private header_names : array<string> {
+    var names : array<string>
+    dir_rec(INCLUDE_DIR) $(name, is_dir) {
+        if (!is_dir && name |> ends_with(".h")) {
+            names |> push(clone_string(name))
         }
     }
+    sort(names)
+    return <- names
 }
 
 def private scan_headers : HeaderScan {
     var scan : HeaderScan
-    var inscope names : array<string>
-    header_names(INCLUDE_DIR, "", names)
+    var inscope names <- header_names()
     for (name in names) {
         scan_header(scan, name, fread(path_join(INCLUDE_DIR, name)))
     }
@@ -65,13 +61,10 @@ def private scan_headers : HeaderScan {
     return <- scan
 }
 
-// every character of a header that is no part of an identifier
-let private PUNCTUATION = " \n\t!\"#%&'()*+,-./:;<=>?[\\]^\{|\}~"
-
 // the names of the predefined shape in `text`: two underscores, capitals, digits and underscores,
 // two underscores, a whole identifier
 def private predefined_shaped(text : string; var names : table<string>) {
-    var inscope words <- split_by_chars(text, PUNCTUATION)
+    var inscope words <- identifier_words(text)
     for (word in words) {
         if (length(word) > 4 && word |> starts_with("__") && word |> ends_with("__") && word == to_upper(word)) {
             names |> insert(word)
@@ -202,8 +195,7 @@ def test_headers_match_crt(t : T?) {
     }
     t |> run("the predefined macros the headers read are the listed ones") @(t : T?) {
         var read : table<string>
-        var names : array<string>
-        header_names(INCLUDE_DIR, "", names)
+        let names <- header_names()
         for (name in names) {
             predefined_shaped(fread(path_join(INCLUDE_DIR, name)), read)
         }

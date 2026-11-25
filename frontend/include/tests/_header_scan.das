@@ -4,6 +4,7 @@ module _header_scan
 
 require strings
 require daslib/strings_boost
+require dastest/review_gate
 
 //! The line scanner of the own libc headers (`frontend/include/ARCHITECTURE.md` section 3): every
 //! line of a header is one of the forms the section lists, and a line of no form is an error, so
@@ -80,9 +81,6 @@ let private BANNED_TEXT <- ["\\", "??", "'", "`", "@", "$"]
 // what opens or closes a comment: no line but a whole-line comment holds one
 let private COMMENT_MARKS <- ["/*", "*/", "//"]
 
-// every character of a header that is no part of an identifier
-let private PUNCTUATION = " !\"#%&()*+,-./:;<=>?[]^\{|\}~"
-
 let private CONDITIONALS <- {"ifndef", "ifdef", "if"}
 
 let private DIRECTIVES <- {"ifndef", "ifdef", "if", "else", "endif", "undef", "define", "include"}
@@ -104,14 +102,22 @@ struct private FileState {
     else_macros : array<string>
 }
 
-def private is_identifier_char(ch : int) : bool => is_alpha(ch) || is_number(ch) || ch == '_'
+//! The identifiers of `text` in order: its runs of letters, digits and underscores.
+def identifier_words(text : string) : array<string> {
+    let spaced = build_string() $(var writer) {
+        for (ch in text) {
+            writer |> write_char(is_ident_byte(ch) ? ch : ' ')
+        }
+    }
+    return <- [for (word in split(spaced, " ")); word; where !empty(word)]
+}
 
 def is_identifier(text : string) : bool {
     if (empty(text) || is_number(first_character(text))) {
         return false
     }
     for (ch in text) {
-        if (!is_identifier_char(ch)) {
+        if (!is_ident_byte(ch)) {
             return false
         }
     }
@@ -122,7 +128,7 @@ def is_identifier(text : string) : bool {
 def private trailing_identifier(text : string) : string {
     var from = length(text)
     peek_data(text) $(chars) {
-        while (from > 0 && is_identifier_char(int(chars[from - 1]))) {
+        while (from > 0 && is_ident_byte(int(chars[from - 1]))) {
             from--
         }
         while (from < length(chars) && is_number(int(chars[from]))) {
@@ -138,7 +144,7 @@ def guard_of(header : string) : string {
     return build_string() $(var writer) {
         writer |> write_char('_')
         for (ch in to_upper(header)) {
-            writer |> write_char(is_identifier_char(ch) ? ch : '_')
+            writer |> write_char(is_ident_byte(ch) ? ch : '_')
         }
     }
 }
@@ -343,11 +349,9 @@ def private scan_prototype(var scan : HeaderScan; header, at, line : string) {
 }
 
 def private note_declared(var scan : HeaderScan; line : string) {
-    var inscope words <- split_by_chars(line, PUNCTUATION)
+    var inscope words <- identifier_words(line)
     for (word in words) {
-        if (!empty(word)) {
-            scan.declared |> insert(word)
-        }
+        scan.declared |> insert(word)
     }
 }
 

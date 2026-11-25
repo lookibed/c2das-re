@@ -19,9 +19,6 @@ let INCLUDE = "include"
 
 let SPAWNERS <- ["popen", "popen_binary", "popen_timeout", "popen_argv", "popen_argv_pipe", "run_and_capture", "system"]
 
-// every character that is no part of an identifier
-let private PUNCTUATION = " \t!\"#$%&'()*+,-./:;<=>?@[\\]^`\{|\}~"
-
 // the length of the character literal at `at` of `chars` (`'a'`, `'\\n'`), 0 when none starts there
 def private char_literal_length(chars; at : int) : int {
     let count = length(chars)
@@ -105,23 +102,15 @@ def private required_file(folder, target : string) : string {
 }
 
 // the files under `folder`, subfolders included, sorted
-def private files_under(folder : string; var files : array<string>) {
-    var inscope entries : array<string>
-    dir(folder) $(entry) {
-        entries |> push(clone_string(entry))
-    }
-    sort(entries)
-    for (entry in entries) {
-        let path = path_join(folder, entry)
-        if (entry == "." || entry == "..") {
-            continue
-        }
-        if (stat(path).is_dir) {
-            files_under(path, files)
-        } else {
-            files |> push(path)
+def private files_under(folder : string) : array<string> {
+    var files : array<string>
+    dir_rec(folder) $(name, is_dir) {
+        if (!is_dir) {
+            files |> push(path_join(folder, clone_string(name)))
         }
     }
+    sort(files)
+    return <- files
 }
 
 // whether `word` is spelled as a module of a `require` is: letters, digits, `_`, `.`, `/` and `-`
@@ -148,21 +137,21 @@ def check_file(path, via : string; var checked : table<string>) {
     let reached = path == via ? "" : " (required from {via})"
     var inscope lines <- split(code_of(fread(path)), "\n")
     for (line, line_no in lines, count(1)) {
-        var inscope words <- split_by_chars(line, PUNCTUATION)
-        for (word in words) {
-            if (has_value(SPAWNERS, word)) {
-                gate_finding(path, line_no, "names `{word}`{reached}: nothing under {ROOT}/ starts a process")
-            } elif (word == INCLUDE) {
-                gate_finding(path, line_no, "has an `{INCLUDE}`{reached}: the gate follows no text include, require a module instead")
+        for (spawner in SPAWNERS) {
+            if (contains_word(line, spawner)) {
+                gate_finding(path, line_no, "names `{spawner}`{reached}: nothing under {ROOT}/ starts a process")
             }
         }
-        if (!has_value(words, REQUIRE)) {
+        if (contains_word(line, INCLUDE)) {
+            gate_finding(path, line_no, "has an `{INCLUDE}`{reached}: the gate follows no text include, require a module instead")
+        }
+        if (!contains_word(line, REQUIRE)) {
             continue
         }
         var inscope parts <- [for (part in split_by_chars(line, " \t")); part; where !empty(part)]
         let is_plain = (length(parts) >= 2 && parts[0] == REQUIRE && is_module_path(parts[1])
             && (length(parts) == 2 || (length(parts) == 3 && parts[2] == "public")))
-        if (has_value(words, CLANG_MODULE)) {
+        if (contains_word(line, CLANG_MODULE)) {
             gate_finding(path, line_no, "requires `{CLANG_MODULE}`{reached}: nothing under {ROOT}/ needs clang")
         } elif (!is_plain) {
             gate_finding(path, line_no, "has a `{REQUIRE}` line{reached} that is not `{REQUIRE} <module>` or `{REQUIRE} <module> public`: the gate cannot name its module")
@@ -179,8 +168,7 @@ def check_file(path, via : string; var checked : table<string>) {
 //! a `.md` file hold no daslang, and any other file is a finding, since daslang can load it as
 //! source and the gate does not read it.
 def check_tree(root : string) {
-    var inscope files : array<string>
-    files_under(root, files)
+    var inscope files <- files_under(root)
     for (file in files) {
         if (file |> ends_with(".das")) {
             var inscope checked : table<string>
