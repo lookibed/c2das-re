@@ -32,7 +32,7 @@ ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line o
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
 criteria     fast   a report: the readability criteria of metrics/criteria_linux.json, the delta against the base's and the sample's freshness; red only when the capture is missing or unreadable
-tests        lane   every dastest suite, --jobs N at once (default 4): probes/, dasCRuntime/tests, c_runtime/tests, converter/tests, lua/tests, chibicc/tests, perf/tests, ports/tests, metrics/tests, compare/tests, doom/tests, tests/
+tests        lane   every dastest suite, --jobs N at once (default 4): probes/, dasCRuntime/tests, c_runtime/tests, frontend/tests, frontend/include/tests, converter/tests, lua/tests, chibicc/tests, perf/tests, ports/tests, metrics/tests, compare/tests, doom/tests, tests/
 TABLE
             exit 0 ;;
         *) echo "preflight: unknown flag $1" >&2; exit 2 ;;
@@ -40,7 +40,7 @@ TABLE
     shift
 done
 wants() { local g="$1"; for s in "${skip[@]:-}"; do [ "$s" = "$g" ] && return 1; done; [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$g" ] && return 0; done; return 1; }
-das_dirs=(); for d in chibicc converter c_runtime compare dasCRuntime doom lua metrics perf ports probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
+das_dirs=(); for d in chibicc converter c_runtime compare dasCRuntime doom frontend lua metrics perf ports probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
 # a suite's fetch/ and work/, lua/fetch and lua/work, perf/work and metrics/work hold inputs and converted output, never house code
 das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type d \( -name fetch -o -name work \) -prune -o -type f -name '*.das' -print | sort; }
 changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-files --others --exclude-standard -- '*.das'; }
@@ -105,8 +105,8 @@ gate_criteria() {
 # suites that run one after another because they write the same paths (the collision map,
 # skills/internal/preflight.md); up to --jobs groups run at once, started longest first. The
 # isolated_suites run each test file in its own dastest worker: their files share no path.
-suite_order=(probes dasCRuntime/tests c_runtime/tests converter/tests lua/tests chibicc/tests perf/tests ports/tests metrics/tests compare/tests doom/tests tests)
-test_groups=(converter/tests compare/tests lua/tests chibicc/tests ports/tests probes perf/tests c_runtime/tests doom/tests metrics/tests tests dasCRuntime/tests)
+suite_order=(probes dasCRuntime/tests c_runtime/tests frontend/tests frontend/include/tests converter/tests lua/tests chibicc/tests perf/tests ports/tests metrics/tests compare/tests doom/tests tests)
+test_groups=(converter/tests compare/tests lua/tests chibicc/tests ports/tests probes perf/tests c_runtime/tests doom/tests metrics/tests tests dasCRuntime/tests frontend/include/tests frontend/tests)
 # PREFLIGHT_ISOLATED_SUITES replaces the list (a space between suites), for a test of the arm
 read -ra isolated_suites <<< "${PREFLIGHT_ISOLATED_SUITES-probes converter/tests c_runtime/tests doom/tests}"
 iso_threads=2

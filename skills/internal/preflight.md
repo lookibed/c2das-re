@@ -4,8 +4,8 @@
 `env`, `native`, `untracked`, `format`, `lint`, `compile`, `ast-verify`, `md-ascii`,
 `review-md`, `criteria`. `--full` adds the **tests lane**: every dastest suite folder `suite_order` in the
 script lists, which `--list-gates` prints (`probes/`, `dasCRuntime/tests`, `c_runtime/tests`,
-`converter/tests`, `lua/tests`, `perf/tests`, `ports/tests`, `metrics/tests`, `compare/tests`,
-`doom/tests`, `tests/`; a folder that does not exist is skipped); a diff to that list changes this
+`frontend/tests`, `frontend/include/tests`, `converter/tests`, `lua/tests`, `perf/tests`,
+`ports/tests`, `metrics/tests`, `compare/tests`, `doom/tests`, `tests/`; a folder that does not exist is skipped); a diff to that list changes this
 paragraph. The lane runs up to `--jobs N` suites at once (default 4) inside the preflight's own
 process tree, so one `heavy` job covers it; each suite's output is buffered and printed in
 `suite_order` once it and every suite before it have ended, and the lane is red when any suite
@@ -52,6 +52,8 @@ collide, so every group is one suite. A new suite, or a test that writes a fixed
 | `probes` | temp folders | none |
 | `dasCRuntime/tests` | temp folders | none |
 | `c_runtime/tests` | temp folders (its JIT cache under one) | none |
+| `frontend/tests` | a temp folder (stand-in files for the gate) | none |
+| `frontend/include/tests` | nothing | none |
 | `converter/tests` | temp folders (stand-in roots for the suite runners) | none |
 | `lua/tests` | a temp stand-in root (`lua/work`, `lua/fetch` inside it) | none |
 | `chibicc/tests` | a temp folder (the conversion and both compilers' outputs); reads `chibicc/fetch/` | none |
