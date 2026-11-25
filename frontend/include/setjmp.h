@@ -10,6 +10,9 @@ struct __jmp_buf_tag {
 typedef struct __jmp_buf_tag jmp_buf[1];
 
 int setjmp(jmp_buf);
+int _setjmp(jmp_buf);
+#define setjmp(env) _setjmp (env)
 void longjmp(jmp_buf, int);
+void _longjmp(jmp_buf, int);
 
 #endif

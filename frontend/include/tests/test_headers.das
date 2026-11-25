@@ -14,8 +14,9 @@ require ../../../converter/emit.das
 
 let private INCLUDE_DIR = "frontend/include"
 
-// glibc's other spellings of `setjmp` and `longjmp`, which the emitter maps and no header declares
-let private GLIBC_ALIASES <- ["_longjmp", "_setjmp", "__sigsetjmp"]
+// what glibc's `sigsetjmp` macro calls: the emitter maps it, and no header declares it, there
+// being no `siglongjmp` to pair it with
+let private GLIBC_ALIASES <- ["__sigsetjmp"]
 
 // the crt functions the printf lowering writes through, named after the C function they forward to
 let private STDOUT_HELPERS <- ["fwrite_stdout", "fflush_stdout"]

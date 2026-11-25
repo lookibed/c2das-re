@@ -29,9 +29,10 @@ when it runs, under the C names, and nothing more of a libc.
   `signal`, `longjmp`, `qsort`, `bsearch`, the `<math.h>` functions das `math` covers, glibc's
   `__assert_fail` and `__errno_location`), and `setjmp`.
 
-Three names the emitter maps are declared by no header: `_setjmp`, `_longjmp` and `__sigsetjmp`,
-the spellings glibc's `<setjmp.h>` gives `setjmp` and `longjmp`. Here `setjmp` and `longjmp` are
-prototypes under their own names.
+One name the emitter maps is declared by no header: `__sigsetjmp`, what glibc's `sigsetjmp` macro
+calls; no `siglongjmp` is lowered to pair it with. `<setjmp.h>` is glibc's otherwise: prototypes of
+`setjmp`, `_setjmp`, `longjmp` and `_longjmp`, and `setjmp(env)` a macro for `_setjmp (env)`, so a
+program's `setjmp` reaches the C-IR as `_setjmp`, as it does over glibc.
 
 **Shapes.** A prototype of a `crt` function has the bind's parameter count, parameter types and
 result type, a C type read as `crt` spells it: `char` is `uint8`, `int` is `int`, `unsigned int`
@@ -120,7 +121,8 @@ spellings, so that a program converts to the same text over these headers as ove
   glibc's prototype of `__assert_fail`, and `((void) (0))` under `NDEBUG`. This is glibc's ISO form:
   no statement expression, and `__func__` where glibc under GNU C passes `__PRETTY_FUNCTION__`.
   `<assert.h>` defines `assert` anew at every inclusion, as C requires.
-- `jmp_buf` is `struct __jmp_buf_tag[1]`, the record at glibc's size (200 bytes).
+- `jmp_buf` is `struct __jmp_buf_tag[1]`, the record at glibc's size (200 bytes), and `setjmp` is
+  glibc's macro over `_setjmp`.
 - `va_list` is `__builtin_va_list`, and `<stdio.h>` spells it `__gnuc_va_list`, whose one
   declaration is `<bits/gnuc_va_list.h>`.
 - `FILE` is `struct _IO_FILE`, declared and never defined.
