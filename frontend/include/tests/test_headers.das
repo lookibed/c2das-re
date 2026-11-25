@@ -61,7 +61,7 @@ def private scan_headers : HeaderScan {
     for (name in names) {
         scan_header(scan, name, fread(path_join(INCLUDE_DIR, name)))
     }
-    check_types(scan)
+    finish_scan(scan)
     return <- scan
 }
 
@@ -82,7 +82,7 @@ def private predefined_shaped(text : string; var names : table<string>) {
 def private scan_text(text : string) : HeaderScan {
     var scan : HeaderScan
     scan_header(scan, "t.h", text)
-    check_types(scan)
+    finish_scan(scan)
     return <- scan
 }
 
@@ -398,6 +398,49 @@ def test_header_conditionals(t : T?) {
             ("FILE", ""), ("struct tm", ""), ("const int", ""), ("char*", ""), ("char * *", ""), ("unsigned", ""), ("", ""), ("*", ""))
         for (pair in spelled) {
             t |> equal(das_spelling(typedefs, pair._0), pair._1, pair._0)
+        }
+    }
+}
+
+// the errors of the headers `a.h` and `t.h`, scanned in that order and judged together
+def private errors_of(first, second : string) : string {
+    var inscope scan : HeaderScan
+    scan_header(scan, "a.h", first)
+    scan_header(scan, "t.h", second)
+    finish_scan(scan)
+    return join(scan.errors, "\n")
+}
+
+// a guarded header `header` that declares two typedefs, a record, an object and two prototypes
+def private declarations(header : string) : string =>
+    "#ifndef {guard_of(header)}\n#define {guard_of(header)}\ntypedef __SIZE_TYPE__ size_t;\ntypedef int time_t;\nstruct tm \{\n    int tm_sec;\n\};\nextern int *stdin;\nvoid *malloc(size_t);\ntime_t time(const time_t *);\n#endif\n"
+
+[test(description = "no macro rewrites a declaration, and no line hides one from C behind a comment, a literal or a splice")]
+def test_header_macros(t : T?) {
+    t |> run("a macro named as anything a header declares, or as a C keyword, is an error, before or after the declaration") @(t : T?) {
+        t |> equal(errors_of("", declarations("t.h")), "")
+        let names = fixed_array("time_t int", "size_t", "malloc(n) 0", "malloc free", "tm other", "tm_sec x", "__SIZE_TYPE__ int", "const", "unsigned signed", "void int", "extern", "typedef", "struct union", "stdin stdout", "stdin", "setjmp(env) other (env)", "__FAST16_TYPE char")
+        for (name in names) {
+            t |> equal(errors_of("#define {name}\n", declarations("t.h")) |> starts_with("a.h:1: `#define {name}`: "), true, name)
+            t |> equal(find(errors_of("#define {name}\n", declarations("t.h")), "\n"), -1, name)
+            t |> equal(errors_of(declarations("a.h"), "#define {name}\n") |> starts_with("t.h:1: `#define {name}`: "), true, name)
+        }
+    }
+    t |> run("a mirror is its listed line, and a macro of a free name is no error") @(t : T?) {
+        for (line in fixed_array("stdin stdin", "setjmp(env) _setjmp (env)", "__FAST16_TYPE long", "__FAST16_TYPE short", "EOF (-1)", "time_tt int", "PRId64 \"l\" \"d\"")) {
+            t |> equal(errors_of(declarations("a.h"), "#define {line}\n"), "", line)
+        }
+    }
+    t |> run("a line that could open a comment, a literal or a splice is one error, and hides nothing") @(t : T?) {
+        let hiding = fixed_array(
+            "#define HIDE /*", "#define END */", "#define A 1 // x", "#include <a//b.h>", "#if 0 /* x", "#undef A /* x", "int f(void); /* x",
+            "int f(void); // x", "/*/", "/* a */ */", "#define S \"abc", "#define S \"a\" \"", "#include \"a.h\"", "extern char *s = \"a\";",
+            "#define C 'a'", "#define C '", "int f(void);\\", "/* c */\\", "#define A 1 ??/", "#define A `", "#define A @", "#define A $")
+        for (line in hiding) {
+            var inscope scan <- scan_text("int ok(void);\n{line}\nint also(void);\n")
+            t |> equal(length(scan.errors), 1, "{line}: {join(scan.errors, " | ")}")
+            t |> success(length(scan.errors) == 1 && scan.errors[0] |> starts_with("t.h:2: "), line)
+            t |> equal(length(scan.prototypes), 2, line)
         }
     }
 }

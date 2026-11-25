@@ -10,6 +10,10 @@ they flag instead.**
 `tests/test_headers.das` states in `ARCHITECTURE.md` section 2 why that name has no prototype, in
 the same change.**
 
+**A diff that adds a name or a line to `MIRRORS` in `tests/_header_scan.das` adds a line glibc's
+header of the same name has, or a type macro defined in both arms of one conditional, and names
+it in `ARCHITECTURE.md` section 3 in the same change.**
+
 **A diff that adds a type to `BASE_TYPES` in `tests/_header_scan.das` adds a C type or a type
 macro the compiler predefines, never a typedef name, and maps it to the das type the `crt` module
 binds a value of that type as under both dialects, or to `UNBOUND` when no `crt` function takes or

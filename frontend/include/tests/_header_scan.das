@@ -19,6 +19,13 @@ struct Prototype {
     at : string
 }
 
+struct Define {
+    name : string
+    //! the line after `#define `: the name, its parameters and its body
+    text : string
+    at : string
+}
+
 struct HeaderScan {
     prototypes : array<Prototype>
     objects : array<string>
@@ -26,6 +33,9 @@ struct HeaderScan {
     macros : array<string>
     //! every `#define`d name but an include guard's, counted or not
     defined : array<string>
+    defines : array<Define>
+    //! every identifier a declaration line or a record's line spells: the names a macro may not take
+    declared : table<string>
     guards : array<string>
     includes : array<string>
     //! a typedef name with the type it is declared as; `UNBOUND` for an array or a function pointer
@@ -46,6 +56,32 @@ let BASE_TYPES <- {
     "__SIZE_TYPE__" => "uint64", "__PTRDIFF_TYPE__" => "int64", "__INT64_TYPE__" => "int64",
     "unsigned __INT64_TYPE__" => "uint64", "__WCHAR_TYPE__" => UNBOUND, "__builtin_va_list" => UNBOUND
 }
+
+//! The macros that may share a name with a declaration, each with the lines that may define it:
+//! glibc's self-definitions of the standard streams, its `setjmp` over `_setjmp`, and the two type
+//! macros `<stdint.h>` picks by the width of `long`.
+let MIRRORS <- {
+    "stdin" => ["stdin stdin"], "stdout" => ["stdout stdout"], "stderr" => ["stderr stderr"],
+    "setjmp" => ["setjmp(env) _setjmp (env)"],
+    "__FAST16_TYPE" => ["__FAST16_TYPE long", "__FAST16_TYPE short"],
+    "__FAST32_TYPE" => ["__FAST32_TYPE long", "__FAST32_TYPE int"]
+}
+
+let private C_KEYWORDS <- {
+    "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float",
+    "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static",
+    "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "_Bool", "_Complex", "_Imaginary"
+}
+
+// what no line of a header holds: a line splice and its trigraph, a character literal, and the
+// characters C has no use for
+let private BANNED_TEXT <- ["\\", "??", "'", "`", "@", "$"]
+
+// what opens or closes a comment: no line but a whole-line comment holds one
+let private COMMENT_MARKS <- ["/*", "*/", "//"]
+
+// every character of a header that is no part of an identifier
+let private PUNCTUATION = " !\"#%&()*+,-./:;<=>?[]^\{|\}~"
 
 let private CONDITIONALS <- {"ifndef", "ifdef", "if"}
 
@@ -187,6 +223,7 @@ def private scan_define(var scan : HeaderScan; var state : FileState; at, line, 
         scan_error(scan, at, line, "the include guard is defined once, on the line after its #ifndef")
     } else {
         scan.defined |> push(name)
+        scan.defines |> emplace(Define(name = name, text = rest, at = at))
         if (!state.in_conditional) {
             scan.macros |> push(name)
         } elif (state.in_else) {
@@ -305,10 +342,20 @@ def private scan_prototype(var scan : HeaderScan; header, at, line : string) {
     scan.prototypes |> emplace(Prototype(name = name, result = result, params <- params, header = header, at = at))
 }
 
+def private note_declared(var scan : HeaderScan; line : string) {
+    var inscope words <- split_by_chars(line, PUNCTUATION)
+    for (word in words) {
+        if (!empty(word)) {
+            scan.declared |> insert(word)
+        }
+    }
+}
+
 // a prototype, an object, a typedef or a record: it counts where it cannot be compiled out
 def private scan_declaration(var scan : HeaderScan; var state : FileState; at, line : string) {
     let is_type = line |> starts_with("typedef ") || line |> starts_with("struct ")
     state.seen_code = true
+    note_declared(scan, line)
     if (state.in_conditional) {
         scan_error(scan, at, line, "a declaration stands in no conditional but the include guard")
     } elif (is_type && empty(state.guard)) {
@@ -333,6 +380,24 @@ def private scan_line(var scan : HeaderScan; var state : FileState; at, line : s
             return
         }
     }
+    let is_comment = line |> starts_with("/*")
+    let quotes = length(line) - length(replace(line, "\"", ""))
+    for (text in BANNED_TEXT) {
+        if (find(line, text) >= 0) {
+            scan_error(scan, at, line, "a header holds no `{text}`")
+            return
+        }
+    }
+    for (mark in COMMENT_MARKS) {
+        if (!is_comment && find(line, mark) >= 0) {
+            scan_error(scan, at, line, "a comment is a line of its own: no other line holds `{mark}`")
+            return
+        }
+    }
+    if (quotes % 2 != 0 || (quotes > 0 && !(line |> starts_with("#define ")))) {
+        scan_error(scan, at, line, "a string literal stands whole in a #define, nowhere else")
+        return
+    }
     let wants_define = state.guard_wants_define
     state.guard_wants_define = false
     if (wants_define && line != "#define {state.guard}") {
@@ -344,13 +409,14 @@ def private scan_line(var scan : HeaderScan; var state : FileState; at, line : s
     } elif (state.guard_closed) {
         scan_error(scan, at, line, "the include guard's #endif is the header's last line")
     } elif (state.in_record) {
+        note_declared(scan, line)
         if (line == "\};") {
             state.in_record = false
         } elif (!(line |> starts_with("    ")) || !(line |> ends_with(";")) || find(line, "(") >= 0 || find(line, "\{") >= 0 || find(line, "\}") >= 0) {
             scan_error(scan, at, line, "a record member is `    <type> <name>;`, the record's last line `\};`")
         }
-    } elif (line |> starts_with("/*")) {
-        if (find(line, "*/") != length(line) - 2) {
+    } elif (is_comment) {
+        if (length(line) < 4 || find(line, "*/", 2) != length(line) - 2) {
             scan_error(scan, at, line, "a comment is one line, `/* ... */`")
         }
     } elif (line |> starts_with("#")) {
@@ -362,7 +428,7 @@ def private scan_line(var scan : HeaderScan; var state : FileState; at, line : s
 
 //! Adds what the header `header` of text `text` declares to `scan`: its prototypes, its `extern`
 //! objects, its typedefs, the macros it defines and the headers it includes, and an error per line
-//! of no form. `check_types` judges the prototypes once every header is scanned.
+//! of no form. `finish_scan` judges the prototypes and the macros once every header is scanned.
 def scan_header(var scan : HeaderScan; header, text : string) {
     var inscope state <- FileState(header = header)
     var inscope lines <- split(text, "\n")
@@ -382,7 +448,7 @@ def scan_header(var scan : HeaderScan; header, text : string) {
 
 //! An error for every prototype type that reaches no base type through the typedefs the scanned
 //! headers declare: a name no header declares, a named parameter, a record by value.
-def check_types(var scan : HeaderScan) {
+def private check_types(var scan : HeaderScan) {
     for (proto in scan.prototypes) {
         var inscope types := proto.params
         types |> push(proto.result)
@@ -392,4 +458,25 @@ def check_types(var scan : HeaderScan) {
             }
         }
     }
+}
+
+//! An error for every macro that takes a name a header declares, in any header and in any order, or
+//! a C keyword: such a macro rewrites declarations the scan has read as they stand. A name of
+//! `MIRRORS` is defined by one of its listed lines and no other.
+def private check_macros(var scan : HeaderScan) {
+    for (define in scan.defines) {
+        if (key_exists(MIRRORS, define.name)) {
+            if (!has_value(MIRRORS?[define.name] ?? [""], define.text)) {
+                scan.errors |> push("{define.at}: `#define {define.text}`: `{define.name}` is defined as its listed mirror and nothing else")
+            }
+        } elif (key_exists(scan.declared, define.name) || key_exists(C_KEYWORDS, define.name)) {
+            scan.errors |> push("{define.at}: `#define {define.text}`: a macro takes no name a header declares and no C keyword")
+        }
+    }
+}
+
+//! What is judged once every header is scanned: the prototypes' types and the macros' names.
+def finish_scan(var scan : HeaderScan) {
+    check_types(scan)
+    check_macros(scan)
 }

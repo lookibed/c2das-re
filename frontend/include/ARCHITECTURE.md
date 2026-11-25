@@ -76,7 +76,10 @@ project (doomgeneric) includes them and uses none. `<sys/types.h>` holds `mode_t
 
 `tests/_header_scan.das` reads a header line by line, and every line is one of these forms; any
 other line is an error of the test, so the scanner is the format gate. A line is printable ASCII
-and ends in no blank.
+and ends in no blank. The scanner reads each line as it stands, so no line may change how C reads
+another: a comment is a whole line (no other line holds `/*`, `*/` or `//`); a string literal
+stands whole in a `#define` and nowhere else; and no line holds a backslash, `??`, a `'`, or one
+of `` ` ``, `@` and `$`.
 
 - an empty line;
 - a comment on one line, `/* ... */`;
@@ -103,6 +106,11 @@ The scanner evaluates no condition, so it counts only what no condition can remo
 - every other conditional holds `#define` lines only, has an `#else`, and holds no conditional.
   So a prototype, an object, a typedef, a record and an `#include` stand under the include guard
   alone;
+- a macro takes no name that any line of any header declares (a typedef, a function, an object,
+  a record tag or member, a word of a type) and no C keyword, wherever its `#define` stands: such
+  a macro would rewrite a declaration the scan has read as written. `MIRRORS` in the scanner lists
+  the names that may, each with the exact lines that may define it: `stdin`, `stdout` and `stderr`
+  as themselves, `setjmp(env)` as `_setjmp (env)`, and the two type macros of `<stdint.h>`;
 - a macro of a conditional counts as defined when both arms define it (`assert` under `NDEBUG`,
   `INT64_C` under the width of `long`), and a conditional whose arms define different names is an
   error. An `#undef` takes its name out of the count. Where a type depends on the dialect, the
