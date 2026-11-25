@@ -16,15 +16,19 @@ system directories (`converter/ARCHITECTURE_DUMPER.md` section 3).
 
 A `.das` file under this folder runs where no clang is installed and no process may start: inside
 a daslang compile, and in a web page. So it requires no `cbind`, the libclang binding of daScript's
-`dasClangBind`, whose submodules are `cbind/<name>`; and it calls none of the daslang functions
+`dasClangBind`, whose submodules are `cbind/<name>`; and it names none of the daslang functions
 that start a process: `popen`, `popen_binary`, `popen_timeout`, `popen_argv`, `popen_argv_pipe`,
 `run_and_capture` (all of `fio`) and `system` (of `fio` and of `crt`).
 
 The ban holds for what a file pulls in as well. `REVIEW.das` reads each `.das` file under the
-folder line by line, a comment line aside, and follows every `require` that names a file: a path
-ending in `.das`, or a module whose `<name>.das` sits beside the requiring file. It reports a
-`require` of `cbind` and a call of one of the seven functions with the file and line, and for a
-file outside this folder the file here that reaches it. A module that a module folder or daslib
+folder with its comments and the characters of its string and character literals blanked (the code
+inside a string's `{...}` stays: it runs), and follows every `require` that names a file: a path
+ending in `.das`, or a module whose `<name>.das` sits beside the requiring file. It reports the
+word after `require`, whatever blanks part them, when it is `cbind` or `cbind/<name>`, and any of
+the seven names as a whole identifier, called or not: `x |> system`, `system (x)` and `@@system`
+are findings like `system(x)`, and so is a local or a field of such a name, which is renamed. Each
+finding carries the file and line, and for a file outside this folder the file here that reaches
+it. A module that a module folder or daslib
 resolves (`strings`, `daslib/fio`, `crt`) has no file beside the requirer and is not followed.
 `include/tests/test_headers.das` requires `converter/emit.das` for the emitter's libc tables, and
 the gate walks that file and the converter modules it requires.

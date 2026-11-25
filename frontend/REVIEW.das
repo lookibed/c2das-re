@@ -1,6 +1,7 @@
 options gen2
 
 require strings
+require math
 require daslib/fio
 require daslib/strings_boost
 require dastest/review_gate
@@ -14,19 +15,82 @@ let CLANG_MODULE = "cbind"
 
 let SPAWNERS <- ["popen", "popen_binary", "popen_timeout", "popen_argv", "popen_argv_pipe", "run_and_capture", "system"]
 
-def private is_name_char(ch : int) : bool => is_alpha(ch) || is_number(ch) || ch == '_'
+// every character that is no part of an identifier
+let private PUNCTUATION = " \t!\"#$%&'()*+,-./:;<=>?@[\\]^`\{|\}~"
 
-// whether `line` calls `name`: the name, not the tail of a longer one, then `(`
-def private calls(line, name : string) : bool {
-    var found = false
-    peek_data(line) $(text) {
-        var at = find(line, "{name}(")
-        while (at >= 0 && !found) {
-            found = at == 0 || !is_name_char(int(text[at - 1]))
-            at = find(line, "{name}(", at + 1)
+// the length of the character literal at `at` of `chars` (`'a'`, `'\\n'`), 0 when none starts there
+def private char_literal_length(chars; at : int) : int {
+    let count = length(chars)
+    if (int(chars[at]) != '\'') {
+        return 0
+    }
+    if (at + 3 < count && int(chars[at + 1]) == '\\' && int(chars[at + 3]) == '\'') {
+        return 4
+    }
+    return at + 2 < count && int(chars[at + 2]) == '\'' ? 3 : 0
+}
+
+//! `text` with its comments and the characters of its string and character literals blanked, the
+//! line breaks kept; the code inside a string's `\{...\}` stays, since it runs.
+def code_of(text : string) : string {
+    return build_string() $(var writer) {
+        peek_data(text) $(chars) {
+            let count = length(chars)
+            // one entry per open string literal (true) and per open brace of code inside one (false)
+            var inscope open : array<bool>
+            var block_depth = 0
+            var in_line_comment = false
+            var at = 0
+            while (at < count) {
+                let ch = int(chars[at])
+                let next = at + 1 < count ? int(chars[at + 1]) : 0
+                let in_string = !empty(open) && open[length(open) - 1]
+                var is_code = false
+                var step = 1
+                if (ch == '\n') {
+                    in_line_comment = false
+                } elif (in_line_comment) {
+                    step = 1
+                } elif (block_depth > 0) {
+                    if (ch == '*' && next == '/') {
+                        block_depth--
+                        step = 2
+                    } elif (ch == '/' && next == '*') {
+                        block_depth++
+                        step = 2
+                    }
+                } elif (in_string) {
+                    if (ch == '\\') {
+                        step = 2
+                    } elif (ch == '"') {
+                        open |> pop()
+                    } elif (ch == '{') {
+                        open |> push(false)
+                    }
+                } elif (ch == '/' && next == '/') {
+                    in_line_comment = true
+                } elif (ch == '/' && next == '*') {
+                    block_depth = 1
+                    step = 2
+                } elif (ch == '"') {
+                    open |> push(true)
+                } elif (char_literal_length(chars, at) > 0) {
+                    step = char_literal_length(chars, at)
+                } elif (ch == '{' && !empty(open)) {
+                    open |> push(false)
+                } elif (ch == '}' && !empty(open)) {
+                    open |> pop()
+                } else {
+                    is_code = true
+                }
+                for (offset in range(min(step, count - at))) {
+                    let written = int(chars[at + offset])
+                    writer |> write_char(is_code || written == '\n' ? written : ' ')
+                }
+                at += step
+            }
         }
     }
-    return found
 }
 
 // the file a `require` of `target` in a file of folder `folder` names by path or as a sibling
@@ -54,7 +118,8 @@ def private das_files(folder : string; var files : array<string>) {
 
 //! Findings of the file `path` and of every file it requires by path or as a sibling module, each
 //! named with `via`, the file under `frontend/` the chain starts at: a `require` of the clang
-//! binding and a call of a function that starts a process.
+//! binding, the word after `require` whatever blanks part them, and the name of a function that
+//! starts a process as a whole identifier, called or not, outside comments and literals.
 def check_file(path, via : string; var checked : table<string>) {
     let canonical = get_full_file_name(path)
     if (key_exists(checked, canonical)) {
@@ -62,26 +127,26 @@ def check_file(path, via : string; var checked : table<string>) {
     }
     checked |> insert(canonical)
     let reached = path == via ? "" : " (required from {via})"
-    var inscope lines <- split(fread(path), "\n")
-    for (text, line_no in lines, count(1)) {
-        let line = strip(text)
-        if (line |> starts_with("//")) {
-            continue
+    var inscope lines <- split(code_of(fread(path)), "\n")
+    for (line, line_no in lines, count(1)) {
+        var inscope words <- split_by_chars(line, PUNCTUATION)
+        for (word in words) {
+            if (has_value(SPAWNERS, word)) {
+                gate_finding(path, line_no, "names `{word}`{reached}: nothing under {ROOT}/ starts a process")
+            }
         }
-        if (line |> starts_with("require ")) {
-            let target = split(slice(line, 8), " ")[0]
+        var inscope spaced <- [for (word in split_by_chars(line, " \t;,()\{\}")); word; where !empty(word)]
+        for (word, index in spaced, count()) {
+            if (word != "require" || index + 1 >= length(spaced)) {
+                continue
+            }
+            let target = spaced[index + 1]
             if (target == CLANG_MODULE || target |> starts_with("{CLANG_MODULE}/")) {
                 gate_finding(path, line_no, "requires `{target}`{reached}: nothing under {ROOT}/ needs clang")
             }
             let file = required_file(dir_name(path), target)
             if (!empty(file)) {
                 check_file(file, via, checked)
-            }
-            continue
-        }
-        for (spawner in SPAWNERS) {
-            if (calls(line, spawner)) {
-                gate_finding(path, line_no, "calls `{spawner}`{reached}: nothing under {ROOT}/ starts a process")
             }
         }
     }

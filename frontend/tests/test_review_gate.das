@@ -31,7 +31,7 @@ def private findings_of(t : T?; files : array<tuple<name : string; text : string
 [test(description = "the frontend gate reports a require of the clang binding and a call that starts a process, in a file and in what it requires")]
 def test_frontend_gate(t : T?) {
     t |> run("a file with neither is clean, a comment and a longer name included") @(t : T?) {
-        let found = findings_of(t, [(name = "a.das", text = "options gen2\nrequire strings\n// {SPAWNERS[0]}(x)\nlet n = my_{SPAWNERS[0]}(1) + {CLANG_MODULE}(2)\n")], "a.das")
+        let found = findings_of(t, [(name = "a.das", text = "options gen2\nrequire strings\n// {SPAWNERS[0]}(x)\n/* {SPAWNERS[0]}(x)\n /* require {CLANG_MODULE} */ {SPAWNERS[0]} */\nlet n = my_{SPAWNERS[0]}(1) + {CLANG_MODULE}(2)\nlet s = \"{SPAWNERS[0]}(x) \\\" require {CLANG_MODULE}\"\nlet c = '\"'\n")], "a.das")
         t |> equal(found, "")
     }
     t |> run("a require of the clang binding or a submodule of it is a finding at its line") @(t : T?) {
@@ -45,7 +45,20 @@ def test_frontend_gate(t : T?) {
     t |> run("a call of each function that starts a process is a finding, qualified or not") @(t : T?) {
         for (spawner in SPAWNERS) {
             let found = findings_of(t, [(name = "a.das", text = "options gen2\n\nlet a = {spawner}(x)\nlet b = crt::{spawner}(x)\n")], "a.das")
-            t |> equal(found, "a.das:3: calls `{spawner}`: nothing under frontend/ starts a process\na.das:4: calls `{spawner}`: nothing under frontend/ starts a process")
+            t |> equal(found, "a.das:3: names `{spawner}`: nothing under frontend/ starts a process\na.das:4: names `{spawner}`: nothing under frontend/ starts a process")
+        }
+    }
+    t |> run("a spawner is found however it is called or named, and a require however it is spaced") @(t : T?) {
+        let spawner = SPAWNERS[length(SPAWNERS) - 1]
+        let forms = fixed_array("\"true\" |> {spawner}", "{spawner} (\"true\")", "let f = @@{spawner}", "x |> {spawner}()",
+            "let s = \"a \{{spawner}(x)\} b\"", "let c = '\"' + {spawner}(x)")
+        for (form in forms) {
+            let found = findings_of(t, [(name = "a.das", text = "options gen2\n{form}\n")], "a.das")
+            t |> equal(found, "a.das:2: names `{spawner}`: nothing under frontend/ starts a process", form)
+        }
+        for (blanks in fixed_array("  ", "\t", " \t ")) {
+            let found = findings_of(t, [(name = "a.das", text = "options gen2\n\nrequire{blanks}{CLANG_MODULE}\n")], "a.das")
+            t |> equal(found, "a.das:3: requires `{CLANG_MODULE}`: nothing under frontend/ needs clang", blanks)
         }
     }
     t |> run("a file required by path or as a sibling module is checked, once, naming the file that reaches it") @(t : T?) {
@@ -56,7 +69,7 @@ def test_frontend_gate(t : T?) {
         let found = findings_of(t, files, "a.das")
         let lines <- split(found, "\n")
         t |> equal(length(lines), 2, found)
-        t |> success(found |> starts_with("c.das:1: calls `{SPAWNERS[0]}` (required from "), found)
+        t |> success(found |> starts_with("c.das:1: names `{SPAWNERS[0]}` (required from "), found)
         t |> success(find(found, "\nb.das:3: requires `{CLANG_MODULE}` (required from ") > 0, found)
     }
 }
