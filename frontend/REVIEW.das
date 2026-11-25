@@ -13,6 +13,10 @@ let private ROOT = "frontend"
 
 let CLANG_MODULE = "cbind"
 
+let private REQUIRE = "require"
+
+let INCLUDE = "include"
+
 let SPAWNERS <- ["popen", "popen_binary", "popen_timeout", "popen_argv", "popen_argv_pipe", "run_and_capture", "system"]
 
 // every character that is no part of an identifier
@@ -100,7 +104,8 @@ def private required_file(folder, target : string) : string {
     return fexist(file) ? file : ""
 }
 
-def private das_files(folder : string; var files : array<string>) {
+// the files under `folder`, subfolders included, sorted
+def private files_under(folder : string; var files : array<string>) {
     var inscope entries : array<string>
     dir(folder) $(entry) {
         entries |> push(clone_string(entry))
@@ -108,18 +113,32 @@ def private das_files(folder : string; var files : array<string>) {
     sort(entries)
     for (entry in entries) {
         let path = path_join(folder, entry)
-        if (entry |> ends_with(".das")) {
+        if (entry == "." || entry == "..") {
+            continue
+        }
+        if (stat(path).is_dir) {
+            files_under(path, files)
+        } else {
             files |> push(path)
-        } elif (entry != "." && entry != ".." && stat(path).is_dir) {
-            das_files(path, files)
         }
     }
 }
 
+// whether `word` is spelled as a module of a `require` is: letters, digits, `_`, `.`, `/` and `-`
+def private is_module_path(word : string) : bool {
+    for (ch in word) {
+        if (!is_alpha(ch) && !is_number(ch) && ch != '_' && ch != '.' && ch != '/' && ch != '-') {
+            return false
+        }
+    }
+    return !empty(word)
+}
+
 //! Findings of the file `path` and of every file it requires by path or as a sibling module, each
-//! named with `via`, the file under `frontend/` the chain starts at: a `require` of the clang
-//! binding, the word after `require` whatever blanks part them, and the name of a function that
-//! starts a process as a whole identifier, called or not, outside comments and literals.
+//! named with `via`, the file under `frontend/` the chain starts at. Outside comments and literals:
+//! the name of a function that starts a process, as a whole identifier, called or not; an
+//! `include`, since the gate follows no text include; and a line that holds `require` and names
+//! the clang binding in any word, or is not `require <module>` with an optional `public`.
 def check_file(path, via : string; var checked : table<string>) {
     let canonical = get_full_file_name(path)
     if (key_exists(checked, canonical)) {
@@ -133,18 +152,22 @@ def check_file(path, via : string; var checked : table<string>) {
         for (word in words) {
             if (has_value(SPAWNERS, word)) {
                 gate_finding(path, line_no, "names `{word}`{reached}: nothing under {ROOT}/ starts a process")
+            } elif (word == INCLUDE) {
+                gate_finding(path, line_no, "has an `{INCLUDE}`{reached}: the gate follows no text include, require a module instead")
             }
         }
-        var inscope spaced <- [for (word in split_by_chars(line, " \t;,()\{\}")); word; where !empty(word)]
-        for (word, index in spaced, count()) {
-            if (word != "require" || index + 1 >= length(spaced)) {
-                continue
-            }
-            let target = spaced[index + 1]
-            if (target == CLANG_MODULE || target |> starts_with("{CLANG_MODULE}/")) {
-                gate_finding(path, line_no, "requires `{target}`{reached}: nothing under {ROOT}/ needs clang")
-            }
-            let file = required_file(dir_name(path), target)
+        if (!has_value(words, REQUIRE)) {
+            continue
+        }
+        var inscope parts <- [for (part in split_by_chars(line, " \t")); part; where !empty(part)]
+        let is_plain = (length(parts) >= 2 && parts[0] == REQUIRE && is_module_path(parts[1])
+            && (length(parts) == 2 || (length(parts) == 3 && parts[2] == "public")))
+        if (has_value(words, CLANG_MODULE)) {
+            gate_finding(path, line_no, "requires `{CLANG_MODULE}`{reached}: nothing under {ROOT}/ needs clang")
+        } elif (!is_plain) {
+            gate_finding(path, line_no, "has a `{REQUIRE}` line{reached} that is not `{REQUIRE} <module>` or `{REQUIRE} <module> public`: the gate cannot name its module")
+        } else {
+            let file = required_file(dir_name(path), parts[1])
             if (!empty(file)) {
                 check_file(file, via, checked)
             }
@@ -152,13 +175,24 @@ def check_file(path, via : string; var checked : table<string>) {
     }
 }
 
+//! The gate over the folder `root`: every `.das` file is checked with what it requires, a `.h` and
+//! a `.md` file hold no daslang, and any other file is a finding, since daslang can load it as
+//! source and the gate does not read it.
+def check_tree(root : string) {
+    var inscope files : array<string>
+    files_under(root, files)
+    for (file in files) {
+        if (file |> ends_with(".das")) {
+            var inscope checked : table<string>
+            check_file(file, file, checked)
+        } elif (!(file |> ends_with(".h")) && !(file |> ends_with(".md"))) {
+            gate_finding(file, "is no .das, .h or .md file: the gate reads no other source")
+        }
+    }
+}
+
 [export]
 def main : int {
-    var inscope files : array<string>
-    das_files(ROOT, files)
-    for (file in files) {
-        var inscope checked : table<string>
-        check_file(file, file, checked)
-    }
+    check_tree(ROOT)
     return gate_verdict(ROOT)
 }

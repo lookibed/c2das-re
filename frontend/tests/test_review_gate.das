@@ -37,7 +37,7 @@ def test_frontend_gate(t : T?) {
     t |> run("a require of the clang binding or a submodule of it is a finding at its line") @(t : T?) {
         for (target in [CLANG_MODULE, "{CLANG_MODULE}/cbind_boost"]) {
             let found = findings_of(t, [(name = "a.das", text = "options gen2\nrequire {target} public\n")], "a.das")
-            t |> equal(found, "a.das:2: requires `{target}`: nothing under frontend/ needs clang")
+            t |> equal(found, "a.das:2: requires `{CLANG_MODULE}`: nothing under frontend/ needs clang")
         }
         let other = findings_of(t, [(name = "a.das", text = "require {CLANG_MODULE}_like\n")], "a.das")
         t |> equal(other, "")
@@ -60,6 +60,40 @@ def test_frontend_gate(t : T?) {
             let found = findings_of(t, [(name = "a.das", text = "options gen2\n\nrequire{blanks}{CLANG_MODULE}\n")], "a.das")
             t |> equal(found, "a.das:3: requires `{CLANG_MODULE}`: nothing under frontend/ needs clang", blanks)
         }
+    }
+    t |> run("a require line names the clang binding in any word, or is `require <module> [public]`") @(t : T?) {
+        for (line in fixed_array("require ?{CLANG_MODULE} {CLANG_MODULE}", "require strings {CLANG_MODULE}", "require ?{CLANG_MODULE}", "require x/{CLANG_MODULE}", "require {CLANG_MODULE} public")) {
+            let found = findings_of(t, [(name = "a.das", text = "options gen2\n{line}\n")], "a.das")
+            t |> equal(found, "a.das:2: requires `{CLANG_MODULE}`: nothing under frontend/ needs clang", line)
+        }
+        for (line in fixed_array("require ?strings", "require strings fio", "require", "require strings private", "let a = 1; require strings", "require \"strings\"")) {
+            let found = findings_of(t, [(name = "a.das", text = "options gen2\n{line}\n")], "a.das")
+            t |> success(found |> starts_with("a.das:2: has a `require` line that is not ") && find(found, "\n") < 0, "{line}: {found}")
+        }
+        let plain = findings_of(t, [(name = "a.das", text = "require strings\nrequire daslib/strings_boost public\n  require ../x-y/z.das\n")], "a.das")
+        t |> equal(plain, "")
+    }
+    t |> run("a text include is a finding, in a file and in what it requires") @(t : T?) {
+        let found = findings_of(t, [(name = "a.das", text = "options gen2\n{INCLUDE} body.inc\nrequire b\n"), (name = "b.das", text = "{INCLUDE} c.inc\n")], "a.das")
+        let lines <- split(found, "\n")
+        t |> equal(length(lines), 2, found)
+        t |> success(found |> starts_with("a.das:2: has an `{INCLUDE}`: the gate follows no text include"), found)
+        t |> success(find(found, "\nb.das:1: has an `{INCLUDE}` (required from ") > 0, found)
+    }
+    t |> run("under the folder every .das file is checked, and a file that is no .das, .h or .md is a finding") @(t : T?) {
+        let folder = path_join(test_temp_dir(), "gate_tree")
+        mkdir_rec(path_join(folder, "sub"))
+        for (name in fixed_array("a.das", "sub/body.inc", "sub/part.das.inc", "sub/x.h", "sub/y.md")) {
+            fwrite(path_join(folder, name), "let n = {SPAWNERS[0]}(x)\n")
+        }
+        gate_reset()
+        check_tree(folder)
+        let found <- gate_findings()
+        gate_reset()
+        t |> equal(length(found), 3, join(found, "\n"))
+        t |> success(length(found) == 3 && found[0] |> ends_with("a.das:1: names `{SPAWNERS[0]}`: nothing under frontend/ starts a process"), join(found, "\n"))
+        t |> success(length(found) == 3 && found[1] |> ends_with("sub/body.inc: is no .das, .h or .md file: the gate reads no other source"), join(found, "\n"))
+        t |> success(length(found) == 3 && found[2] |> ends_with("sub/part.das.inc: is no .das, .h or .md file: the gate reads no other source"), join(found, "\n"))
     }
     t |> run("a file required by path or as a sibling module is checked, once, naming the file that reaches it") @(t : T?) {
         let files <- [

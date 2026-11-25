@@ -22,13 +22,21 @@ that start a process: `popen`, `popen_binary`, `popen_timeout`, `popen_argv`, `p
 
 The ban holds for what a file pulls in as well. `REVIEW.das` reads each `.das` file under the
 folder with its comments and the characters of its string and character literals blanked (the code
-inside a string's `{...}` stays: it runs), and follows every `require` that names a file: a path
-ending in `.das`, or a module whose `<name>.das` sits beside the requiring file. It reports the
-word after `require`, whatever blanks part them, when it is `cbind` or `cbind/<name>`, and any of
-the seven names as a whole identifier, called or not: `x |> system`, `system (x)` and `@@system`
-are findings like `system(x)`, and so is a local or a field of such a name, which is renamed. Each
-finding carries the file and line, and for a file outside this folder the file here that reaches
-it. A module that a module folder or daslib
+inside a string's `{...}` stays: it runs), and reports, each with the file and line:
+
+- any of the seven names as a whole identifier, called or not: `x |> system`, `system (x)` and
+  `@@system` are findings like `system(x)`, and so is a local or a field of such a name, which is
+  renamed;
+- a line that holds the word `require` and the word `cbind` anywhere; and a line that holds
+  `require` and is not `require <module>` or `require <module> public`, `<module>` spelled in
+  letters, digits, `_`, `.`, `/` and `-`, since the gate cannot name the module of any other form;
+- the word `include`: the gate follows no text include, so a file here has none.
+
+It follows every `require` that names a file, a path ending in `.das` or a module whose
+`<name>.das` sits beside the requiring file, and names for a finding outside this folder the file
+here that reaches it. Under the folder itself a file is a `.das` file, which is checked, or a `.h`
+or `.md` file, which holds no daslang; any other file (`.inc`, `.das.inc`) is a finding, since
+daslang can load it as source and the gate does not read it. A module that a module folder or daslib
 resolves (`strings`, `daslib/fio`, `crt`) has no file beside the requirer and is not followed.
 `include/tests/test_headers.das` requires `converter/emit.das` for the emitter's libc tables, and
 the gate walks that file and the converter modules it requires.
