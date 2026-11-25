@@ -31,10 +31,8 @@ typedef __INT64_TYPE__ intmax_t;
 typedef unsigned __INT64_TYPE__ uintmax_t;
 
 #if __LONG_MAX__ > 2147483647L
-typedef long int_fast16_t;
-typedef long int_fast32_t;
-typedef unsigned long uint_fast16_t;
-typedef unsigned long uint_fast32_t;
+#define __FAST16_TYPE long
+#define __FAST32_TYPE long
 #define INT_FAST16_MIN (-9223372036854775807L-1)
 #define INT_FAST32_MIN (-9223372036854775807L-1)
 #define INT_FAST16_MAX (9223372036854775807L)
@@ -46,10 +44,8 @@ typedef unsigned long uint_fast32_t;
 #define INTMAX_C(c) c ## L
 #define UINTMAX_C(c) c ## UL
 #else
-typedef short int_fast16_t;
-typedef int int_fast32_t;
-typedef unsigned short uint_fast16_t;
-typedef unsigned int uint_fast32_t;
+#define __FAST16_TYPE short
+#define __FAST32_TYPE int
 #define INT_FAST16_MIN (-32767-1)
 #define INT_FAST32_MIN (-2147483647-1)
 #define INT_FAST16_MAX (32767)
@@ -61,6 +57,11 @@ typedef unsigned int uint_fast32_t;
 #define INTMAX_C(c) c ## LL
 #define UINTMAX_C(c) c ## ULL
 #endif
+
+typedef __FAST16_TYPE int_fast16_t;
+typedef __FAST32_TYPE int_fast32_t;
+typedef unsigned __FAST16_TYPE uint_fast16_t;
+typedef unsigned __FAST32_TYPE uint_fast32_t;
 
 #define INT8_C(c) c
 #define INT16_C(c) c

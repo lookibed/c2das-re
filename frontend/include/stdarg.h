@@ -2,10 +2,8 @@
 #ifndef _STDARG_H
 #define _STDARG_H
 
-#ifndef __GNUC_VA_LIST
-#define __GNUC_VA_LIST
-typedef __builtin_va_list __gnuc_va_list;
-#endif
+#include <bits/gnuc_va_list.h>
+
 typedef __builtin_va_list va_list;
 
 #define va_start(ap, param) __builtin_va_start(ap, param)

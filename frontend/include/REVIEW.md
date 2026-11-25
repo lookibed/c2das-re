@@ -10,9 +10,10 @@ they flag instead.**
 `tests/test_headers.das` states in `ARCHITECTURE.md` section 2 why that name has no prototype, in
 the same change.**
 
-**A diff that adds a base type to `BASE_TYPES` in `tests/_header_scan.das` maps it to the das type
-the `crt` module binds a value of that C type as, and to `UNBOUND` only when no `crt` function
-takes or returns it.**
+**A diff that adds a type to `BASE_TYPES` in `tests/_header_scan.das` adds a C type or a type
+macro the compiler predefines, never a typedef name, and maps it to the das type the `crt` module
+binds a value of that type as under both dialects, or to `UNBOUND` when no `crt` function takes or
+returns it.**
 
 **A diff that adds a macro whose expansion calls a function or a `__builtin_` name adds it only
 when `converter/emit.das` (repo root) maps the called name - a macro over a name nothing lowers is

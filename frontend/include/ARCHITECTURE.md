@@ -6,10 +6,11 @@ when it runs, under the C names, and nothing more of a libc.
 
 ## 1. File charters
 
-- `<name>.h`, `sys/<name>.h` - the C header of that name: the prototypes, objects, macros and types
+- `<name>.h`, `sys/<name>.h`, `bits/gnuc_va_list.h` - the C header of that name (the last holds
+  `__gnuc_va_list` for `<stdarg.h>` and `<stdio.h>`): the prototypes, objects, macros and types
   of section 2, each line in a form of section 3. Never a prototype of a function nothing binds.
-- `tests/_header_scan.das` - the line scanner of section 3 and `BASE_TYPES`, the base types a
-  prototype may spell with the das type `crt` binds each as.
+- `tests/_header_scan.das` - the line scanner of section 3 and `BASE_TYPES`, the types a
+  declaration bottoms out in with the das type `crt` binds each as.
 - `tests/test_headers.das` - the equations of section 2 between the headers, read as text, and the
   loaded `crt` module and the emitter's tables; and the scanner's own cases.
 
@@ -34,10 +35,14 @@ prototypes under their own names.
 
 **Shapes.** A prototype of a `crt` function has the bind's parameter count, parameter types and
 result type, a C type read as `crt` spells it: `char` is `uint8`, `int` is `int`, `unsigned int`
-and `mode_t` are `uint`, `long`, `long long`, `time_t` and `clock_t` are `int64`, `unsigned long`,
-`unsigned long long` and `size_t` are `uint64`, `clockid_t` is `int`, `float` and `double`
+is `uint`, `long` and `long long` are `int64`, `unsigned long` and `unsigned long long` are
+`uint64`, `float` and `double`
 themselves; a pointer adds `?` and keeps the pointee's `const`; a pointer to `void` or to a record
-(`FILE *`, `struct tm *`) is `void?`. C's `long` is `int64` there under both dialects: `crt` binds
+(`FILE *`, `struct tm *`) is `void?`. A typedef name is read as the type its header declares it
+as, through every typedef between, down to a C type or a predefined type macro pinned at the width
+both dialects give it (`__SIZE_TYPE__` is `uint64`, `__INT64_TYPE__` is `int64`): `time_t` is
+`int64` because `<time.h>` declares it `__INT64_TYPE__`, not by its name, and a name no header
+declares is an error. C's `long` is `int64` there under both dialects: `crt` binds
 the host libc at the host's widths, and the emitter narrows at the call site where the dialect's
 `long` is 32 bits. A prototype of a lowered function is checked by name only, since no bind has
 its shape.
@@ -75,16 +80,33 @@ and ends in no blank.
 - an empty line;
 - a comment on one line, `/* ... */`;
 - a directive on one line: `#ifndef`, `#ifdef`, `#if`, `#else`, `#endif`, `#undef`, `#define`
-  (object-like or function-like; its name is recorded as a macro), `#include <name>` (`name` a
-  header of this folder);
-- `typedef ...;` on one line;
+  (object-like or function-like), `#include <name>` (`name` a header of this folder);
+- a typedef, one declaration whose only `;` ends the line: `typedef <type> <name>;` with no
+  pointer, an array `typedef <type> <name>[<count>];`, or a function pointer
+  `typedef <type> (*<name>)(<types>);`. A name is declared by one line of one header;
 - a record: `struct <tag> {`, member lines `    <type> <name>;` with no parenthesis or brace, then
   `};`;
 - an object: `extern <type> <name>;`;
 - a prototype: `<type> <name>(<type>, <type>);`, the parameters unnamed, `(void)` for none, `...`
-  last for a variadic. A type is an optional `const`, a base type of `BASE_TYPES` or `struct <tag>`,
-  then for a pointer one space and the stars (`const char *`, `char **`). A parameter that is a
-  function pointer is spelled through a typedef (`__compar_fn_t`, `__sighandler_t`).
+  last for a variadic. A type is an optional `const`, then a C base type, `struct <tag>` or a
+  typedef name, then for a pointer one space and the stars (`const char *`, `char **`). A parameter
+  that is a function pointer is spelled through a typedef (`__compar_fn_t`, `__sighandler_t`).
+
+The scanner evaluates no condition, so it counts only what no condition can remove:
+
+- a header that declares a type starts with its include guard: `#ifndef <guard>` as its first
+  line of code, `#define <guard>` on the next line, the matching `#endif` its last line. The guard
+  is the header's name in capitals behind an underscore (`_SYS_STAT_H`), and no other line of any
+  header defines it. `<assert.h>` has none: its prototype may repeat, and its macro is defined
+  anew at each inclusion;
+- every other conditional holds `#define` lines only, has an `#else`, and holds no conditional.
+  So a prototype, an object, a typedef, a record and an `#include` stand under the include guard
+  alone;
+- a macro of a conditional counts as defined when both arms define it (`assert` under `NDEBUG`,
+  `INT64_C` under the width of `long`), and a conditional whose arms define different names is an
+  error. An `#undef` takes its name out of the count. Where a type depends on the dialect, the
+  conditional defines a macro for it and the typedef stands after it (`__FAST16_TYPE` for
+  `int_fast16_t`).
 
 ## 4. Spellings kept from glibc
 
@@ -99,7 +121,8 @@ spellings, so that a program converts to the same text over these headers as ove
   no statement expression, and `__func__` where glibc under GNU C passes `__PRETTY_FUNCTION__`.
   `<assert.h>` defines `assert` anew at every inclusion, as C requires.
 - `jmp_buf` is `struct __jmp_buf_tag[1]`, the record at glibc's size (200 bytes).
-- `va_list` is `__builtin_va_list`, and `<stdio.h>` spells it `__gnuc_va_list`.
+- `va_list` is `__builtin_va_list`, and `<stdio.h>` spells it `__gnuc_va_list`, whose one
+  declaration is `<bits/gnuc_va_list.h>`.
 - `FILE` is `struct _IO_FILE`, declared and never defined.
 - `struct tm` ends in `__tm_gmtoff` and `__tm_zone`, glibc's names for the two members outside ISO
   C when a feature macro such as `_XOPEN_SOURCE` narrows it, which Lua's sources define.

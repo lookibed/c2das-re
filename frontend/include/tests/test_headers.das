@@ -60,6 +60,7 @@ def private scan_headers : HeaderScan {
     for (name in names) {
         scan_header(scan, name, fread(path_join(INCLUDE_DIR, name)))
     }
+    check_types(scan)
     return <- scan
 }
 
@@ -80,6 +81,7 @@ def private predefined_shaped(text : string; var names : table<string>) {
 def private scan_text(text : string) : HeaderScan {
     var scan : HeaderScan
     scan_header(scan, "t.h", text)
+    check_types(scan)
     return <- scan
 }
 
@@ -132,8 +134,8 @@ def private crt_signatures : table<string; string> {
     return <- signatures
 }
 
-def private header_signature(proto : Prototype) : string =>
-    "{das_spelling(proto.result)}({join([for (param in proto.params); das_spelling(param)], ", ")})"
+def private header_signature(typedefs : table<string; string>; proto : Prototype) : string =>
+    "{das_spelling(typedefs, proto.result)}({join([for (param in proto.params); das_spelling(typedefs, param)], ", ")})"
 
 def private only_in(names : array<string>; other : table<string>) : string {
     var inscope left <- [for (name in names); name; where !key_exists(other, name)]
@@ -193,7 +195,7 @@ def test_headers_match_crt(t : T?) {
         let signatures <- crt_signatures()
         for (proto in scan.prototypes) {
             if (key_exists(signatures, proto.name)) {
-                t |> equal(header_signature(proto), signatures?[proto.name] ?? "", "{proto.header}: `{proto.name}`")
+                t |> equal(header_signature(scan.typedefs, proto), signatures?[proto.name] ?? "", "{proto.header}: `{proto.name}`")
             }
         }
     }
@@ -210,6 +212,22 @@ def test_headers_match_crt(t : T?) {
         var found <- [for (name in keys(read)); name]
         sort(found)
         t |> equal(join(found, " "), join(PREDEFINED, " "))
+    }
+    t |> run("an include guard is its header's own, defined by its header alone") @(t : T?) {
+        let scan <- scan_headers()
+        var seen : table<string>
+        for (guard in scan.guards) {
+            t |> success(!key_exists(seen, guard) && !has_value(scan.defined, guard), "`{guard}` is defined beside its guard")
+            seen |> insert(guard)
+        }
+        t |> success(!empty(scan.guards), "no header has a guard")
+    }
+    t |> run("a predefined type macro a prototype may bottom out in is a listed predefined name") @(t : T?) {
+        for (base in keys(BASE_TYPES)) {
+            for (word in split(base, " ")) {
+                t |> success(!(word |> starts_with("__") && word |> ends_with("__")) || has_value(PREDEFINED, word), "`{word}` is pinned and not listed")
+            }
+        }
     }
     t |> run("a named crt helper is a function crt exports") @(t : T?) {
         var exported : table<string>
@@ -245,6 +263,9 @@ def test_headers_match_crt(t : T?) {
     }
 }
 
+// a header `t.h` of the lines `body` inside its include guard
+def private guarded(body : string) : string => "#ifndef _T_H\n#define _T_H\n{body}#endif\n"
+
 [test(description = "the scanner reads each line form and refuses every other line")]
 def test_header_scanner(t : T?) {
     t |> run("a prototype is its name, result and unnamed parameters") @(t : T?) {
@@ -257,44 +278,125 @@ def test_header_scanner(t : T?) {
         t |> equal(length(scan.prototypes[1].params), 0)
         t |> equal(join(scan.prototypes[2].params, "|"), "const char *|...")
     }
-    t |> run("objects, macros of both kinds, includes and a record are read") @(t : T?) {
-        let scan <- scan_text("/* c */\n#ifndef G\n#define G\n#include <stddef.h>\n\n#define EOF (-1)\n#define va_end(ap) __builtin_va_end(ap)\ntypedef int sig_atomic_t;\nextern FILE *stdin;\nstruct tm \{\n    int tm_sec;\n\};\n#endif\n")
+    t |> run("objects, macros of both kinds, includes, typedefs and a record are read") @(t : T?) {
+        let scan <- scan_text("/* c */\n" + guarded("#include <stddef.h>\n\n#define EOF (-1)\n#define va_end(ap) __builtin_va_end(ap)\ntypedef int sig_atomic_t;\ntypedef unsigned __INT64_TYPE__ u64;\ntypedef struct _IO_FILE FILE;\ntypedef struct tag buf[1];\ntypedef void (*handler)(int);\nextern FILE *stdin;\nstruct tm \{\n    int tm_sec;\n\};\n"))
         t |> equal(join(scan.errors, "\n"), "")
         t |> equal(join(scan.objects, " "), "stdin")
-        t |> equal(join(scan.macros, " "), "G EOF va_end")
+        t |> equal(join(scan.macros, " "), "EOF va_end")
+        t |> equal(join(scan.guards, " "), "_T_H")
         t |> equal(join(scan.includes, " "), "stddef.h")
         t |> equal(length(scan.prototypes), 0)
+        t |> equal(scan.typedefs?["sig_atomic_t"] ?? "", "int")
+        t |> equal(scan.typedefs?["u64"] ?? "", "unsigned __INT64_TYPE__")
+        t |> equal(scan.typedefs?["FILE"] ?? "", "struct _IO_FILE")
+        t |> equal(scan.typedefs?["buf"] ?? "", UNBOUND)
+        t |> equal(scan.typedefs?["handler"] ?? "", UNBOUND)
+        t |> equal(length(scan.typedefs), 5)
     }
     t |> run("a line of no form is one error naming the header and the line") @(t : T?) {
         let malformed = fixed_array(
-            "size_t strlen(const char *s);", "int f(int x);", "int f();", "int f(..., int);", "int f(...);", "int  f(void);",
-            " int f(void);", "int f(void) ;", "int f(int (*)(int));", "int f(const int);", "int f(struct tm);", "wint_t f(void);",
+            "size_t strlen(const char *s);", "int f();", "int f(..., int);", "int f(...);", "int  f(void);",
+            " int f(void);", "int f(void) ;", "int f(int (*)(int));",
             "int f(void);\t", "int f(void); ", "#pragma once", "#include_next <stdio.h>", "#include \"stdio.h\"", "#define",
-            "#define M(a) \\", "/* open", "/* a */ int x;", "// c", "struct tm;", "static int x;", "int x;", "\};")
+            "#define M(a) \\", "/* open", "/* a */ int x;", "// c", "struct tm;", "static int x;", "int x;", "\};", "#endif",
+            "#else", "#define _T_H", "typedef int a_t;", "struct s \{")
         for (line in malformed) {
             let scan <- scan_text("int ok(void);\n{line}\n")
             t |> equal(length(scan.errors), 1, line)
-            t |> success(length(scan.errors) == 1 && scan.errors[0] |> starts_with("t.h:2: "), line)
+            t |> success(length(scan.errors) == 1 && (scan.errors[0] |> starts_with("t.h:2: ") || line == "struct s \{"), line)
             t |> equal(length(scan.prototypes), 1, line)
+        }
+    }
+}
+
+[test(description = "the scanner reads a typedef as its declared type and a type through its typedefs")]
+def test_header_types(t : T?) {
+    t |> run("a prototype over a type that is none is one error at its line") @(t : T?) {
+        for (line in fixed_array("int f(int x);", "int f(const int);", "int f(struct tm);", "wint_t f(void);", "int f(size_t);")) {
+            let scan <- scan_text("int ok(void);\n{line}\n")
+            t |> equal(length(scan.errors), 1, line)
+            t |> success(length(scan.errors) == 1 && scan.errors[0] |> starts_with("t.h:2: `f`: ") && scan.errors[0] |> ends_with(" is no type the headers declare"), line)
+        }
+    }
+    t |> run("a typedef is one declaration of a rigid form, declared once") @(t : T?) {
+        let malformed = fixed_array(
+            "typedef __SIZE_TYPE__ size_t; int unsupported(void);", "typedef int a_t, b_t;", "typedef int *p_t;", "typedef int;",
+            "typedef a_t;", "typedef int a_t[2", "typedef struct \{ int a; \} s_t;", "typedef int (*f_t)(int)(int;", "typedef int ok_t;")
+        for (line in malformed) {
+            let scan <- scan_text(guarded("typedef int ok_t;\n{line}\n"))
+            t |> equal(length(scan.errors), 1, line)
+            t |> success(length(scan.errors) == 1 && scan.errors[0] |> starts_with("t.h:4: "), line)
+            t |> equal(length(scan.typedefs), 1, line)
+        }
+    }
+    t |> run("a prototype's typedef name stands for what a header declares it as, and for nothing when none does") @(t : T?) {
+        let narrow <- scan_text(guarded("typedef int time_t;\ntypedef time_t stamp_t;\ntime_t time(stamp_t *);\n"))
+        t |> equal(join(narrow.errors, "\n"), "")
+        t |> equal(das_spelling(narrow.typedefs, "time_t"), "int")
+        t |> equal(das_spelling(narrow.typedefs, "stamp_t *"), "int?")
+        let undeclared <- scan_text("time_t time(time_t *);\n")
+        t |> equal(length(undeclared.errors), 2)
+        t |> success(!empty(undeclared.errors) && undeclared.errors[0] == "t.h:1: `time`: `time_t *` is no type the headers declare", join(undeclared.errors, "\n"))
+        let cyclic <- scan_text(guarded("typedef b_t a_t;\ntypedef a_t b_t;\nint f(a_t);\n"))
+        t |> equal(join(cyclic.errors, "\n"), "t.h:5: `f`: `a_t` is no type the headers declare")
+    }
+}
+
+[test(description = "the scanner counts nothing a conditional can compile out, and holds the include guard to its form")]
+def test_header_conditionals(t : T?) {
+    t |> run("a declaration inside a conditional is an error, and is not counted") @(t : T?) {
+        let hidden = fixed_array("void *malloc(int);", "extern int errno;", "typedef int size_t;", "struct s \{", "#include <stddef.h>", "#undef EOF", "#if 1")
+        for (line in hidden) {
+            let closing = line == "struct s \{" ? "\};\n" : line == "#if 1" ? "#else\n#endif\n" : ""
+            let scan <- scan_text(guarded("#if 0\n{line}\n{closing}#else\n#endif\n"))
+            t |> success(!empty(scan.errors) && scan.errors[0] |> starts_with("t.h:4: "), "{line}: {join(scan.errors, " | ")}")
+            t |> equal(length(scan.prototypes) + length(scan.objects) + length(scan.typedefs) + length(scan.includes), 0, line)
+        }
+    }
+    t |> run("a macro of a conditional counts when both arms define it, and a macro undefined later does not") @(t : T?) {
+        let both <- scan_text("#ifdef NDEBUG\n#define assert(e) 0\n#define A 1\n#else\n#define A 2\n#define assert(e) 1\n#endif\n#define B 1\n#define C 1\n#undef B\n")
+        t |> equal(join(both.errors, "\n"), "")
+        t |> equal(join(both.macros, " "), "assert A C")
+        t |> equal(join(both.defined, " "), "assert A A assert B C")
+        for (dead in fixed_array("#if 0\n#define EDOM 33\n#endif\n", "#if 0\n#define EDOM 33\n#else\n#endif\n", "#if 0\n#else\n#define EDOM 33\n#endif\n", "#if 0\n#define EDOM 33\n#else\n#define ERANGE 34\n#endif\n")) {
+            let scan <- scan_text(dead)
+            t |> equal(length(scan.errors), 1, dead)
+            t |> equal(length(scan.macros), 0, dead)
+        }
+    }
+    t |> run("the include guard is the header's own name, its #define next, its #endif last") @(t : T?) {
+        t |> equal(guard_of("sys/stat.h"), "_SYS_STAT_H")
+        let whole <- scan_text(guarded("typedef int a_t;\n"))
+        t |> equal(join(whole.errors, "\n"), "")
+        let broken = fixed_array(
+            "#ifndef _T_H\n\n#define _T_H\ntypedef int a_t;\n#endif\n", "#ifndef _T_H\ntypedef int a_t;\n#endif\n",
+            "#ifndef _OTHER_H\n#define _OTHER_H\ntypedef int a_t;\n#endif\n", "#ifndef _T_H\n#define _T_H\n#endif\ntypedef int a_t;\n",
+            "#ifndef _T_H\n#define _T_H\ntypedef int a_t;\n", "#ifndef _T_H\n#define _T_H\n#define _T_H\n#endif\n",
+            "#define X 1\n#ifndef _T_H\n#define _T_H\ntypedef int a_t;\n#endif\n", "#ifndef _T_H\n#define _T_H\n#else\n#endif\n")
+        for (text in broken) {
+            let scan <- scan_text(text)
+            t |> success(!empty(scan.errors), text)
         }
     }
     t |> run("a record member is indented and plain, and a record left open is an error") @(t : T?) {
         for (member in fixed_array("int a;", "    int a", "    int (*f)(void);", "    struct \{")) {
-            let scan <- scan_text("struct s \{\n{member}\n\};\n")
+            let scan <- scan_text(guarded("struct s \{\n{member}\n\};\n"))
             t |> equal(length(scan.errors), 1, member)
         }
-        let open <- scan_text("struct s \{\n    int a;\n")
-        t |> equal(join(open.errors, "\n"), "t.h: a record is open at the end of the file")
+        let open <- scan_text("#ifndef _T_H\n#define _T_H\nstruct s \{\n    int a;\n")
+        t |> equal(join(open.errors, "\n"), "t.h: a record is open at the end of the file\nt.h: a conditional is open at the end of the file")
     }
     t |> run("a C type is spelled as crt binds it") @(t : T?) {
+        let typedefs <- {"size_t" => "__SIZE_TYPE__", "time_t" => "__INT64_TYPE__", "FILE" => "struct _IO_FILE", "jmp_buf" => UNBOUND}
         let spelled = fixed_array(
             ("int", "int"), ("unsigned int", "uint"), ("long", "int64"), ("unsigned long long", "uint64"), ("size_t", "uint64"),
             ("time_t", "int64"), ("float", "float"), ("void", "void"), ("char *", "uint8?"), ("const char *", "uint8 const?"),
             ("char **", "uint8??"), ("int *", "int?"), ("const time_t *", "int64 const?"), ("void *", "void?"),
             ("const void *", "void?"), ("FILE *", "void?"), ("const struct tm *", "void?"), ("jmp_buf", "unbound"),
+            ("signed char", "int8"), ("unsigned short", "uint16"), ("clock_t", ""), ("int x", ""),
             ("FILE", ""), ("struct tm", ""), ("const int", ""), ("char*", ""), ("char * *", ""), ("unsigned", ""), ("", ""), ("*", ""))
         for (pair in spelled) {
-            t |> equal(das_spelling(pair._0), pair._1, pair._0)
+            t |> equal(das_spelling(typedefs, pair._0), pair._1, pair._0)
         }
     }
 }

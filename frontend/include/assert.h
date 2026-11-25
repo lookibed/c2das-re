@@ -1,8 +1,5 @@
 /* <assert.h> of the own libc header set (frontend/include/ARCHITECTURE.md). */
-#ifndef _ASSERT_H
-#define _ASSERT_H
 void __assert_fail(const char *, const char *, unsigned int, const char *);
-#endif
 
 #undef assert
 #ifdef NDEBUG
