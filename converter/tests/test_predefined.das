@@ -7,10 +7,13 @@ require daslib/strings_boost
 require ../../frontend/c_defines.das
 require ../cir.das
 require ../dumper_a.das
+require ../pipeline.das
+require ../tiers.das
 
 //! The predefined-macro tables against the pinned clang (`frontend/ARCHITECTURE.md` section 3):
 //! every macro clang predefines under a dialect's triple is an entry with clang's value or a name
-//! of a listed exclusion class.
+//! of a listed exclusion class, the dumper's flags leave clang with the table's macros and no
+//! other, and a program is dumped under them.
 
 // the classes of predefined names no table holds, each a list of names, a trailing `*` standing
 // for any rest
@@ -160,4 +163,77 @@ def test_tables_partition_clang(t : T?) {
             }
         }
     }
+}
+
+[test(description = "the dumper's macro flags leave clang with the table's macros and the converter's, and no other", timeout = 1200)]
+def test_dumper_macro_flags(t : T?) {
+    for (dialect in DIALECTS) {
+        t |> run("{dialect}: `-undef`, the table in its order as -D, then the converter's own define; clang takes them with no error") @(t : T?) {
+            var error : string
+            let flags <- frontend_macro_flags(predefined_table(target_of(dialect)), error)
+            t |> equal(error, "")
+            var table_error : string
+            let entries <- read_predefined(predefined_path(dialect), table_error)
+            var expected <- ["-undef"]
+            expected |> push_from([for (entry in entries); "-D{entry}"], CONVERTER_DEFINES)
+            t |> equal(join(flags, "\n"), join(expected, "\n"))
+            var defined <- [for (entry in entries); canonical(entry)]
+            defined |> push_from([for (flag in CONVERTER_DEFINES); canonical(slice(flag, 2))])
+            sort(defined)
+            let seen <- clang_macros(target_of(dialect).triple, flags)
+            t |> equal(join([for (entry in seen); canonical(entry)], "\n"), join(defined, "\n"))
+        }
+    }
+    t |> run("a table that is missing fails naming its path, and gives no flag to run clang under") @(t : T?) {
+        let missing = path_join(test_temp_dir(), "no_such_dialect.defs")
+        var error : string
+        let flags <- frontend_macro_flags(missing, error)
+        t |> equal(error, "{missing}: no such predefined-macro table")
+        t |> equal(length(flags), 0)
+    }
+}
+
+// a program printing which compiler names it sees, a table macro in an expression and in an
+// `#if`, and `__STDC_VERSION__`
+let private IDENTITY_SOURCE = "int printf(const char *, ...);\n#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER) || defined(__llvm__)\n#define WHO 1\n#else\n#define WHO 0\n#endif\n#if __SIZEOF_INT__ == 4 && __STDC_NO_VLA__\n#define SIZED 1\n#else\n#define SIZED 0\n#endif\nint main(void) \{ int top = __INT_MAX__; long version = __STDC_VERSION__; printf(\"%d %d %d %ld %d\\n\", WHO, SIZED, top, version, __CHAR_BIT__ * (int)sizeof(__SIZE_TYPE__)); return 0; \}\n"
+
+// `IDENTITY_SOURCE` converted under `dialect` in `<dir>/<name>`, `sidecar` beside it when given,
+// and run under the interpreter: its output
+def private identity_run(t : T?; dir, name, dialect, sidecar : string) : string {
+    let at = path_join(dir, name)
+    mkdir_rec(at)
+    let c_path = path_join(at, "identity.c")
+    fwrite(c_path, IDENTITY_SOURCE)
+    if (!empty(sidecar)) {
+        fwrite(path_join(at, "identity.c2das"), sidecar)
+    }
+    let conv <- convert(c_path, path_join(at, "out"), dialect)
+    if (!conv.ok) {
+        t |> failure(conv.error)
+        return ""
+    }
+    var output : string
+    let rc = run_tier(conv.das_path, "interp", at, output, CONVERTED_MODULES)
+    t |> equal(rc, 0, output)
+    return output
+}
+
+[test(description = "a program is dumped under the table: no compiler's name, the table's values, a sidecar define over them", timeout = 1200)]
+def test_dump_under_the_table(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_predefined", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("under both dialects the program sees no compiler's name, and the table's sizes, limits and language") @(t : T?) {
+        for (dialect in DIALECTS) {
+            t |> equal(identity_run(t, dir, dialect, dialect, ""), "0 1 2147483647 201710 64\n", dialect)
+        }
+    }
+    t |> run("a sidecar's define of a table's name comes later and wins") @(t : T?) {
+        let side = "\{\"defines\": [\"__STDC_VERSION__=199901L\", \"__GNUC__=4\"]\}\n"
+        t |> equal(identity_run(t, dir, "sidecar", "linux", side), "1 1 2147483647 199901 64\n")
+    }
+    rmdir_rec(dir)
 }

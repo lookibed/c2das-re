@@ -4,8 +4,7 @@ Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this docume
 holds the part of the converter that reads C with no clang behind it. Today that is the libc
 header set under `include/`, which no converter code reads (Dumper A resolves `<...>` in clang's
 own system directories, `converter/ARCHITECTURE_DUMPER.md` section 3), and the macro definitions
-of section 3: the sidecar reader checks its `defines` by their parser, and no dumper reads the
-tables yet.
+of section 3, which the sidecar reader and Dumper A do read.
 
 ## 1. File charters
 
@@ -62,8 +61,9 @@ entry (a blank at either end included) and a name a line above defines, and refu
 missing or holds no entry. `predefined_path` names a dialect's table beside the module, so the
 converter finds it from wherever it runs.
 
-The tables are the whole set of predefined macros for a frontend that reads them: clang drops its
-own under `-undef` and takes the entries as `-D`. Their content follows one rule: **a table never disagrees with clang.** Every entry has the
+The tables are the whole set of predefined macros: a compiler that reads them drops its own
+(`clang -undef`, `converter/ARCHITECTURE_DUMPER_MACROS.md`), so both dumpers preprocess one
+input. Their content follows one rule: **a table never disagrees with clang.** Every entry has the
 value the pinned clang predefines for that name under the dialect's triple with `-funsigned-char`
 and no `-std` (so the language is clang's default, gnu17: `__STDC_VERSION__` is `201710L`), and
 every name clang predefines there is an entry unless a class below excludes it. The one entry

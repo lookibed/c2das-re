@@ -1,6 +1,19 @@
-# converter Architecture - Dumper A's function-like macros
+# converter Architecture - Dumper A's macros
 
 Companion to `ARCHITECTURE.md` in this folder, continuing section 3 of `ARCHITECTURE_DUMPER.md`.
+
+### The macros a unit is preprocessed under {#predefined}
+
+Both clang runs of a unit, the libclang pass and the JSON dump, start with `frontend_macro_flags`:
+`-undef`, so that clang predefines no macro of its own (`__GNUC__`, `__clang__`, `_MSC_VER`); the
+dialect's predefined-macro table (`frontend/ARCHITECTURE.md` section 3) as `-D<entry>` each, in the
+table's order; then `CONVERTER_DEFINES`, which is `__NO_CTYPE` (else glibc's `isalpha(c)` is a macro
+indexing a locale table; with it the crt function). The sidecar's `defines` follow, and a later `-D`
+of a name wins. A table that is missing or malformed fails the dump naming the file. Clang's dump
+writes a table macro's token as spelled in `<built-in>`, as it writes its own (the command line is a
+part of that buffer, named only as the `presumedFile`), and libclang gives neither a file, so a
+location reads the same under both. `metrics/criteria_defines.das` preprocesses under the same
+flags; a native build (`tiers.das`, the harnesses) never gets them.
 
 ### Function-like macro expansions {#fn-macros}
 

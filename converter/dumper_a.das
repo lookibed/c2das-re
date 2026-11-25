@@ -14,6 +14,7 @@ require daslib/algorithm
 require cir
 require bit_units
 require macro_sites
+require ../frontend/c_defines.das
 
 //! Dumper A: `clang -ast-dump=json` normalized into C-IR. Fails closed: the first construct it
 //! cannot represent exactly stops the dump with a location in `error`.
@@ -1089,11 +1090,11 @@ def private register_macro_definition(var d : Dumper; var c : CXCursor) {
 // libclang's `CXTranslationUnit_DetailedPreprocessingRecord`, which dasClangBind exports only as a type
 let private DETAILED_PREPROCESSING_RECORD = 1u
 
-def private collect_records(var d : Dumper; triple : string; resource_dir : string; inputs : array<string>) {
+def private collect_records(var d : Dumper; triple : string; resource_dir : string; macro_flags : array<string>; inputs : array<string>) {
     // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
     // `size_t` a libc prototype spells) come from the pinned clang's
     var args <- ["-target", triple, "-funsigned-char", "-w", "-resource-dir", resource_dir]
-    args |> push_from(CONVERTER_DEFINES, inputs)
+    args |> push_from(macro_flags, inputs)
     var idx = clang_createIndex(0, 0)
     // the detailed record lists each macro expansion of a file with its definition
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, DETAILED_PREPROCESSING_RECORD)
@@ -4390,12 +4391,29 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
 def default_clang : string =>
     has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
 
-//! The defines every clang run of the converter passes before the sidecar's: glibc's <ctype.h>
-//! spells `isalpha(c)` as a macro indexing its locale table (`__ctype_b_loc`) unless `__NO_CTYPE`
-//! is defined, with it each is the libc function the crt module binds; and `__STDC_NO_VLA__`,
-//! which C11 6.10.8.3 has an implementation without variable-length arrays define, so a program
-//! that tests it takes its fixed-size path (the converter lowers no VLA)
-let CONVERTER_DEFINES <- ["-D__NO_CTYPE", "-D__STDC_NO_VLA__=1"]
+//! The define every clang run of the dumper passes after the dialect's table and before the
+//! sidecar's: glibc's <ctype.h> spells `isalpha(c)` as a macro indexing its locale table
+//! (`__ctype_b_loc`) unless `__NO_CTYPE` is defined, with it each is the libc function the crt
+//! module binds
+let CONVERTER_DEFINES <- ["-D__NO_CTYPE"]
+
+//! The file of the predefined-macro table `target` is dumped under, its dialect's.
+def predefined_table(target : CirTarget) : string => predefined_path(is_msvc(target) ? "msvc" : "linux")
+
+//! The macro flags every clang run of the dumper's frontend starts with: `-undef`, which drops
+//! clang's own predefined macros, the entries of the predefined-macro table file `table_path` as
+//! `-D<entry>` each in the table's order, then `CONVERTER_DEFINES`. `error` names a table that is
+//! missing or malformed.
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#predefined")]
+def frontend_macro_flags(table_path : string; var error : string&) : array<string> {
+    var flags : array<string>
+    let entries <- read_predefined(table_path, error)
+    if (empty(error)) {
+        flags |> push("-undef")
+        flags |> push_from([for (entry in entries); "-D{entry}"], CONVERTER_DEFINES)
+    }
+    return <- flags
+}
 
 // the sidecar's `defines`, `include_dirs` and `include_files` as clang flags, `-D<entry>`, `-I<dir>`
 // and `-include <file>` each
@@ -4605,14 +4623,18 @@ def dump_tu(var d : Dumper; c_path : string; target : CirTarget; clang : string;
         d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under a folder clang searches for system headers"
         return
     }
+    let macro_flags <- frontend_macro_flags(predefined_table(target), d.error)
+    if (!empty(d.error)) {
+        return
+    }
     let flags <- input_flags(inputs)
-    collect_records(d, target.triple, resource_dir, flags)
+    collect_records(d, target.triple, resource_dir, macro_flags, flags)
     if (!empty(d.error)) {
         return
     }
     var out : string
     var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple]
-    dump_args |> push_from(CONVERTER_DEFINES, flags, [c_path])
+    dump_args |> push_from(macro_flags, flags, [c_path])
     let rc = run_and_capture(dump_args, out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"

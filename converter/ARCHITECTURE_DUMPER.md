@@ -76,9 +76,8 @@ spells the declaration (`int a[n]`). A VLA parameter is no array: clang decays i
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:
 int 32, long 32, long long 64; `linux`: long 64); plain `char` is unsigned in both
 (`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. Both passes
-define `CONVERTER_DEFINES`: `__NO_CTYPE` (else glibc's `isalpha(c)` is a macro indexing a locale
-table; with it the crt function) and `__STDC_NO_VLA__` 1 (C11 6.10.8.3, no VLAs), so a program
-testing it (wasm3's `M3_HAS_VLA`) takes its fixed-size path. The dump
+start from the dialect's predefined-macro table in place of clang's own macros
+(`ARCHITECTURE_DUMPER_MACROS.md`, the macros a unit is preprocessed under). The dump
 desugars only the top level of a spelling, so a typedef name inside `P_t *` or `P_t (P_t, int)`
 resolves through the canonical spelling libclang gives the typedef. Records come from a
 libclang pass over the same file under the same flags and the pinned clang's resource directory
