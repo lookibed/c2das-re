@@ -5,6 +5,7 @@ require daslib/fio
 require daslib/strings_boost
 require daslib/rtti
 require _header_scan
+require ../../c_defines.das
 require ../../../converter/emit.das
 
 //! The own libc headers against what a converted program can call
@@ -258,6 +259,24 @@ def test_headers_match_crt(t : T?) {
 
 // a header `t.h` of the lines `body` inside its include guard
 def private guarded(body : string) : string => "#ifndef _T_H\n#define _T_H\n{body}#endif\n"
+
+[test(description = "every predefined macro the headers read is an entry of each dialect's predefined-macro table")]
+def test_headers_read_the_tables(t : T?) {
+    for (dialect in DIALECTS) {
+        var error : string
+        var inscope entries <- read_predefined(predefined_path(dialect), error)
+        t |> equal(error, "")
+        var parsed : c_defines::Define
+        var inscope defined : table<string>
+        for (entry in entries) {
+            parse_define(entry, parsed)
+            defined |> insert(parsed.name)
+        }
+        for (name in PREDEFINED) {
+            t |> success(key_exists(defined, name), "the {dialect} table defines no `{name}`")
+        }
+    }
+}
 
 [test(description = "the scanner reads each line form and refuses every other line")]
 def test_header_scanner(t : T?) {
