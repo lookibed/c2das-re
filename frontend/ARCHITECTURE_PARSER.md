@@ -2,8 +2,9 @@
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family. It
 describes Dumper C's parser: the C tokens it reads, the tree it builds, and how it decides what it
-reads. The parser reads expressions, type names and declarations; it has no entry for a
-statement, a record or enum body, or a function definition.
+reads. The parser reads expressions, type names, declarations with their record and enum bodies, function
+definitions and whole units; a function body stays a range of tokens, and it has no entry for a
+statement.
 
 ## 14. The C tokens {#c-tokens}
 
@@ -86,7 +87,7 @@ where a type name has no place for it.
 
 A type name (C11 6.7.7) is a list of specifiers and qualifiers and an abstract declarator. The
 specifiers are the builtin type keywords, the qualifiers (`_Atomic` as a qualifier), `struct`,
-`union` and `enum` with a tag and the attributes after the keyword, a typedef name, `typeof` of a
+`union` and `enum` with a tag, a body and their attributes (section 21), a typedef name, `typeof` of a
 type name or an expression, `_Alignas`, and `__attribute__((...))`. An attribute is kept whole: its
 node spans its tokens to the `)` that balances the first `(`, and nothing reads its content yet.
 
@@ -142,14 +143,15 @@ The parser stops at the first error: `failed` is set, `err` holds `file:line:col
 token where it stopped, and the cursor moves to the EOF token, so every loop ends. Malformed input
 reads `expected <what>, got '<token>'` (`got end of input` at the end). A construct the parser does
 not take reads `<construct> is not parsed`: a statement expression, a label address `&&label`,
-`_Generic`, a struct, union or enum body, `__int128`, `_Atomic(T)`, `_Imaginary`, `__auto_type`,
+`_Generic`, `__int128`, `_Atomic(T)`, `_Imaginary`, `__auto_type`,
 `__real__`, `__imag__`, `__label__`, and the old GNU designator `member:`. Every loop either
 consumes a token or stops.
 
 Recursion is bounded so that deep input ends in a located refusal, never in a stack overflow,
 which ends the daslang context. A level is opened by each assignment expression, constant
 expression, `?:` arm after the `:`, prefix operator, cast, compound literal where a unary expression
-stands, initializer list, type name, parameter list, and a declarator's `*` or parentheses; every
+stands, initializer list, type name, parameter list, record or enum body, and a declarator's `*`
+or parentheses; every
 cycle of the parser's calls passes one of them. The 257th level is refused as `nesting deeper than
 256 levels`. An expression in 255 parentheses is 256 levels.
 
@@ -160,7 +162,9 @@ list or a `typeof`; 529 for a call; 593 for a parenthesis or a subscript; and 65
 `__builtin_offsetof` designator's index. The declarator forms cost less: 80 bytes for a pointer or a
 parenthesised declarator, 112 for a parameter list with a pointer declarator in it, 417 for a
 parameter list alone, 353 for a `typeof` in a declaration, 278 for a `sizeof` of an array type in
-an array size. 256 levels of the costliest form take about 165 KiB. The
+an array size. The record forms: 561 bytes for a record body in a member of a record body, and 449
+for a record body in a parameter list of a member's function declarator, whose cycle holds two
+levels open, the body and the parameter list. 256 levels of the costliest form take about 165 KiB. The
 parser therefore runs on a context stack of at least 256 KiB (`options stack = 262144`), which
 leaves a third of it for the caller. A context's stack is the `options stack` of the program that
 made it, 16 KiB when none is given (daslang's default): a test's context takes its test file's
@@ -189,7 +193,63 @@ specifiers hold `typedef`, else as an ordinary identifier. So `int T = T;` reads
 typedef name declared again as the same typedef stays a typedef name. `__builtin_va_list` is a
 typedef name before the first token, as clang declares it.
 
-A declarator followed by `{` is a function definition, and an old-style identifier list outside one
-is invalid C (C11 6.7.6.3p3); `c_declaration` refuses both at their token, so the entry for
-definitions owns them. The table's scope functions (`c_scope_open`, `c_scope_close`) are public: a
-block, which the statement parser opens, and the tests that stand in for it use them.
+`c_declaration` reads a declaration in a block. A function definition has no place there, so its
+`{` is `expected ';'`; an old-style identifier list outside a definition is invalid C (C11
+6.7.6.3p3) and refused at its first name. The table's scope functions (`c_scope_open`,
+`c_scope_close`) are public: a block, which the statement parser opens, and the tests that stand
+in for it use them.
+
+## 21. Records and enums {#c-records}
+
+A `struct`, `union` or `enum` specifier is the keyword, attributes, a tag, then a body in braces
+and the attributes after it; it has a tag or a body at least, and its node keeps whether it has a
+body, so `struct S {}`, which clang takes, differs from `struct S`. Attributes between the tag and
+the `{` are an error, as in clang. A body opens a nesting level (section 19).
+
+A record body holds member declarations: `__extension__`s, specifiers and qualifiers with no
+storage class, then member declarators, each a declarator, a bit-field width or both, with the
+attributes written before a later one and after each. A member declaration with no declarator is
+an anonymous member, `struct { int a; };` or the `int;` clang warns on alike. A `;` alone and
+`_Static_assert` stand among the members. A flexible array member is an array declarator with no
+size; the parser checks no rule on members beyond the grammar (C11 6.7.2.1: a flexible array
+last, a width's value, a bit-field's type), which the checker owns.
+
+An enum body holds enumerators: a name, its attributes, then an optional `=` and constant
+expression; a trailing comma stays, an empty body is an error. An enumerator is an ordinary
+identifier from the end of its own definition on (C11 6.2.1p7), so it shadows a typedef name, and
+in `enum { T = sizeof(T) }` the operand still names the type.
+
+Neither a tag nor a member enters the typedef table: tags and members have name spaces of their
+own, which no ambiguity of the grammar reads. So a tag spelled like a typedef name leaves it a
+type, and a member may share a typedef's name. A record body opens no scope, so an enumerator
+declared in a member's enum binds in the scope around the record, and one declared in a parameter
+list ends with the prototype's scope. Which declaration a tag names is the checker's question.
+
+## 22. Function definitions and the unit {#c-definitions}
+
+`c_unit` reads a unit to its end as a list of external declarations (C11 6.9). At file scope a
+`;` alone, after `__extension__`s too, declares nothing and makes no node; a declaration of
+attributes alone (`__attribute__((unused));`) is a declaration with no declarator, as clang takes
+it; a file-scope asm is refused, `a file-scope asm is not parsed`, as Dumper A fails it closed.
+
+The first declarator of a file-scope declaration starts a function definition when it declares a
+function through its own function declarator, that declarator holds the only identifier list,
+there is no asm label and no `typedef`, and a `{` follows, or, after an identifier list, anything
+but `;`, `,` or `=`. Otherwise its `{` is `expected ';'`, as for `int a, f(void) {}`, a pointer
+to a function, or an asm label, which clang rejects on a definition. Attributes after the
+declarator stay, as clang takes them.
+
+The function's name is bound as an ordinary identifier around the definition. Then a scope opens
+for the parameters. After an identifier list, the old-style declaration list follows: each
+declaration takes `register` alone as its storage class and no initializer, and declares names of
+the identifier list, each once (`expected a name of the identifier list`, `expected a parameter
+declared once`); a typedef name in it is a type as anywhere. A name the list leaves untyped is an
+error at the body's `{`, since clang under gnu17 refuses the implicit `int`. Each identifier
+names its declarator (the `ident_param` node's `b`), and `c_parameters_declare` binds the
+parameter names of a function declarator in the innermost scope.
+
+The body is kept unparsed: a `body` node spans its tokens from the `{` to the `}` that balances it,
+and a missing `}` is `expected '}' closing the function body` at the end of input. It is read in
+the scope `c_parameters_declare` opens, the parameters of the definition's own function
+declarator, which the statement parser will hold open while it parses the body in place of the
+range.

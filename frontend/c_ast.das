@@ -60,6 +60,12 @@ enum CNode {
     INIT_DECL
     ASM_LABEL
     STATIC_ASSERT
+    MEMBER_DECL
+    MEMBER_DECLARATOR
+    ENUMERATOR
+    FUNC_DEF
+    BODY
+    UNIT
 }
 
 //! Per node kind, its dump name and the roles of `op`, `a`, `b`, `c`, `d`: `-` unused, `n` a node
@@ -100,8 +106,8 @@ let NODE_FORMS <- fixed_array(
     ("type_name", "-ln--"),         // the specifiers, the abstract declarator
     ("spec", "k----"),
     ("typedef_name", "-s---"),
-    ("record", "ks--l"),            // `struct` or `union`, the tag, the attributes after the keyword
-    ("enum", "-s--l"),              // the tag, the attributes after the keyword
+    ("record", "ksila"),            // `struct` or `union`, the tag, 1 with a body, the members, the attributes
+    ("enum", "-sila"),              // the tag, 1 with a body, the enumerators, the attributes
     ("typeof_expr", "-n---"),
     ("typeof_type", "-n---"),
     ("alignas_expr", "-n---"),
@@ -113,11 +119,19 @@ let NODE_FORMS <- fixed_array(
     ("d_function", "inl--"),        // 1 variadic, 2 an identifier list; the inner declarator, the parameters
     ("d_paren", "-nl--"),           // the inner declarator, the attributes
     ("param", "-lna-"),             // the specifiers, the declarator, the attributes after it
-    ("ident_param", "-s---"),       // a name of an old-style identifier list
+    ("ident_param", "-s---"),       // a name of an old-style identifier list; `b`, not dumped, the
+    //                                 declarator of a definition's declaration list that types it
     ("decl", "ill--"),              // 1 after `__extension__`; the specifiers, the init-declarators
     ("init_decl", "-nnna"),         // the declarator, the initializer, the asm label, the attributes
     ("asm_label", "-n---"),         // the string literal
-    ("static_assert", "-nn--"))     // the condition, the message
+    ("static_assert", "-nn--"),     // the condition, the message
+    ("member_decl", "ill--"),       // 1 after `__extension__`; the specifiers, the members (none: anonymous)
+    ("member", "-nna-"),            // the declarator (- for an unnamed bit-field), the width, the attributes
+    ("enumerator", "-sna-"),        // the name, the value, the attributes
+    ("func_def", "ilnln"),          // 1 after `__extension__`; the specifiers, the init-declarator, the
+    //                                 old-style declarations, the body
+    ("body", "-r---"),              // a function body's tokens from its `{` to its `}`, not parsed yet
+    ("unit", "-l---"))              // the external declarations
 
 //! One node: its kind, its fields by `NODE_FORMS`, the next node of the list it is in, and `tok`,
 //! the token it starts at, which places it.
@@ -149,7 +163,7 @@ struct CList {
     tail : int = -1
 }
 
-//! Node `n` appended to `list`; -1 appends nothing.
+//! Node `n`, and the nodes chained after it, appended to `list`; -1 appends nothing.
 def c_append(var ast : CAst; var list : CList; n : int) {
     return if (n < 0)
     if (list.head < 0) {
@@ -157,7 +171,11 @@ def c_append(var ast : CAst; var list : CList; n : int) {
     } else {
         ast.nodes[list.tail].next = n
     }
-    list.tail = n
+    var last = n
+    while (ast.nodes[last].next >= 0) {
+        last = ast.nodes[last].next
+    }
+    list.tail = last
 }
 
 //! one step of a dump: a node to write, or `text` when it is not empty
