@@ -188,12 +188,13 @@ def test_rows_text(t : T?) {
     t |> run("a file the dumper refuses gives its error and no row") @(t : T?) {
         var temp_error : string
         let folder = create_temp_directory("switch_census_", temp_error)
-        let path = path_join(folder, "range.c")
-        fwrite(path, "int f(int x) \{ switch (x) \{ case 1 ... 3: return 1; \} return 0; \}\n")
+        // a variable-length array beside a switch: the dumper refuses the file, so its switch is no row
+        let path = path_join(folder, "vla.c")
+        fwrite(path, "int f(int n, int x) \{ int a[n]; a[0] = 0; switch (x) \{ case 1: return 1; \} return a[0]; \}\n")
         var error : string
         let none <- census_c_file(path, error)
         rmdir_rec(folder)
-        t |> success(find(error, "case range") >= 0)
+        t |> success(find(error, "a variable-length array is not lowered") >= 0, error)
         t |> equal(length(none), 0)
     }
 }
