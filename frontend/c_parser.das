@@ -1512,6 +1512,23 @@ def private do_statement(var p : CParser) : int {
     return node(p, CNode.DO, at, 0, body, e)
 }
 
+//! an error at a storage class of `for` declaration `d` other than `auto` and `register` (C11
+//! 6.8.5p3), as clang rejects it
+def private for_storage(var p : CParser; d : int) {
+    return if (p.failed || p.ast.nodes[d].kind != CNode.DECL)
+    var at = p.ast.nodes[d].a
+    while (at >= 0) {
+        let n = p.ast.nodes[at]
+        let k = n.op
+        if (n.kind == CNode.SPEC_KEYWORD && k >= int(CTok.TYPEDEF) && k <= int(CTok.THREAD_LOCAL) && k != int(CTok.AUTO) && k != int(CTok.REGISTER)) {
+            p.pos = n.tok
+            fail(p, "'auto' or 'register' as a for declaration's storage class")
+            return
+        }
+        at = n.next
+    }
+}
+
 //! `for`: a declaration or an expression, a condition, a step, each optional, and a statement; the
 //! declaration's names in a scope that ends with the statement (C11 6.8.5p5)
 [arch(at="ARCHITECTURE_PARSER.md#c-statements")]
@@ -1523,6 +1540,7 @@ def private for_statement(var p : CParser) : int {
     var init = -1
     if (!p.failed && declaration_starts(p)) {
         init = declaration(p, CPlace.BLOCK, -1)
+        for_storage(p, init)
     } elif (!accept(p, CTok.SEMI)) {
         init = c_expression(p)
         take(p, CTok.SEMI)

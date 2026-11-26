@@ -53,7 +53,7 @@ def test_labels(t : T?) {
     t |> success(stmt("{repeat("l: ", 3000)};") |> starts_with("(label l (label l"))
 }
 
-[test(description = "selection and iteration statements: `if` with and without `else`, a dangling `else` binding to the nearest `if`, a long `else if` chain read with no recursion, `switch`, `while`, `do`, and `for` with a declaration, an expression or nothing in each place")]
+[test(description = "selection and iteration statements: `if` with and without `else`, a dangling `else` binding to the nearest `if`, a long `else if` chain read with no recursion, `switch`, `while`, `do`, and `for` with a declaration, an expression or nothing in each place, its declaration's storage class `auto` or `register` alone")]
 def test_control(t : T?) {
     t |> equal(stmt("if (a) x; else y;"), "(if (ident a) (expr_stmt (ident x)) (expr_stmt (ident y)))")
     t |> equal(stmt("if (a) if (b) x; else y;"), "(if (ident a) (if (ident b) (expr_stmt (ident x)) (expr_stmt (ident y))) -)")
@@ -67,6 +67,11 @@ def test_control(t : T?) {
     t |> equal(stmt("for (int i = 0, j; ; ) continue;"),
                "(for (decl 0 [(spec int)] [(init_decl (d_name i) (int 0) -) (init_decl (d_name j) - -)]) - - (continue))")
     t |> equal(stmt("for (T x; x; ) ;"), "(for (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)]) (ident x) - (null))")
+    t |> equal(stmt("for (auto int i = 0; ; ) ;"), "(for (decl 0 [(spec auto) (spec int)] [(init_decl (d_name i) (int 0) -)]) - - (null))")
+    t |> equal(stmt("for (register int i = 0; ; ) ;"), "(for (decl 0 [(spec register) (spec int)] [(init_decl (d_name i) (int 0) -)]) - - (null))")
+    for (word in fixed_array("static", "extern", "typedef", "_Thread_local")) {
+        t |> equal(stmt("for (const {word} int i; ; ) ;"), "error: t.c:1:12: expected 'auto' or 'register' as a for declaration's storage class, got '{word}'", word)
+    }
 }
 
 [test(description = "the GNU forms: `__extension__` before a declaration and a statement, attributes on a null statement and before a declaration, a statement expression, and asm statements basic and extended, their operands kept as token ranges")]
