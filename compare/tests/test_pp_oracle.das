@@ -239,3 +239,50 @@ def test_run_oracle(t : T?) {
     raw.units |> push(unit)
     t |> equal(run_oracle(raw), 1)
 }
+
+[test(description = "the #pragma lines of clang's -E output are counted, a blank after the # included, and no other line")]
+def test_pragma_lines(t : T?) {
+    t |> equal(pragma_lines("int x;\n#pragma pack(1)\n  #  pragma weak w\n# 3 \"a.c\"\npragma;\n"), 2)
+}
+
+[test(description = "the directive oracle's first difference is the first position differing in kind, spelling or at_bol, or the shorter side's end")]
+def test_first_pp2_difference(t : T?) {
+    let a <- [OracleToken(kind = 1, spelling = "a", at_bol = true), OracleToken(kind = 2, spelling = "b")]
+    let b <- [OracleToken(kind = 1, spelling = "a", at_bol = true), OracleToken(kind = 2, spelling = "b", at_bol = true)]
+    t |> equal(first_pp2_difference(a, a), -1)
+    t |> equal(first_pp2_difference(a, b), 1)
+    t |> equal(first_pp2_difference(a, [OracleToken(kind = 1, spelling = "a", at_bol = true)]), 1)
+}
+
+[test(description = "a unit is clean only when its tokens, pragma counts and PP.2's errors agree; a difference before the first macro name or PP.4 #if is a difference")]
+def test_pp2_class(t : T?) {
+    t |> equal(pp2_class(Pp2Result(first_diff = -1, first_macro = -1, first_pp4 = -1)), Pp2Class.clean)
+    t |> equal(pp2_class(Pp2Result(diffs = 3, first_diff = 5, first_macro = 5, first_pp4 = -1)), Pp2Class.needs_pp3)
+    t |> equal(pp2_class(Pp2Result(diffs = 3, first_diff = 4, first_macro = 5, first_pp4 = -1)), Pp2Class.differs)
+    t |> equal(pp2_class(Pp2Result(diffs = 1, first_diff = 2, first_macro = -1, first_pp4 = 0)), Pp2Class.needs_pp4)
+    t |> equal(pp2_class(Pp2Result(pp_tokens = 4, first_diff = -1, first_macro = -1, first_pp4 = 2)), Pp2Class.needs_pp4)
+    t |> equal(pp2_class(Pp2Result(first_diff = -1, first_macro = -1, first_pp4 = -1, needs_expansion = 1)), Pp2Class.needs_pp3)
+    t |> equal(pp2_class(Pp2Result(first_diff = -1, first_macro = -1, first_pp4 = -1, clang_pragmas = 1)), Pp2Class.differs)
+    var failed = Pp2Result(first_diff = -1, first_macro = -1, first_pp4 = -1)
+    failed.errors |> push("1:2 invalid preprocessing directive")
+    t |> equal(pp2_class(failed), Pp2Class.differs)
+}
+
+[test(description = "the directive fixtures give clang's -E token stream through PP.2: guards, pragma once, #line, nested #if 0, pragmas", timeout = 1200)]
+def test_pp2_fixtures_against_clang(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp2_oracle")
+    mkdir_rec(work)
+    let units <- corpus_units(getcwd(), "pp2")
+    t |> equal(length(units), 4)
+    for (unit in units) {
+        let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5)
+        t |> equal(r.error, "", unit)
+        t |> equal(r.cls, Pp2Class.clean, "{unit}: {r.shown} {r.errors}")
+        t |> success(r.clang_tokens > 10, unit)
+    }
+}

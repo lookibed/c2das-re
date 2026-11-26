@@ -3,10 +3,13 @@ options gen2
 module pp_oracle public
 
 require strings
+require math
 require daslib/strings_boost
 require daslib/fio
 require daslib/clargs
 require ../../frontend/pp_lexer.das
+require ../../frontend/pp_directives.das
+require ../../frontend/c_defines.das
 require ../../converter/cir.das
 require ../../converter/dumper_a.das
 
@@ -222,6 +225,29 @@ def operator +=(var a : OracleTotals; b : OracleTotals) {
 def describe_totals(name : string; t : OracleTotals) : string =>
     "{name}: {t.tokens} tokens, {t.diffs} diffs, {t.listed} reference failures (listed), {t.unlisted} reference failures (unlisted), {t.stale} listed units preprocessed"
 
+//! Whether `unit`, which the reference failed on with `error` ("" when it did not), is a reference
+//! failure: counted into `totals` and printed, listed with its reason or unlisted with `error`. A
+//! listed unit the reference preprocessed is counted and printed as stale, and compared.
+[arch(at="ARCHITECTURE.md#reference-failures")]
+def reference_failure(listed : array<ReferenceFailure>; unit, error : string; var totals : OracleTotals) : bool {
+    let reason = listed_reason(listed, unit)
+    if (!empty(error)) {
+        if (empty(reason)) {
+            totals.unlisted++
+            print("{unit}: reference failure (unlisted): {error}\n")
+        } else {
+            totals.listed++
+            print("{unit}: reference failure (listed): {reason}\n")
+        }
+        return true
+    }
+    if (!empty(reason)) {
+        totals.stale++
+        print("{unit}: listed as a reference failure ({reason}), preprocessed: drop its line\n")
+    }
+    return false
+}
+
 //! The totals of `units`, each unit with differences printed with its first `show` ones, each
 //! reference failure with its listed reason or its error, then a line of the totals headed `name`.
 def run_set(name : string; units : array<string>; work : string; flags : array<string>; listed : array<ReferenceFailure>;
@@ -229,21 +255,7 @@ def run_set(name : string; units : array<string>; work : string; flags : array<s
     var totals : OracleTotals
     for (unit in units) {
         let r <- compare_unit(unit, work, flags, show, raw)
-        let reason = listed_reason(listed, unit)
-        if (!empty(r.error)) {
-            if (empty(reason)) {
-                totals.unlisted++
-                print("{unit}: reference failure (unlisted): {r.error}\n")
-            } else {
-                totals.listed++
-                print("{unit}: reference failure (listed): {reason}\n")
-            }
-            continue
-        }
-        if (!empty(reason)) {
-            totals.stale++
-            print("{unit}: listed as a reference failure ({reason}), preprocessed: drop its line\n")
-        }
+        continue if (reference_failure(listed, unit, r.error, totals))
         totals.tokens += r.clang_tokens
         totals.diffs += r.diffs
         if (r.diffs > 0) {
@@ -295,13 +307,21 @@ def compare_unit(unit, work : string; flags : array<string>; show : int; raw : b
 
 //! The units of a named corpus under `root`: `frontend`, every header of the own set; `c-testsuite`,
 //! the single-exec suite as `suites/c_testsuite/fetch.sh` fetches it; `gcc-torture`, the `execute`
-//! folder's own units as `suites/gcc_torture/fetch.sh` fetches it. Sorted, so a run is stable.
+//! folder's own units as `suites/gcc_torture/fetch.sh` fetches it; `pp2`, the `.c` units of
+//! `compare/pp/fixtures/pp2/`. Sorted, so a run is stable.
 def corpus_units(root, corpus : string) : array<string> {
     var units : array<string>
     if (corpus == "frontend") {
         let folder = path_join(root, "frontend/include")
         dir_rec(folder) $(name, is_dir) {
             if (!is_dir && ends_with(name, ".h")) {
+                units |> push(path_join(folder, name))
+            }
+        }
+    } elif (corpus == "pp2") {
+        let folder = path_join(root, "compare/pp/fixtures/pp2")
+        dir(folder) $(name) {
+            if (ends_with(name, ".c")) {
                 units |> push(path_join(folder, name))
             }
         }
@@ -321,7 +341,7 @@ def corpus_units(root, corpus : string) : array<string> {
 //! The command line of `run.das`.
 [CommandLineArgs]
 struct OracleArgs {
-    @clarg_doc = "a corpus to compare: frontend, c-testsuite or gcc-torture (repeatable)"
+    @clarg_doc = "a corpus to compare: frontend, c-testsuite, gcc-torture or pp2 (repeatable)"
     corpus : array<string>
     @clarg_doc = "the differences shown per unit"
     show : int = 3
@@ -329,6 +349,8 @@ struct OracleArgs {
     work : string = "compare/work/pp"
     @clarg_doc = "compare the units themselves, not clang -E's output of them (units with no directive and no macro)"
     raw : bool
+    @clarg_doc = "compare the directive layer, frontend/pp_directives.das, not the lexer: units with directives and no macro use (corpus pp2 is the fixture set)"
+    pp2 : bool
     @clarg_positional
     @clarg_doc = "units compared besides the corpora"
     units : array<string>
@@ -336,6 +358,7 @@ struct OracleArgs {
 
 //! The corpora and units `args` names compared, from the repository root, each set's line and the
 //! total printed; 0 when no unit differs, 1 when one does or the flags or the list cannot be read.
+//! With `pp2` the directive oracle runs them (`run_pp2`).
 def run_oracle(args : OracleArgs) : int {
     var error : string
     let flags <- preprocess_flags(error)
@@ -350,6 +373,7 @@ def run_oracle(args : OracleArgs) : int {
     }
     mkdir_rec(args.work)
     let root = getcwd()
+    return run_pp2(args, root, flags, listed) if (args.pp2)
     var total : OracleTotals
     for (corpus in args.corpus) {
         total += run_set(corpus, corpus_units(root, corpus), args.work, flags, listed, args.show)
@@ -360,4 +384,224 @@ def run_oracle(args : OracleArgs) : int {
     let line = describe_totals("total", total)
     print("{line}\n")
     return total.diffs == 0 ? 0 : 1
+}
+
+// The directive oracle of `frontend/pp_directives.das` (`ARCHITECTURE.md#pp2`)
+
+//! The class of a unit in the directive oracle: equal to clang, different only past PP.2's reach
+//! (a macro to expand, an `#if` for PP.4's evaluator), or different where PP.2 answers.
+enum Pp2Class {
+    clean
+    needs_pp3
+    needs_pp4
+    differs
+}
+
+//! A unit through PP.2 and clang: the token comparison, and what PP.2 left to the later items.
+struct Pp2Result {
+    unit : string
+    clang_tokens : int
+    pp_tokens : int
+    diffs : int
+    first_diff : int        //!< the index of the first differing token, -1 when none
+    first_macro : int       //!< the index of PP.2's first token naming a defined macro, -1 when none
+    first_pp4 : int         //!< the tokens PP.2 had handed out at its first `#if` left to PP.4, -1 when none
+    needs_expansion : int   //!< the `#include`s left to PP.3
+    clang_pragmas : int
+    pp_pragmas : int
+    errors : array<string>  //!< PP.2's error diagnostics past those two
+    error : string          //!< clang failed on the unit: nothing compared
+    shown : array<string>
+    cls : Pp2Class
+}
+
+//! The predefined-macro entries and the include path of PP.2 under Dumper A's `linux` dialect: the
+//! table's entries and the own headers' folder, canonical, as `frontend_flags` hands them to clang.
+def pp2_setup(var error : string&) : tuple<entries : array<string>; search : array<string>> {
+    var setup : tuple<entries : array<string>; search : array<string>>
+    setup.entries <- read_predefined(predefined_table(target_lp64_linux()), error)
+    setup.search |> push(get_full_file_name(own_include_dir()))
+    return <- setup
+}
+
+//! The `#pragma` lines of clang's `-E` output `text`: clang prints each pragma it keeps as a line,
+//! and its token dump of that output takes them as pragmas, not tokens, as PP.2 keeps them in its
+//! pragma and pack ledgers instead of its stream.
+[arch(at="ARCHITECTURE.md#pp2")]
+def pragma_lines(text : string) : int {
+    var lines = 0
+    for (line in split(text, "\n")) {
+        let s = strip(line)
+        if (starts_with(s, "#")) {
+            lines += starts_with(strip(slice(s, 1)), "pragma") ? 1 : 0
+        }
+    }
+    return lines
+}
+
+//! The tokens PP.2 hands out for `unit` read through `fio`, kind, spelling and `at_bol` each, and
+//! what it left to PP.3 and PP.4, into `result`.
+def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2Result) : array<OracleToken> {
+    var tokens : array<OracleToken>
+    var pp : Preprocessor
+    if (!pp_start(pp, new PpFioProvider(), unit, entries, search)) {
+        result.errors |> push("cannot read {unit}")
+        return <- tokens
+    }
+    var seen = 0
+    result.first_pp4 = -1
+    result.first_macro = -1
+    while (pp_next_token(pp)) {
+        if (result.first_pp4 < 0 && pp4_since(pp, seen)) {
+            result.first_pp4 = length(tokens)
+        }
+        seen = length(pp.diags)
+        if (result.first_macro < 0 && pp.tok.tok.kind == int(PpTok.IDENTIFIER) && pp_defined(pp, pp.tok.tok.sym)) {
+            result.first_macro = length(tokens)
+        }
+        tokens |> push(OracleToken(kind = pp.tok.tok.kind, spelling = pp_token_spelling(pp), at_bol = pp.tok.tok.at_bol))
+    }
+    if (result.first_pp4 < 0 && pp4_since(pp, seen)) {
+        result.first_pp4 = length(tokens)
+    }
+    for (d in pp.diags) {
+        if (d.severity == PpSeverity.error && find(d.what, "PP.4") < 0 && find(d.what, "PP.3") < 0) {
+            result.errors |> push("{d.line}:{d.col} {d.what}")
+        }
+    }
+    result.needs_expansion = length([for (inc in pp.inclusions); inc; where inc.skip == PpIncludeSkip.needs_expansion])
+    result.pp_pragmas = length(pp.pragmas) + length(pp.packs)
+    return <- tokens
+}
+
+// whether a diagnostic from `since` on leaves an `#if` to PP.4
+def private pp4_since(pp : Preprocessor; since : int) : bool {
+    for (i in range(since, length(pp.diags))) {
+        return true if (find(pp.diags[i].what, "PP.4") >= 0)
+    }
+    return false
+}
+
+//! The class of a compared unit: clean when the streams, the pragma counts and PP.2's errors all
+//! agree with clang; needs PP.3 or PP.4 when the first difference comes at or after the first
+//! macro name, or the first `#if` PP.4 evaluates; else it differs.
+[arch(at="ARCHITECTURE.md#pp2")]
+def pp2_class(r : Pp2Result) : Pp2Class {
+    let pragmas_agree = r.clang_pragmas == r.pp_pragmas
+    return Pp2Class.clean if (r.diffs == 0 && pragmas_agree && empty(r.errors) && r.first_pp4 < 0 && r.needs_expansion == 0)
+    return Pp2Class.differs if (!empty(r.errors) || !pragmas_agree)
+    let first = r.first_diff < 0 ? r.pp_tokens : r.first_diff
+    let late = r.first_macro >= 0 && first >= r.first_macro
+    return Pp2Class.needs_pp3 if (late || r.needs_expansion > 0)
+    return Pp2Class.needs_pp4 if (r.first_pp4 >= 0 && first >= r.first_pp4)
+    return Pp2Class.differs
+}
+
+//! The index of the first position where `clang` and `ours` differ in kind, spelling or `at_bol`,
+//! the end of the shorter when one is a prefix of the other, -1 when they are equal.
+def first_pp2_difference(clang, ours : array<OracleToken>) : int {
+    for (i, c, o in count(), clang, ours) {
+        return i if (c.kind != o.kind || c.spelling != o.spelling || c.at_bol != o.at_bol)
+    }
+    return length(clang) == length(ours) ? -1 : min(length(clang), length(ours))
+}
+
+//! One unit through clang (`-E -P`, then `-dump-tokens` of its output, the `#pragma` lines taken
+//! out) and through PP.2 with the same macros and include path; compared by kind, spelling and
+//! `at_bol`, since `-P` output has its own lines and columns.
+[arch(at="ARCHITECTURE.md#pp2")]
+def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search : array<string>; show : int) : Pp2Result {
+    var result = Pp2Result(unit = unit, first_diff = -1)
+    let preprocessed = path_join(work, "{base_name(unit)}.pp2.i")
+    var argv <- [default_clang(), "-E", "-P"]
+    argv |> push_from(flags, [unit, "-o", preprocessed])
+    var out : string
+    if (run_and_capture(argv, out, 300.0) != 0) {
+        result.error = "clang -E: {out}"
+        return <- result
+    }
+    var dump : string
+    var dump_argv <- [default_clang(), "-target", target_lp64_linux().triple, "-undef"]
+    dump_argv |> push_from(DUMPER_FLAGS, ["-x", "c", "-fsyntax-only", "-Xclang", "-dump-tokens", preprocessed])
+    if (run_and_capture(dump_argv, dump, 300.0) != 0) {
+        result.error = "clang -dump-tokens: {slice(dump, 0, 400)}"
+        return <- result
+    }
+    var clang <- clang_tokens(dump)
+    result.clang_pragmas = pragma_lines(fread(preprocessed))
+    for (tok in clang) {
+        tok.line = 0
+        tok.col = 0
+        tok.has_space = false
+    }
+    let ours <- pp2_tokens(unit, entries, search, result)
+    result.clang_tokens = length(clang)
+    result.pp_tokens = length(ours)
+    result.diffs = compare_tokens(clang, ours, show, result.shown)
+    result.first_diff = first_pp2_difference(clang, ours)
+    result.cls = pp2_class(result)
+    return <- result
+}
+
+//! What a set of units gave the directive oracle: the units of each class, in `Pp2Class` order,
+//! and the tokens, differences and reference failures as `OracleTotals` counts them.
+struct Pp2Totals {
+    classes : int4
+    oracle : OracleTotals
+}
+
+def operator +=(var a : Pp2Totals; b : Pp2Totals) {
+    a.classes += b.classes
+    a.oracle += b.oracle
+}
+
+//! The totals line of `t` headed `name`.
+def describe_pp2_totals(name : string; t : Pp2Totals) : string =>
+    "{name} (pp2): {t.classes.x} clean, {t.classes.y} need PP.3, {t.classes.z} need PP.4, {t.classes.w} differ; {t.oracle.tokens} tokens, {t.oracle.diffs} diffs, {t.oracle.listed} reference failures (listed), {t.oracle.unlisted} reference failures (unlisted), {t.oracle.stale} listed units preprocessed"
+
+//! The directive oracle over `units`: each unit not clean printed with its class, its first
+//! differences and PP.2's errors, each reference failure as `run_set` prints it, then a line of the
+//! totals headed `name`.
+def run_set_pp2(name : string; units : array<string>; work : string; flags : array<string>; listed : array<ReferenceFailure>;
+                entries, search : array<string>; show : int) : Pp2Totals {
+    var totals : Pp2Totals
+    for (unit in units) {
+        let r <- compare_unit_pp2(unit, work, flags, entries, search, show)
+        continue if (reference_failure(listed, unit, r.error, totals.oracle))
+        totals.classes[int(r.cls)]++
+        totals.oracle.tokens += r.clang_tokens
+        totals.oracle.diffs += r.diffs
+        continue if (r.cls == Pp2Class.clean)
+        print("{unit}: {r.cls}, {r.clang_tokens} tokens, {r.diffs} diffs, first at {r.first_diff}, first macro name at {r.first_macro}, first PP.4 #if at {r.first_pp4}, pragmas {r.clang_pragmas} clang / {r.pp_pragmas} pp\n")
+        for (line in r.shown) {
+            print("    {line}\n")
+        }
+        for (line in r.errors) {
+            print("    pp: {line}\n")
+        }
+    }
+    let head = "{name}: {length(units)} units"
+    print("{describe_pp2_totals(head, totals)}\n")
+    return totals
+}
+
+//! The directive oracle over the corpora and units `args` names, from `root`, each set's line and
+//! the total printed; 0 when no unit differs where PP.2 answers, 1 when one does or PP.2's setup fails.
+def run_pp2(args : OracleArgs; root : string; flags : array<string>; listed : array<ReferenceFailure>) : int {
+    var error : string
+    let setup <- pp2_setup(error)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
+    var total : Pp2Totals
+    for (corpus in args.corpus) {
+        total += run_set_pp2(corpus, corpus_units(root, corpus), args.work, flags, listed, setup.entries, setup.search, args.show)
+    }
+    if (!empty(args.units)) {
+        total += run_set_pp2("units", args.units, args.work, flags, listed, setup.entries, setup.search, args.show)
+    }
+    let line = describe_pp2_totals("total", total)
+    print("{line}\n")
+    return total.classes.w == 0 ? 0 : 1
 }
