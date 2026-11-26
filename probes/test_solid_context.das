@@ -65,7 +65,7 @@ def test_solid_self_address(t : T?) {
         let jit = daslang_child_flags("self_address_jit", solid, jit_flags())
         t |> success(jit_ran(jit.out), jit.out)
         t |> equal(jit.rc, 0, jit.out)
-        let exe = "{temp_directory_result() as value}/c2das_probe_self_address_exe"
+        let exe = "{test_temp_dir()}/c2das_probe_self_address_exe"
         let build = daslang_run("self_address_exe", solid, ["-exe"], array<string>(), "c2das_probe", ["-output", exe])
         t |> equal(build.rc, 0, build.out)
         var ran : string

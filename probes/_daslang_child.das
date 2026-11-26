@@ -23,7 +23,7 @@ def daslang_run(name, source : string; flags : array<string>; modules : array<st
 
 //! The same with `args` after the source path (`utils/aot/main.das -- -ctx <in> <out>`).
 def daslang_run(name, source : string; flags : array<string>; modules : array<string>; prefix : string; args_after : array<string>) : tuple<rc : int; out : string> {
-    let path = "{temp_directory_result() as value}/{prefix}_{name}.das"
+    let path = "{test_temp_dir()}/{prefix}_{name}.das"
     fwrite(path, source)
     var out : string
     // the JIT reports itself at `info`; a run under it carries the line `jit_ran` reads
@@ -117,7 +117,7 @@ def battery_clang : string =>
 //! run once: the native side of a byte-for-byte battery. A build failure returns the compiler's
 //! text after `clang failed:`.
 def native_battery(stem : string; flags : array<string>; source : string) : string {
-    let dir = "{temp_directory_result() as value}"
+    let dir = "{test_temp_dir()}"
     let c_path = "{dir}/{stem}.c"
     let bin = "{dir}/{stem}"
     fwrite(c_path, source)
