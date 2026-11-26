@@ -75,10 +75,11 @@ class PpMemoryProvider : PpFileProvider {
     }
 }
 
-//! How bad a directive's diagnostic is; an error never stops the preprocessor.
+//! How bad a directive's diagnostic is; only a fatal one stops the preprocessor.
 enum PpSeverity {
     warning
     error
+    fatal
 }
 
 //! A diagnostic of the directive layer, at a token's physical place and its presumed one (`#line`).
@@ -89,7 +90,7 @@ struct PpDiagnostic {
     line : int
     col : int
     pname : int     //!< the presumed file name, an index of `Preprocessor.names`
-    pline : int
+    pline : uint
     what : string
 }
 
@@ -140,14 +141,16 @@ struct PpInclusion {
     skip : PpIncludeSkip
 }
 
-//! A `#pragma` kept for the C-IR ledger, after `emitted` tokens of the translation unit.
+//! A `#pragma`, or an `#ident` (`ident`), kept for the C-IR ledger, after `emitted` tokens of the
+//! translation unit.
 struct PpPragma {
     file : int
     line : int
     col : int
     pname : int
-    pline : int
+    pline : uint
     emitted : int
+    ident : bool        //!< an `#ident` or `#sccs` line, `text` its string literal
     text : string       //!< the tokens after `pragma`, a blank where the source had space
 }
 
@@ -179,7 +182,7 @@ struct PpFile {
     path : string
     identity : string
     name : int
-    once : bool
+    once : bool         //!< it said `#pragma once`, or an `#import` named it
     guard : int         //!< the macro of its whole-file include guard, -1 when it has none
     entered : int
 }
@@ -188,7 +191,7 @@ struct PpFile {
 //! line and file name `#line` makes it report.
 struct PpOutToken {
     tok : PpToken
-    pline : int
+    pline : uint
     pname : int
 }
 
@@ -217,7 +220,8 @@ struct PpFileState {
     file : int
     dir : string
     found_at : int
-    line_delta : int
+    line_delta : uint
+    markers : int       //!< the line markers with flag 1 not yet closed by a flag 2
     pname : int
     cond_base : int
     guard : GuardState
@@ -237,6 +241,7 @@ enum private PpDirective {
     undef
     hash_include
     hash_include_next
+    hash_import
     hash_if
     ifdef
     ifndef
@@ -249,6 +254,7 @@ enum private PpDirective {
     error
     warning
     pragma
+    ident
 }
 
 //! The nesting of `#include` clang allows: the main file and 199 more.
@@ -287,6 +293,7 @@ struct Preprocessor {
     pack_now : int
     inclusions : array<PpInclusion>
     directive_of : table<int; PpDirective>
+    fatal : bool                        //!< a fatal diagnostic ended the translation unit
     sym_defined : int
     sym_va_args : int
     sym_once : int
@@ -316,7 +323,8 @@ def private intern_directives(var pp : Preprocessor) {
                   ("ifndef", PpDirective.ifndef), ("elif", PpDirective.hash_elif), ("elifdef", PpDirective.hash_elifdef),
                   ("elifndef", PpDirective.hash_elifndef), ("else", PpDirective.hash_else), ("endif", PpDirective.endif),
                   ("line", PpDirective.line), ("error", PpDirective.error), ("warning", PpDirective.warning),
-                  ("pragma", PpDirective.pragma)]
+                  ("pragma", PpDirective.pragma), ("import", PpDirective.hash_import), ("ident", PpDirective.ident),
+                  ("sccs", PpDirective.ident)]
     for (entry in names) {
         pp.directive_of |> insert(intern_text(pp, entry._0), entry._1)
     }
@@ -350,9 +358,16 @@ def private register_file(var pp : Preprocessor; path, identity : string) : int 
     return id
 }
 
+def private presumed_line(pp : Preprocessor; line : int) : uint => uint(line) + pp.state.line_delta
+
 def private diagnose_at(var pp : Preprocessor; severity : PpSeverity; at : PpToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
-                                  pname = pp.state.pname, pline = at.line + pp.state.line_delta, what = what))
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
+}
+
+def private diagnose_held(var pp : Preprocessor; severity : PpSeverity; at : PpHeld; what : string) {
+    pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
 }
 
 def private diagnose(var pp : Preprocessor; severity : PpSeverity; what : string) {
@@ -848,6 +863,8 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
             return
         }
         more = next_on_line(pp)
+    } elif (more && !pp.lx.tok.has_space) {
+        diagnose(pp, PpSeverity.warning, "ISO C99 requires whitespace after the macro name")
     }
     while (more) {
         hold(pp, pp.macro_body, pp.macro_text)
@@ -914,9 +931,17 @@ def private record_inclusion(var pp : Preprocessor; at : PpToken; spelled : stri
     pp.inclusions |> push(PpInclusion(file = file, spelled = spelled, from = pp.state.file, line = at.line, col = at.col, skip = skip))
 }
 
-//! read the file `spelled` names, unless its `#pragma once` or include guard says it adds nothing
+//! the include that found no file, or no readable one: a fatal error, so the unit ends here
+def private include_failed(var pp : Preprocessor; at : PpToken; spelled, what : string) {
+    diagnose_at(pp, PpSeverity.fatal, at, what)
+    record_inclusion(pp, at, spelled, -1, PpIncludeSkip.not_found)
+    pp.fatal = true
+}
+
+//! read the file `spelled` names, unless its `#pragma once` or include guard says it adds
+//! nothing; `#import` (`import`) marks it once first
 [arch(at="ARCHITECTURE_PP.md#pp-search")]
-def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; next : bool) {
+def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; next, import : bool) {
     let angled = first_character(spelled) == '<'
     let name = slice(spelled, 1, length(spelled) - 1)
     if (empty(name)) {
@@ -940,12 +965,14 @@ def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; ne
     var tried : array<string>
     let found = search_file(pp, name, angled, from, tried)
     if (empty(found._0)) {
-        diagnose_at(pp, PpSeverity.error, at, "'{name}' file not found; searched: {join(tried, ", ")}")
-        record_inclusion(pp, at, spelled, -1, PpIncludeSkip.not_found)
+        include_failed(pp, at, spelled, "'{name}' file not found; searched: {join(tried, ", ")}")
         return
     }
     let identity = pp.provider->identity(found._0)
     var id = pp.file_of?[identity] ?? -1
+    if (id >= 0 && import) {
+        pp.files[id].once = true
+    }
     if (id >= 0 && pp.files[id].once && pp.files[id].entered > 0) {
         record_inclusion(pp, at, spelled, id, PpIncludeSkip.pragma_once)
         return
@@ -956,21 +983,22 @@ def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; ne
     }
     var bytes : array<uint8>
     if (!pp.provider->read(found._0, bytes)) {
-        diagnose_at(pp, PpSeverity.error, at, "cannot read '{found._0}'")
-        record_inclusion(pp, at, spelled, -1, PpIncludeSkip.not_found)
+        include_failed(pp, at, spelled, "cannot read '{found._0}'")
         return
     }
     if (id < 0) {
         id = register_file(pp, found._0, identity)
+        pp.files[id].once = import
     }
     record_inclusion(pp, at, spelled, id, PpIncludeSkip.none)
     push_file(pp, id, found._0, found._1, bytes)
 }
 
-//! `#include` and `#include_next` (`next`): a header name, or the tokens PP.3 expands into one
+//! `#include`, `#include_next` and `#import`: a header name, or the tokens PP.3 expands into one
 [arch(at="ARCHITECTURE_PP.md#pp-search")]
-def private do_include(var pp : Preprocessor; at : PpToken; next : bool) {
-    let name = next ? "include_next" : "include"
+def private do_include(var pp : Preprocessor; at : PpToken; d : PpDirective) {
+    let next = d == PpDirective.hash_include_next
+    let name = next ? "include_next" : d == PpDirective.hash_import ? "import" : "include"
     if (!pp_next_header_name(pp.lx) || pp.lx.tok.at_bol) {
         pp.pending = true
         diagnose_at(pp, PpSeverity.error, at, "expected \"FILENAME\" or <FILENAME>")
@@ -987,19 +1015,19 @@ def private do_include(var pp : Preprocessor; at : PpToken; next : bool) {
     let spelled = pp_spelling(pp.lx)
     let name_at = pp.lx.tok
     extra_tokens(pp, name)
-    enter_file(pp, name_at, spelled, next)
+    enter_file(pp, name_at, spelled, next, d == PpDirective.hash_import)
 }
 
 // #line
 
 //! the digits of a `#line` number as a value, -1 when it is no simple digit sequence, -2 when
-//! it is past 2147483647
+//! it is past 4294967295, clang's unsigned line
 def private line_number(text : string) : int64 {
     var value = 0l
     for (c in text) {
         return -1l if (!is_number(c))
         value = value * 10l + int64(c - '0')
-        return -2l if (value > 2147483647l)
+        return -2l if (value > 4294967295l)
     }
     return empty(text) ? -1l : value
 }
@@ -1023,6 +1051,7 @@ def private line_file_name(spelled : string) : string {
 //! the next line reports line N, and of file `name` when one is given
 [arch(at="ARCHITECTURE_PP.md#pp-line")]
 def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
+    let what = marker ? "line marker" : "#line"
     if (!marker && !next_on_line(pp)) {
         diagnose_at(pp, PpSeverity.error, at, "#line directive requires a positive integer argument")
         return
@@ -1034,7 +1063,7 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
     }
     let number = line_number(pp_spelling(pp.lx))
     if (pp.lx.tok.kind != int(PpTok.PP_NUMBER) || number < 0l) {
-        diagnose(pp, PpSeverity.error, number == -2l ? "line number out of range" : "#line directive requires a simple digit sequence")
+        diagnose(pp, PpSeverity.error, number == -2l ? "{what} directive requires a positive integer argument" : "{what} directive requires a simple digit sequence")
         skip_rest(pp)
         return
     }
@@ -1042,57 +1071,106 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
     if (next_on_line(pp)) {
         let spelled = pp_spelling(pp.lx)
         if (pp.lx.tok.kind != int(PpTok.STRING_LITERAL) || first_character(spelled) != '"') {
-            diagnose(pp, PpSeverity.error, "invalid filename for #line directive")
+            diagnose(pp, PpSeverity.error, "invalid filename for {what} directive")
             skip_rest(pp)
             return
         }
         name = name_id(pp, line_file_name(spelled))
         if (marker) {
-            skip_rest(pp)
+            return if (!marker_flags(pp))
         } else {
             extra_tokens(pp, "line")
         }
     }
-    pp.state.line_delta = int(number) - (pp.last_tok.line + 1)
+    pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
     if (name >= 0) {
         pp.state.pname = name
     }
 }
 
+//! a line marker's flags: 1 enters a presumed file, 2 leaves one this file entered; false, the
+//! marker ignored, when a 2 has none to leave
+[arch(at="ARCHITECTURE_PP.md#pp-line")]
+def private marker_flags(var pp : Preprocessor) : bool {
+    while (next_on_line(pp)) {
+        if (current_is_number(pp, "1")) {
+            pp.state.markers++
+        } elif (current_is_number(pp, "2") && pp.state.markers == 0) {
+            diagnose(pp, PpSeverity.error, "invalid line marker flag '2': cannot pop empty include stack")
+            skip_rest(pp)
+            return false
+        } elif (current_is_number(pp, "2")) {
+            pp.state.markers--
+        }
+    }
+    return true
+}
+
+def private current_is_number(pp : Preprocessor; digits : string) : bool => pp.lx.tok.kind == int(PpTok.PP_NUMBER) && pp_spelling(pp.lx) == digits
+
 // #pragma
 
-//! `pack(...)` of `pp.line` from token 1 into the pack ledger; false when it is malformed
+//! the warning a malformed `#pragma pack` gets at token `i` of `pp.line`, the line's end past its
+//! last token; false, the pragma ignored
+def private pack_ignored(var pp : Preprocessor; i : int; what : string) : bool {
+    let n = length(pp.line)
+    var place = pp.line[i < n ? i : n - 1]
+    if (i >= n) {
+        place.col += place.len
+    }
+    diagnose_held(pp, PpSeverity.warning, place, what)
+    return false
+}
+
+//! whether token `i` of `pp.line` is of `kind`
+def private line_is(pp : Preprocessor; i : int; kind : PpTok) : bool => i < length(pp.line) && pp.line[i].kind == int(kind)
+
+//! `pack(...)` of `pp.line` from token 1 into the pack ledger, read by clang's grammar: `(` then
+//! `N`, `show`, or `push` or `pop` with `, N`, `, tag` or `, tag, N`, then `)`; false with clang's
+//! warning when it is malformed
 [arch(at="ARCHITECTURE_PP.md#pp-pragmas")]
 def private read_pack(var pp : Preprocessor; at : PpToken) : bool {
-    let n = length(pp.line)
-    return false if (n < 3 || pp.line[1].kind != int(PpTok.LPAREN) || pp.line[n - 1].kind != int(PpTok.RPAREN))
+    let missing_paren = "missing ')' after '#pragma pack' - ignoring"
+    let malformed = "expected integer or identifier in '#pragma pack' - ignored"
+    return pack_ignored(pp, 1, "missing '(' after '#pragma pack' - ignoring") if (!line_is(pp, 1, PpTok.LPAREN))
     var entry = PpPack(file = at.file, line = at.line, col = at.col, emitted = pp.emitted, action = PpPackAction.reset)
     var i = 2
-    if (pp.line[i].kind == int(PpTok.IDENTIFIER)) {
-        let sym = pp.line[i].sym
-        return false if (sym != pp.sym_push && sym != pp.sym_pop && sym != pp.sym_show)
-        entry.action = sym == pp.sym_push ? PpPackAction.push : sym == pp.sym_pop ? PpPackAction.pop : PpPackAction.show
-        i++
-        while (i < n - 1) {
-            return false if (pp.line[i].kind != int(PpTok.COMMA) || i + 1 >= n - 1)
-            i++
-            if (pp.line[i].kind == int(PpTok.IDENTIFIER)) {
-                entry.tag = held_spelling(pp.line[i], pp.line_text)
-            } elif (pp.line[i].kind == int(PpTok.PP_NUMBER)) {
-                entry.value = int(line_number(held_spelling(pp.line[i], pp.line_text)))
-            } else {
-                return false
-            }
-            i++
-        }
-    } elif (pp.line[i].kind == int(PpTok.PP_NUMBER)) {
+    if (line_is(pp, i, PpTok.PP_NUMBER)) {
         entry.action = PpPackAction.set
         entry.value = int(line_number(held_spelling(pp.line[i], pp.line_text)))
-        return false if (i + 1 != n - 1)
-    } elif (i != n - 1) {
-        return false
+        i++
+    } elif (line_is(pp, i, PpTok.IDENTIFIER)) {
+        let sym = pp.line[i].sym
+        return pack_ignored(pp, i, "unknown action for '#pragma pack' - ignored") if (sym != pp.sym_push && sym != pp.sym_pop && sym != pp.sym_show)
+        entry.action = sym == pp.sym_push ? PpPackAction.push : sym == pp.sym_pop ? PpPackAction.pop : PpPackAction.show
+        i++
+        if (sym != pp.sym_show && line_is(pp, i, PpTok.COMMA)) {
+            i++
+            if (line_is(pp, i, PpTok.IDENTIFIER)) {
+                entry.tag = held_spelling(pp.line[i], pp.line_text)
+                i++
+                if (line_is(pp, i, PpTok.COMMA)) {
+                    i++
+                    return pack_ignored(pp, i, malformed) if (!line_is(pp, i, PpTok.PP_NUMBER))
+                    entry.value = int(line_number(held_spelling(pp.line[i], pp.line_text)))
+                    i++
+                }
+            } elif (line_is(pp, i, PpTok.PP_NUMBER)) {
+                entry.value = int(line_number(held_spelling(pp.line[i], pp.line_text)))
+                i++
+            } else {
+                return pack_ignored(pp, i, malformed)
+            }
+        }
     }
-    return false if (entry.value != 0 && entry.value != 1 && entry.value != 2 && entry.value != 4 && entry.value != 8 && entry.value != 16)
+    return pack_ignored(pp, i, missing_paren) if (!line_is(pp, i, PpTok.RPAREN))
+    return pack_ignored(pp, i + 1, "extra tokens at end of '#pragma pack' - ignored") if (i + 1 < length(pp.line))
+    if (entry.value != 0 && entry.value != 1 && entry.value != 2 && entry.value != 4 && entry.value != 8 && entry.value != 16) {
+        return pack_ignored(pp, 0, "expected #pragma pack parameter to be '1', '2', '4', '8', or '16'")
+    }
+    if (entry.action == PpPackAction.pop && empty(pp.pack_stack)) {
+        diagnose_held(pp, PpSeverity.warning, pp.line[0], "#pragma pack(pop, ...) failed: stack empty")
+    }
     apply_pack(pp, entry)
     pp.packs |> push(entry)
     return true
@@ -1146,7 +1224,11 @@ def private push_pop_macro(var pp : Preprocessor) : bool {
             stack |> pop()
         }
     }
-    return true if (saved == -2)
+    if (saved == -2) {
+        let name = pp_name(pp, sym)
+        diagnose_held(pp, PpSeverity.warning, pp.line[0], "pragma pop_macro could not pop '{name}', no matching push_macro")
+        return true
+    }
     if (saved < 0) {
         pp.macro_of |> erase(sym)
     } else {
@@ -1175,13 +1257,27 @@ def private do_pragma(var pp : Preprocessor; at : PpToken) {
         return
     }
     if (n >= 1 && pp.line[0].sym == pp.sym_pack) {
-        if (!read_pack(pp, at)) {
-            diagnose_at(pp, PpSeverity.warning, at, "malformed #pragma pack, ignored: {held_text(pp.line, pp.line_text)}")
-        }
+        read_pack(pp, at)
         return
     }
-    pp.pragmas |> push(PpPragma(file = at.file, line = at.line, col = at.col, pname = pp.state.pname, pline = at.line + pp.state.line_delta,
+    pp.pragmas |> push(PpPragma(file = at.file, line = at.line, col = at.col, pname = pp.state.pname, pline = presumed_line(pp, at.line),
                                 emitted = pp.emitted, text = held_text(pp.line, pp.line_text)))
+}
+
+//! `#ident "text"` and its `#sccs` spelling: a pragma ledger entry, which clang's `-E` prints as an
+//! `#ident` line; anything but a plain or wide string literal is an error
+[arch(at="ARCHITECTURE_PP.md#pp-pragmas")]
+def private do_ident(var pp : Preprocessor; at : PpToken) {
+    let has = next_on_line(pp)
+    let spelled = has ? pp_spelling(pp.lx) : ""
+    if (!has || pp.lx.tok.kind != int(PpTok.STRING_LITERAL) || (!starts_with(spelled, "\"") && !starts_with(spelled, "L\""))) {
+        diagnose_at(pp, PpSeverity.error, has ? pp.lx.tok : at, "invalid #ident directive")
+        skip_rest(pp)
+        return
+    }
+    extra_tokens(pp, "ident")
+    pp.pragmas |> push(PpPragma(file = at.file, line = at.line, col = at.col, pname = pp.state.pname, pline = presumed_line(pp, at.line),
+                                emitted = pp.emitted, ident = true, text = spelled))
 }
 
 // Directives
@@ -1226,8 +1322,8 @@ def private active_directive(var pp : Preprocessor; at : PpToken; d : PpDirectiv
         do_define(pp, at)
     } elif (d == PpDirective.undef) {
         do_undef(pp, at)
-    } elif (d == PpDirective.hash_include || d == PpDirective.hash_include_next) {
-        do_include(pp, at, d == PpDirective.hash_include_next)
+    } elif (d == PpDirective.hash_include || d == PpDirective.hash_include_next || d == PpDirective.hash_import) {
+        do_include(pp, at, d)
     } elif (d == PpDirective.hash_if) {
         do_if(pp, at)
     } elif (d == PpDirective.ifdef || d == PpDirective.ifndef) {
@@ -1246,6 +1342,8 @@ def private active_directive(var pp : Preprocessor; at : PpToken; d : PpDirectiv
         diagnose_at(pp, d == PpDirective.error ? PpSeverity.error : PpSeverity.warning, at, what)
     } elif (d == PpDirective.pragma) {
         do_pragma(pp, at)
+    } elif (d == PpDirective.ident) {
+        do_ident(pp, at)
     } elif (pp.lx.tok.kind == int(PpTok.PP_NUMBER)) {
         do_line(pp, at, true)
     } else {
@@ -1260,7 +1358,7 @@ def private end_file(var pp : Preprocessor) : bool {
     while (length(pp.conds) > pp.state.cond_base) {
         let c = pp.conds[length(pp.conds) - 1]
         pp.diags |> push(PpDiagnostic(severity = PpSeverity.error, file = c.file, line = c.line, col = c.col, pname = pp.state.pname,
-                                      pline = c.line + pp.state.line_delta, what = "unterminated conditional directive"))
+                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive"))
         pp.conds |> pop()
     }
     if (pp.state.guard == GuardState.closed) {
@@ -1275,7 +1373,7 @@ def private end_file(var pp : Preprocessor) : bool {
 //! skipped group left out, no macro expanded; false at its end.
 [arch(at="ARCHITECTURE_PP.md#pp-directives")]
 def pp_next_token(var pp : Preprocessor) : bool {
-    while (true) {
+    while (!pp.fatal) {
         if (!fetch(pp)) {
             return false if (!end_file(pp))
             continue
@@ -1289,7 +1387,7 @@ def pp_next_token(var pp : Preprocessor) : bool {
             pp.state.guard = GuardState.none
         }
         pp.tok.tok = pp.lx.tok
-        pp.tok.pline = pp.lx.tok.line + pp.state.line_delta
+        pp.tok.pline = presumed_line(pp, pp.lx.tok.line)
         pp.tok.pname = pp.state.pname
         pp.emitted++
         return true

@@ -38,10 +38,22 @@ def private preprocessed(text : string; files : array<tuple<string; string>> = a
     return stream(pp)
 }
 
-// every diagnostic, `<W|E> <line>:<col> <what>`, a `|` between them
+// every diagnostic, `<W|E|F> <line>:<col> <what>`, a `|` between them
 def private diagnostics(pp : Preprocessor) : string {
-    let parts <- [for (d in pp.diags); "{d.severity == PpSeverity.error ? "E" : "W"} {d.line}:{d.col} {d.what}"]
+    let parts <- [for (d in pp.diags); "{d.severity == PpSeverity.fatal ? "F" : d.severity == PpSeverity.error ? "E" : "W"} {d.line}:{d.col} {d.what}"]
     return join(parts, " | ")
+}
+
+// the pragma ledger, `<line>:<col>@<emitted> <text>` each, an `#ident` entry marked so
+def private pragma_rows(pp : Preprocessor) : string {
+    let rows <- [for (p in pp.pragmas); "{p.line}:{p.col}@{p.emitted} {p.ident ? "ident " : ""}{p.text}"]
+    return join(rows, " | ")
+}
+
+// the pack ledger, `<action> <value> <tag> -> <current>` each
+def private pack_rows(pp : Preprocessor) : string {
+    let rows <- [for (p in pp.packs); "{p.action} {p.value} {p.tag} -> {p.current}"]
+    return join(rows, " | ")
 }
 
 // `text` written to the file `path`
@@ -89,12 +101,15 @@ def test_include_next(t : T?) {
     t |> equal(diagnostics(main_next), "W 1:15 #include_next in primary source file")
 }
 
-[test(description = "a missing file is an error naming the folders searched; the line after it is read")]
+[test(description = "a missing file is a fatal error naming the folders searched, and the unit ends there, as clang's compile ends")]
 def test_missing_file(t : T?) {
-    var pp <- started([("src/main.c", "#include \"nope.h\"\n#include <gone.h>\nafter\n")], "src/main.c", array<string>(), ["inc"])
-    t |> equal(stream(pp), "after")
-    t |> equal(diagnostics(pp), "E 1:10 'nope.h' file not found; searched: src, inc | E 2:10 'gone.h' file not found; searched: inc")
-    t |> equal(inclusions(pp), "\"nope.h\":-:not_found <gone.h>:-:not_found")
+    var pp <- started([("src/main.c", "before\n#include \"nope.h\"\nafter\n#error never\n#if 1\n")], "src/main.c", array<string>(), ["inc"])
+    t |> equal(stream(pp), "before")
+    t |> equal(diagnostics(pp), "F 2:10 'nope.h' file not found; searched: src, inc")
+    t |> equal(inclusions(pp), "\"nope.h\":-:not_found")
+    var angled <- started([("src/main.c", "#include <gone.h>\nafter\n")], "src/main.c", array<string>(), ["inc"])
+    t |> equal(stream(angled), "")
+    t |> equal(diagnostics(angled), "F 1:10 'gone.h' file not found; searched: inc")
     var empty_name <- started([("main.c", "#include \"\"\n#include\n#include \"a.h\" extra\n"), ("a.h", "a\n")])
     t |> equal(stream(empty_name), "a")
     t |> equal(diagnostics(empty_name), "E 1:10 empty filename | E 2:2 expected \"FILENAME\" or <FILENAME> | W 3:16 extra tokens at end of #include directive")
@@ -167,13 +182,35 @@ def test_line(t : T?) {
     var pp <- started(files)
     var placed : array<string>
     while (pp_next_token(pp)) {
-        placed |> push("{pp_token_spelling(pp)}:{pp.names[pp.tok.pname]}:{pp.tok.pline}/{pp.tok.tok.line}")
+        placed |> push("{pp_token_spelling(pp)}:{pp.names[pp.tok.pname]}:{int64(pp.tok.pline)}/{pp.tok.tok.line}")
     }
     t |> equal(join(placed, " "), "a:main.c:1/1 b:main.c:100/3 c:main.c:102/5 d:other.c:7/7 e:marked.c:40/9 h:h.h:1/1 f:marked.c:42/11")
-    var bad <- started([("main.c", "#line 0x10\n#line 2147483648\n#line 5 L\"w\"\n#line\n#line 9 \"n\" z\n#line N\ny\n")])
+    var bad <- started([("main.c", "#line 0x10\n#line 4294967296\n#line 5 L\"w\"\n#line\n#line 9 \"n\" z\n#line N\n# 4294967296 \"m\"\ny\n")])
     t |> equal(stream(bad), "y")
-    t |> equal(diagnostics(bad), "E 1:7 #line directive requires a simple digit sequence | E 2:7 line number out of range | E 3:9 invalid filename for #line directive | E 4:2 #line directive requires a positive integer argument | W 5:13 extra tokens at end of #line directive | E 6:2 #line of macro-expanded tokens needs PP.3: N")
+    t |> equal(diagnostics(bad), "E 1:7 #line directive requires a simple digit sequence | E 2:7 #line directive requires a positive integer argument | E 3:9 invalid filename for #line directive | E 4:2 #line directive requires a positive integer argument | W 5:13 extra tokens at end of #line directive | E 6:2 #line of macro-expanded tokens needs PP.3: N | E 7:3 line marker directive requires a positive integer argument")
     t |> equal(pp.diags |> length, 0)
+}
+
+[test(description = "#line takes any number up to 4294967295, clang's unsigned line, and the presumed line wraps past it as clang's does")]
+def test_line_unsigned(t : T?) {
+    var pp <- started([("main.c", "#line 2147483648\na\n#line 4294967295\nb\nc\n# 4294967295 \"q.c\"\nd\n")])
+    var placed : array<string>
+    while (pp_next_token(pp)) {
+        placed |> push("{pp_token_spelling(pp)}:{pp.names[pp.tok.pname]}:{int64(pp.tok.pline)}")
+    }
+    t |> equal(join(placed, " "), "a:main.c:2147483648 b:main.c:4294967295 c:main.c:0 d:q.c:4294967295")
+    t |> equal(diagnostics(pp), "")
+}
+
+[test(description = "a line marker's flag 1 enters a presumed file and its flag 2 leaves it; a flag 2 with no flag 1 before it in the file is an error and the marker is ignored, as clang ignores it")]
+def test_line_marker_flags(t : T?) {
+    var pp <- started([("main.c", "a\n# 5 \"x.h\" 2\nb\n# 6 \"y.h\" 1\nc\n# 7 \"z.h\" 2\nd\n# 8 \"w.h\" 2\ne\n")])
+    var placed : array<string>
+    while (pp_next_token(pp)) {
+        placed |> push("{pp_token_spelling(pp)}:{pp.names[pp.tok.pname]}:{int64(pp.tok.pline)}")
+    }
+    t |> equal(join(placed, " "), "a:main.c:1 b:main.c:3 c:y.h:6 d:z.h:7 e:z.h:9")
+    t |> equal(diagnostics(pp), "E 2:11 invalid line marker flag '2': cannot pop empty include stack | E 8:11 invalid line marker flag '2': cannot pop empty include stack")
 }
 
 [test(description = "nested conditionals take one group each, a skipped group's directives only nest, and misplaced ones are errors")]
@@ -270,9 +307,17 @@ def test_error_warning(t : T?) {
 
 [test(description = "the null directive is nothing, an unknown directive is an error and its line is dropped")]
 def test_null_and_unknown(t : T?) {
-    var pp <- started([("main.c", "#\n# /* c */\n#bogus x y\n#ident \"v\"\n# \"s\"\nz\n")])
+    var pp <- started([("main.c", "#\n# /* c */\n#bogus x y\n#assert x\n# \"s\"\nz\n")])
     t |> equal(stream(pp), "z")
     t |> equal(diagnostics(pp), "E 3:2 invalid preprocessing directive | E 4:2 invalid preprocessing directive | E 5:3 invalid preprocessing directive")
+}
+
+[test(description = "#ident and #sccs take a string literal into the pragma ledger, marked as an #ident line, as clang's -E prints both; anything else is an error and tokens after it a warning")]
+def test_ident(t : T?) {
+    var pp <- started([("main.c", "a\n#ident \"v1\"\n#sccs L\"v2\"\n#ident x\n#ident\n#ident \"v3\" junk\n#ident u8\"v4\"\n#if 0\n#ident bad\n#endif\nb\n")])
+    t |> equal(stream(pp), "a b")
+    t |> equal(pragma_rows(pp), "2:2@1 ident \"v1\" | 3:2@1 ident L\"v2\" | 6:2@1 ident \"v3\"")
+    t |> equal(diagnostics(pp), "E 4:8 invalid #ident directive | E 5:2 invalid #ident directive | W 6:13 extra tokens at end of #ident directive | E 7:8 invalid #ident directive")
 }
 
 [test(description = "an #include whose tokens are no header name is left for PP.3's expansion: a diagnostic, its tokens recorded")]
@@ -298,16 +343,15 @@ def test_push_pop_macro(t : T?) {
     t |> equal(pp_macro_body_text(pp, pp.macros[pp_macro_index(pp, "A")]), "1")
     t |> equal(pp_macro_index(pp, "U"), -1)
     t |> equal(length(pp.pragmas), 0)
-    t |> equal(diagnostics(pp), "W 12:2 malformed #pragma push_macro, ignored")
+    t |> equal(diagnostics(pp), "W 11:9 pragma pop_macro could not pop 'A', no matching push_macro | W 12:2 malformed #pragma push_macro, ignored")
 }
 
 [test(description = "#pragma pack lands in the pack ledger: set, reset, push and pop with a tag or a value, the alignment in force after each")]
 def test_pack_ledger(t : T?) {
     var pp <- started([("main.c", "#pragma pack(4)\n#pragma pack(push, 1)\n#pragma pack(push, outer, 2)\n#pragma pack(push)\n#pragma pack(pop, outer)\n#pragma pack(pop)\n#pragma pack()\n#pragma pack(show)\n#pragma pack(3)\n#pragma pack 1\n")])
     t |> equal(stream(pp), "")
-    let rows <- [for (p in pp.packs); "{p.action} {p.value} {p.tag} -> {p.current}"]
-    t |> equal(join(rows, " | "), "set 4  -> 4 | push 1  -> 1 | push 2 outer -> 2 | push 0  -> 2 | pop 0 outer -> 1 | pop 0  -> 4 | reset 0  -> 0 | show 0  -> 0")
-    t |> equal(diagnostics(pp), "W 9:2 malformed #pragma pack, ignored: pack(3) | W 10:2 malformed #pragma pack, ignored: pack 1")
+    t |> equal(pack_rows(pp), "set 4  -> 4 | push 1  -> 1 | push 2 outer -> 2 | push 0  -> 2 | pop 0 outer -> 1 | pop 0  -> 4 | reset 0  -> 0 | show 0  -> 0")
+    t |> equal(diagnostics(pp), "W 9:9 expected #pragma pack parameter to be '1', '2', '4', '8', or '16' | W 10:14 missing '(' after '#pragma pack' - ignoring")
     t |> equal(length(pp.pragmas), 0)
 }
 
@@ -340,6 +384,14 @@ def test_normalized_path(t : T?) {
     t |> equal(normalized_path("../a/../../b"), "../a/../../b")
     t |> equal(normalized_path("/"), "/")
     t |> equal(normalized_path("/../a"), "/../a")
+}
+
+[test(description = "an object-like body with no space after the name warns as clang's C99 mode does, and is defined")]
+def test_define_no_space_after_name(t : T?) {
+    var pp <- started([("main.c", "#define NOWS+\n#define NOWS2\"s\"\n#define SP +\n#define FN(x)x\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "W 1:13 ISO C99 requires whitespace after the macro name | W 2:14 ISO C99 requires whitespace after the macro name")
+    t |> equal(pp_macro_body_text(pp, pp.macros[pp_macro_index(pp, "NOWS")]), "+")
 }
 
 [test(description = "#include_next searches after the folder of the inclusion, not of the file: a file found in its includer's folder inherits the includer's, as gcc's limits.h -> syslimits.h -> #include_next <limits.h> needs")]
@@ -399,4 +451,13 @@ def test_identity_relative_absolute(t : T?) {
     let skips <- [for (inc in pp.inclusions); "{inc.skip}"]
     t |> equal(join(skips, " "), "none pragma_once pragma_once none guard")
     t |> equal(length(pp.files), 4)
+}
+
+[test(description = "#import reads a file once: a later #import or #include of it is skipped, as clang marks it include-once")]
+def test_import(t : T?) {
+    var pp <- started([("main.c", "#include \"i.h\"\n#import \"i.h\"\n#import \"j.h\"\n#import \"j.h\"\n#include \"j.h\"\n#import\n#import \"k.h\"\n#include \"k.h\"\n"),
+                       ("i.h", "i\n"), ("j.h", "j\n"), ("k.h", "k\n")])
+    t |> equal(stream(pp), "i j k")
+    t |> equal(inclusions(pp), "\"i.h\":i.h:none \"i.h\":i.h:pragma_once \"j.h\":j.h:none \"j.h\":j.h:pragma_once \"j.h\":j.h:pragma_once \"k.h\":k.h:none \"k.h\":k.h:pragma_once")
+    t |> equal(diagnostics(pp), "E 6:2 expected \"FILENAME\" or <FILENAME>")
 }
