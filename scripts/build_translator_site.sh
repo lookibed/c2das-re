@@ -100,6 +100,9 @@ mkdir -p "$tstage/src/converter"
 # the folder's architecture documents too: the lint resolves the modules' citations against them
 for f in converter/*.das converter/ARCHITECTURE*.md; do cp "$f" "$tstage/src/converter/"; done
 cp web/translator/main_web.das "$tstage/src/converter/"
+# the sidecar reader's define parser, where converter/sidecar.das requires it: ../frontend/
+mkdir -p "$tstage/src/frontend"
+cp frontend/c_defines.das "$tstage/src/frontend/"
 cp web/translator/translator.das_package "$tstage/.das_package"
 crt_module "$tstage"
 

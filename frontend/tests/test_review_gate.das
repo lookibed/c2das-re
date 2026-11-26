@@ -28,6 +28,15 @@ def private findings_of(t : T?; files : array<tuple<name : string; text : string
     return join([for (finding in found); slice(finding, length(folder) + 1)], "\n")
 }
 
+// the gate's findings over the folder `folder`
+def private tree_findings(folder : string) : array<string> {
+    gate_reset()
+    check_tree(folder)
+    var found <- gate_findings()
+    gate_reset()
+    return <- found
+}
+
 [test(description = "the frontend gate reports a require of the clang binding and a call that starts a process, in a file and in what it requires")]
 def test_frontend_gate(t : T?) {
     t |> run("a file with neither is clean, a comment and a longer name included") @(t : T?) {
@@ -95,20 +104,20 @@ def test_frontend_gate_requires(t : T?) {
         t |> success(found |> starts_with("a.das:2: has an `{INCLUDE}`: the gate follows no text include"), found)
         t |> success(find(found, "\nb.das:1: has an `{INCLUDE}` (required from ") > 0, found)
     }
-    t |> run("under the folder every .das file is checked, and a file that is no .das, .h or .md is a finding") @(t : T?) {
+    t |> run("under the folder every .das file is checked, and a file that is no .das, .h, .md or table is a finding") @(t : T?) {
         let folder = path_join(test_temp_dir(), "gate_tree")
         mkdir_rec(path_join(folder, "sub"))
-        for (name in fixed_array("a.das", "sub/body.inc", "sub/part.das.inc", "sub/x.h", "sub/y.md")) {
+        mkdir_rec(path_join(folder, "predefined"))
+        for (name in fixed_array("a.das", "predefined/linux.defs", "predefined/x.das.inc", "sub/body.inc", "sub/other.defs", "sub/part.das.inc", "sub/x.h", "sub/y.md")) {
             fwrite(path_join(folder, name), "let n = {SPAWNERS[0]}(x)\n")
         }
-        gate_reset()
-        check_tree(folder)
-        let found <- gate_findings()
-        gate_reset()
-        t |> equal(length(found), 3, join(found, "\n"))
-        t |> success(length(found) == 3 && found[0] |> ends_with("a.das:1: names `{SPAWNERS[0]}`: nothing under frontend/ starts a process"), join(found, "\n"))
-        t |> success(length(found) == 3 && found[1] |> ends_with("sub/body.inc: is no .das, .h or .md file: the gate reads no other source"), join(found, "\n"))
-        t |> success(length(found) == 3 && found[2] |> ends_with("sub/part.das.inc: is no .das, .h or .md file: the gate reads no other source"), join(found, "\n"))
+        let found <- tree_findings(folder)
+        let other = "is no .das, .h or .md file and no predefined/*.defs table: the gate reads no other source"
+        let wanted = fixed_array("a.das:1: names `{SPAWNERS[0]}`: nothing under frontend/ starts a process", "predefined/x.das.inc: {other}", "sub/body.inc: {other}", "sub/other.defs: {other}", "sub/part.das.inc: {other}")
+        t |> equal(length(found), length(wanted), join(found, "\n"))
+        for (finding, want in found, wanted) {
+            t |> success(finding |> ends_with(want), finding)
+        }
     }
     t |> run("a file required by its path alone is checked") @(t : T?) {
         let found = findings_of(t, [(name = "a.das", text = "require ./c.das\n"), (name = "c.das", text = "let n = {SPAWNERS[0]}(x)\n")], "a.das")

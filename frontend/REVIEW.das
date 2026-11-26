@@ -17,6 +17,11 @@ let private REQUIRE = "require"
 
 let INCLUDE = "include"
 
+// the folder of the predefined-macro tables and their extension: text no daslang loads
+let private TABLES = "predefined"
+
+let private TABLE_EXT = ".defs"
+
 let SPAWNERS <- ["popen", "popen_binary", "popen_timeout", "popen_argv", "popen_argv_pipe", "spawn_process", "spawn_argv", "with_process", "run_and_capture", "executable_on_path", "system"]
 
 // the length of the character literal at `at` of `chars` (`'a'`, `'\\n'`), 0 when none starts there
@@ -164,17 +169,18 @@ def check_file(path, via : string; var checked : table<string>) {
     }
 }
 
-//! The gate over the folder `root`: every `.das` file is checked with what it requires, a `.h` and
-//! a `.md` file hold no daslang, and any other file is a finding, since daslang can load it as
-//! source and the gate does not read it.
+//! The gate over the folder `root`: every `.das` file is checked with what it requires; a `.h`
+//! file, a `.md` file and a `.defs` table of `<root>/predefined/` hold no daslang; any other file
+//! is a finding, since daslang can load it as source and the gate does not read it.
 def check_tree(root : string) {
     var inscope files <- files_under(root)
+    let tables = path_join(root, TABLES) + "/"
     for (file in files) {
         if (file |> ends_with(".das")) {
             var inscope checked : table<string>
             check_file(file, file, checked)
-        } elif (!(file |> ends_with(".h")) && !(file |> ends_with(".md"))) {
-            gate_finding(file, "is no .das, .h or .md file: the gate reads no other source")
+        } elif (!(file |> ends_with(".h")) && !(file |> ends_with(".md")) && !(file |> starts_with(tables) && file |> ends_with(TABLE_EXT))) {
+            gate_finding(file, "is no .das, .h or .md file and no {TABLES}/*{TABLE_EXT} table: the gate reads no other source")
         }
     }
 }

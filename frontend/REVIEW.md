@@ -12,7 +12,8 @@ requires `cbind`, or names `popen`, `popen_binary`, `popen_timeout`, `popen_argv
 `executable_on_path` or `system`, is never required here - do the work in das
 instead.** `REVIEW.das` follows only a `require` that names a file.
 
-**A diff that adds a file under this folder adds a `.das`, a `.h` or a `.md` file, and writes
+**A diff that adds a file under this folder adds a `.das`, a `.h` or a `.md` file, or a `.defs`
+table under `predefined/`, and writes
 every module dependency as a line `require <module>` or `require <module> public` - never an
 `include`, and never a `require` of another form.** `REVIEW.das` reads no other file and can name
 the module of no other line, so it reports both.

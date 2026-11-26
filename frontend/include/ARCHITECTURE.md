@@ -153,7 +153,9 @@ bytes, `struct lconv` 96, `struct timespec` 16; `time_t` and `clock_t` are 64 bi
 ## 5. Predefined names
 
 The headers read these macros the compiler predefines, and no other; `PREDEFINED` in
-`tests/test_headers.das` is the same list, held equal to the headers' text.
+`tests/test_headers.das` is the same list, held equal to the headers' text, and every name of it is
+an entry of both predefined-macro tables (`../ARCHITECTURE.md` section 3), which spell a type as
+clang does (`long unsigned int` for the `unsigned long` below).
 
 | Names | Read by | `linux` | `msvc` |
 |---|---|---|---|

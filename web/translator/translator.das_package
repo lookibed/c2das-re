@@ -2,8 +2,8 @@ options gen2
 require daslib/daspkg
 
 // the translator's release (web/ARCHITECTURE.md section 8): scripts/build_translator_site.sh stages
-// converter/*.das and main_web.das into src/converter/ and copies this file as the stage's
-// .das_package. The converter uses daslib/ast at run time, so the link takes the whole compiler
+// converter/*.das and main_web.das into src/converter/, frontend/c_defines.das into src/frontend/,
+// and copies this file as the stage's .das_package. The converter uses daslib/ast at run time, so the link takes the whole compiler
 // archive and uriparser beside daspkg's runtime archive; the page loads the program through
 // createTranslator, beside the Lua console's module.
 [export]

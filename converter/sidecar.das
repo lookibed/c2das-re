@@ -7,6 +7,7 @@ require daslib/strings_boost
 require daslib/fio
 require daslib/json_boost
 require cir
+require ../frontend/c_defines.das
 
 //! The per-project `.c2das` file: every judgment the pipeline cannot derive from the C source
 //! (docs/very-detailed-plan.md section 4.4). JSON; a key the row that needs it adds.
@@ -200,45 +201,6 @@ def read_json_file(path : string; var error : string&) : JsonValue? {
         error = "{path}: {error}"
     }
     return js
-}
-
-// whether `name` is a C identifier
-def private is_identifier(name : string) : bool {
-    if (empty(name)) {
-        return false
-    }
-    for (idx, ch in count(), name) {
-        if (!(ch == '_' || is_alpha(ch) || (idx > 0 && is_number(ch)))) {
-            return false
-        }
-    }
-    return true
-}
-
-// whether `entry` is what `-D` takes as a macro: `NAME`, `NAME=value`, or a function-like
-// `NAME(params)=value` whose params are identifiers separated by commas, `...` last
-def private is_define(entry : string) : bool {
-    let eq = find(entry, "=")
-    let head = eq < 0 ? entry : slice(entry, 0, eq)
-    let paren = find(head, "(")
-    if (paren < 0) {
-        return is_identifier(head)
-    }
-    if (eq < 0 || !(head |> ends_with(")")) || !is_identifier(slice(head, 0, paren))) {
-        return false
-    }
-    let inside = slice(head, paren + 1, length(head) - 1)
-    if (empty(strip(inside))) {
-        return true
-    }
-    let params <- split(inside, ",")
-    for (idx, param in count(), params) {
-        let name = strip(param)
-        if (!is_identifier(name) && !(name == "..." && idx == length(params) - 1)) {
-            return false
-        }
-    }
-    return true
 }
 
 //! The count a JSON value spells as one or more decimal digits, else -1.
