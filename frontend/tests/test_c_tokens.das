@@ -128,7 +128,7 @@ def test_literals(t : T?) {
                "C:'a' C:L'b' C:u'c' C:U'd' C:'\\n' S:\"s\" S:u8\"s\" S:L\"s\" S:\"a\" S:\"b\"")
 }
 
-[test(description = "every C punctuator keeps the pp-lexer's kind, a digraph the kind of what it spells; `#`, `##`, `::` and any other character are stray errors")]
+[test(description = "every C punctuator keeps the pp-lexer's kind, a digraph the kind of what it spells, `::` is two colons; `#`, `##` and any other character are stray errors")]
 def test_punctuators(t : T?) {
     t |> run("every punctuator of 6.4.6 but `#` and `##`") @(t : T?) {
         let puncts = "[ ] ( ) \{ \} . -> ++ -- & * + - ~ ! / % << >> < > <= >= == != ^ | && || ? : ; ... = *= /= %= += -= <<= >>= &= ^= |= ,"
@@ -142,6 +142,9 @@ def test_punctuators(t : T?) {
         t |> equal(c_kind_name(int(CTok.GNU_ALIGNOF)), "__alignof__")
         t |> equal(c_kind_name(int(CTok.IDENTIFIER)), "token kind 256")
     }
+    t |> run("`::` is two colons, as C17 has no `::` and GNU asm spells `:` twice") @(t : T?) {
+        t |> equal(placed("a::b"), "a@t.c:1:1 :@t.c:1:2 :@t.c:1:3 b@t.c:1:4 $@t.c:1:5")
+    }
     t |> run("a digraph") @(t : T?) {
         t |> equal(kind_of("<:"), int(CTok.LBRACKET))
         t |> equal(kind_of("%>"), int(CTok.RBRACE))
@@ -149,7 +152,6 @@ def test_punctuators(t : T?) {
     t |> run("a stray character or a preprocessor-only punctuator") @(t : T?) {
         t |> equal(lexed("a # b"), "error: t.c:1:3: stray '#'")
         t |> equal(lexed("a ## b"), "error: t.c:1:3: stray '##'")
-        t |> equal(lexed("a::b"), "error: t.c:1:2: stray '::'")
         t |> equal(lexed("a @"), "error: t.c:1:3: stray '@'")
         t |> equal(lexed("\\"), "error: t.c:1:1: stray '\\'")
         t |> equal(lexed("x \"abc"), "error: t.c:1:3: stray '\"abc'")

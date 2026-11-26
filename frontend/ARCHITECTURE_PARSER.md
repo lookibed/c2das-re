@@ -2,9 +2,8 @@
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family. It
 describes Dumper C's parser: the C tokens it reads, the tree it builds, and how it decides what it
-reads. The parser reads expressions, type names, declarations with their record and enum bodies, function
-definitions and whole units; a function body stays a range of tokens, and it has no entry for a
-statement.
+reads. The parser reads expressions, type names, declarations with their record and enum bodies, statements,
+function definitions and whole units.
 
 ## 14. The C tokens {#c-tokens}
 
@@ -37,8 +36,9 @@ in either order; a decimal floating constant with a `.` or an exponent; a hexade
 neither is an error, `invalid numeric constant '<spelling>'`; so is an imaginary suffix. Its value
 is not computed here. A punctuator keeps the kind `PpTok` gives it, so a digraph has the kind of
 the punctuator it spells. A character constant and a string literal stay one token each; adjacent
-string literals are joined by the parser. `#` and `##` outside a line marker, `::`, a pp-token of kind
-OTHER and an unterminated comment are errors.
+string literals are joined by the parser. A `::`, which the pp-lexer reads as one token, is two
+`:` tokens, as clang reads it in C17. `#` and `##` outside a line marker, a pp-token of kind OTHER
+and an unterminated comment are errors.
 
 A `#` that starts a line opens a line marker, `# <line> "<file>" <flags>` as `clang -E` writes it,
 or `#line <line> "<file>"`. The lines after it are placed at that line, in that file; a marker with
@@ -142,7 +142,8 @@ left operand's.
 The parser stops at the first error: `failed` is set, `err` holds `file:line:col: what` at the
 token where it stopped, and the cursor moves to the EOF token, so every loop ends. Malformed input
 reads `expected <what>, got '<token>'` (`got end of input` at the end). A construct the parser does
-not take reads `<construct> is not parsed`: a statement expression, a label address `&&label`,
+not take reads `<construct> is not parsed`: a label address `&&label`, a computed goto `goto *`,
+`asm goto`, a nested function definition,
 `_Generic`, `__int128`, `_Atomic(T)`, `_Imaginary`, `__auto_type`,
 `__real__`, `__imag__`, `__label__`, and the old GNU designator `member:`. Every loop either
 consumes a token or stops.
@@ -150,8 +151,8 @@ consumes a token or stops.
 Recursion is bounded so that deep input ends in a located refusal, never in a stack overflow,
 which ends the daslang context. A level is opened by each assignment expression, constant
 expression, `?:` arm after the `:`, prefix operator, cast, compound literal where a unary expression
-stands, initializer list, type name, parameter list, record or enum body, and a declarator's `*`
-or parentheses; every
+stands, initializer list, type name, parameter list, record or enum body, compound statement,
+the statement of a selection or iteration statement, and a declarator's `*` or parentheses; every
 cycle of the parser's calls passes one of them. The 257th level is refused as `nesting deeper than
 256 levels`. An expression in 255 parentheses is 256 levels.
 
@@ -164,7 +165,10 @@ parenthesised declarator, 112 for a parameter list with a pointer declarator in 
 parameter list alone, 353 for a `typeof` in a declaration, 278 for a `sizeof` of an array type in
 an array size. The record forms: 561 bytes for a record body in a member of a record body, and 449
 for a record body in a parameter list of a member's function declarator, whose cycle holds two
-levels open, the body and the parameter list. 256 levels of the costliest form take about 165 KiB. The
+levels open, the body and the parameter list. The statement forms: 224 bytes for a block in a block
+(a label before it costs nothing), 337 for an `if` statement's body, 305 for a `while`'s, 320 for a
+`for`'s, and 409 for a statement expression in a statement expression, whose cycle holds two
+levels open, the block and the assignment expression. 256 levels of the costliest form take about 165 KiB. The
 parser therefore runs on a context stack of at least 256 KiB (`options stack = 262144`), which
 leaves a third of it for the caller. A context's stack is the `options stack` of the program that
 made it, 16 KiB when none is given (daslang's default): a test's context takes its test file's
@@ -248,8 +252,35 @@ error at the body's `{`, since clang under gnu17 refuses the implicit `int`. Eac
 names its declarator (the `ident_param` node's `b`), and `c_parameters_declare` binds the
 parameter names of a function declarator in the innermost scope.
 
-The body is kept unparsed: a `body` node spans its tokens from the `{` to the `}` that balances it,
-and a missing `}` is `expected '}' closing the function body` at the end of input. It is read in
-the scope `c_parameters_declare` opens, the parameters of the definition's own function
-declarator, which the statement parser will hold open while it parses the body in place of the
-range.
+The body is a compound statement (section 23) read in the scope the definition opens:
+`c_parameters_declare` binds the parameter names of the definition's own function declarator in
+it, so a parameter shadows a typedef name in the body and the name is a type again after it.
+
+## 23. Statements {#c-statements}
+
+`c_statement` reads one statement (C11 6.8). A compound statement opens a scope and a nesting
+level and holds declarations and statements in any order. Where a block item stands, it is a
+declaration when its first token past any `__extension__`s is a storage class, a function
+specifier, `_Static_assert` or a type name's first token (section 16), but an identifier followed by
+`:`, which is a label even when it names a typedef, and attributes followed by `;`, which are a
+null statement's (`__attribute__((fallthrough));`); attributes before anything else start a
+declaration. An `__extension__` before an expression is the expression's (section 18). A function
+definition in a block, a GNU nested function, is refused at its `{`.
+
+A run of labels, `name:` with the attributes after it, `case` with a constant expression and a GNU
+range's `... last`, and `default`, is read in a loop, each label the statement of the one before,
+so a long run costs no recursion. As clang takes it, a label may stand at a block's end, its
+statement missing, or before a declaration.
+
+`if`, `switch`, `while`, `do` and `for` are each a scope, and each body is a scope and a nesting
+level of its own (C11 6.8.4p3, 6.8.5p5), so a declaration in a `for`'s first clause or anywhere
+in a body ends with the statement. An `else` binds to the nearest `if`; a chain of `else if` is
+read in a loop, so a long chain costs no recursion. `goto` takes a label name, `return` an
+optional expression. A declaration where a body must stand is no statement: `if (x) int y;` is
+`expected an expression`.
+
+The GNU forms: a statement expression `({ ... })` is a primary expression holding a compound
+statement, whose declarations end with it. An asm statement takes `volatile` and `inline`, each
+once, a template, and up to three sections of operands (outputs, inputs, clobbers), each operand
+kept as its tokens up to a `,`, `:` or `)` outside brackets; the checker judges them, as Dumper A
+fails every asm but a compiler barrier. `::` is two `:` tokens (section 14), as C17 has no `::`.

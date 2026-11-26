@@ -7,8 +7,8 @@ header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` a
 sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token
 lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
 `#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
-C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums and
-function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22). No converter pass calls the preprocessor or the
+C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
+statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23). No converter pass calls the preprocessor or the
 parser yet.
 
 ## 1. File charters
@@ -32,7 +32,7 @@ parser yet.
 - `c_ast.das` - the tree in one node array and its one-line dump (section 15). No parsing.
 - `c_parser.das` - the recursive-descent parser: the typedef-name table, type names and
   declarators, expressions, the errors and the nesting bound, declarations, records and enums,
-  function definitions and the unit (sections 16 to 22).
+  function definitions and the unit, statements (sections 16 to 23).
   One module, since the grammar's parts call each other.
 - `tests/test_c_parse_decl.das` - every declaration specifier, declarator and init-declarator form
   as a dumped tree, the typedef table's scope cases, the refusals and malformed declarations, the
@@ -41,6 +41,9 @@ parser yet.
   tree, the tag and enumerator scopes, the old-style declaration list, a body's scope, the
   refusals and malformed input, the nesting bound of the record forms, and a whole unit of headers
   and a program with its allocation probe.
+- `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
+  block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
+  forms, and a unit with real bodies with its allocation probe.
 - `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, the text the
   parser tests read.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and

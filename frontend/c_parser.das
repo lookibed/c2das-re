@@ -816,8 +816,10 @@ def private primary(var p : CParser) : int {
         return string_literal(p)
     } elif (k == int(CTok.LPAREN)) {
         if (kind_at(p, 1) == int(CTok.LBRACE)) {
-            refuse(p, "a statement expression")
-            return -1
+            p.pos++
+            let inner = compound(p)
+            take(p, CTok.RPAREN)
+            return node(p, CNode.STMT_EXPR, at, 0, inner)
         }
         p.pos++
         let e = c_expression(p)
@@ -1214,13 +1216,6 @@ def c_parameters_declare(var p : CParser; f : int) {
     }
 }
 
-//! a function body at its `{`, kept as its tokens to the `}` that balances it
-def private body(var p : CParser) : int {
-    let at = p.pos
-    let last = balanced(p, CTok.LBRACE, CTok.RBRACE, "'\}' closing the function body")
-    return last < 0 ? -1 : node(p, CNode.BODY, at, 0, at, last)
-}
-
 //! a function definition after its first declarator, whose init-declarator is `id` and function
 //! declarator `f`: the name bound in the scope around it, then a scope for the parameters, which an
 //! old-style declaration list types, every name of the identifier list once; then the body
@@ -1242,7 +1237,7 @@ def private definition(var p : CParser; at, extension, specs, id, f : int) : int
         }
     }
     c_parameters_declare(p, f)
-    let text = p.failed ? -1 : body(p)
+    let text = p.failed ? -1 : compound(p)
     c_scope_close(p)
     let n = node(p, CNode.FUNC_DEF, at, extension, specs, id, old.head)
     p.ast.nodes[n].d = text
@@ -1286,8 +1281,13 @@ def private declaration(var p : CParser; place : CPlace; f : int) : int {
         let before = first ? -1 : attributes(p)
         let d = declarator(p, CDeclarator.NAMED)
         let id = init_declarator(p, d, before)
-        if (first && place == CPlace.FILE && starts_definition(p, d, id, binding)) {
-            return definition(p, at, extension, specs, id, c_name_function(p.ast, d))
+        if (first && starts_definition(p, d, id, binding)) {
+            if (place == CPlace.FILE) {
+                return definition(p, at, extension, specs, id, c_name_function(p.ast, d))
+            } elif (kind(p) == int(CTok.LBRACE)) {
+                refuse(p, "a nested function definition")
+                break
+            }
         }
         let ids = identifier_list_in(p.ast, d)
         if (ids >= 0 && !p.failed) {
@@ -1330,4 +1330,319 @@ def c_unit(var p : CParser) : int {
         c_append(p.ast, list, declaration(p, CPlace.FILE, -1))
     }
     return node(p, CNode.UNIT, at, 0, list.head)
+}
+
+//! the token at `t` and those after it start a declaration in a block, past any `__extension__`s:
+//! a storage class, a function specifier, `_Static_assert`, or a type name's first token, but an
+//! identifier followed by `:`, which is a label, and attributes followed by `;`, a null statement
+[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+def private declaration_starts(p : CParser) : bool {
+    var t = p.pos
+    while (p.unit.toks[t].kind == int(CTok.EXTENSION)) {
+        t++
+    }
+    let k = p.unit.toks[t].kind
+    if (k == int(CTok.ATTRIBUTE)) {
+        while (t < p.last && p.unit.toks[t].kind == int(CTok.ATTRIBUTE)) {
+            t++
+            var depth = 0
+            while (t < p.last) {
+                let a = p.unit.toks[t].kind
+                t++
+                depth += a == int(CTok.LPAREN) ? 1 : a == int(CTok.RPAREN) ? -1 : 0
+                break if (depth == 0)
+            }
+        }
+        return p.unit.toks[t].kind != int(CTok.SEMI)
+    }
+    return ((k >= int(CTok.TYPEDEF) && k <= int(CTok.NORETURN)) || k == int(CTok.STATIC_ASSERT)
+        || (type_starts_at(p, t) && !(k == int(CTok.IDENTIFIER) && p.unit.toks[min(t + 1, p.last)].kind == int(CTok.COLON))))
+}
+
+//! a compound statement at its `{` (C11 6.8.2): a scope and a nesting level, declarations and
+//! statements in any order, to its `}`
+[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+def private compound(var p : CParser) : int {
+    let at = p.pos
+    return -1 if (!enter(p))
+    p.pos++
+    c_scope_open(p)
+    var items = CList()
+    while (!p.failed && kind(p) != int(CTok.RBRACE) && kind(p) != int(CTok.EOF)) {
+        c_append(p.ast, items, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : c_statement(p))
+    }
+    take(p, CTok.RBRACE)
+    c_scope_close(p)
+    leave(p)
+    return node(p, CNode.COMPOUND, at, 0, items.head)
+}
+
+//! a statement that is the body of a selection or iteration statement: a scope and a nesting level
+//! of its own (C11 6.8.4p3, 6.8.5p5)
+def private secondary(var p : CParser) : int {
+    return -1 if (!enter(p))
+    c_scope_open(p)
+    let s = c_statement(p)
+    c_scope_close(p)
+    leave(p)
+    return s
+}
+
+//! the label at the cursor with no statement yet: `name:` and the attributes after it, `case` with
+//! a GNU range's last value, or `default`; -1 when no label stands there
+def private label_at(var p : CParser) : int {
+    let at = p.pos
+    let k = kind(p)
+    if (k == int(CTok.IDENTIFIER) && kind_at(p, 1) == int(CTok.COLON)) {
+        p.pos += 2
+        let n = node(p, CNode.LABEL, at, 0, p.unit.toks[at].sym)
+        p.ast.nodes[n].d = attributes(p)
+        return n
+    } elif (k == int(CTok.CASE)) {
+        p.pos++
+        let value = c_constant_expression(p)
+        let last = accept(p, CTok.ELLIPSIS) ? c_constant_expression(p) : -1
+        take(p, CTok.COLON)
+        return node(p, CNode.CASE, at, 0, value, last)
+    } elif (k == int(CTok.DEFAULT)) {
+        p.pos++
+        take(p, CTok.COLON)
+        return node(p, CNode.DEFAULT, at)
+    }
+    return -1
+}
+
+//! label `n`'s statement set to `s`
+def private label_statement(var p : CParser; n, s : int) {
+    let kind = p.ast.nodes[n].kind
+    if (kind == CNode.LABEL) {
+        p.ast.nodes[n].b = s
+    } elif (kind == CNode.CASE) {
+        p.ast.nodes[n].c = s
+    } else {
+        p.ast.nodes[n].a = s
+    }
+}
+
+//! A statement at the cursor (C11 6.8). A run of labels is read in a loop, each the statement of
+//! the one before, so a long run costs no recursion; after labels a block's `}` or a declaration
+//! may stand, as clang takes it.
+[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+def c_statement(var p : CParser) : int {
+    var first = -1
+    var last = -1
+    while (!p.failed) {
+        let n = label_at(p)
+        break if (n < 0)
+        if (last >= 0) {
+            label_statement(p, last, n)
+        } else {
+            first = n
+        }
+        last = n
+    }
+    return -1 if (p.failed)
+    return unlabeled(p) if (last < 0)
+    if (kind(p) != int(CTok.RBRACE)) {
+        label_statement(p, last, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : unlabeled(p))
+    }
+    return first
+}
+
+//! `if`, then any chain of `else if`, read in a loop so a long chain costs no recursion; each `if`
+//! a scope of its own
+[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+def private if_statement(var p : CParser) : int {
+    var first = -1
+    var prev = -1
+    var scopes = 0
+    while (!p.failed) {
+        let at = p.pos
+        p.pos++
+        c_scope_open(p)
+        scopes++
+        take(p, CTok.LPAREN)
+        let condition = c_expression(p)
+        take(p, CTok.RPAREN)
+        let n = node(p, CNode.IF, at, 0, condition, secondary(p))
+        if (prev >= 0) {
+            p.ast.nodes[prev].c = n
+        } else {
+            first = n
+        }
+        prev = n
+        break if (!accept(p, CTok.ELSE))
+        if (kind(p) != int(CTok.IF)) {
+            p.ast.nodes[n].c = secondary(p)
+            break
+        }
+    }
+    for (_ in range(scopes)) {
+        c_scope_close(p)
+    }
+    return first
+}
+
+//! `switch` or `while`: a parenthesised expression and a statement, in a scope
+def private switch_or_while(var p : CParser) : int {
+    let at = p.pos
+    let k = kind(p)
+    p.pos++
+    c_scope_open(p)
+    take(p, CTok.LPAREN)
+    let e = c_expression(p)
+    take(p, CTok.RPAREN)
+    let n = node(p, k == int(CTok.SWITCH) ? CNode.SWITCH : CNode.WHILE, at, 0, e, secondary(p))
+    c_scope_close(p)
+    return n
+}
+
+//! `do statement while (expression);`, in a scope
+def private do_statement(var p : CParser) : int {
+    let at = p.pos
+    p.pos++
+    c_scope_open(p)
+    let body = secondary(p)
+    take(p, CTok.WHILE)
+    take(p, CTok.LPAREN)
+    let e = c_expression(p)
+    take(p, CTok.RPAREN)
+    take(p, CTok.SEMI)
+    c_scope_close(p)
+    return node(p, CNode.DO, at, 0, body, e)
+}
+
+//! `for`: a declaration or an expression, a condition, a step, each optional, and a statement; the
+//! declaration's names in a scope that ends with the statement (C11 6.8.5p5)
+[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+def private for_statement(var p : CParser) : int {
+    let at = p.pos
+    p.pos++
+    c_scope_open(p)
+    take(p, CTok.LPAREN)
+    var init = -1
+    if (!p.failed && declaration_starts(p)) {
+        init = declaration(p, CPlace.BLOCK, -1)
+    } elif (!accept(p, CTok.SEMI)) {
+        init = c_expression(p)
+        take(p, CTok.SEMI)
+    }
+    let condition = kind(p) == int(CTok.SEMI) ? -1 : c_expression(p)
+    take(p, CTok.SEMI)
+    let step = kind(p) == int(CTok.RPAREN) ? -1 : c_expression(p)
+    take(p, CTok.RPAREN)
+    let n = node(p, CNode.FOR, at, 0, init, condition, step)
+    p.ast.nodes[n].d = secondary(p)
+    c_scope_close(p)
+    return n
+}
+
+//! the operands of one asm section, each kept as its tokens to a `,`, `:` or `)` outside brackets
+def private asm_operands(var p : CParser) : int {
+    var list = CList()
+    if (kind(p) == int(CTok.COLON) || kind(p) == int(CTok.RPAREN)) {
+        return list.head
+    }
+    while (!p.failed) {
+        let at = p.pos
+        var depth = 0
+        while (kind(p) != int(CTok.EOF)) {
+            let k = kind(p)
+            break if (depth == 0 && (k == int(CTok.COMMA) || k == int(CTok.COLON) || k == int(CTok.RPAREN)))
+            depth += k == int(CTok.LPAREN) || k == int(CTok.LBRACKET) ? 1 : k == int(CTok.RPAREN) || k == int(CTok.RBRACKET) ? -1 : 0
+            p.pos++
+        }
+        if (p.pos == at) {
+            fail(p, "an asm operand")
+            break
+        }
+        c_append(p.ast, list, node(p, CNode.ASM_OPERAND, at, 0, at, p.pos - 1))
+        break if (!accept(p, CTok.COMMA))
+    }
+    return list.head
+}
+
+//! an asm statement: `volatile` and `inline` once each, the template, then up to three sections of
+//! operands, outputs, inputs and clobbers; `asm goto` is refused
+[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+def private asm_statement(var p : CParser) : int {
+    let at = p.pos
+    p.pos++
+    var flags = 0
+    while (!p.failed) {
+        let k = kind(p)
+        let bit = k == int(CTok.VOLATILE) ? 1 : k == int(CTok.INLINE) ? 2 : 0
+        if (k == int(CTok.GOTO)) {
+            refuse(p, "asm goto")
+            break
+        } elif (bit == 0) {
+            break
+        } elif ((flags & bit) != 0) {
+            fail(p, "'('")
+            break
+        }
+        flags |= bit
+        p.pos++
+    }
+    take(p, CTok.LPAREN)
+    if (!p.failed && kind(p) != int(CTok.STRING_LITERAL)) {
+        fail(p, "a string literal")
+    }
+    let n = node(p, CNode.ASM, at, flags, p.failed ? -1 : string_literal(p))
+    if (accept(p, CTok.COLON)) {
+        p.ast.nodes[n].b = asm_operands(p)
+        if (accept(p, CTok.COLON)) {
+            p.ast.nodes[n].c = asm_operands(p)
+            if (accept(p, CTok.COLON)) {
+                p.ast.nodes[n].d = asm_operands(p)
+            }
+        }
+    }
+    take(p, CTok.RPAREN)
+    take(p, CTok.SEMI)
+    return n
+}
+
+//! a statement with no label at the cursor
+def private unlabeled(var p : CParser) : int {
+    let at = p.pos
+    let k = kind(p)
+    if (k == int(CTok.LBRACE)) {
+        return compound(p)
+    } elif (k == int(CTok.IF)) {
+        return if_statement(p)
+    } elif (k == int(CTok.SWITCH) || k == int(CTok.WHILE)) {
+        return switch_or_while(p)
+    } elif (k == int(CTok.DO)) {
+        return do_statement(p)
+    } elif (k == int(CTok.FOR)) {
+        return for_statement(p)
+    } elif (k == int(CTok.ASM)) {
+        return asm_statement(p)
+    }
+    var n = -1
+    if (k == int(CTok.GOTO)) {
+        p.pos++
+        if (kind(p) == int(CTok.STAR)) {
+            refuse(p, "a computed goto (goto *)")
+        } elif (kind(p) != int(CTok.IDENTIFIER)) {
+            fail(p, "a label name")
+        } else {
+            n = node(p, CNode.GOTO, at, 0, sym(p))
+            p.pos++
+        }
+    } elif (k == int(CTok.CONTINUE) || k == int(CTok.BREAK)) {
+        p.pos++
+        n = node(p, k == int(CTok.CONTINUE) ? CNode.CONTINUE : CNode.BREAK, at)
+    } elif (k == int(CTok.RETURN)) {
+        p.pos++
+        n = node(p, CNode.RETURN, at, 0, kind(p) == int(CTok.SEMI) ? -1 : c_expression(p))
+    } elif (k == int(CTok.SEMI) || k == int(CTok.ATTRIBUTE)) {
+        n = node(p, CNode.NULL_STMT, at)
+        p.ast.nodes[n].d = attributes(p)
+    } else {
+        n = node(p, CNode.EXPR_STMT, at, 0, c_expression(p))
+    }
+    take(p, CTok.SEMI)
+    return n
 }

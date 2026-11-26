@@ -8,7 +8,7 @@ require _preprocessed_headers
 
 //! `frontend/c_parser.das`, its records, enums, function definitions and units: every member,
 //! bit-field, enumerator and definition form as a dumped tree, the tag and enumerator scopes, the
-//! old-style declaration list, the body kept as its tokens and the scope it is read in, the
+//! old-style declaration list, the scope a body is read in, the
 //! file-scope forms, every refusal and malformed input as a located error, the nesting bound of the
 //! new recursive forms, and a unit of preprocessed headers and a program parsed with no allocation
 //! per token.
@@ -39,20 +39,6 @@ def private unit(text : string) : string {
 def private next_decl(var p : CParser) : string {
     let d = c_declaration(p)
     return p.failed ? "error: {p.err}" : c_dump(p.ast, p.unit, d)
-}
-
-// the expression `skip` tokens into the body of definition `def` up to its `;`, read in the scope of
-// the definition's parameters as its body will be, as a tree; the cursor ends where it was
-def private body_expr(var p : CParser; def_node, skip : int) : string {
-    let back = p.pos
-    let f = c_name_function(p.ast, p.ast.nodes[p.ast.nodes[def_node].b].a)
-    c_scope_open(p)
-    c_parameters_declare(p, f)
-    p.pos = p.ast.nodes[p.ast.nodes[def_node].d].a + skip
-    let e = c_expression(p)
-    c_scope_close(p)
-    p.pos = back
-    return p.failed ? "error: {p.err}" : c_dump(p.ast, p.unit, e)
 }
 
 [test(description = "struct and union bodies: member declarators, bit-fields named, unnamed and zero-width, anonymous members, nested definitions, forward and incomplete tags, a flexible array member, function pointer members, an empty body, `;` and `_Static_assert` among the members")]
@@ -169,50 +155,43 @@ def test_malformed_records(t : T?) {
     t |> equal(unit("struct S \{ const; \};"), "error: t.c:1:12: a specifier list with no type specifier is not parsed")
 }
 
-[test(description = "function definitions: a prototype's, with specifiers, attributes after the declarator and `__extension__`, one returning a function pointer; the body kept as its tokens to the brace that balances its first")]
+[test(description = "function definitions: a prototype's, with specifiers, attributes after the declarator and `__extension__`, one returning a function pointer; the body a compound statement")]
 def test_definitions(t : T?) {
-    t |> equal(unit("int main(void) \{ return 0; \}"), "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name main) [(param [(spec void)] -)]) - -) [] (body \{ return 0; \}))")
+    t |> equal(unit("int main(void) \{ return 0; \}"), "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name main) [(param [(spec void)] -)]) - -) [] (compound [(return (int 0))]))")
     t |> equal(unit("static inline void f(int a) __attribute__((noinline)) \{ \{ a; \} \{\} \} int x;"),
-               "(func_def 0 [(spec static) (spec inline) (spec void)] (init_decl (d_function 0 (d_name f) [(param [(spec int)] (d_name a))]) - - [(attribute __attribute__((noinline)))]) [] (body \{ \{ a; \} \{\} \})) (decl 0 [(spec int)] [(init_decl (d_name x) - -)])")
+               "(func_def 0 [(spec static) (spec inline) (spec void)] (init_decl (d_function 0 (d_name f) [(param [(spec int)] (d_name a))]) - - [(attribute __attribute__((noinline)))]) [] (compound [(compound [(expr_stmt (ident a))]) (compound [])])) (decl 0 [(spec int)] [(init_decl (d_name x) - -)])")
     t |> equal(unit("__extension__ int (*h(int a))(int) \{ return 0; \}"),
-               "(func_def 1 [(spec int)] (init_decl (d_function 0 (d_paren (d_pointer (d_function 0 (d_name h) [(param [(spec int)] (d_name a))]) []) []) [(param [(spec int)] -)]) - -) [] (body \{ return 0; \}))")
+               "(func_def 1 [(spec int)] (init_decl (d_function 0 (d_paren (d_pointer (d_function 0 (d_name h) [(param [(spec int)] (d_name a))]) []) []) [(param [(spec int)] -)]) - -) [] (compound [(return (int 0))]))")
     t |> equal(unit("int f(void) \{\} int g(void) \{\}"),
-               "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name f) [(param [(spec void)] -)]) - -) [] (body \{\})) (func_def 0 [(spec int)] (init_decl (d_function 0 (d_name g) [(param [(spec void)] -)]) - -) [] (body \{\}))")
+               "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name f) [(param [(spec void)] -)]) - -) [] (compound [])) (func_def 0 [(spec int)] (init_decl (d_function 0 (d_name g) [(param [(spec void)] -)]) - -) [] (compound []))")
 }
 
 [test(description = "old-style definitions: the declaration list types each name of the identifier list once, a typedef name in it is a type, `register`, a parenthesised name, a record defined there, and the identifier list of a declarator that returns a function pointer; the probe's case f16")]
 def test_old_style(t : T?) {
     t |> run("f16 `int f16(a, b) T a; int b; \{ return a + b; \}`") @(t : T?) {
         t |> equal(unit("int f16(a, b) T a; int b; \{ return a + b; \}"),
-                   "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f16) [(ident_param a) (ident_param b)]) - -) [(decl 0 [(typedef_name T)] [(init_decl (d_name a) - -)]) (decl 0 [(spec int)] [(init_decl (d_name b) - -)])] (body \{ return a + b; \}))")
+                   "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f16) [(ident_param a) (ident_param b)]) - -) [(decl 0 [(typedef_name T)] [(init_decl (d_name a) - -)]) (decl 0 [(spec int)] [(init_decl (d_name b) - -)])] (compound [(return (binary + (ident a) (ident b)))]))")
     }
     t |> run("`register`, a list declaring two, a parenthesised name, a record, attributes before the list") @(t : T?) {
         t |> equal(unit("int f(a, b, c) register int a, b; int (c); \{\}"),
-                   "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f) [(ident_param a) (ident_param b) (ident_param c)]) - -) [(decl 0 [(spec register) (spec int)] [(init_decl (d_name a) - -) (init_decl (d_name b) - -)]) (decl 0 [(spec int)] [(init_decl (d_paren (d_name c) []) - -)])] (body \{\}))")
+                   "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f) [(ident_param a) (ident_param b) (ident_param c)]) - -) [(decl 0 [(spec register) (spec int)] [(init_decl (d_name a) - -) (init_decl (d_name b) - -)]) (decl 0 [(spec int)] [(init_decl (d_paren (d_name c) []) - -)])] (compound []))")
         t |> equal(unit("int f(a) __attribute__((unused)) struct S \{ int x; \} a; \{\}"),
-                   "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f) [(ident_param a)]) - - [(attribute __attribute__((unused)))]) [(decl 0 [(record struct S 1 [(member_decl 0 [(spec int)] [(member (d_name x) -)])])] [(init_decl (d_name a) - -)])] (body \{\}))")
+                   "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f) [(ident_param a)]) - - [(attribute __attribute__((unused)))]) [(decl 0 [(record struct S 1 [(member_decl 0 [(spec int)] [(member (d_name x) -)])])] [(init_decl (d_name a) - -)])] (compound []))")
     }
     t |> run("the identifier list of the declarator the name is declared through") @(t : T?) {
         t |> equal(unit("int (*f(a))(int) int a; \{\}"),
-                   "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_paren (d_pointer (d_function 2 (d_name f) [(ident_param a)]) []) []) [(param [(spec int)] -)]) - -) [(decl 0 [(spec int)] [(init_decl (d_name a) - -)])] (body \{\}))")
+                   "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_paren (d_pointer (d_function 2 (d_name f) [(ident_param a)]) []) []) [(param [(spec int)] -)]) - -) [(decl 0 [(spec int)] [(init_decl (d_name a) - -)])] (compound []))")
     }
 }
 
-[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, f16's its old-style names, and after the definition the typedef is a type again")]
+[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, and after the definition the typedef is a type again")]
 def test_body_scope(t : T?) {
-    var p : CParser
-    opened(p, "void f6(T T) \{ T = 2; \} void f9(int T) \{ T = 4; \} int f16(a, b) T a; int b; \{ return a + b; \} T after;")
-    let u = c_unit(p)
-    t |> success(!p.failed, p.err)
-    let f6 = p.ast.nodes[u].a
-    let f9 = p.ast.nodes[f6].next
-    let f16 = p.ast.nodes[f9].next
-    t |> equal(body_expr(p, f6, 1), "(assign = (ident T) (int 2))")
-    t |> equal(body_expr(p, f9, 1), "(assign = (ident T) (int 4))")
-    t |> equal(body_expr(p, f16, 2), "(binary + (ident a) (ident b))")
-    t |> equal(c_dump(p.ast, p.unit, p.ast.nodes[f16].next), "(decl 0 [(typedef_name T)] [(init_decl (d_name after) - -)])")
+    t |> equal(unit("void f6(T T) \{ T = 2; \} T after;"),
+               "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f6) [(param [(typedef_name T)] (d_name T))]) - -) [] (compound [(expr_stmt (assign = (ident T) (int 2)))])) (decl 0 [(typedef_name T)] [(init_decl (d_name after) - -)])")
+    t |> equal(unit("void f9(int T) \{ T = 4; \}"),
+               "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f9) [(param [(spec int)] (d_name T))]) - -) [] (compound [(expr_stmt (assign = (ident T) (int 4)))]))")
     t |> equal(unit("int T(void) \{ return 0; \} int y = T;"),
-               "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name T) [(param [(spec void)] -)]) - -) [] (body \{ return 0; \})) (decl 0 [(spec int)] [(init_decl (d_name y) (ident T) -)])")
+               "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name T) [(param [(spec void)] -)]) - -) [] (compound [(return (int 0))])) (decl 0 [(spec int)] [(init_decl (d_name y) (ident T) -)])")
 }
 
 [test(description = "a malformed definition ends with a located error: a declarator a body cannot follow, an unbalanced body, and every rule of an old-style declaration list")]
@@ -223,7 +202,7 @@ def test_malformed_definitions(t : T?) {
         ("int a, f(void) \{\}", "t.c:1:16: expected ';', got '\{'"),
         ("int (*fp)(void) \{\}", "t.c:1:17: expected ';', got '\{'"),
         ("int f(void) int x; \{\}", "t.c:1:13: expected ';', got 'int'"),
-        ("int f(void) \{ \{ return 0; \}", "t.c:1:28: expected '\}' closing the function body, got end of input"),
+        ("int f(void) \{ \{ return 0; \}", "t.c:1:28: expected '\}', got end of input"),
         ("int f(a) int a = 1; \{\}", "t.c:1:16: expected ';', got '='"),
         ("int f(a) static int a; \{\}", "t.c:1:10: expected 'register' as a parameter's storage class, got 'static'"),
         ("int f(a) typedef int a; \{\}", "t.c:1:10: expected 'register' as a parameter's storage class, got 'typedef'"),

@@ -442,6 +442,15 @@ def private line_marker(var unit : CUnit; var file, line_delta : int&; var more 
     return true
 }
 
+//! the `::` the lexer holds as two `:` tokens: C17 has no `::`, and GNU asm spells `:` twice
+def private colons(var unit : CUnit; file, line_delta : int) {
+    let t & = unsafe(unit.lx.flex.tok)
+    let colon = CToken(kind = int(CTok.COLON), sym = -1, start = t.start, len = 1, file = file,
+                       line = unit.lx.tok.line + line_delta, col = unit.lx.tok.col)
+    unit.toks |> push(colon) // nolint:STYLE012 - the colons append to the unit's tokens
+    unit.toks |> push(CToken(kind = colon.kind, sym = -1, start = colon.start + 1, len = 1, file = file, line = colon.line, col = colon.col + 1))
+}
+
 //! Read the unit's tokens to its end: identifiers become keywords by their symbol, pp-numbers
 //! integer or floating constants, line markers move the place of the tokens after them. False
 //! after the first error, which `unit.err` holds with its place; the tokens end with EOF either way.
@@ -456,7 +465,11 @@ def c_tokens_read(var unit : CUnit) : bool {
             continue
         }
         let kind = c_kind_of(unit)
-        if (kind == int(CTok.EOF)) {
+        if (unit.lx.tok.kind == int(PpTok.COLONCOLON)) {
+            colons(unit, file, line_delta)
+            more = pp_next(unit.lx)
+            continue
+        } elif (kind == int(CTok.EOF)) {
             let pk = unit.lx.tok.kind
             let what = pk == int(PpTok.PP_NUMBER) ? "invalid numeric constant" : pk == int(PpTok.IDENTIFIER) ? "invalid universal character name in" : "stray"
             token_error(unit, file, line_delta, "{what} '{pp_spelling(unit.lx)}'")

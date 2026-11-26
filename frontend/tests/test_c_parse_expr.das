@@ -219,9 +219,11 @@ def test_precedence(t : T?) {
     }
 }
 
-[test(description = "the GNU forms inside expressions are kept as nodes: `?:` with no middle operand, `__extension__`, `__builtin_va_arg`, `__builtin_offsetof`, `__builtin_types_compatible_p`, `typeof` and attributes in a type name")]
+[test(description = "the GNU forms inside expressions are kept as nodes: `?:` with no middle operand, a statement expression and the scope it closes, `__extension__`, `__builtin_va_arg`, `__builtin_offsetof`, `__builtin_types_compatible_p`, `typeof` and attributes in a type name")]
 def test_gnu_forms(t : T?) {
     t |> equal(parsed("a ?: b"), "(cond (ident a) - (ident b))")
+    t |> equal(parsed("(\{ x; \})"), "(stmt_expr (compound [(expr_stmt (ident x))]))")
+    t |> equal(parsed("a + (\{ int T = 1; T; \}) * T"), "error: t.c:1:27: expected an expression, got 'T'")
     t |> equal(parsed("__extension__ (a + b)"), "(extension (paren (binary + (ident a) (ident b))))")
     t |> equal(parsed("__builtin_va_arg(ap, int)"), "(va_arg (ident ap) (type_name [(spec int)] -))")
     t |> equal(parsed("__builtin_offsetof(struct S, a.b[2].c)"),
@@ -275,8 +277,6 @@ def test_type_names(t : T?) {
 
 [test(description = "a construct the parser does not take fails closed: `file:line:col: <construct> is not parsed` at its first token")]
 def test_refusals(t : T?) {
-    t |> equal(parsed("(\{ x; \})"), "error: t.c:1:1: a statement expression is not parsed")
-    t |> equal(parsed("a + (\{ 1; \})"), "error: t.c:1:5: a statement expression is not parsed")
     t |> equal(parsed("&&lab"), "error: t.c:1:1: a label address (&&label) is not parsed")
     t |> equal(parsed("_Generic(x, int: 1)"), "error: t.c:1:1: a generic selection (_Generic) is not parsed")
     t |> equal(parsed("(__int128)x"), "error: t.c:1:2: the __int128 type is not parsed")

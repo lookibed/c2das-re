@@ -204,9 +204,9 @@ def test_typedef_table(t : T?) {
     }
 }
 
-[test(description = "a declaration the parser does not take is refused at its token: an identifier list outside a definition and the refused words; a function definition in a block is malformed at its brace")]
+[test(description = "a declaration the parser does not take is refused at its token: an identifier list outside a definition and the refused words; a function definition in a block, a GNU nested function, at its brace")]
 def test_refusals(t : T?) {
-    t |> equal(decls("int f(void) \{ return 0; \}"), "error: t.c:1:13: expected ';', got '\{'")
+    t |> equal(decls("int f(void) \{ return 0; \}"), "error: t.c:1:13: a nested function definition is not parsed")
     t |> equal(decls("int h(a, b);"), "error: t.c:1:7: an identifier list outside a function definition is not parsed")
     t |> equal(decls("int f(a) int a; \{\}"), "error: t.c:1:7: an identifier list outside a function definition is not parsed")
     t |> equal(decls("__int128 x;"), "error: t.c:1:1: the __int128 type is not parsed")
