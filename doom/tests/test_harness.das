@@ -293,3 +293,21 @@ def test_sidecar(t : T?) {
         t |> equal(length(side.padded), 2)
     }
 }
+
+[test(description = "PATCHES names every patch file of doom/patches in name order and no other, and every committed reference log's header names each of them with the sha256 of its file")]
+def test_patches_folder(t : T?) {
+    var files : array<string>
+    dir("doom/patches") $(name) {
+        if (name |> ends_with(".patch")) {
+            files |> push("doom/patches/{name}")
+        }
+    }
+    sort(files)
+    t |> equal(join(PATCHES, " "), join(files, " "))
+    let listed = patch_list(PATCHES)
+    for (demo in range(1, 4)) {
+        let log = "doom/ref/freedoom2_demo{demo}.log"
+        let header = split(fread(log), "\n")[0]
+        t |> success(header |> contains(" + {listed};"), "{log} names the patches as `run.das --demo` writes them")
+    }
+}

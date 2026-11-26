@@ -315,3 +315,19 @@ def test_whole_unit(t : T?) {
     t |> equal(strings_used, 0, "string allocations")
     t |> success(heap_used <= 16, "heap allocations {heap_used} over {length(p.unit.toks)} tokens and {count} declarations")
 }
+
+[test(description = "array declarators where C.1c adds a place: a member's array takes no qualifier, `static` or `[*]`, an old-style parameter's takes a qualifier or `static` but no `[*]`, nor does a definition's own parameter at any level, while a prototype inside one may")]
+def test_array_contexts(t : T?) {
+    t |> equal(unit("int f(a) int a[static 3]; \{\}"),
+               "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f) [(ident_param a)]) - -) [(decl 0 [(spec int)] [(init_decl (d_array 1 (d_name a) (int 3) []) - -)])] (compound []))")
+    t |> equal(unit("void f(int (*p)(int q[*])) \{\}"),
+               "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f) [(param [(spec int)] (d_function 0 (d_paren (d_pointer (d_name p) []) []) [(param [(spec int)] (d_array 2 (d_name q) - []))]))]) - -) [] (compound []))")
+    let cases = fixed_array(
+        ("struct S \{ int a[const 3]; \};", "t.c:1:17: a qualifier or 'static' in an array declarator outside a parameter's outermost array is not parsed"),
+        ("struct S \{ int a[*]; \};", "t.c:1:17: '[*]' outside a function prototype's parameter is not parsed"),
+        ("int f(a) int a[*]; \{\}", "t.c:1:15: '[*]' outside a function prototype's parameter is not parsed"),
+        ("void f(int a[3][*]) \{\}", "t.c:1:16: '[*]' outside a function prototype's parameter is not parsed"))
+    for (c in cases) {
+        t |> equal(unit(c._0), "error: {c._1}", c._0)
+    }
+}
