@@ -10,7 +10,7 @@ float f1; double d1; long double d2; _Bool b1;
 float _Complex z1; double _Complex z2; long double _Complex z3; _Complex z4;
 const int ci; volatile int vi; int const volatile cvi; _Atomic int ai; const _Atomic int cai;
 T t1; const T t2; UL ul; struct S *ps; union U *pu; struct S const *cps;
-int *p1, **p2, *const p3, *volatile *restrict p4, *__restrict p5;
+int *p1, **p2, *const p3, *volatile *restrict p4, *__restrict p5, *const pa1[2], *const (*pa2)[3];
 int a1[3], a2[2][3], *a3[4], (*a4)[5], (*a5[2])[3];
 int fn1(void), fn2(), fn3(int, char *, ...), (*fp1)(int), (*fp2[2])(void), *(*fp3)(int);
 int (*fr(int))(char);

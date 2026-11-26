@@ -197,7 +197,8 @@ def spell_type(var p : CParser; specs, d : int; decay, completed : bool) : strin
         if (n.kind == CNode.D_POINTER || (outermost && decay && n.kind == CNode.D_ARRAY)) {
             let q = qualifiers(p, n.kind == CNode.D_POINTER ? n.b : n.c, atomic)
             return "?" if (atomic)
-            let blank = empty(q) || (empty(left) && empty(right)) ? "" : " "
+            // a blank parts the qualifiers from what stands left of the text, never from a suffix
+            let blank = empty(q) || empty(left) ? "" : " "
             left |> push("*{q}{blank}")
             after_pointer = true
             continue

@@ -68,7 +68,7 @@ def test_fixture_verdicts(t : T?) {
     let flags <- flags_of(t)
     let work = test_temp_dir()
     let expected <- {"expressions.c" => "same", "types.c" => "same", "typedefs.c" => "same", "static_assert.c" => "same",
-                     "skipped.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "parser refused",
+                     "skipped.c" => "same", "edges.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "parser refused",
                      "clang_refuses.c" => "clang refused"}
     for (name, verdict in keys(expected), values(expected)) {
         let r <- compare_unit(path_join("compare/parse/fixtures", name), work, flags)
@@ -95,7 +95,7 @@ def test_fixture_coverage(t : T?) {
     t |> equal(types.verdict, "same", describe_result(types))
     let spelled = join(types.clang_lines, "\n")
     for (piece in ["\"int (*[2])(void)\"", "\"int (*(int))(char)\"", "\"int *volatile *restrict\"", "\"const _Atomic(int)\"",
-                   "\"int[16]\"", "static inline", "thread_local", "[x@21:77 y@21:84]"]) {
+                   "\"int[16]\"", "\"int *const[2]\"", "static inline", "thread_local", "[x@21:77 y@21:84]"]) {
         t |> success(find(spelled, piece) >= 0, piece)
     }
 }
@@ -225,6 +225,6 @@ def test_corpus_errors(t : T?) {
     error = ""
     let fixtures <- corpus_units(getcwd(), "fixtures", error)
     t |> equal(error, "")
-    t |> equal(length(fixtures), 9)
+    t |> equal(length(fixtures), 10)
     t |> equal(length(none) + length(missing), 0)
 }

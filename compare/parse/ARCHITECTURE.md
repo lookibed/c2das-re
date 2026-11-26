@@ -35,7 +35,8 @@ the meaning of the program is left to it (section 3).
 - `fixtures/` - a unit per construct family, each with the verdict the tests expect:
   `expressions.c` (every expression form, as file-scope initializers), `types.c` (type names,
   declarators, storage classes), `typedefs.c` (the typedef table's effect), `static_assert.c`,
-  `skipped.c` (the constructs the parser refuses today, skipped), all `same`; `semantic.c` (a clang
+  `skipped.c` (the constructs the parser refuses today, skipped), `edges.c` (precedence, postfix
+  chains, type names in odd places, GNU forms), all `same`; `semantic.c` (a clang
   semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
   `pragma.c` (`parser refused`); `clang_refuses.c` (`clang refused`).
 - The tests are `compare/tests/test_parse_oracle.das`.
@@ -106,8 +107,9 @@ the oracle does not hide it. Where clang's tree says why, the clang side names t
 line, and a difference on that line is counted under it: a declaration of a library function clang
 knows as a builtin (`BuiltinAttr`) has clang's own type, the builtin's merged with the written one
 (`__size_t` for `size_t`, `restrict` added; `builtin.c`). Other known ones, which the tree does not
-mark: a parameter of a function or array typedef's type is adjusted to a pointer (`semantic.c`); a
-prototype merged into a later definition's type; a typedef of `void` as the only parameter; an
+mark: a parameter of a function or array typedef's type is adjusted to a pointer (`semantic.c`;
+`va_list` is an array typedef); clang keeps the parentheses of an abstract declarator in an adjusted
+parameter's type (`int ([4])` is `int (*)`); a prototype merged into a later definition's type; a typedef of `void` as the only parameter; an
 attribute that changes a type (`mode`).
 
 Not compared yet, by construct: a record or enum body and a function body. Clang's side counts
