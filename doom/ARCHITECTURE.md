@@ -77,6 +77,7 @@ committed references under `ref/` are those files copied by hand after a referen
   `commit_label`, `new_capture`, `fps_cell`, `time_demos` and `write_fps_readme`.
 - `results_linux.json` - the committed fps capture `--fps` writes (section 9).
 - `ARCHITECTURE_RUN.md` - sections 8 and 9.
+- `ARCHITECTURE_PATCHES.md` - section 3, the patches and what each changes.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
   `stage_program`, `convert_units`, `compile_modules`, `first_error_line`, `classify` (the
   `BLOCKERS` table) and `blocker_table`.
@@ -104,6 +105,9 @@ committed references under `ref/` are those files copied by hand after a referen
   `--demo` and the capture's JSON shape.
 - `tests/test_fps_run.das` - `fps_run.das` over the stand-ins, every function of it, and `run.das`
   as a child process: `--fps` against the plain `--run`, and a refusal.
+- `tests/test_patches.das` - patch 0005's `d_main.c` hunk, before and after, spliced into a C
+  stand-in whose `doom_malloc` keeps a canary after each block, converted and run under the
+  interpreter: the unpatched hunk overruns the canary, the patched one does not.
 - `tests/_stand_in.das` - the stand-ins the demo-run tests share: the das program, the native
   script and the spec of a run of them.
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
