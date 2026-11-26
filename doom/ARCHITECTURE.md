@@ -18,11 +18,13 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `patches/0002-tic-trace.patch` - the trace lines under `-DDOOM_TIC_TRACE` (section 3).
 - `patches/0003-signed-ticcmd.patch` - `ticcmd_t`'s moves as `signed char` (section 3).
 - `patches/0004-fine-table-overruns.patch` - the fine tables' overruns spelled out (section 3).
+- `patches/0005-doomu-wad-path.patch` - the retail wad path's buffer one byte longer (section 3).
 - `host/doom_main.c` - the headless host (section 4), the program's `main`.
 - `doom_sources.das` - the program's sources (section 2): `UNITS`, `program_sources`, the folder of
   the fetched units and the sidecar's path.
 - `doom.c2das` - the sidecar (section 5).
-- `harness.das` - the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
+- `harness.das` - `PATCHES`, the patches of `patches/` in the order they apply (a test holds it to
+  the folder and to the reference logs' headers), and the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
   `fetch_problems` (the checkout off the pin, a patch not applied, the wad missing or of another
   hash), `missing_units`, `tic_checksum` and `frame_checksum` (the patch's formulas), `tic_lines`
   and `non_tic_lines`, the one reader of a run's or a log's tic lines, `timed_gametics`,
@@ -76,6 +78,7 @@ committed references under `ref/` are those files copied by hand after a referen
   `commit_label`, `new_capture`, `fps_cell`, `time_demos` and `write_fps_readme`.
 - `results_linux.json` - the committed fps capture `--fps` writes (section 9).
 - `ARCHITECTURE_RUN.md` - sections 8 and 9.
+- `ARCHITECTURE_PATCHES.md` - section 3, the patches and what each changes.
 - `convert_check.das` - the conversion checks `--convert` and `--compile-check` apply:
   `stage_program`, `convert_units`, `compile_modules`, `first_error_line`, `classify` (the
   `BLOCKERS` table) and `blocker_table`.
@@ -103,6 +106,9 @@ committed references under `ref/` are those files copied by hand after a referen
   `--demo` and the capture's JSON shape.
 - `tests/test_fps_run.das` - `fps_run.das` over the stand-ins, every function of it, and `run.das`
   as a child process: `--fps` against the plain `--run`, and a refusal.
+- `tests/test_patches.das` - patch 0005's `d_main.c` hunk, before and after, spliced into a C
+  stand-in whose `doom_malloc` keeps a canary after each block, converted and run under the
+  interpreter: the unpatched hunk overruns the canary, the patched one does not.
 - `tests/_stand_in.das` - the stand-ins the demo-run tests share: the das program, the native
   script and the spec of a run of them.
 - `tests/test_convert.das` - `convert_check.das` over a stand-in program (two units that link, one
@@ -132,57 +138,7 @@ the chosen wad under that name.
 
 ## 3. The patches
 
-`0001-per-tic-checksum.patch`: hunks in five files against the pin. `g_game.c` and `d_main.c`, under `-DDOOM_TIC_CHECKSUM`:
-`G_Ticker` ends by storing `gametic`, the tic just run (the caller increments it after), and the
-tic's checksum; `D_DoomLoop`, once `D_Display` has drawn that tic, prints one line through
-`doom_print`, `tic=<gametic> cs=<8 hex digits> fb=<8 hex digits>`; without the define the build
-prints nothing more. The line is printed whole after the frame, so no other output can split it
-and `tic_lines` stays the one reader; a run that dies drawing a tic prints no line for it. Both
-checksums are the 32-bit FNV-1a (offset basis 2166136261, prime 16777619; per byte
-`cs = (cs ^ b) * prime` modulo 2^32). `cs` runs over the little-endian bytes of six 32-bit values
-in order: `players[0].mo->x`, `y`, `z`, `angle` (each 0 while `players[0].mo` is null),
-`players[0].health` and `prndindex`, the index `P_Random` steps (PureDOOM's `rndindex` is
-`M_Random`'s, which the menus and the screen melt step, so it stays out). `fb` runs over the
-`SCREENWIDTH * SCREENHEIGHT` bytes of `screens[0]` as `D_Display` leaves it: the frame of the tic,
-or, on a tic that starts a screen melt, the screen the melt starts from (`wipe_EndScreen` puts it
-back); the melt's own steps run no tic and print nothing. Every tic of a timedemo has its line.
-
-`w_wad.c`, `r_data.c` and `i_video.c` make the frame a function of the game alone, so the
-reference frames are the patched source's, not vanilla's, at the pixels below. A column
-drawer reads `dc_source[(frac >> FRACBITS) & 127]`, up to 127 bytes past a column's start: a wall
-taller than its texture (freedoom2's 16-row `CRATINY` as a bottom texture) or a sprite post whose
-first row rounds to row -1, which `& 127` wraps to 127. Past the end of a lump that read the
-zone's next block header, its pointers among them, so the frame of such a tic changed with the
-heap's addresses from run to run (3 of demo1's 2664 tics over four runs). So `W_CacheLumpNum`
-allocates each lump with 128 zero bytes past its end, `R_GenerateComposite` zeroes a composite
-texture with the same slack, and `I_InitGraphics` zeroes the screen, which tic 0 does not draw.
-The game state does not read those bytes: `cs` is the same with and without the hunks.
-
-`d_main.c`, unconditionally: `-playdemo` and `-timedemo` return from `D_DoomMain` after
-`I_InitGraphics`. PureDOOM's `D_DoomLoop` runs one tic and returns where vanilla's never returns,
-so `D_DoomMain` went on into the title loop (a single-player demo) or `G_InitNew` (a multiplayer
-one, `demo2` of freedoom2), which replaced the demo; with the return the host's loop plays the
-demo from its first tic. The fix is unconditional, since a timedemo is P6.7's benchmark too.
-
-`0002-tic-trace.patch`, `p_tick.c`: under `-DDOOM_TIC_TRACE`, `P_Ticker` ends by printing
-`trace=<gametic> x=<hex> y=<hex> z=<hex> ang=<hex> hp=<d> prnd=<d>`, the six values `cs` hashes, so
-a desync names the value that differs; `tic_lines` skips the line and no reference log is
-recorded with the define.
-
-`0003-signed-ticcmd.patch`, `d_ticcmd.h`: `ticcmd_t`'s `forwardmove` and `sidemove` are `signed
-char`, as in Chocolate Doom. A demo stores a backward move or a strafe left as a negative byte;
-read back through a plain `char` it stays negative only where `char` is signed, and the
-converter's dialect makes plain `char` unsigned (`docs/probe-findings.md` F17), under which a
-plain field reads a strafe of -40 as 216. The native build at `-O2` with or without
-`-funsigned-char` prints the reference lines of all three demos with the patch.
-
-`0004-fine-table-overruns.patch`, `r_main.c` and `r_segs.c`: `R_ScaleFromGlobalAngle` indexes
-`finesine` by an `int` angle shifted right, negative past `ANG180` (demo1's tic 255 reaches
--4096), and `R_RenderSegLoop` indexes `finetangent[angle]` with `angle` up to 8191, past its 4096
-entries. `tables.c` defines `finetangent` right before `finesine`, so the native build reads the
-other table; das range-checks both reads and panics. The patch spells the neighbouring read out,
-`finetangent[FINEANGLES / 2 + i]` for a negative `i` and `finesine[angle - FINEANGLES / 2]` past
-`finetangent`'s end, the values the native build reads: its lines, frames included, are the same.
+In `ARCHITECTURE_PATCHES.md`: what each patch of `patches/` changes in PureDOOM and why.
 
 ## 4. The host
 

@@ -79,20 +79,31 @@ def test_compound_literal_operands(t : T?) {
 
 [test(description = "the type specifiers of a list combine by C11 6.7.2p2 or the one that does not is an error at its token; a typedef name after a type specifier is no type; a list with no type specifier is refused")]
 def test_specifier_combinations(t : T?) {
-    t |> run("the combinations 6.7.2p2 lists, in any order, and GNU `_Complex` alone") @(t : T?) {
+    t |> run("the combinations 6.7.2p2 lists, in any order, GNU `_Complex` beside every integer type, and `_Complex` alone") @(t : T?) {
         t |> equal(parsed("(long long int)x"), "(cast (type_name [(spec long) (spec long) (spec int)] -) (ident x))")
         t |> equal(parsed("(int long long unsigned)x"), "(cast (type_name [(spec int) (spec long) (spec long) (spec unsigned)] -) (ident x))")
         t |> equal(parsed("(short unsigned int)x"), "(cast (type_name [(spec short) (spec unsigned) (spec int)] -) (ident x))")
         t |> equal(parsed("(signed char)x"), "(cast (type_name [(spec signed) (spec char)] -) (ident x))")
         t |> equal(parsed("(long double _Complex)x"), "(cast (type_name [(spec long) (spec double) (spec _Complex)] -) (ident x))")
         t |> equal(parsed("(_Complex)x"), "(cast (type_name [(spec _Complex)] -) (ident x))")
+        for (text in fixed_array("_Complex int", "int _Complex", "_Complex signed char", "unsigned _Complex char", "short int _Complex",
+                "_Complex unsigned short", "_Complex signed short", "long _Complex int", "signed long long _Complex", "_Complex long long", "unsigned long long _Complex", "_Complex unsigned")) {
+            var inscope specs <- [for (w in split(text, " ")); "(spec {w})"]
+            t |> equal(parsed("({text})x"), "(cast (type_name [{join(specs, " ")}] -) (ident x))", text)
+        }
         t |> equal(parsed("(const T const)x"), "(cast (type_name [(spec const) (typedef_name T) (spec const)] -) (ident x))")
+        t |> equal(parsed("(unsigned char)x"), "(cast (type_name [(spec unsigned) (spec char)] -) (ident x))")
+        t |> equal(parsed("(signed short)x"), "(cast (type_name [(spec signed) (spec short)] -) (ident x))")
+        t |> equal(parsed("(signed long)x"), "(cast (type_name [(spec signed) (spec long)] -) (ident x))")
+        t |> equal(parsed("(long long signed)x"), "(cast (type_name [(spec long) (spec long) (spec signed)] -) (ident x))")
+        t |> equal(parsed("(float _Complex)x"), "(cast (type_name [(spec float) (spec _Complex)] -) (ident x))")
     }
     t |> run("a specifier that does not combine with those before it") @(t : T?) {
         let cases = fixed_array(("(T int)x", "1:4", "int"), ("(int int)x", "1:6", "int"), ("(long long long)x", "1:12", "long"),
             ("(short double)x", "1:8", "double"), ("(unsigned float)x", "1:11", "float"), ("(signed unsigned)x", "1:9", "unsigned"),
             ("(void int)x", "1:7", "int"), ("(_Bool char)x", "1:8", "char"), ("(struct S int)x", "1:11", "int"),
-            ("(int struct S)x", "1:6", "struct"), ("(T typeof(x))y", "1:4", "typeof"))
+            ("(int struct S)x", "1:6", "struct"), ("(T typeof(x))y", "1:4", "typeof"), ("(_Complex _Bool)x", "1:11", "_Bool"),
+            ("(_Bool _Complex)x", "1:8", "_Complex"), ("(_Complex void)x", "1:11", "void"), ("(_Complex long float)x", "1:16", "float"))
         for (c in cases) {
             t |> equal(parsed(c._0), "error: t.c:{c._1}: expected a type specifier that combines with those before it, got '{c._2}'", c._0)
         }
@@ -100,6 +111,7 @@ def test_specifier_combinations(t : T?) {
     t |> run("a typedef name after a type specifier is no type specifier") @(t : T?) {
         t |> equal(parsed("(long T)x"), "error: t.c:1:7: expected ')', got 'T'")
         t |> equal(parsed("(typeof(x) T)x"), "error: t.c:1:12: expected ')', got 'T'")
+        t |> equal(parsed("(int static)x"), "error: t.c:1:6: expected ')', got 'static'")
     }
     t |> run("no type specifier at all: C99 has no implicit int") @(t : T?) {
         t |> equal(parsed("(const)x"), "error: t.c:1:2: a specifier list with no type specifier is not parsed")
@@ -219,13 +231,17 @@ def test_precedence(t : T?) {
     }
 }
 
-[test(description = "the GNU forms inside expressions are kept as nodes: `?:` with no middle operand, `__extension__`, `__builtin_va_arg`, `__builtin_offsetof`, `__builtin_types_compatible_p`, `typeof` and attributes in a type name")]
+[test(description = "the GNU forms inside expressions are kept as nodes: `?:` with no middle operand, a statement expression and the scope it closes, `__extension__`, `__builtin_va_arg`, `__builtin_offsetof`, `__builtin_types_compatible_p`, `typeof` and attributes in a type name")]
 def test_gnu_forms(t : T?) {
     t |> equal(parsed("a ?: b"), "(cond (ident a) - (ident b))")
+    t |> equal(parsed("(\{ x; \})"), "(stmt_expr (compound [(expr_stmt (ident x))]))")
+    t |> equal(parsed("a + (\{ int T = 1; T; \}) * T"), "error: t.c:1:27: expected an expression, got 'T'")
     t |> equal(parsed("__extension__ (a + b)"), "(extension (paren (binary + (ident a) (ident b))))")
+    t |> equal(parsed("__extension__ (int)x"), "(extension (cast (type_name [(spec int)] -) (ident x)))")
+    t |> equal(parsed("-(int)x"), "(unary - (cast (type_name [(spec int)] -) (ident x)))")
     t |> equal(parsed("__builtin_va_arg(ap, int)"), "(va_arg (ident ap) (type_name [(spec int)] -))")
     t |> equal(parsed("__builtin_offsetof(struct S, a.b[2].c)"),
-               "(offsetof (type_name [(record struct S [])] -) [(field a) (field b) (index_desig (int 2) -) (field c)])")
+               "(offsetof (type_name [(record struct S 0 [])] -) [(field a) (field b) (index_desig (int 2) -) (field c)])")
     t |> equal(parsed("__builtin_types_compatible_p(int, T)"), "(types_compatible (type_name [(spec int)] -) (type_name [(typedef_name T)] -))")
     t |> equal(parsed("__builtin_choose_expr(1, a, b)"), "(call (ident __builtin_choose_expr) [(int 1) (ident a) (ident b)])")
     t |> equal(parsed("(typeof(x))y"), "(cast (type_name [(typeof_expr (ident x))] -) (ident y))")
@@ -233,7 +249,7 @@ def test_gnu_forms(t : T?) {
     t |> equal(parsed("(__attribute__((unused)) int)x"), "(cast (type_name [(attribute __attribute__((unused))) (spec int)] -) (ident x))")
     t |> equal(parsed("(int *__attribute__((aligned(8))) const)p"), "(cast (type_name [(spec int)] (d_pointer - [(attribute __attribute__((aligned(8)))) (spec const)])) (ident p))")
     t |> equal(parsed("(int (__attribute__((x)) *))p"), "(cast (type_name [(spec int)] (d_paren (d_pointer - []) [(attribute __attribute__((x)))])) (ident p))")
-    t |> equal(parsed("(struct __attribute__((packed)) S *)p"), "(cast (type_name [(record struct S [(attribute __attribute__((packed)))])] (d_pointer - [])) (ident p))")
+    t |> equal(parsed("(struct __attribute__((packed)) S *)p"), "(cast (type_name [(record struct S 0 [] [(attribute __attribute__((packed)))])] (d_pointer - [])) (ident p))")
 }
 
 [test(description = "a type name: builtin specifiers and qualifiers, tags, typedef names, and abstract pointer, array, function and parenthesised declarators")]
@@ -250,11 +266,19 @@ def test_type_names(t : T?) {
     t |> equal(parsed("(int (*)())f"), "(cast (type_name [(spec int)] (d_function 0 (d_paren (d_pointer - []) []) [])) (ident f))")
     t |> equal(parsed("(int (*[2])(void))0"),
                "(cast (type_name [(spec int)] (d_function 0 (d_paren (d_pointer (d_array 0 - (int 2) []) []) []) [(param [(spec void)] -)])) (int 0))")
-    t |> equal(parsed("(char [static const 3])x"), "(cast (type_name [(spec char)] (d_array 1 - (int 3) [(spec const)])) (ident x))")
-    t |> equal(parsed("(int [*])x"), "(cast (type_name [(spec int)] (d_array 2 - - [])) (ident x))")
-    t |> equal(parsed("(struct S *)p"), "(cast (type_name [(record struct S [])] (d_pointer - [])) (ident p))")
-    t |> equal(parsed("(union U)u"), "(cast (type_name [(record union U [])] -) (ident u))")
-    t |> equal(parsed("(enum E)1"), "(cast (type_name [(enum E [])] -) (int 1))")
+    t |> equal(parsed("(void (*)(char [static const 3]))f"), "(cast (type_name [(spec void)] (d_function 0 (d_paren (d_pointer - []) []) [(param [(spec char)] (d_array 1 - (int 3) [(spec const)]))])) (ident f))")
+    t |> equal(parsed("(void (*)(char [*]))f"), "(cast (type_name [(spec void)] (d_function 0 (d_paren (d_pointer - []) []) [(param [(spec char)] (d_array 2 - - []))])) (ident f))")
+    t |> equal(parsed("(int [*p])x"), "(cast (type_name [(spec int)] (d_array 0 - (unary * (ident p)) [])) (ident x))")
+    t |> equal(parsed("(void (*)(char [const static 3]))f"), "(cast (type_name [(spec void)] (d_function 0 (d_paren (d_pointer - []) []) [(param [(spec char)] (d_array 1 - (int 3) [(spec const)]))])) (ident f))")
+    t |> equal(parsed("(int ((*)))x"), "(cast (type_name [(spec int)] (d_paren (d_paren (d_pointer - []) []) [])) (ident x))")
+    t |> equal(parsed("(int ([3]))x"), "(cast (type_name [(spec int)] (d_paren (d_array 0 - (int 3) []) [])) (ident x))")
+    t |> equal(parsed("(T)\{x\}"), "(compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (ident x))]))")
+    t |> equal(parsed("(struct S *)p"), "(cast (type_name [(record struct S 0 [])] (d_pointer - [])) (ident p))")
+    t |> equal(parsed("(union U)u"), "(cast (type_name [(record union U 0 [])] -) (ident u))")
+    t |> equal(parsed("(enum E)1"), "(cast (type_name [(enum E 0 [])] -) (int 1))")
+    t |> equal(parsed("(struct S \{ int a; \} *)p"), "(cast (type_name [(record struct S 1 [(member_decl 0 [(spec int)] [(member (d_name a) -)])])] (d_pointer - [])) (ident p))")
+    t |> equal(parsed("(union \{ int a; \})u"), "(cast (type_name [(record union - 1 [(member_decl 0 [(spec int)] [(member (d_name a) -)])])] -) (ident u))")
+    t |> equal(parsed("(enum \{ A \})1"), "(cast (type_name [(enum - 1 [(enumerator A -)])] -) (int 1))")
     t |> equal(parsed("(_Bool)x"), "(cast (type_name [(spec _Bool)] -) (ident x))")
     t |> equal(parsed("(_Atomic int)x"), "(cast (type_name [(spec _Atomic) (spec int)] -) (ident x))")
     t |> equal(parsed("(_Alignas(8) int)x"), "(cast (type_name [(alignas_expr (int 8)) (spec int)] -) (ident x))")
@@ -272,13 +296,8 @@ def test_type_names(t : T?) {
 
 [test(description = "a construct the parser does not take fails closed: `file:line:col: <construct> is not parsed` at its first token")]
 def test_refusals(t : T?) {
-    t |> equal(parsed("(\{ x; \})"), "error: t.c:1:1: a statement expression is not parsed")
-    t |> equal(parsed("a + (\{ 1; \})"), "error: t.c:1:5: a statement expression is not parsed")
     t |> equal(parsed("&&lab"), "error: t.c:1:1: a label address (&&label) is not parsed")
     t |> equal(parsed("_Generic(x, int: 1)"), "error: t.c:1:1: a generic selection (_Generic) is not parsed")
-    t |> equal(parsed("(struct S \{ int a; \} *)p"), "error: t.c:1:11: a struct body is not parsed")
-    t |> equal(parsed("(union \{ int a; \})u"), "error: t.c:1:8: a union body is not parsed")
-    t |> equal(parsed("(enum \{ A \})1"), "error: t.c:1:7: an enum body is not parsed")
     t |> equal(parsed("(__int128)x"), "error: t.c:1:2: the __int128 type is not parsed")
     t |> equal(parsed("(unsigned __int128)x"), "error: t.c:1:11: the __int128 type is not parsed")
     t |> equal(parsed("(_Atomic(int))x"), "error: t.c:1:2: the _Atomic(type) specifier is not parsed")
@@ -312,7 +331,7 @@ def test_malformed(t : T?) {
         ("sizeof(T)\{", "t.c:1:11: expected an expression, got end of input"),
         ("(int [3)x", "t.c:1:8: expected ']', got ')'"),
         ("(int (*)(int,))f", "t.c:1:14: expected a parameter declaration, got ')'"),
-        ("(struct)x", "t.c:1:8: expected a tag name after 'struct', got ')'"),
+        ("(struct)x", "t.c:1:8: expected a tag name or '\{' after 'struct', got ')'"),
         ("s.", "t.c:1:3: expected a member name, got end of input"),
         ("p->1", "t.c:1:4: expected a member name, got '1'"),
         ("__builtin_offsetof(T, )", "t.c:1:23: expected a member name, got ')'"),
@@ -324,10 +343,24 @@ def test_malformed(t : T?) {
         ("(int __attribute__ x)y", "t.c:1:20: expected '((' after __attribute__, got 'x'"),
         ("T", "t.c:1:1: expected an expression, got 'T'"),
         ("(static int)x", "t.c:1:2: expected an expression, got 'static'"),
-        ("if", "t.c:1:1: expected an expression, got 'if'"))
+        ("if", "t.c:1:1: expected an expression, got 'if'"),
+        ("(int __attribute__(x))y", "t.c:1:19: expected '((' after __attribute__, got '('"),
+        ("(typeof x)y", "t.c:1:9: expected '(', got 'x'"),
+        ("(_Alignas(1, 2) int)x", "t.c:1:12: expected ')', got ','"),
+        ("__builtin_offsetof(T, a[1 ... 2])", "t.c:1:27: expected ']', got '...'"),
+        ("(T)\{1", "t.c:1:6: expected '\}', got end of input"),
+        ("__builtin_types_compatible_p(int T)", "t.c:1:34: expected ',', got 'T'"),
+        ("__builtin_types_compatible_p(int, int", "t.c:1:38: expected ')', got end of input"),
+        ("__builtin_offsetof(T a)", "t.c:1:22: expected ',', got 'a'"),
+        ("(void (*)(int (*, int))f", "t.c:1:17: expected ')', got ','"),
+        ("(int (*)(int, ...[2]))f", "t.c:1:18: expected ')', got '['"))
     for (c in cases) {
         t |> equal(parsed(c._0), "error: {c._1}", c._0)
     }
+    var p : CParser
+    opened(p, "(a b")
+    c_expression(p)
+    t |> success(p.failed && p.pos == p.last, "the cursor stays at the end after an error")
 }
 
 // `text` repeated `count` times, then `inner`, then `closer` repeated `count` times
@@ -350,12 +383,17 @@ def test_nesting_bound(t : T?) {
         t |> success(parsed(nested("__builtin_offsetof(T, a[", 255, "0", "])")) |> starts_with("(offsetof"))
         t |> equal(parsed(nested("__builtin_offsetof(T, a[", 256, "0", "])")), "error: t.c:1:{255 * 24 + 20}: nesting deeper than 256 levels is not parsed")
     }
+    t |> run("a compound literal where a unary expression stands, a cast and a nested abstract declarator each refuse the level they open") @(t : T?) {
+        t |> equal(parsed("- - {repeat("++(T)\{", 3000)}"), "error: t.c:1:385: nesting deeper than 256 levels is not parsed")
+        t |> equal(parsed("{repeat("-(T)", 3000)}x"), "error: t.c:1:510: nesting deeper than 256 levels is not parsed")
+        t |> equal(parsed("(int {repeat("(", 3000)}"), "error: t.c:1:259: nesting deeper than 256 levels is not parsed")
+    }
     t |> run("every recursive form ends with the refusal") @(t : T?) {
         let chains = fixed_array("{repeat("- ", 3000)}x", "(int {repeat("*", 3000)})x", "(T){repeat("\{", 3000)}",
             "{repeat("a ? b : ", 3000)}c", "{repeat("a ? ", 3000)}c", "{repeat("a = ", 3000)}c", "{repeat("(T)", 3000)}x", "{repeat("f(", 3000)}",
             "(int {repeat("(int ", 3000)})x", "{repeat("sizeof ", 3000)}x", "(typeof({repeat("typeof(", 3000)}", "{repeat("a[", 3000)}",
             "{repeat("++(T)\{", 3000)}", "{repeat("sizeof(typeof(", 3000)}", "{repeat("__builtin_offsetof(T, a[", 3000)}",
-            "(int {repeat("(*", 3000)}")
+            "(int {repeat("(*", 3000)}", "{repeat("a ?: ", 3000)}c")
         for (text in chains) {
             t |> success(parsed(text) |> ends_with("nesting deeper than 256 levels is not parsed"), slice(text, 0, 12))
         }
