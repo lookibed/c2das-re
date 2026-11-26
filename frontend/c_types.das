@@ -70,7 +70,8 @@ def private array_of(var b : CTypes; elem, count : int) : int {
 
 // the function type returning `ret` with the adjusted parameter types `params`
 def private function_of(var b : CTypes; ret : int; var params : array<int>; variadic : bool) : int {
-    let key = "func:{ret}:{join([for (x in params); "{x}"], ",")}:{variadic}"
+    let listed = join([for (x in params); string(x)], ",")
+    let key = "func:{ret}:{listed}:{variadic}"
     var t = CirType(k = "func", ret = ret, variadic = variadic)
     t.params <- params
     return intern(b, key, t)
@@ -219,7 +220,7 @@ def private array_count(var b : CTypes; var p : CParser; size : int) : int {
     for (ch in hex ? slice(digits, 2) : digits) {
         let v = ch >= 'a' ? ch - 'a' + 10 : ch - '0'
         value = value * base + int64(v)
-        if (value > 0x7FFFFFFFl) {
+        if (value > 2147483647l) {
             refuse(b, p, p.ast.nodes[size].tok, "an array size past 2^31")
             return -2
         }
@@ -523,8 +524,8 @@ def private definition(var b : CTypes; var p : CParser; def_node : int) : bool {
         while (old >= 0 && !holds_declarator(p, old, typing)) {
             old = p.ast.nodes[old].next
         }
-        let base = c_specifier_type(b, p, p.ast.nodes[old].a)
-        let pt = applied(b, p, is_end(p, typing) ? adjusted_base(b, base) : base, typing, true)
+        let named = c_specifier_type(b, p, p.ast.nodes[old].a)
+        let pt = applied(b, p, is_end(p, typing) ? adjusted_base(b, named) : named, typing, true)
         return false if (pt < 0)
         param = p.ast.nodes[param].next
     }
