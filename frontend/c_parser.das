@@ -74,8 +74,9 @@ def c_declare(var p : CParser; sym : int; binding : CBinding) {
 //! Symbol `sym` names a typedef where the parser stands.
 def c_is_typedef(p : CParser; sym : int) : bool => sym >= 0 && sym < length(p.scopes.binding) && p.scopes.binding[sym] == CBinding.TYPEDEF
 
-//! Open the parser over the tokens of `text`, named `name`, with an empty tree and no typedef
-//! name; false when the tokens hold an error, which `err` then holds.
+//! Open the parser over the tokens of `text`, named `name`, with an empty tree and one typedef
+//! name, `__builtin_va_list`, which clang declares before every unit; false when the tokens hold
+//! an error, which `err` then holds.
 def c_parser_open_text(var p : CParser; text, name : string) : bool {
     let clean = c_tokens_of_text(p.unit, text, name)
     p.ast.nodes |> clear()
@@ -90,6 +91,7 @@ def c_parser_open_text(var p : CParser; text, name : string) : bool {
     p.operands |> clear()
     p.failed = !clean
     p.err = p.unit.err
+    c_declare(p, c_symbol(p.unit, "__builtin_va_list"), CBinding.TYPEDEF)
     return clean
 }
 
@@ -307,16 +309,51 @@ def private with_specifier(set, k : int) : int {
     return -1
 }
 
-//! Specifiers and qualifiers at the cursor, as a list; storage classes and function specifiers
-//! only when `storage` allows them. An identifier is a typedef name only while no type specifier
+//! Where a list of specifiers stands, which decides the storage classes and function specifiers it
+//! takes: none in a type name, `register` alone in a parameter, any in a declaration.
+enum CSpecifiers {
+    TYPE_NAME
+    PARAMETER
+    DECLARATION
+}
+
+//! the set `set` of storage classes with the one of kind `k` added, or -1 when C11 6.7.1p2 forbids
+//! the pair: one storage class, `_Thread_local` beside `static` or `extern` only; a repeated one
+//! stays, as clang takes it with a warning
+[arch(at="ARCHITECTURE_PARSER.md#c-declarations")]
+def private with_storage(set, k : int) : int {
+    let bit = 1 << (k - int(CTok.TYPEDEF))
+    let thread = 1 << (int(CTok.THREAD_LOCAL) - int(CTok.TYPEDEF))
+    let joined = set | bit
+    let others = joined & ~thread
+    let static_or_extern = (1 << (int(CTok.STATIC) - int(CTok.TYPEDEF))) | (1 << (int(CTok.EXTERN) - int(CTok.TYPEDEF)))
+    let two_classes = (others & (others - 1)) != 0
+    let thread_misplaced = (joined & thread) != 0 && (others & ~static_or_extern) != 0
+    return two_classes || thread_misplaced ? -1 : joined
+}
+
+//! Specifiers and qualifiers at the cursor, as a list; storage classes and function specifiers as
+//! `place` allows them. An identifier is a typedef name only while no type specifier
 //! came before it; a type specifier that does not combine with those before it is an error.
 //! `typed` answers whether a type specifier came.
 [arch(at="ARCHITECTURE_PARSER.md#c-typedef-table")]
-def private specifiers(var p : CParser; storage : bool; var typed : bool&) : int {
+def private specifiers(var p : CParser; place : CSpecifiers; var typed : bool&) : int {
     var list = CList()
     var set = 0
+    var storage = 0
     while (!p.failed) {
         let k = kind(p)
+        let is_storage = k >= int(CTok.TYPEDEF) && k <= int(CTok.NORETURN)
+        if (is_storage && place == CSpecifiers.PARAMETER && k != int(CTok.REGISTER)) {
+            fail(p, "'register' as a parameter's storage class")
+            break
+        } elif (is_storage && place == CSpecifiers.DECLARATION && k <= int(CTok.THREAD_LOCAL)) {
+            storage = with_storage(storage, k)
+            if (storage < 0) {
+                fail(p, "a storage class that combines with those before it")
+                break
+            }
+        }
         let typedef_name = k == int(CTok.IDENTIFIER) && set == 0 && c_is_typedef(p, sym(p))
         if (typedef_name || is_type_keyword(k) || (k >= int(CTok.STRUCT) && k <= int(CTok.ENUM)) || k == int(CTok.TYPEOF)) {
             set = with_specifier(set, k)
@@ -326,7 +363,7 @@ def private specifiers(var p : CParser; storage : bool; var typed : bool&) : int
             }
         }
         var n = -1
-        if (is_type_keyword(k) || is_qualifier(k) || (storage && k >= int(CTok.TYPEDEF) && k <= int(CTok.NORETURN))) {
+        if (is_type_keyword(k) || is_qualifier(k) || (is_storage && place != CSpecifiers.TYPE_NAME)) {
             if (k == int(CTok.ATOMIC) && kind_at(p, 1) == int(CTok.LPAREN)) {
                 refuse(p, "the _Atomic(type) specifier")
                 break
@@ -419,10 +456,32 @@ def c_declarator_name(ast : CAst; d : int) : int {
     return -1
 }
 
-//! a function declarator's parameters, in a prototype scope of their own, into node `f`
-def private parameters(var p : CParser; f : int) {
+//! an old-style identifier list (C11 6.7.6.3p3) at the cursor into node `f`, its names ordinary
+def private identifier_list(var p : CParser; f : int) {
+    var list = CList()
+    while (!p.failed) {
+        if (kind(p) != int(CTok.IDENTIFIER) || c_is_typedef(p, sym(p))) {
+            fail(p, "a parameter name")
+            break
+        }
+        c_append(p.ast, list, node(p, CNode.IDENT_PARAM, p.pos, 0, sym(p)))
+        p.pos++
+        break if (!accept(p, CTok.COMMA))
+    }
+    p.ast.nodes[f].op = 2
+    p.ast.nodes[f].b = list.head
+}
+
+//! a function declarator's parameters, in a prototype scope of their own, into node `f`; in a
+//! named declarator an identifier no typedef binds opens an old-style identifier list
+[arch(at="ARCHITECTURE_PARSER.md#c-type-names")]
+def private parameters(var p : CParser; f : int; mode : CDeclarator) {
     var list = CList()
     var variadic = 0
+    if (mode == CDeclarator.NAMED && kind(p) == int(CTok.IDENTIFIER) && !c_is_typedef(p, sym(p))) {
+        identifier_list(p, f)
+        return
+    }
     if (kind(p) != int(CTok.RPAREN) && enter(p)) {
         c_scope_open(p)
         while (!p.failed) {
@@ -432,7 +491,7 @@ def private parameters(var p : CParser; f : int) {
             }
             let at = p.pos
             var typed = false
-            let specs = specifiers(p, true, typed)
+            let specs = specifiers(p, CSpecifiers.PARAMETER, typed)
             if (specs < 0) {
                 fail(p, "a parameter declaration")
                 break
@@ -442,7 +501,8 @@ def private parameters(var p : CParser; f : int) {
             }
             let d = declarator(p, CDeclarator.EITHER)
             c_declare(p, c_declarator_name(p.ast, d), CBinding.ORDINARY)
-            c_append(p.ast, list, node(p, CNode.PARAM, at, 0, specs, d))
+            let attrs = attributes(p)
+            c_append(p.ast, list, node(p, CNode.PARAM, at, 0, specs, d, attrs))
             break if (!accept(p, CTok.COMMA))
         }
         c_scope_close(p)
@@ -453,7 +513,7 @@ def private parameters(var p : CParser; f : int) {
 }
 
 //! the array and function suffixes after the direct declarator `inner`
-def private declarator_suffixes(var p : CParser; first : int) : int {
+def private declarator_suffixes(var p : CParser; first : int; mode : CDeclarator) : int {
     var inner = first
     while (!p.failed) {
         let at = start_of(p, inner)
@@ -472,7 +532,7 @@ def private declarator_suffixes(var p : CParser; first : int) : int {
             inner = node(p, CNode.D_ARRAY, at, flags, inner, size, quals)
         } elif (accept(p, CTok.LPAREN)) {
             let n = node(p, CNode.D_FUNCTION, at, 0, inner)
-            parameters(p, n)
+            parameters(p, n, mode)
             take(p, CTok.RPAREN)
             inner = n
         } else {
@@ -509,7 +569,7 @@ def private declarator(var p : CParser; mode : CDeclarator) : int {
         fail(p, "a declarator")
         return -1
     }
-    return declarator_suffixes(p, inner)
+    return declarator_suffixes(p, inner, mode)
 }
 
 //! A type name at the cursor (C11 6.7.7): specifiers and qualifiers, then an abstract declarator.
@@ -517,7 +577,7 @@ def c_type_name(var p : CParser) : int {
     let at = p.pos
     return -1 if (!enter(p))
     var typed = false
-    let specs = specifiers(p, false, typed)
+    let specs = specifiers(p, CSpecifiers.TYPE_NAME, typed)
     var n = -1
     if (specs < 0) {
         fail(p, "a type name")
@@ -909,4 +969,150 @@ def c_expect_end(var p : CParser) {
     if (!p.failed && kind(p) != int(CTok.EOF)) {
         fail(p, "end of input")
     }
+}
+
+//! The function declarator a declarator applies to its name through parentheses only: the one a
+//! function definition's parameters come from; -1 when there is none.
+def c_name_function(ast : CAst; d : int) : int {
+    var at = d
+    while (at >= 0) {
+        let n = ast.nodes[at]
+        if (n.kind == CNode.D_FUNCTION) {
+            var inner = n.a
+            while (inner >= 0 && ast.nodes[inner].kind == CNode.D_PAREN) {
+                inner = ast.nodes[inner].a
+            }
+            return at if (inner >= 0 && ast.nodes[inner].kind == CNode.D_NAME)
+        }
+        return -1 if (n.kind == CNode.D_NAME)
+        at = n.a
+    }
+    return -1
+}
+
+//! the specifier list `specs` holds `typedef`
+def private declares_typedef(ast : CAst; specs : int) : bool {
+    var at = specs
+    while (at >= 0) {
+        return true if (ast.nodes[at].kind == CNode.SPEC_KEYWORD && ast.nodes[at].op == int(CTok.TYPEDEF))
+        at = ast.nodes[at].next
+    }
+    return false
+}
+
+//! the first old-style identifier list in declarator `d`, -1 when it has none
+def private identifier_list_in(ast : CAst; d : int) : int {
+    var at = d
+    while (at >= 0) {
+        let n = ast.nodes[at]
+        return at if (n.kind == CNode.D_FUNCTION && n.op == 2)
+        return -1 if (n.kind == CNode.D_NAME)
+        at = n.a
+    }
+    return -1
+}
+
+//! `_Static_assert(condition, message)` and its `;`, the cursor at the keyword; the message is
+//! optional, as clang takes it under gnu17
+def private static_assert_decl(var p : CParser) : int {
+    let at = p.pos
+    p.pos++
+    take(p, CTok.LPAREN)
+    let condition = c_constant_expression(p)
+    var message = -1
+    if (accept(p, CTok.COMMA)) {
+        if (kind(p) != int(CTok.STRING_LITERAL)) {
+            fail(p, "a string literal")
+            return -1
+        }
+        message = string_literal(p)
+    }
+    take(p, CTok.RPAREN)
+    take(p, CTok.SEMI)
+    return node(p, CNode.STATIC_ASSERT, at, 0, condition, message)
+}
+
+//! a declarator's tail after it: a GNU asm label `__asm__("name")`, then attributes; `before` holds
+//! the attributes written before the declarator
+def private init_declarator(var p : CParser; d, before : int) : int {
+    var asm_name = -1
+    if (kind(p) == int(CTok.ASM)) {
+        let at = p.pos
+        p.pos++
+        take(p, CTok.LPAREN)
+        if (kind(p) != int(CTok.STRING_LITERAL)) {
+            fail(p, "a string literal")
+            return -1
+        }
+        let name = string_literal(p)
+        take(p, CTok.RPAREN)
+        asm_name = node(p, CNode.ASM_LABEL, at, 0, name)
+    }
+    var attrs = CList()
+    c_append(p.ast, attrs, before)
+    if (before >= 0) {
+        while (p.ast.nodes[attrs.tail].next >= 0) {
+            attrs.tail = p.ast.nodes[attrs.tail].next
+        }
+    }
+    c_append(p.ast, attrs, attributes(p))
+    let n = node(p, CNode.INIT_DECL, start_of(p, d), 0, d, -1, asm_name)
+    p.ast.nodes[n].d = attrs.head
+    return n
+}
+
+//! A declaration at the cursor and its `;` (C11 6.7): `__extension__`s, specifiers, then
+//! init-declarators, each name bound in the innermost scope right after its declarator - as a
+//! typedef name under `typedef`, else as an ordinary identifier - so its own initializer sees it.
+//! A `_Static_assert` is a declaration too. A function definition and an identifier list outside one
+//! are refused.
+[arch(at="ARCHITECTURE_PARSER.md#c-declarations")]
+def c_declaration(var p : CParser) : int {
+    let at = p.pos
+    var extension = 0
+    while (accept(p, CTok.EXTENSION)) {
+        extension = 1
+    }
+    return static_assert_decl(p) if (kind(p) == int(CTok.STATIC_ASSERT))
+    let specs_at = p.pos
+    var typed = false
+    let specs = specifiers(p, CSpecifiers.DECLARATION, typed)
+    if (specs < 0) {
+        fail(p, "a declaration")
+        return -1
+    } elif (!typed) {
+        untyped(p, specs_at)
+        return -1
+    }
+    let binding = declares_typedef(p.ast, specs) ? CBinding.TYPEDEF : CBinding.ORDINARY
+    var list = CList()
+    var first = true
+    var more = kind(p) != int(CTok.SEMI)
+    while (!p.failed && more) {
+        let before = first ? -1 : attributes(p)
+        let d = declarator(p, CDeclarator.NAMED)
+        let ids = identifier_list_in(p.ast, d)
+        if (ids >= 0) {
+            p.pos = p.ast.nodes[p.ast.nodes[ids].b].tok
+            refuse(p, "an identifier list outside a function definition")
+            break
+        }
+        let id = init_declarator(p, d, before)
+        if (first && kind(p) == int(CTok.LBRACE) && c_name_function(p.ast, d) >= 0) {
+            refuse(p, "a function definition")
+            break
+        }
+        first = false
+        c_declare(p, c_declarator_name(p.ast, d), binding)
+        if (binding == CBinding.ORDINARY && accept(p, CTok.ASSIGN)) {
+            let value = kind(p) == int(CTok.LBRACE) ? init_list(p) : c_assignment(p)
+            if (id >= 0) {
+                p.ast.nodes[id].b = value
+            }
+        }
+        c_append(p.ast, list, id)
+        more = accept(p, CTok.COMMA)
+    }
+    take(p, CTok.SEMI)
+    return node(p, CNode.DECL, at, extension, specs, list.head)
 }

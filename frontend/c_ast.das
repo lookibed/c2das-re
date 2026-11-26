@@ -55,10 +55,16 @@ enum CNode {
     D_FUNCTION
     D_PAREN
     PARAM
+    IDENT_PARAM
+    DECL
+    INIT_DECL
+    ASM_LABEL
+    STATIC_ASSERT
 }
 
 //! Per node kind, its dump name and the roles of `op`, `a`, `b`, `c`, `d`: `-` unused, `n` a node
-//! (-1 none), `l` a list (its first node, the rest chained by `next`; -1 empty), `s` a symbol (-1
+//! (-1 none), `l` a list (its first node, the rest chained by `next`; -1 empty), `a` a list of
+//! attributes, written only when it is not empty, `s` a symbol (-1
 //! none), `t` a token, `k` a token kind, `i` an integer, `r` a token range (`a` the first token,
 //! `b` the last, dumped as the bytes between them).
 let NODE_FORMS <- fixed_array(
@@ -104,9 +110,14 @@ let NODE_FORMS <- fixed_array(
     ("d_name", "-s---"),
     ("d_pointer", "-nl--"),         // the inner declarator, the qualifiers and attributes
     ("d_array", "innl-"),           // 1 `static`, 2 `[*]`; the inner declarator, the size, the qualifiers
-    ("d_function", "inl--"),        // 1 variadic; the inner declarator, the parameters
+    ("d_function", "inl--"),        // 1 variadic, 2 an identifier list; the inner declarator, the parameters
     ("d_paren", "-nl--"),           // the inner declarator, the attributes
-    ("param", "-ln--"))             // the specifiers, the declarator
+    ("param", "-lna-"),             // the specifiers, the declarator, the attributes after it
+    ("ident_param", "-s---"),       // a name of an old-style identifier list
+    ("decl", "ill--"),              // 1 after `__extension__`; the specifiers, the init-declarators
+    ("init_decl", "-nnna"),         // the declarator, the initializer, the asm label, the attributes
+    ("asm_label", "-n---"),         // the string literal
+    ("static_assert", "-nn--"))     // the condition, the message
 
 //! One node: its kind, its fields by `NODE_FORMS`, the next node of the list it is in, and `tok`,
 //! the token it starts at, which places it.
@@ -208,11 +219,11 @@ def c_dump(ast : CAst; var unit : CUnit; n : int; places : bool = false) : strin
                 let i = 4 - back
                 let role = roles[i]
                 let v = fields[i]
-                if (role == '-' || (role == 'i' && node.kind == CNode.STRING)) {
+                if (role == '-' || (role == 'i' && node.kind == CNode.STRING) || (role == 'a' && v < 0)) {
                     continue
                 } elif (role == 'n') {
                     steps |> push(DumpStep(node = v))
-                } elif (role == 'l') {
+                } elif (role == 'l' || role == 'a') {
                     members |> clear()
                     var k = v
                     while (k >= 0) {

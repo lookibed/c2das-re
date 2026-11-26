@@ -2,8 +2,8 @@
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family. It
 describes Dumper C's parser: the C tokens it reads, the tree it builds, and how it decides what it
-reads. The parser reads expressions and type names; it has no entry for a declaration or a
-statement.
+reads. The parser reads expressions, type names and declarations; it has no entry for a
+statement, a record or enum body, or a function definition.
 
 ## 14. The C tokens {#c-tokens}
 
@@ -107,8 +107,11 @@ A declarator is parsed in one of three modes: named, abstract, or either, which 
 parenthesised declarator, then any `[...]` and `(...)` suffixes. In the abstract modes a `(` opens a
 nested declarator when the first token past any attributes after it is `*`, `(` or `[`, or, for a
 parameter, an identifier no typedef binds; otherwise it opens a parameter list. A `[...]` holds
-`static`, qualifiers, a size or `*`. A parameter list holds parameter declarations, whose
-specifiers may hold storage classes, and `...`.
+`static`, qualifiers, a size or `*`. A parameter list holds parameter declarations, whose one
+storage class may be `register`, each with the attributes after its declarator, and `...`. In a
+named declarator an identifier no typedef binds right after the `(` opens an old-style identifier
+list instead (C11 6.7.6.3p3): its names are `ident_param` nodes and the function declarator's flag
+is 2.
 
 ## 18. Expressions {#c-expressions}
 
@@ -154,10 +157,39 @@ The bound comes from the stack. Under the interpreter a level costs the frames b
 openings, measured by the deepest input of each form that fits a 1 MiB stack: 80 bytes for a cast,
 an assignment, a `?:` arm or a `*`; 112 for a brace; 160 for a prefix operator; 320 for a parameter
 list or a `typeof`; 529 for a call; 593 for a parenthesis or a subscript; and 658, the most, for a
-`__builtin_offsetof` designator's index. 256 levels of the costliest form take about 165 KiB. The
+`__builtin_offsetof` designator's index. The declarator forms cost less: 80 bytes for a pointer or a
+parenthesised declarator, 112 for a parameter list with a pointer declarator in it, 417 for a
+parameter list alone, 353 for a `typeof` in a declaration, 278 for a `sizeof` of an array type in
+an array size. 256 levels of the costliest form take about 165 KiB. The
 parser therefore runs on a context stack of at least 256 KiB (`options stack = 262144`), which
 leaves a third of it for the caller. A context's stack is the `options stack` of the program that
 made it, 16 KiB when none is given (daslang's default): a test's context takes its test file's
 option; a macro runs at compile time in the macro context of its own module, sized by that
 module's option, never by the module being compiled. So the module whose macro or program runs the
 parser states the option; on the default 16 KiB 24 parentheses fit.
+
+## 20. Declarations {#c-declarations}
+
+`c_declaration` reads one declaration and its `;` (C11 6.7): any `__extension__`s (the node's
+flag is 1 after one), the declaration specifiers, then the init-declarators. `_Static_assert` with
+a condition and an optional message is a declaration of its own. A declaration may declare
+nothing (`int;`), as clang takes it.
+
+The specifiers of a declaration take storage classes and function specifiers. C11 6.7.1p2 allows
+one storage class, and `_Thread_local` (`__thread`) beside `static` or `extern` only; a storage
+class that breaks that rule is `expected a storage class that combines with those before it` at its
+token. A repeated one stays, as clang takes it with a warning. The type specifiers follow
+section 17, and a declaration with no type specifier is refused.
+
+An init-declarator is a named declarator, a GNU asm label `__asm__("name")`, then attributes; the
+attributes written before a later declarator of the list join them. Each name is bound in the
+innermost scope right after its init-declarator, before its initializer: as a typedef name when the
+specifiers hold `typedef`, else as an ordinary identifier. So `int T = T;` reads its own `T`, and in
+`int x = sizeof(T), T = 1;` the first `T` is still the type. A typedef takes no initializer. A
+typedef name declared again as the same typedef stays a typedef name. `__builtin_va_list` is a
+typedef name before the first token, as clang declares it.
+
+A declarator followed by `{` is a function definition, and an old-style identifier list outside one
+is invalid C (C11 6.7.6.3p3); `c_declaration` refuses both at their token, so the entry for
+definitions owns them. The table's scope functions (`c_scope_open`, `c_scope_close`) are public: a
+block, which the statement parser opens, and the tests that stand in for it use them.
