@@ -34,27 +34,35 @@ the program's files, and each record of an external header the program holds by 
 member of or sizes, which the libclang pass registers with them (the program's files, section 3).
 A definition only the second pass holds is no part of the converted program and is not compared,
 and neither is clang's own builtin record (`struct __va_list_tag`), which stands in no file.
-The set is records and enums alone: an `aligned` typedef and an `_Alignas` object outside any
-record are not compared.
+The set is records and enums alone: the alignment an `aligned` typedef or an `_Alignas` variable
+has outside any record is not compared.
 
 **The key.** `collect_layouts` walks each parse alike and names every definition: a named record or
 enum, a typedef-named one included, by its tag spelling (`struct S`, `struct T`), so one
 definition in each arm of a conditional is one record; an unnamed record nested in a record by its
-owner's key and its ordinal among the owner's nested record definitions; any other unnamed
+owner's key and its ordinal among the owner's unnamed nested record definitions (a named one
+beside it has its tag); any other unnamed
 definition (the type of a variable, an unnamed enum) by the file and offsets of its definition.
 A tag one parse defines more than once (two blocks' `struct s`) is found by place too. A
 definition keyed by place that stands in another arm in the second pass has no twin there and is
-refused: nothing names it across the arms, and the guard fails closed.
+refused: nothing names it across the arms, and the guard fails closed. That is the one shape
+refused with no layout difference: an unnamed record with no owner (`static struct { ... } v;`)
+written once in each arm of a conditional.
 
 **The signature.** A record's size and alignment, and each member in order: a field's name, bit
 offset, bitfield width, canonical type spelling (the place of an unnamed record cut out of it) and
-that type's size and alignment; an anonymous member's bit offset, by a name it makes visible. An
-enum's size and alignment. The record's size is implied by the rest and printed for the reader.
+that type's size and alignment, and, where the type is an unnamed record or enum (or an array of
+one), the key of that definition, so `__typeof__` of one variable is not another's; an anonymous
+member's bit offset, by a name it makes visible. An enum's size, alignment and underlying type. The record's size is implied by the rest and printed for the reader.
 
 A definition whose signature differs fails the dump naming it, its place and both signatures, and
-so does one with no twin (an error the second pass met is quoted beside it); records are judged
+so does one with no twin (an error the second pass met is quoted beside it); a second parse that
+gives no translation unit at all fails the dump with that one reason; records are judged
 before enums, each in the order the first pass met them. The message names the way out: a sidecar
-`defines` entry, which both passes get, selects one arm for both. The second parse reads no
+`defines` entry, which both passes get, selects one arm for both. Under the `msvc` dialect the second parse has clang's own `_MSC_VER` and the table has not, so the
+guard compares the converter's arm with the program's MSVC arm: `#pragma pack` and
+`__declspec(align)` behind `_MSC_VER` are caught, and a record that exists under `_MSC_VER` alone is
+no record of the program. The second parse reads no
 preprocessing record and makes no JSON, so the guard is always on: probed over Lua (33 units),
 PureDOOM (126) and wasm3 (1), its second parse took under 1% of the dump (0.3 s of 53 s, 0.8 s of 84 s, 0.1 s of 25 s; the first parse is walked once more for its own signatures).
 

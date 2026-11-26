@@ -1104,6 +1104,7 @@ def private collect_records(var d : Dumper; frontend : array<string>; inputs : a
         var root = clang_getTranslationUnitCursor(unit)
         walk_records(d, root)
         collect_layouts(d, root, "", d.layouts)
+        name_unnamed_types(d.layouts)
         if (!empty(d.shared_tags)) {
             note_shared_exprs(d, root)
         }
@@ -4302,6 +4303,10 @@ struct LaidOut {
 
 let private TAG_KEY = "tag "
 
+// the brackets of a definition's place inside a signature, until its key takes the place
+let private PLACE_OPEN = "<<"
+let private PLACE_CLOSE = ">>"
+
 // `spelling` with the place of every unnamed record or enum it names cut out: `(unnamed at
 // f:l:c)` and `(anonymous at f:l:c)` are `(unnamed)`, so a spelling reads alike wherever the
 // definition stands
@@ -4354,7 +4359,7 @@ def private visible_field(var c : CXCursor) : string {
 // one member of record `owner` in its signature: an anonymous member its bit offset, by a name
 // it makes visible; a field its name, bit offset, bitfield width, canonical type, and the size
 // and alignment of that type
-def private member_signature(var owner : CXType; var fc : CXCursor) : string {
+def private member_signature(var d : Dumper; var owner : CXType; var fc : CXCursor) : string {
     if (clang_getCursorKind(fc) != CXCursorKind.FieldDecl) {
         let name = visible_field(fc)
         var inner = clang_getCursorType(fc)
@@ -4366,10 +4371,46 @@ def private member_signature(var owner : CXType; var fc : CXCursor) : string {
     let bit_off = clang_Cursor_getOffsetOfField(fc)
     let width = clang_Cursor_isBitField(fc) != 0u ? ":{clang_getFieldDeclBitWidth(fc)}" : ""
     var canonical = clang_getCanonicalType(clang_getCursorType(fc))
-    let spelling = placeless(string(clang_getTypeSpelling(canonical)))
+    let raw = string(clang_getTypeSpelling(canonical))
+    let spelling = placeless(raw)
     let size = clang_Type_getSizeOf(canonical)
     let align = clang_Type_getAlignOf(canonical)
-    return "{name}@{bit_off}{width} `{spelling}` {size}/{align}"
+    // an unnamed record or enum as the type: which one, by the place of its definition until
+    // `name_unnamed_types` puts its key there
+    var which : string
+    if (spelling != raw) {
+        var element = canonical
+        while (element.kind == CXTypeKind.ConstantArray || element.kind == CXTypeKind.IncompleteArray) {
+            element = clang_getCanonicalType(clang_getArrayElementType(element))
+        }
+        var declared = clang_getTypeDeclaration(element)
+        if (clang_Cursor_isNull(declared) == 0) {
+            which = "{PLACE_OPEN}{cursor_key(d, declared)}{PLACE_CLOSE}"
+        }
+    }
+    return "{name}@{bit_off}{width} `{spelling}`{which} {size}/{align}"
+}
+
+// every place `member_signature` left in a signature of `layouts` replaced by the key of the
+// definition there, so an unnamed record as a member's type is signed by the record it is
+def private name_unnamed_types(var layouts : LayoutSet) {
+    for (entry in layouts.entries) {
+        var open = find(entry.signature, PLACE_OPEN)
+        continue if (open < 0)
+        entry.signature = build_string() $(var w) {
+            var from = 0
+            while (open >= 0) {
+                let close = find(entry.signature, PLACE_CLOSE, open)
+                let place = slice(entry.signature, open + length(PLACE_OPEN), close)
+                let named = layouts.by_loc?[place] ?? -1
+                w |> write(slice(entry.signature, from, open))
+                w |> write(named < 0 ? " = nowhere" : " = {layouts.entries[named].key}")
+                from = close + length(PLACE_CLOSE)
+                open = find(entry.signature, PLACE_OPEN, from)
+            }
+            w |> write(slice(entry.signature, from))
+        }
+    }
 }
 
 // adds the definition at `c` to `layouts` under `key`
@@ -4395,8 +4436,11 @@ def private collect_layouts(var d : Dumper; var c : CXCursor; owner : string; va
             collect_layouts(d, kid, "", layouts)
             return CXChildVisitResult.Continue
         }
+        let spelling = own_spelling(d, kid, kind == CXCursorKind.EnumDecl ? "enum" : kind == CXCursorKind.UnionDecl ? "union" : "struct")
+        let unnamed = find(spelling, "(anonymous ") >= 0 || find(spelling, "(unnamed ") >= 0
+        // the ordinal counts the owner's unnamed records alone: a named one beside them has its tag
         let ordinal = nested
-        nested += is_record ? 1 : 0
+        nested += is_record && unnamed ? 1 : 0
         let loc = cursor_key(d, kid)
         if (key_exists(layouts.by_loc, loc)) {
             // met before, as its owner's member or under a statement
@@ -4405,11 +4449,11 @@ def private collect_layouts(var d : Dumper; var c : CXCursor; owner : string; va
         var ct = clang_getCursorType(kid)
         let size = clang_Type_getSizeOf(ct)
         let align = clang_Type_getAlignOf(ct)
-        let spelling = own_spelling(d, kid, kind == CXCursorKind.EnumDecl ? "enum" : kind == CXCursorKind.UnionDecl ? "union" : "struct")
-        let unnamed = find(spelling, "(anonymous ") >= 0 || find(spelling, "(unnamed ") >= 0
         let key = !unnamed ? TAG_KEY + spelling : is_record && !empty(owner) ? "{owner}/{ordinal}" : "at {loc}"
         if (!is_record) {
-            add_layout(layouts, key, loc, "size {size}, align {align}")
+            var underlying = clang_getEnumDeclIntegerType(kid)
+            let of_type = string(clang_getTypeSpelling(clang_getCanonicalType(underlying)))
+            add_layout(layouts, key, loc, "size {size}, align {align}, of `{of_type}`")
             return CXChildVisitResult.Continue
         }
         var inscope members : array<string>
@@ -4417,7 +4461,7 @@ def private collect_layouts(var d : Dumper; var c : CXCursor; owner : string; va
             let fk = clang_getCursorKind(fc)
             let anonymous = (fk == CXCursorKind.StructDecl || fk == CXCursorKind.UnionDecl) && clang_Cursor_isAnonymousRecordDecl(fc) != 0u
             if (fk == CXCursorKind.FieldDecl || anonymous) {
-                members |> push(member_signature(ct, fc))
+                members |> push(member_signature(d, ct, fc))
             }
             return CXChildVisitResult.Continue
         }
@@ -4435,6 +4479,11 @@ def private twin_layout(layouts, theirs : LayoutSet; ours : LayoutEntry) : int {
     let once = root |> starts_with(TAG_KEY) && (layouts.tag_count?[root] ?? 0) == 1 && (theirs.tag_count?[root] ?? 0) == 1
     return once ? theirs.by_key?[ours.key] ?? -1 : theirs.by_loc?[ours.loc] ?? -1
 }
+
+//! The refusal of a unit whose second parse, with clang's own predefined macros back, gave no
+//! translation unit: nothing can be compared, so no record of `c_path` is taken.
+def no_second_parse(c_path : string) : string =>
+    "{c_path}: the layout guard's parse with clang's own predefined macros gave no translation unit, so no layout can be compared"
 
 // The layout guard: every record the dump lays out, an external header's the program holds by
 // value included, and every enum it defines has one layout under `frontend`, the dumper's flags,
@@ -4459,9 +4508,14 @@ def private check_layouts(var d : Dumper; frontend : array<string>; inputs : arr
             clang_disposeDiagnostic(diag)
         }
         collect_layouts(d, clang_getTranslationUnitCursor(unit), "", theirs)
+        name_unnamed_types(theirs)
         clang_disposeTranslationUnit(unit)
     }
     clang_disposeIndex(idx)
+    if (unit == null) {
+        d.error = no_second_parse(d.c_path)
+        return
+    }
     let hint = "a sidecar `defines` entry selects the arm for both"
     // records, then enums, each in the order the first pass met them: the first refusal is the same every run
     var inscope laid_out : array<LaidOut>

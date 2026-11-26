@@ -199,7 +199,7 @@ def test_layout_guard_keys(t : T?) {
     t |> run("an enum the dump defines is compared too: `packed` behind `__clang__` is refused") @(t : T?) {
         let conv <- guard_convert(dir, "enum_packed", "#ifdef __clang__\n#define ATTR __attribute__((packed))\n#else\n#define ATTR\n#endif\nenum small \{ S0, S1 \} ATTR;\nint main(void) \{ enum small e = S1; return e - 1; \}\n", "")
         t |> equal(conv.ok, false, conv.das_text)
-        t |> success(conv.error |> contains("`enum small` is laid out as [size 4, align 4] under the dialect's predefined macros and as [size 1, align 1] under clang's own"), conv.error)
+        t |> success(conv.error |> contains("`enum small` is laid out as [size 4, align 4, of `unsigned int`] under the dialect's predefined macros and as [size 1, align 1, of `unsigned char`] under clang's own"), conv.error)
     }
     t |> run("a record of a header outside the program root that the program holds by value is compared like its own") @(t : T?) {
         let headers = path_join(dir, "outside")
@@ -252,6 +252,34 @@ def test_layout_guard_shapes(t : T?) {
         t |> success(only.error |> contains("enum_only.c:2:6: `enum only` is defined under the dialect's predefined macros and not under clang's own"), only.error)
         let both <- guard_convert(dir, "enum_both", "#ifdef __clang__\nenum e \{ A \};\n#else\nenum e \{ A \};\n#endif\nint main(void) \{ enum e v = A; return v; \}\n", "")
         t |> equal(both.ok, true, both.error)
+    }
+    rmdir_rec(dir)
+}
+
+[test(description = "the layout guard's signatures and keys, finer: an enum's underlying type, an unnamed record as a field's type, the ordinal of an owner's unnamed record, no second unit, clang's builtin record", timeout = 1200)]
+def test_layout_guard_finer(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_layout_guard_finer", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("an enum's underlying type is in its signature: `unsigned int` against `int` at one size is refused") @(t : T?) {
+        let conv <- guard_convert(dir, "enum_signed", "#ifdef __clang__\nenum e : unsigned int \{ A = 1 \};\n#else\nenum e : int \{ A = 1 \};\n#endif\nint main(void) \{ enum e v = A; return v - 1; \}\n", "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("`enum e` is laid out as [size 4, align 4, of `int`] under the dialect's predefined macros and as [size 4, align 4, of `unsigned int`] under clang's own"), conv.error)
+    }
+    t |> run("an unnamed record as a field's type is signed by the record it is: `__typeof__` of one variable against another's, alike in size, is refused") @(t : T?) {
+        let conv <- guard_convert(dir, "typeof_unnamed", "static struct \{ int a; \} gx;\nstatic struct \{ float a; \} gy;\n#ifdef __clang__\nstruct s \{ __typeof__(gx) f; \};\n#else\nstruct s \{ __typeof__(gy) f; \};\n#endif\nint main(void) \{ struct s v; gx.a = 0; gy.a = 0; return (int) sizeof(v) - 4; \}\n", "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("typeof_unnamed.c:6:8: `struct s` is laid out as [size 4, align 4, members f@0 `struct (unnamed)` = at ") && conv.error |> contains("typeof_unnamed.c:36 4/4] under the dialect's predefined macros") && conv.error |> contains("typeof_unnamed.c:7 4/4] under clang's own"), conv.error)
+        // the same variable's type in both arms is one record: nothing differs
+        let same <- guard_convert(dir, "typeof_same", "static struct \{ int a; \} gx;\n#ifdef __clang__\nstruct s \{ __typeof__(gx) f; \};\n#else\nstruct s \{ __typeof__(gx) f; \};\n#endif\nint main(void) \{ struct s v; gx.a = 0; return (int) sizeof(v) - 4; \}\n", "")
+        t |> equal(same.ok, true, same.error)
+    }
+    t |> run("an owner's unnamed record is counted among its unnamed records alone: a named one clang's macros add before it changes nothing") @(t : T?) {
+        let conv <- guard_convert(dir, "named_beside", "struct o \{\n#ifdef __clang__\n    struct helper \{ int z; \};\n#endif\n    struct \{ int y; \} v;\n\};\nint main(void) \{ struct o x; x.v.y = 0; return x.v.y; \}\n", "")
+        t |> equal(conv.ok, true, conv.error)
+    }
+    t |> run("a second parse that gave no unit is one refusal naming the file") @(t : T?) {
+        t |> equal(no_second_parse("dir/unit.c"), "dir/unit.c: the layout guard's parse with clang's own predefined macros gave no translation unit, so no layout can be compared")
     }
     t |> run("clang's builtin `__va_list_tag`, which a variadic function's `va_list` reaches, stands in no file and is not compared") @(t : T?) {
         let conv <- guard_convert(dir, "va_builtin", "#include <stdarg.h>\nstatic int sum(int n, ...) \{ va_list ap; va_start(ap, n); int s = 0; for (int i = 0; i < n; i++) s += va_arg(ap, int); va_end(ap); return s; \}\nint main(void) \{ return sum(2, 1, 2) - 3; \}\n", "")
