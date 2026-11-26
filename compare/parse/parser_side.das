@@ -125,8 +125,8 @@ def private builtin_name(count : int[64]) : string {
 }
 
 //! The type specifiers and qualifiers of list `specs` as clang spells the type they make: a
-//! builtin type by its canonical name, a typedef name, a tag with its keyword; "?" where the
-//! spelling is not the tree's to tell (`typeof`, a tag with no name).
+//! builtin type by its canonical name, a typedef name, a tag with its keyword; "?" for `typeof`,
+//! whose spelling is not the tree's to tell.
 [arch(at="ARCHITECTURE.md#compared")]
 def base_spelling(var p : CParser; specs : int) : string {
     var count : int[64]
@@ -141,7 +141,6 @@ def base_spelling(var p : CParser; specs : int) : string {
         } elif (n.kind == CNode.SPEC_TYPEDEF_NAME) {
             named = symbol(p, n.a)
         } elif (n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) {
-            return "?" if (n.a < 0)
             named = "{n.kind == CNode.SPEC_ENUM ? "enum" : c_kind_name(n.op)} {symbol(p, n.a)}"
         } elif (n.kind == CNode.SPEC_TYPEOF_EXPR || n.kind == CNode.SPEC_TYPEOF_TYPE) {
             return "?"

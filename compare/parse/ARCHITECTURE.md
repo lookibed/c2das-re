@@ -74,7 +74,8 @@ A `?` in a parser line stands for any run of characters with no `"` in clang's l
 (`lines_match`), so it never reaches past one type. The parser writes it where the tree alone
 cannot spell clang's text: an array size that is no integer constant (clang writes its value or its
 text), an array of no size that an initializer completes, `typeof` (clang writes its operand as it
-prints it), a tag with no name (clang names the place), and a pointer qualified `_Atomic`.
+prints it), and a pointer qualified `_Atomic`. A tag with no name has a body, which no slice of the
+parser reads yet; clang names it by its place.
 
 An expression is a nested form named as `c_dump` names the nodes (`frontend/ARCHITECTURE_PARSER.md`
 section 15), each with the place of its first token: an identifier with its name, an integer

@@ -20,6 +20,7 @@ def test_lines_match(t : T?) {
     t |> success(!lines_match("(decl x@1:5 \"?\")", "(decl x@1:5 \"int\" static)"))
     t |> success(!lines_match("(decl x@1:5 \"?\" = (int@1:9 1))", "(decl x@1:5 \"int\" = (int@1:9 2))"))
     t |> success(!lines_match("(decl x@1:5 \"int\")", "(decl x@1:5 \"int\" extern)"))
+    t |> success(!lines_match("(f \"?\" (int 1))", "(f \"a\" (g) \"b\" (int 1))"))
 }
 
 [test(description = "an integer constant's value in decimal, every base and suffix, and ? past 64 bits or for no digits")]
