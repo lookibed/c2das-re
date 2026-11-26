@@ -605,6 +605,16 @@ def test_if_hook_rejects(t : T?) {
     t |> equal(diagnostics(pp), "E 2:2 #if expression needs the PP.4 evaluator: 2 | E 5:2 #if expression needs the PP.4 evaluator: 10 | E 8:2 #if expression needs the PP.4 evaluator: defined 1 | E 11:2 #if expression needs the PP.4 evaluator: defined(X Y | E 14:2 #if expression needs the PP.4 evaluator: 1 && 0")
 }
 
+[test(description = "a conditional with an #if or #elif left to PP.4 is marked undecided while it is open, a nested one on its own")]
+def test_undecided_conditionals(t : T?) {
+    var undecided <- started([("main.c", "#if 1\n#if X > 1\n#elif 1\nin\n#endif\n#elif Y\n#endif\n#if 0\n#elif Z\n#else\n#if 1\nlast\n")])
+    var marks : array<string>
+    while (pp_next_token(undecided)) {
+        marks |> push("{pp_token_spelling(undecided)}:{join([for (c in undecided.conds); c.undecided ? "u" : "d"], "")}")
+    }
+    t |> equal(join(marks, " "), "in:du last:ud")
+}
+
 [test(description = "a #pragma pack read by clang's grammar: each malformed form gets clang's warning at clang's column and no ledger entry")]
 def test_pack_malformed(t : T?) {
     var pp <- started([("main.c", "#pragma pack(push\n#pragma pack 4)\n#pragma pack(foo)\n#pragma pack(push 1 2)\n#pragma pack(push, \"s\")\n#pragma pack(4 4)\n#pragma pack(,)\n#pragma pack(push, 4, id2)\n#pragma pack(push, a, b)\n#pragma pack(4) x\n#pragma pack(show, 1)\n#pragma pack\n")])

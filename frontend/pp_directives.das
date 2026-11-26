@@ -196,11 +196,13 @@ struct PpOutToken {
 }
 
 //! An open conditional: `active` while its current group is read, `taken` once a group was (or
-//! the conditional sits in a skipped group, so none will be).
+//! the conditional sits in a skipped group, so none will be), `undecided` once an `#if` or `#elif`
+//! of it was left to PP.4, so the group read may not be clang's.
 struct PpCond {
     active : bool
     taken : bool
     seen_else : bool
+    undecided : bool
     file : int
     line : int
     col : int
@@ -571,9 +573,10 @@ def pp_macro_body_text(pp : Preprocessor; m : PpMacro) : string {
 
 // Conditionals
 
-def private push_cond(var pp : Preprocessor; value : bool; at : PpToken) {
+def private push_cond(var pp : Preprocessor; value : int; at : PpToken) {
     let outer = !skipping(pp)
-    pp.conds |> push(PpCond(active = outer && value, taken = !outer || value, file = at.file, line = at.line, col = at.col))
+    pp.conds |> push(PpCond(active = outer && value == 1, taken = !outer || value == 1, undecided = value < 0, file = at.file,
+                            line = at.line, col = at.col))
 }
 
 //! the guard pattern of `#if`'s line: `!defined X` or `!defined(X)`; the macro, -1 when not
@@ -590,11 +593,11 @@ def private if_guard_sym(pp : Preprocessor) : int {
     return -1
 }
 
-//! The `#if`/`#elif` condition of `pp.line`: the hook the PP.4 evaluator fills. Until then it
-//! reads `0`, `1`, `defined X` and `defined(X)`, each under any number of `!`; any other
-//! expression is a diagnostic naming PP.4 and false.
+//! The `#if`/`#elif` condition of `pp.line`, 1 or 0: the hook the PP.4 evaluator fills. Until then
+//! it reads `0`, `1`, `defined X` and `defined(X)`, each under any number of `!`; any other
+//! expression is a diagnostic naming PP.4 and -1, read as false.
 [arch(at="ARCHITECTURE_PP.md#pp-if-hook")]
-def private eval_condition(var pp : Preprocessor; at : PpToken) : bool {
+def private eval_condition(var pp : Preprocessor; at : PpToken) : int {
     let n = length(pp.line)
     var i = 0
     var negate = false
@@ -619,13 +622,13 @@ def private eval_condition(var pp : Preprocessor; at : PpToken) : bool {
     }
     if (n == 0) {
         diagnose_at(pp, PpSeverity.error, at, "#if with no expression")
-        return false
+        return 0
     }
     if (!ok || i != n) {
         diagnose_at(pp, PpSeverity.error, at, "#if expression needs the PP.4 evaluator: {held_text(pp.line, pp.line_text)}")
-        return false
+        return -1
     }
-    return negate ? !value : value
+    return value != negate ? 1 : 0
 }
 
 //! a directive outside the guard's group ends the file's chance of an include guard
@@ -665,7 +668,7 @@ def private do_ifdef(var pp : Preprocessor; at : PpToken; negate : bool) {
     if (sym >= 0) {
         extra_tokens(pp, name)
     }
-    push_cond(pp, sym >= 0 && pp_defined(pp, sym) != negate, at)
+    push_cond(pp, sym >= 0 && pp_defined(pp, sym) != negate ? 1 : 0, at)
     if (negate) {
         guard_opened(pp, sym)
     }
@@ -711,7 +714,9 @@ def private do_elif(var pp : Preprocessor; at : PpToken; d : PpDirective) {
     var value = false
     if (d == PpDirective.hash_elif) {
         read_line(pp, false)
-        value = eval_condition(pp, at)
+        let answer = eval_condition(pp, at)
+        value = answer == 1
+        pp.conds[top].undecided ||= answer < 0
     } else {
         let sym = read_macro_name(pp, at, name)
         if (sym >= 0) {
@@ -1292,7 +1297,7 @@ def private directive(var pp : Preprocessor) {
     let d = pp.lx.tok.kind == int(PpTok.IDENTIFIER) ? pp.directive_of?[pp.lx.tok.sym] ?? PpDirective.unknown : PpDirective.unknown
     if (skipped) {
         if (d == PpDirective.hash_if || d == PpDirective.ifdef || d == PpDirective.ifndef) {
-            push_cond(pp, false, at)
+            push_cond(pp, 0, at)
             skip_rest(pp)
         } elif (d == PpDirective.hash_elif || d == PpDirective.hash_elifdef || d == PpDirective.hash_elifndef) {
             do_elif(pp, at, d)
