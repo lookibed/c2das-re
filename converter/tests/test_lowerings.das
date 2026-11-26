@@ -2790,6 +2790,9 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "    if (!(total == 14)) \{\n        c_assert_fail(cstr(\"total == 14\"), ")
         has_text(t, text, ", cstr(\"main\"))")
         has_text(t, text, "require c_runtime/c_exit")
+        // GNU `__PRETTY_FUNCTION__` is the function's signature as a literal
+        let pretty = converts(t, "pretty_function", "int printf(const char *, ...);\nint main(void) \{ printf(\"%s\\n\", __PRETTY_FUNCTION__); return 0; \}\n")
+        has_text(t, pretty, "cstr(\"int main(void)\")")
         let silent = converts(t, "assert_ndebug", "#define NDEBUG\n#include <assert.h>\nint main(void) \{ int n = 0; assert(n++ > 5); return n; \}\n")
         t |> success(!(silent |> contains("c_assert_fail")) && !(silent |> contains("n++")), silent)
     }

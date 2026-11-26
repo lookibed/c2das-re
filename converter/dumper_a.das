@@ -4303,14 +4303,15 @@ def private reference_layouts(var d : Dumper; var c : CXCursor; var layouts : ta
 }
 
 // The layout guard: every record the unit defines in a program file is laid out by clang under
-// `frontend`, the dumper's flags, as it is under clang's own predefined macros (`frontend` less
-// `-undef` and the table's `-D` entries, the same include path and `inputs`). A record whose
+// `frontend`, the dumper's flags, as it is with clang's own predefined macros back (`frontend`
+// less `-undef`, then `inputs`: the table's entries stay, each clang's own value or the
+// converter's own statement). A record whose
 // size, alignment or a field's offset or width differs, or that the second pass does not define,
 // fails the dump: a layout attribute behind a test of a name the table does not hold would
 // otherwise be lost with no error.
 [arch(at="ARCHITECTURE_DUMPER_MACROS.md#layout-guard")]
 def private check_layouts(var d : Dumper; frontend : array<string>; inputs : array<string>) {
-    var args <- [for (flag in frontend); flag; where flag != "-undef" && !(flag |> starts_with("-D"))]
+    var args <- [for (flag in frontend); flag; where flag != "-undef"]
     args |> push_from(inputs)
     var inscope layouts : table<string; string>
     var stopped : string

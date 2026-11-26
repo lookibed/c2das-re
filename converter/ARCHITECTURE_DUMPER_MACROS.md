@@ -24,8 +24,10 @@ the `linux` dialect's flags whatever dialect a unit is converted under (the crit
 A program can hide a layout attribute behind a test of a name the table does not hold (`#ifdef
 __clang__` around `__attribute__((packed))`); under the table it would lose the attribute and
 convert with another layout, with no error. So after the libclang pass the dumper parses the unit a
-second time (`check_layouts`) under clang's own predefined macros: the same triple, `DUMPER_FLAGS`,
-include path and sidecar flags, without `-undef` and the table's `-D` entries. The records compared
+second time (`check_layouts`) with clang's own predefined macros back: the same flags without
+`-undef`. The table's entries stay, and each has clang's own value (`frontend/ARCHITECTURE.md`
+section 3) or is the converter's own statement, `__STDC_NO_VLA__=1`, a fact of the converter and no
+compiler's identity: a record a program defines under that name is a record of both passes. The records compared
 are those the first pass registered from a program file, the records of the converted program, each
 found in the second pass by the file and offset of its definition; an own libc header's record is
 no program record. A record whose size, alignment, or a field's name, bit offset or bitfield width

@@ -251,7 +251,7 @@ def test_include_dirs(t : T?) {
     }
     t |> run("a set `CPATH` or `C_INCLUDE_PATH` refuses the dump, naming the variable and the sidecar's `include_dirs`: clang would search it before the own headers") @(t : T?) {
         // a child converter under `env <NAME>=<folder>`, so this process's environment stays as it was
-        for (name in INCLUDE_VARIABLES) {
+        for (name in ["CPATH", "C_INCLUDE_PATH"]) {
             var inscope argv <- ["env", "{name}=/usr/include"]
             argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["converter/main.das", "--", "converter/tests/fixtures/ret42.c", "--out", path_join(dir, "env_{name}"), "--target", "linux"])
             var out : string

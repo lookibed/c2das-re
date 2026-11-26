@@ -6,6 +6,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require ../../frontend/c_defines.das
+require ../../frontend/tests/_own_header_names.das
 require ../cir.das
 require ../dumper_a.das
 require ../pipeline.das
@@ -17,18 +18,6 @@ require ../tiers.das
 //! wherever the program root lies, and a program that includes libc converts under both dialects.
 
 let private FIXTURES = "converter/tests/fixtures"
-
-// the headers of the own set as an `#include <...>` names them, sorted
-def private header_names : array<string> {
-    var names : array<string>
-    dir_rec(own_include_dir()) $(name, is_dir) {
-        if (!is_dir && name |> ends_with(".h")) {
-            names |> push(clone_string(name))
-        }
-    }
-    sort(names)
-    return <- names
-}
 
 // what clang prints for `source` checked under the dumper's frontend flags of `dialect`, "" when
 // it takes the file silently
@@ -176,6 +165,26 @@ def test_layout_guard(t : T?) {
         t |> equal(conv.ok, false, conv.das_text)
         t |> success(conv.error |> contains("as [size 16, align 16, fields c@0 v@32] under clang's own"), conv.error)
     }
+    t |> run("each part of a layout is compared alone: the size, the alignment, a field's offset, a bitfield's width") @(t : T?) {
+        let parts <- [
+            (name = "size_only", source = "#ifdef __clang__\n#define N 8\n#else\n#define N 4\n#endif\nstruct rec \{ char t[N]; \};\nint main(void) \{ return 0; \}\n",
+                ours = "[size 4, align 1, fields t@0]", theirs = "[size 8, align 1, fields t@0]"),
+            (name = "align_only", source = "#ifdef __clang__\n#define ATTR __attribute__((aligned(16)))\n#else\n#define ATTR\n#endif\nstruct rec \{ char c[16]; \} ATTR;\nint main(void) \{ return 0; \}\n",
+                ours = "[size 16, align 1, fields c@0]", theirs = "[size 16, align 16, fields c@0]"),
+            (name = "offset_only", source = "#ifdef __clang__\n#define ATTR __attribute__((aligned(2)))\n#else\n#define ATTR\n#endif\nstruct rec \{ int i; char a; char b ATTR; \};\nint main(void) \{ return 0; \}\n",
+                ours = "[size 8, align 4, fields i@0 a@32 b@40]", theirs = "[size 8, align 4, fields i@0 a@32 b@48]"),
+            (name = "width_only", source = "#ifdef __clang__\n#define W 5\n#else\n#define W 4\n#endif\nstruct rec \{ unsigned a : 3; unsigned b : W; \};\nint main(void) \{ return 0; \}\n",
+                ours = "[size 4, align 4, fields a@0:3 b@3:4]", theirs = "[size 4, align 4, fields a@0:3 b@3:5]")]
+        for (part in parts) {
+            let conv <- guard_convert(dir, part.name, part.source, "")
+            t |> equal(conv.ok, false, "{part.name}: {conv.das_text}")
+            t |> success(conv.error |> contains("`struct rec` is laid out as {part.ours} under the dialect's predefined macros and as {part.theirs} under clang's own"), "{part.name}: {conv.error}")
+        }
+    }
+    t |> run("a record under the converter's own `__STDC_NO_VLA__`, which no clang defines, is a record of both passes") @(t : T?) {
+        let conv <- guard_convert(dir, "no_vla_record", "#ifdef __STDC_NO_VLA__\nstruct fixed \{ int v[4]; \};\n#endif\nint main(void) \{ struct fixed f; f.v[0] = 0; return f.v[0]; \}\n", "")
+        t |> equal(conv.ok, true, conv.error)
+    }
     t |> run("`packed` behind `__GNUC__` holds under both: the dump keeps the packed record") @(t : T?) {
         let conv <- guard_convert(dir, "gnu_packed", guarded_record("__GNUC__", "packed"), "\{\"marshal\": [\"rec\"]\}\n")
         t |> success(!(conv.error |> contains("laid out as")), conv.error)
@@ -197,6 +206,12 @@ def test_layout_guard(t : T?) {
         let conv <- guard_convert(dir, "stopped", "#ifdef __clang__\n#include <c2das_no_such.h>\n#else\nstruct late \{ int v; \};\n#endif\nint main(void) \{ return 0; \}\n", "")
         t |> equal(conv.ok, false, conv.das_text)
         t |> success(conv.error |> contains("`struct late` is defined under the dialect's predefined macros and not under clang's own (that pass met an error: ") && conv.error |> contains("'c2das_no_such.h' file not found"), conv.error)
+    }
+    t |> run("an `#error` of the second pass is quoted, and of two errors the first") @(t : T?) {
+        let conv <- guard_convert(dir, "two_errors", "#ifdef __clang__\n#error the clang arm\n#error a later line\n#else\nstruct late \{ int v; \};\n#endif\nint main(void) \{ return 0; \}\n", "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("not under clang's own (that pass met an error: ") && conv.error |> contains("the clang arm"), conv.error)
+        t |> success(!(conv.error |> contains("a later line")), conv.error)
     }
     rmdir_rec(dir)
 }
