@@ -274,7 +274,8 @@ statement missing, or before a declaration.
 
 `if`, `switch`, `while`, `do` and `for` are each a scope, and each body is a scope and a nesting
 level of its own (C11 6.8.4p3, 6.8.5p5), so a declaration in a `for`'s first clause or anywhere
-in a body ends with the statement. An `else` binds to the nearest `if`; a chain of `else if` is
+in a body ends with the statement. A `for` declaration takes `auto` or `register` alone as its storage class
+(C11 6.8.5p3); any other is `expected 'auto' or 'register' as a for declaration's storage class`. An `else` binds to the nearest `if`; a chain of `else if` is
 read in a loop, so a long chain costs no recursion. `goto` takes a label name, `return` an
 optional expression. A declaration where a body must stand is no statement: `if (x) int y;` is
 `expected an expression`.
