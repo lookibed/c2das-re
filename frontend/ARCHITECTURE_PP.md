@@ -94,7 +94,7 @@ as clang marks it.
 
 `#include` reads its name with `pp_next_header_name`. A token that is no header name - a macro
 naming the header - makes the directive's tokens a line in `pp.line`, which the expansion expands
-in place (`ARCHITECTURE_EXPAND.md` section 18); `include_expanded` then reads the name from it. With
+in place (`ARCHITECTURE_EXPAND.md` section 28); `include_expanded` then reads the name from it. With
 no expansion set the inclusion is recorded with `needs_expansion` and an error names PP.3. `#line`
 whose number is a name is expanded the same way, or left with an error.
 
@@ -168,7 +168,7 @@ token follows the name with no space (`#define X+`) warns as clang's C99 mode do
 ## 13. The pragma and pack ledgers {#pp-pragmas}
 
 A `#pragma` is never dropped silently. `pp_pragma_line` does the pragma whose tokens are in
-`pp.line`, of a `#pragma` line or of a `_Pragma` operator (`ARCHITECTURE_EXPAND.md` section 21).
+`pp.line`, of a `#pragma` line or of a `_Pragma` operator (`ARCHITECTURE_EXPAND.md` section 31).
 `#pragma once` marks the file; `push_macro` and
 `pop_macro` act on the macro table (section 12). `#pragma pack(...)` is a `PpPack` in
 `pp.packs`: `pack(N)` sets, `pack()` resets to the target's default (0), `pack(push[, tag][,
