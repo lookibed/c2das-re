@@ -164,12 +164,13 @@ clang does (`long unsigned int` for the `unsigned long` below).
 | `__WCHAR_TYPE__` | `wchar_t` | `int` | `unsigned short` |
 | `__INT64_TYPE__` | the 64-bit types of `<stdint.h>` and `<time.h>`, `intptr_t`, `intmax_t` | `long` | `long long` |
 | `__LONG_MAX__` | `LONG_MAX`, `LONG_MIN`, `ULONG_MAX`; whether a 64-bit constant and format take `L`/`l` or `LL`/`ll`; the types of `int_fast16_t` and `int_fast32_t` | `9223372036854775807L` | `2147483647L` |
+| `__CHAR_UNSIGNED__` | whether `CHAR_MIN` and `CHAR_MAX` are those of `unsigned char` or of `signed char`, as clang's own `<limits.h>` asks | defined | defined |
 | `__CHAR_BIT__`, `__SCHAR_MAX__`, `__SHRT_MAX__`, `__INT_MAX__`, `__LONG_LONG_MAX__` | `<limits.h>` | `8`, `127`, `32767`, `2147483647`, `9223372036854775807LL` | the same |
 | `__FLT_RADIX__`; `__FLT_<n>__` and `__DBL_<n>__` for `<n>` in `MANT_DIG`, `DIG`, `MIN_EXP`, `MIN_10_EXP`, `MAX_EXP`, `MAX_10_EXP`, `MAX`, `EPSILON`, `MIN` | `<float.h>` | `2`; IEEE 754 single and double as clang writes them (`__DBL_MAX__` is `1.7976931348623157e+308`) | the same |
 
 `<assert.h>` also reads `NDEBUG`, which the program defines, and the language's `__FILE__`,
-`__LINE__` and `__func__`. Everything else is written out for what both dialects share: `char` is
-unsigned (`CHAR_MIN` is 0), `int` is 32 bits, a pointer 64. The typedefs are the types glibc with
+`__LINE__` and `__func__`. Everything else is written out for what both dialects share: `int` is
+32 bits, a pointer 64. The typedefs are the types glibc with
 clang gives under the `linux` triple and clang's own headers under the `msvc` one (`int64_t` is
 `long` and `long long`; `int_fast16_t` is `long` and `short`).
 

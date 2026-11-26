@@ -81,7 +81,7 @@ def test_main_web(t : T?) {
     mkdir_rec(stage)
     mkdir_rec(io)
     var out : string
-    let rc_stage = run_and_capture(["sh", "-c", "cp converter/*.das web/translator/main_web.das '{stage}/'"], out, 30.0)
+    let rc_stage = run_and_capture(["sh", "-c", "cp converter/*.das web/translator/main_web.das '{stage}/' && mkdir '{work}/frontend' && cp frontend/c_defines.das '{work}/frontend/'"], out, 30.0)
     t |> equal(rc_stage, 0, out)
     let c_path = path_join(work, "hi.c")
     fwrite(c_path, "int pick(int k) \{ switch (k) \{ case 0: return 5; case 1: return 7; case 2: return 9; default: return 0; \} \}

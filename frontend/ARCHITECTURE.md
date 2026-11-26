@@ -16,6 +16,8 @@ of section 3, which the sidecar reader and Dumper A do read.
 - `tests/test_c_defines.das` - the parser and the reader, and that each table reads clean.
 - `REVIEW.das` - the mechanical gate of section 2, over every `.das` file under this folder.
 - `tests/test_review_gate.das` - the gate's findings on stand-in files, one per ban.
+  `tests/test_frontend_gate.das` (repo root) runs the gate itself, on this tree and on a stand-in
+  root: a test that starts a process cannot live under this folder.
 
 ## 2. No clang, no child process
 
@@ -23,13 +25,14 @@ A `.das` file under this folder runs where no clang is installed and no process 
 a daslang compile, and in a web page. So it requires no `cbind`, the libclang binding of daScript's
 `dasClangBind`, whose submodules are `cbind/<name>`; and it names none of the daslang functions
 that start a process: `popen`, `popen_binary`, `popen_timeout`, `popen_argv`, `popen_argv_pipe`,
-`run_and_capture` (all of `fio`) and `system` (of `fio` and of `crt`).
+`spawn_process`, `spawn_argv`, `with_process`, `run_and_capture`, `executable_on_path` (all of
+`fio`; the last probes `PATH` through a shell) and `system` (of `fio` and of `crt`).
 
 The ban holds for what a file pulls in as well. `REVIEW.das` reads each `.das` file under the
 folder with its comments and the characters of its string and character literals blanked (the code
 inside a string's `{...}` stays: it runs), and reports, each with the file and line:
 
-- any of the seven names as a whole identifier, called or not: `x |> system`, `system (x)` and
+- any of those names as a whole identifier, called or not: `x |> system`, `system (x)` and
   `@@system` are findings like `system(x)`, and so is a local or a field of such a name, which is
   renamed;
 - a line that holds the word `require` and the word `cbind` anywhere; and a line that holds
@@ -61,9 +64,12 @@ entry (a blank at either end included) and a name a line above defines, and refu
 missing or holds no entry. `predefined_path` names a dialect's table beside the module, so the
 converter finds it from wherever it runs.
 
-The tables are the whole set of predefined macros: a compiler that reads them drops its own
-(`clang -undef`, `converter/ARCHITECTURE_DUMPER_MACROS.md`), so both dumpers preprocess one
-input. Their content follows one rule: **a table never disagrees with clang.** Every entry has the
+The tables are every macro a frontend that reads them defines before the first line: Dumper A
+runs clang under `-undef` and passes the entries as `-D` (`converter/ARCHITECTURE_DUMPER_MACROS.md`),
+so both dumpers preprocess one input. They hold no name the preprocessor itself answers, which
+`clang -E -dM` does not list and `-undef` does not drop: `__FILE__`, `__LINE__`, `__COUNTER__`,
+`__DATE__`, `__TIME__`, `__FLT_EVAL_METHOD__`, `__has_include` and its kin. Their content follows
+one rule: **a table never disagrees with clang.** Every entry has the
 value the pinned clang predefines for that name under the dialect's triple with `-funsigned-char`
 and no `-std` (so the language is clang's default, gnu17: `__STDC_VERSION__` is `201710L`), and
 every name clang predefines there is an entry unless a class below excludes it. The one entry

@@ -32,8 +32,8 @@ let private COMMENT = "#"
 
 let private VARIADIC = "..."
 
-// whether `name` is a C identifier
-def private is_identifier(name : string) : bool {
+//! Whether `name` is a C identifier.
+def is_identifier(name : string) : bool {
     if (empty(name)) {
         return false
     }

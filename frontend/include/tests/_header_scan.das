@@ -5,6 +5,7 @@ module _header_scan
 require strings
 require daslib/strings_boost
 require dastest/review_gate
+require ../../c_defines.das
 
 //! The line scanner of the own libc headers (`frontend/include/ARCHITECTURE.md` section 3): every
 //! line of a header is one of the forms the section lists, and a line of no form is an error, so
@@ -34,7 +35,7 @@ struct HeaderScan {
     macros : array<string>
     //! every `#define`d name but an include guard's, counted or not
     defined : array<string>
-    defines : array<Define>
+    defines : array<_header_scan::Define>
     //! every identifier a declaration line or a record's line spells: the names a macro may not take
     declared : table<string>
     guards : array<string>
@@ -110,18 +111,6 @@ def identifier_words(text : string) : array<string> {
         }
     }
     return <- [for (word in split(spaced, " ")); word; where !empty(word)]
-}
-
-def is_identifier(text : string) : bool {
-    if (empty(text) || is_number(first_character(text))) {
-        return false
-    }
-    for (ch in text) {
-        if (!is_ident_byte(ch)) {
-            return false
-        }
-    }
-    return true
 }
 
 // the identifier `text` ends in, "" when it ends in none
@@ -229,7 +218,7 @@ def private scan_define(var scan : HeaderScan; var state : FileState; at, line, 
         scan_error(scan, at, line, "the include guard is defined once, on the line after its #ifndef")
     } else {
         scan.defined |> push(name)
-        scan.defines |> emplace(Define(name = name, text = rest, at = at))
+        scan.defines |> emplace(_header_scan::Define(name = name, text = rest, at = at))
         if (!state.in_conditional) {
             scan.macros |> push(name)
         } elif (state.in_else) {
@@ -267,8 +256,6 @@ def private scan_directive(var scan : HeaderScan; var state : FileState; at, lin
     state.seen_code = true
     if (!key_exists(DIRECTIVES, directive)) {
         scan_error(scan, at, line, "a directive is one of #ifndef, #ifdef, #if, #else, #endif, #undef, #define and #include")
-    } elif (line |> ends_with("\\")) {
-        scan_error(scan, at, line, "a directive is one line")
     } elif (directive == "ifndef" && is_first && rest == guard_of(state.header)) {
         state.guard = rest
         state.guard_wants_define = true

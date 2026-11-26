@@ -33,14 +33,11 @@ let private CONVERTER_OWN <- ["__STDC_NO_VLA__=1"]
 // the flags of every clang run of the dumper besides its macros
 let private DUMPER_FLAGS <- ["-funsigned-char", "-w"]
 
-def private matches(name, pattern : string) : bool =>
-    pattern |> ends_with("*") ? name |> starts_with(slice(pattern, 0, length(pattern) - 1)) : name == pattern
-
 // the exclusion class of `name`, "" when it has none
 def private excluded_as(name : string) : string {
     for (group in EXCLUDED) {
         for (pattern in group.names) {
-            if (matches(name, pattern)) {
+            if (glob_match(pattern, name)) {
                 return group.title
             }
         }
@@ -99,8 +96,6 @@ def private table_of(t : T?; dialect : string) : table<string; string> {
     return <- {for (entry in entries); name_of(entry) => canonical(entry)}
 }
 
-def private target_of(dialect : string) : CirTarget => target_by_name(dialect)
-
 // the names of `entries`
 def private names_of(entries : array<string>) : table<string> {
     var names : table<string>
@@ -115,7 +110,7 @@ def test_tables_partition_clang(t : T?) {
     for (dialect in DIALECTS) {
         t |> run("{dialect}: every macro clang predefines is an entry with clang's value or a name of one exclusion class, never both") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            let clang <- clang_macros(target_of(dialect).triple, array<string>())
+            let clang <- clang_macros(target_by_name(dialect).triple, array<string>())
             t |> success(length(clang) > 100, "{dialect}: {clang[0]}")
             for (entry in clang) {
                 let name = name_of(entry)
@@ -129,7 +124,7 @@ def test_tables_partition_clang(t : T?) {
         }
         t |> run("{dialect}: every entry is a macro clang predefines, or the converter's own") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            var inscope clang_names <- names_of(clang_macros(target_of(dialect).triple, array<string>()))
+            var inscope clang_names <- names_of(clang_macros(target_by_name(dialect).triple, array<string>()))
             var own = 0
             for (name, entry in keys(by_name), values(by_name)) {
                 if (!key_exists(clang_names, name)) {
@@ -141,7 +136,7 @@ def test_tables_partition_clang(t : T?) {
         }
         t |> run("{dialect}: every macro `-undef` leaves is an entry with its value") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            let left <- clang_macros(target_of(dialect).triple, ["-undef"])
+            let left <- clang_macros(target_by_name(dialect).triple, ["-undef"])
             t |> success(length(left) >= 7 && length(left) < 20, "{dialect}: -undef leaves {length(left)}: {left[0]}")
             for (entry in left) {
                 t |> equal(by_name?[name_of(entry)] ?? "{entry}: left by -undef, no entry", canonical(entry), dialect)
@@ -151,13 +146,13 @@ def test_tables_partition_clang(t : T?) {
     t |> run("every name and prefix of an exclusion class matches a macro clang predefines under a dialect") @(t : T?) {
         var all : array<string>
         for (dialect in DIALECTS) {
-            all |> push_from(clang_macros(target_of(dialect).triple, array<string>()))
+            all |> push_from(clang_macros(target_by_name(dialect).triple, array<string>()))
         }
         for (group in EXCLUDED) {
             for (pattern in group.names) {
                 var hit = false
                 for (entry in all) {
-                    hit = hit || matches(name_of(entry), pattern)
+                    hit = hit || glob_match(pattern, name_of(entry))
                 }
                 t |> success(hit, "`{pattern}` of `{group.title}` matches no macro clang predefines")
             }
@@ -170,7 +165,7 @@ def test_dumper_macro_flags(t : T?) {
     for (dialect in DIALECTS) {
         t |> run("{dialect}: `-undef`, the table in its order as -D, then the converter's own define; clang takes them with no error") @(t : T?) {
             var error : string
-            let flags <- frontend_macro_flags(predefined_table(target_of(dialect)), error)
+            let flags <- frontend_macro_flags(predefined_table(target_by_name(dialect)), error)
             t |> equal(error, "")
             var table_error : string
             let entries <- read_predefined(predefined_path(dialect), table_error)
@@ -180,7 +175,7 @@ def test_dumper_macro_flags(t : T?) {
             var defined <- [for (entry in entries); canonical(entry)]
             defined |> push_from([for (flag in CONVERTER_DEFINES); canonical(slice(flag, 2))])
             sort(defined)
-            let seen <- clang_macros(target_of(dialect).triple, flags)
+            let seen <- clang_macros(target_by_name(dialect).triple, flags)
             t |> equal(join([for (entry in seen); canonical(entry)], "\n"), join(defined, "\n"))
         }
     }
