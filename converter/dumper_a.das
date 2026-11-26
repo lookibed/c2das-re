@@ -90,6 +90,10 @@ struct Dumper {
     // the own libc headers' folder, canonical with a trailing `/`: a file under it is external
     // though it lies under `program_dir`
     own_headers_dir : string
+    // every record and enum definition of the unit as the layout guard compares it
+    layouts : LayoutSet
+    // where each enum of `enum_by_loc` is defined, for the guard's message
+    enum_ats : table<string; CirLoc>
     // each file name the dump or libclang spells, made canonical
     canonical_files : table<string; string>
     linkage_names : table<string; string>
@@ -638,6 +642,7 @@ def private register_enum(var d : Dumper; var c : CXCursor) {
     }
     d.enum_by_spelling[en.spelling] = idx
     d.enum_by_loc[cursor_key(d, c)] = idx
+    d.enum_ats[cursor_key(d, c)] = cursor_loc(c)
     d.enums |> emplace(en)
 }
 
@@ -1098,6 +1103,7 @@ def private collect_records(var d : Dumper; frontend : array<string>; inputs : a
         }
         var root = clang_getTranslationUnitCursor(unit)
         walk_records(d, root)
+        collect_layouts(d, root, "", d.layouts)
         if (!empty(d.shared_tags)) {
             note_shared_exprs(d, root)
         }
@@ -4270,50 +4276,176 @@ def private clang_version(clang : string) : string {
     return at < 0 ? first : split(slice(first, at + length("clang version ")), " ")[0]
 }
 
-// a field's place in its record's layout: its name, bit offset and, for a bitfield, width
-def private field_layout(name : string; bit_off : int64; bit_w : int; is_bitfield : bool) : string =>
-    is_bitfield ? "{name}@{bit_off}:{bit_w}" : "{name}@{bit_off}"
+// one record or enum definition as the layout guard compares it: `key` names it across two parses
+// of the unit (its tag, the path through its owner for an unnamed record nested in a record, else
+// its place), `loc` is its `cursor_key`, `signature` everything of its layout
+struct LayoutEntry {
+    key : string
+    loc : string
+    signature : string
+}
 
-// a record's layout as one text: clang's size and alignment in bytes, then each field
-def private record_layout(size, align : int64; fields : array<string>) : string => "size {size}, align {align}, fields {join(fields, " ")}"
+// the definitions of one parse of the unit, by place and by key, and how often each tag is defined
+struct LayoutSet {
+    entries : array<LayoutEntry>
+    by_loc : table<string; int>
+    by_key : table<string; int>
+    tag_count : table<string; int>
+}
 
-// the layout of every record definition in a program file under `c`, by `cursor_key`
-def private reference_layouts(var d : Dumper; var c : CXCursor; var layouts : table<string; string>) {
-    clang_visitChildren(c) $(var kid, _parent) {
-        let kind = clang_getCursorKind(kid)
-        if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u && in_program(d, cursor_loc(kid).file)) {
-            var ct = clang_getCursorType(kid)
-            var inscope fields : array<string>
-            clang_visitChildren(kid) $(var fc, _fp) {
-                if (clang_getCursorKind(fc) == CXCursorKind.FieldDecl) {
-                    let is_bf = clang_Cursor_isBitField(fc) != 0u
-                    let name = string(clang_getCursorSpelling(fc))
-                    let bit_off = clang_Cursor_getOffsetOfField(fc)
-                    let bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0
-                    fields |> push(field_layout(name, bit_off, bit_w, is_bf))
-                }
-                return CXChildVisitResult.Continue
-            }
-            let size = clang_Type_getSizeOf(ct)
-            let align = clang_Type_getAlignOf(ct)
-            layouts[cursor_key(d, kid)] = record_layout(size, align, fields)
+// a record or an enum the dump lays out: its `cursor_key`, its spelling and its place
+struct LaidOut {
+    loc : string
+    name : string
+    at : CirLoc
+}
+
+let private TAG_KEY = "tag "
+
+// `spelling` with the place of every unnamed record or enum it names cut out: `(unnamed at
+// f:l:c)` and `(anonymous at f:l:c)` are `(unnamed)`, so a spelling reads alike wherever the
+// definition stands
+def private placeless(spelling : string) : string {
+    var cut_from, cut_to : array<int>
+    for (opening in ["(unnamed ", "(anonymous "]) {
+        var at = find(spelling, opening)
+        while (at >= 0) {
+            let close = find(spelling, ")", at)
+            break if (close < 0)
+            cut_from |> push(at)
+            cut_to |> push(close)
+            at = find(spelling, opening, close)
         }
-        return CXChildVisitResult.Recurse
+    }
+    if (empty(cut_from)) {
+        return spelling
+    }
+    return build_string() $(var w) {
+        for (i, ch in count(), spelling) {
+            var inside = false
+            for (from, to in cut_from, cut_to) {
+                inside ||= i >= from && i <= to
+                if (i == from) {
+                    w |> write("(unnamed)")
+                }
+            }
+            if (!inside) {
+                w |> write_char(ch)
+            }
+        }
     }
 }
 
-// The layout guard: every record the unit defines in a program file is laid out by clang under
-// `frontend`, the dumper's flags, as it is with clang's own predefined macros back (`frontend`
-// less `-undef`, then `inputs`: the table's entries stay, each clang's own value or the
-// converter's own statement). A record whose
-// size, alignment or a field's offset or width differs, or that the second pass does not define,
-// fails the dump: a layout attribute behind a test of a name the table does not hold would
-// otherwise be lost with no error.
+// the first named field record `c` makes visible, through its anonymous members; "" for none
+def private visible_field(var c : CXCursor) : string {
+    var name : string
+    clang_visitChildren(c) $(var fc, _fp) {
+        let kind = clang_getCursorKind(fc)
+        if (kind == CXCursorKind.FieldDecl) {
+            name = string(clang_getCursorSpelling(fc))
+        } elif ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_Cursor_isAnonymousRecordDecl(fc) != 0u) {
+            name = visible_field(fc)
+        }
+        return empty(name) ? CXChildVisitResult.Continue : CXChildVisitResult.Break
+    }
+    return name
+}
+
+// one member of record `owner` in its signature: an anonymous member its bit offset, by a name
+// it makes visible; a field its name, bit offset, bitfield width, canonical type, and the size
+// and alignment of that type
+def private member_signature(var owner : CXType; var fc : CXCursor) : string {
+    if (clang_getCursorKind(fc) != CXCursorKind.FieldDecl) {
+        let name = visible_field(fc)
+        var inner = clang_getCursorType(fc)
+        let outer_off = empty(name) ? -1l : clang_Type_getOffsetOf(owner, name)
+        let inner_off = empty(name) ? 0l : clang_Type_getOffsetOf(inner, name)
+        return "(anonymous)@{outer_off < 0l ? -1l : outer_off - inner_off}"
+    }
+    let name = string(clang_getCursorSpelling(fc))
+    let bit_off = clang_Cursor_getOffsetOfField(fc)
+    let width = clang_Cursor_isBitField(fc) != 0u ? ":{clang_getFieldDeclBitWidth(fc)}" : ""
+    var canonical = clang_getCanonicalType(clang_getCursorType(fc))
+    let spelling = placeless(string(clang_getTypeSpelling(canonical)))
+    let size = clang_Type_getSizeOf(canonical)
+    let align = clang_Type_getAlignOf(canonical)
+    return "{name}@{bit_off}{width} `{spelling}` {size}/{align}"
+}
+
+// adds the definition at `c` to `layouts` under `key`
+def private add_layout(var layouts : LayoutSet; key, loc, signature : string) {
+    let idx = length(layouts.entries)
+    layouts.entries |> push(LayoutEntry(key = key, loc = loc, signature = signature))
+    layouts.by_loc[loc] = idx
+    layouts.by_key[key] = idx
+    if (key |> starts_with(TAG_KEY)) {
+        layouts.tag_count[key]++
+    }
+}
+
+// every record and enum definition under `c` into `layouts`, external headers' included; `owner`
+// is the key of the record `c` is, "" when it is none
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#layout-guard")]
+def private collect_layouts(var d : Dumper; var c : CXCursor; owner : string; var layouts : LayoutSet) {
+    var nested = 0
+    clang_visitChildren(c) $(var kid, _parent) {
+        let kind = clang_getCursorKind(kid)
+        let is_record = kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl
+        if ((!is_record && kind != CXCursorKind.EnumDecl) || clang_isCursorDefinition(kid) == 0u) {
+            collect_layouts(d, kid, "", layouts)
+            return CXChildVisitResult.Continue
+        }
+        let ordinal = nested
+        nested += is_record ? 1 : 0
+        let loc = cursor_key(d, kid)
+        if (key_exists(layouts.by_loc, loc)) {
+            // met before, as its owner's member or under a statement
+            return CXChildVisitResult.Continue
+        }
+        var ct = clang_getCursorType(kid)
+        let size = clang_Type_getSizeOf(ct)
+        let align = clang_Type_getAlignOf(ct)
+        let spelling = own_spelling(d, kid, kind == CXCursorKind.EnumDecl ? "enum" : kind == CXCursorKind.UnionDecl ? "union" : "struct")
+        let unnamed = find(spelling, "(anonymous ") >= 0 || find(spelling, "(unnamed ") >= 0
+        let key = !unnamed ? TAG_KEY + spelling : is_record && !empty(owner) ? "{owner}/{ordinal}" : "at {loc}"
+        if (!is_record) {
+            add_layout(layouts, key, loc, "size {size}, align {align}")
+            return CXChildVisitResult.Continue
+        }
+        var inscope members : array<string>
+        clang_visitChildren(kid) $(var fc, _fp) {
+            let fk = clang_getCursorKind(fc)
+            let anonymous = (fk == CXCursorKind.StructDecl || fk == CXCursorKind.UnionDecl) && clang_Cursor_isAnonymousRecordDecl(fc) != 0u
+            if (fk == CXCursorKind.FieldDecl || anonymous) {
+                members |> push(member_signature(ct, fc))
+            }
+            return CXChildVisitResult.Continue
+        }
+        add_layout(layouts, key, loc, "size {size}, align {align}, members {join(members, ", ")}")
+        collect_layouts(d, kid, key, layouts)
+        return CXChildVisitResult.Continue
+    }
+}
+
+// the entry of `theirs` that is `ours`'s twin: by key when the tag the key starts with is defined
+// once in each parse, else by place; -1 for none
+def private twin_layout(layouts, theirs : LayoutSet; ours : LayoutEntry) : int {
+    let slash = find(ours.key, "/")
+    let root = slash < 0 ? ours.key : slice(ours.key, 0, slash)
+    let once = root |> starts_with(TAG_KEY) && (layouts.tag_count?[root] ?? 0) == 1 && (theirs.tag_count?[root] ?? 0) == 1
+    return once ? theirs.by_key?[ours.key] ?? -1 : theirs.by_loc?[ours.loc] ?? -1
+}
+
+// The layout guard: every record the dump lays out, an external header's the program holds by
+// value included, and every enum it defines has one layout under `frontend`, the dumper's flags,
+// and with clang's own predefined macros back (`frontend` less `-undef`, then `inputs`). A
+// definition whose signature differs, or that the second parse lacks, fails the dump: a layout
+// attribute behind a test of a name the table does not hold would otherwise be lost with no error.
 [arch(at="ARCHITECTURE_DUMPER_MACROS.md#layout-guard")]
 def private check_layouts(var d : Dumper; frontend : array<string>; inputs : array<string>) {
     var args <- [for (flag in frontend); flag; where flag != "-undef"]
     args |> push_from(inputs)
-    var inscope layouts : table<string; string>
+    var inscope theirs : LayoutSet
     var stopped : string
     var idx = clang_createIndex(0, 0)
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
@@ -4326,23 +4458,35 @@ def private check_layouts(var d : Dumper; frontend : array<string>; inputs : arr
             }
             clang_disposeDiagnostic(diag)
         }
-        reference_layouts(d, clang_getTranslationUnitCursor(unit), layouts)
+        collect_layouts(d, clang_getTranslationUnitCursor(unit), "", theirs)
         clang_disposeTranslationUnit(unit)
     }
     clang_disposeIndex(idx)
     let hint = "a sidecar `defines` entry selects the arm for both"
-    for (key, ridx in keys(d.record_by_loc), values(d.record_by_loc)) {
-        assume rec = d.records[ridx]
-        if (!in_program(d, rec.at.file)) {
+    // records, then enums, each in the order the first pass met them: the first refusal is the same every run
+    var inscope laid_out : array<LaidOut>
+    laid_out |> resize(length(d.records) + length(d.enums))
+    for (loc, ridx in keys(d.record_by_loc), values(d.record_by_loc)) {
+        laid_out[ridx] = LaidOut(loc = loc, name = d.records[ridx].c_spelling, at = d.records[ridx].at)
+    }
+    for (loc, eidx in keys(d.enum_by_loc), values(d.enum_by_loc)) {
+        laid_out[length(d.records) + eidx] = LaidOut(loc = loc, name = d.enums[eidx].spelling, at = d.enum_ats?[loc] ?? CirLoc())
+    }
+    for (item in laid_out) {
+        // a record met twice has one place
+        continue if (empty(item.loc))
+        let mine = d.layouts.by_loc?[item.loc] ?? -1
+        if (mine < 0) {
+            fail(d, "`{item.name}`: the layout guard found no definition at its place", item.at)
             continue
         }
-        var inscope fields <- [for (f in rec.fields); field_layout(f.name, f.bit_off, f.bit_w, f.is_bitfield); where !empty(f.name) || f.is_bitfield]
-        let ours = record_layout(rec.size, rec.align, fields)
-        if (!key_exists(layouts, key)) {
+        assume ours = d.layouts.entries[mine]
+        let twin = twin_layout(d.layouts, theirs, ours)
+        if (twin < 0) {
             let why = empty(stopped) ? "" : " (that pass met an error: {stopped})"
-            fail(d, "`{rec.c_spelling}` is defined under the dialect's predefined macros and not under clang's own{why}; {hint}", rec.at)
-        } elif (layouts?[key] ?? "" != ours) {
-            fail(d, "`{rec.c_spelling}` is laid out as [{ours}] under the dialect's predefined macros and as [{layouts?[key] ?? ""}] under clang's own: a layout attribute behind a compiler test; {hint}", rec.at)
+            fail(d, "`{item.name}` is defined under the dialect's predefined macros and not under clang's own{why}; {hint}", item.at)
+        } elif (theirs.entries[twin].signature != ours.signature) {
+            fail(d, "`{item.name}` is laid out as [{ours.signature}] under the dialect's predefined macros and as [{theirs.entries[twin].signature}] under clang's own: a layout attribute behind a compiler test; {hint}", item.at)
         }
     }
 }

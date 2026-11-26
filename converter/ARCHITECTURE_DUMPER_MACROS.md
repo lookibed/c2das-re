@@ -23,20 +23,37 @@ the `linux` dialect's flags whatever dialect a unit is converted under (the crit
 
 A program can hide a layout attribute behind a test of a name the table does not hold (`#ifdef
 __clang__` around `__attribute__((packed))`); under the table it would lose the attribute and
-convert with another layout, with no error. So after the libclang pass the dumper parses the unit a
-second time (`check_layouts`) with clang's own predefined macros back: the same flags without
-`-undef`. The table's entries stay, and each has clang's own value (`frontend/ARCHITECTURE.md`
-section 3) or is the converter's own statement, `__STDC_NO_VLA__=1`, a fact of the converter and no
-compiler's identity: a record a program defines under that name is a record of both passes. The records compared
-are those the first pass registered from a program file, the records of the converted program, each
-found in the second pass by the file and offset of its definition; an own libc header's record is
-no program record. A record whose size, alignment, or a field's name, bit offset or bitfield width
-differs fails the dump naming the record, its place and both layouts, and so does one the second
-pass does not define (a definition under `#ifndef __clang__`; an error that pass met is quoted
-beside it). A record only the second pass defines is no record of the converted
-program and is not compared. The message names the way out: a sidecar `defines` entry, which both
-passes get, selects one arm for both. The second parse reads no preprocessing record and makes no
-JSON, so it is always on: probed over Lua (33 units), PureDOOM (126) and wasm3 (1), it takes under 1% of the dump (0.3 s of 53 s, 0.8 s of 84 s, 0.1 s of 25 s).
+convert with another layout, with no error. So the dumper parses the unit a second time
+(`check_layouts`) with clang's own predefined macros back: the same flags without `-undef`. The
+table's entries stay, and each has clang's own value (`frontend/ARCHITECTURE.md` section 3) or is
+the converter's own statement, `__STDC_NO_VLA__=1`, a fact of the converter and no compiler's
+identity: a record a program defines under that name is a record of both passes.
+
+**The set.** Every record the dump lays out and every enum it defines: the records and enums of
+the program's files, and each record of an external header the program holds by value, reaches a
+member of or sizes, which the libclang pass registers with them (the program's files, section 3).
+A definition only the second pass holds is no part of the converted program and is not compared.
+
+**The key.** `collect_layouts` walks each parse alike and names every definition: a named record or
+enum, a typedef-named one included, by its tag spelling (`struct S`, `struct T`), so one
+definition in each arm of a conditional is one record; an unnamed record nested in a record by its
+owner's key and its ordinal among the owner's nested record definitions; any other unnamed
+definition (the type of a variable, an unnamed enum) by the file and offsets of its definition.
+A tag one parse defines more than once (two blocks' `struct s`) is found by place too. A
+definition keyed by place that stands in another arm in the second pass has no twin there and is
+refused: nothing names it across the arms, and the guard fails closed.
+
+**The signature.** A record's size and alignment, and each member in order: a field's name, bit
+offset, bitfield width, canonical type spelling (the place of an unnamed record cut out of it) and
+that type's size and alignment; an anonymous member's bit offset, by a name it makes visible. An
+enum's size and alignment. The record's size is implied by the rest and printed for the reader.
+
+A definition whose signature differs fails the dump naming it, its place and both signatures, and
+so does one with no twin (an error the second pass met is quoted beside it); records are judged
+before enums, each in the order the first pass met them. The message names the way out: a sidecar
+`defines` entry, which both passes get, selects one arm for both. The second parse reads no
+preprocessing record and makes no JSON, so the guard is always on: probed over Lua (33 units),
+PureDOOM (126) and wasm3 (1), its second parse took under 1% of the dump (0.3 s of 53 s, 0.8 s of 84 s, 0.1 s of 25 s; the first parse is walked once more for its own signatures).
 
 ### Function-like macro expansions {#fn-macros}
 

@@ -157,29 +157,73 @@ def test_layout_guard(t : T?) {
     t |> run("`packed` behind `__clang__` is refused, naming the record, its place and both layouts") @(t : T?) {
         let conv <- guard_convert(dir, "clang_packed", guarded_record("__clang__", "packed"), "")
         t |> equal(conv.ok, false, conv.das_text)
-        t |> success(conv.error |> contains("clang_packed.c:6:8: `struct rec` is laid out as [size 8, align 4, fields c@0 v@32] under the dialect's predefined macros and as [size 5, align 1, fields c@0 v@8] under clang's own"), conv.error)
+        t |> success(conv.error |> contains("clang_packed.c:6:8: `struct rec` is laid out as [size 8, align 4, members c@0 `char` 1/1, v@32 `int` 4/4] under the dialect's predefined macros and as [size 5, align 1, members c@0 `char` 1/1, v@8 `int` 4/4] under clang's own"), conv.error)
         t |> success(conv.error |> contains("a sidecar `defines` entry selects the arm for both"), conv.error)
     }
     t |> run("`aligned` behind `__clang__` is refused: the alignment and the size differ") @(t : T?) {
         let conv <- guard_convert(dir, "clang_aligned", guarded_record("__clang__", "aligned(16)"), "")
         t |> equal(conv.ok, false, conv.das_text)
-        t |> success(conv.error |> contains("as [size 16, align 16, fields c@0 v@32] under clang's own"), conv.error)
+        t |> success(conv.error |> contains("as [size 16, align 16, members c@0 `char` 1/1, v@32 `int` 4/4] under clang's own"), conv.error)
     }
-    t |> run("each part of a layout is compared alone: the size, the alignment, a field's offset, a bitfield's width") @(t : T?) {
+    t |> run("each part of a signature is compared alone: the alignment, a field's offset, a bitfield's width, an anonymous member's offset, a field's storage, its type at one size") @(t : T?) {
+        let attr = "#ifdef __clang__\n#define ATTR __attribute__((\{0\}))\n#else\n#define ATTR\n#endif\n"
         let parts <- [
-            (name = "size_only", source = "#ifdef __clang__\n#define N 8\n#else\n#define N 4\n#endif\nstruct rec \{ char t[N]; \};\nint main(void) \{ return 0; \}\n",
-                ours = "[size 4, align 1, fields t@0]", theirs = "[size 8, align 1, fields t@0]"),
-            (name = "align_only", source = "#ifdef __clang__\n#define ATTR __attribute__((aligned(16)))\n#else\n#define ATTR\n#endif\nstruct rec \{ char c[16]; \} ATTR;\nint main(void) \{ return 0; \}\n",
-                ours = "[size 16, align 1, fields c@0]", theirs = "[size 16, align 16, fields c@0]"),
-            (name = "offset_only", source = "#ifdef __clang__\n#define ATTR __attribute__((aligned(2)))\n#else\n#define ATTR\n#endif\nstruct rec \{ int i; char a; char b ATTR; \};\nint main(void) \{ return 0; \}\n",
-                ours = "[size 8, align 4, fields i@0 a@32 b@40]", theirs = "[size 8, align 4, fields i@0 a@32 b@48]"),
+            (name = "align_only", source = "{replace(attr, "\{0\}", "aligned(16)")}struct rec \{ char c[16]; \} ATTR;\nint main(void) \{ return 0; \}\n",
+                ours = "[size 16, align 1, members c@0 `char[16]` 16/1]", theirs = "[size 16, align 16, members c@0 `char[16]` 16/1]"),
+            (name = "offset_only", source = "{replace(attr, "\{0\}", "aligned(2)")}struct rec \{ int i; char a; char b ATTR; \};\nint main(void) \{ return 0; \}\n",
+                ours = "[size 8, align 4, members i@0 `int` 4/4, a@32 `char` 1/1, b@40 `char` 1/1]", theirs = "[size 8, align 4, members i@0 `int` 4/4, a@32 `char` 1/1, b@48 `char` 1/1]"),
             (name = "width_only", source = "#ifdef __clang__\n#define W 5\n#else\n#define W 4\n#endif\nstruct rec \{ unsigned a : 3; unsigned b : W; \};\nint main(void) \{ return 0; \}\n",
-                ours = "[size 4, align 4, fields a@0:3 b@3:4]", theirs = "[size 4, align 4, fields a@0:3 b@3:5]")]
+                ours = "[size 4, align 4, members a@0:3 `unsigned int` 4/4, b@3:4 `unsigned int` 4/4]", theirs = "[size 4, align 4, members a@0:3 `unsigned int` 4/4, b@3:5 `unsigned int` 4/4]"),
+            // the anonymous member moves from byte 4 to byte 1; the outer record's named fields stay
+            (name = "anonymous_only", source = "{replace(attr, "\{0\}", "packed")}struct rec \{ char c; struct \{ int x; \}; long y __attribute__((aligned(8))); \} ATTR;\nint main(void) \{ return 0; \}\n",
+                ours = "[size 16, align 8, members c@0 `char` 1/1, (anonymous)@32, y@64 `long` 8/8]", theirs = "[size 16, align 8, members c@0 `char` 1/1, (anonymous)@8, y@64 `long` 8/8]"),
+            // a packed enum is one byte inside a union of the same size
+            (name = "storage_only", source = "{replace(attr, "\{0\}", "packed")}enum small \{ S0, S1 \} ATTR;\nstruct rec \{ enum small x; int pad[3]; long y; \};\nint main(void) \{ return 0; \}\n",
+                ours = "[size 24, align 8, members x@0 `enum small` 4/4, pad@32 `int[3]` 12/4, y@128 `long` 8/8]", theirs = "[size 24, align 8, members x@0 `enum small` 1/1, pad@32 `int[3]` 12/4, y@128 `long` 8/8]"),
+            (name = "type_only", source = "#ifdef __clang__\ntypedef float num;\n#else\ntypedef int num;\n#endif\nstruct rec \{ num v; \};\nint main(void) \{ return 0; \}\n",
+                ours = "[size 4, align 4, members v@0 `int` 4/4]", theirs = "[size 4, align 4, members v@0 `float` 4/4]")]
         for (part in parts) {
             let conv <- guard_convert(dir, part.name, part.source, "")
             t |> equal(conv.ok, false, "{part.name}: {conv.das_text}")
             t |> success(conv.error |> contains("`struct rec` is laid out as {part.ours} under the dialect's predefined macros and as {part.theirs} under clang's own"), "{part.name}: {conv.error}")
         }
+    }
+    rmdir_rec(dir)
+}
+
+[test(description = "the layout guard's set and keys: enums, an external header's record held by value, one definition in each arm, a tag defined twice, the converter's own macro, the second pass's errors", timeout = 1200)]
+def test_layout_guard_keys(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_layout_guard_keys", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("an enum the dump defines is compared too: `packed` behind `__clang__` is refused") @(t : T?) {
+        let conv <- guard_convert(dir, "enum_packed", "#ifdef __clang__\n#define ATTR __attribute__((packed))\n#else\n#define ATTR\n#endif\nenum small \{ S0, S1 \} ATTR;\nint main(void) \{ enum small e = S1; return e - 1; \}\n", "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("`enum small` is laid out as [size 4, align 4] under the dialect's predefined macros and as [size 1, align 1] under clang's own"), conv.error)
+    }
+    t |> run("a record of a header outside the program root that the program holds by value is compared like its own") @(t : T?) {
+        let headers = path_join(dir, "outside")
+        mkdir(headers)
+        fwrite(path_join(headers, "api.h"), "#ifdef __clang__\n#define ATTR __attribute__((packed))\n#else\n#define ATTR\n#endif\nstruct api \{ char c; int x; \} ATTR;\n")
+        mkdir(path_join(dir, "inside"))
+        let conv <- guard_convert(path_join(dir, "inside"), "uses_api", "#include <api.h>\nint main(void) \{ struct api s; s.x = 0; return s.x; \}\n", "\{\"include_dirs\": [\"{headers}\"]\}\n")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("api.h:6:8: `struct api` is laid out as [size 8, align 4,") && conv.error |> contains("as [size 5, align 1,"), conv.error)
+    }
+    t |> run("one definition in each arm is one record: a tag, a typedef's name, an unnamed record through its owner; an unnamed one with no owner is found by its place alone") @(t : T?) {
+        let arms = "#ifdef __clang__\n\{0\}\n#else\n\{0\}\n#endif\n"
+        for (name, decl in ["tagged", "typedef_named", "through_owner"], ["struct twin \{ int x; \};\ntypedef struct twin T;", "typedef struct \{ int x; \} T;", "typedef struct \{ int a; struct \{ int x; \} in; \} T;"]) {
+            let conv <- guard_convert(dir, name, "{replace(arms, "\{0\}", decl)}int main(void) \{ T v; return (int) sizeof(v) - (int) sizeof(v); \}\n", "")
+            t |> equal(conv.ok, true, "{name}: {conv.error}")
+        }
+        // fail closed: nothing names such a record across the arms
+        let placed <- guard_convert(dir, "by_place", "{replace(arms, "\{0\}", "static struct \{ int x; \} v;")}int main(void) \{ v.x = 0; return v.x; \}\n", "")
+        t |> equal(placed.ok, false, placed.das_text)
+        t |> success(placed.error |> contains("is defined under the dialect's predefined macros and not under clang's own"), placed.error)
+    }
+    t |> run("a tag two blocks define is found by its place: both definitions stand in both passes") @(t : T?) {
+        let conv <- guard_convert(dir, "block_tags", "static int one(void) \{ struct s \{ int a; \} v; v.a = 1; return v.a; \}\nstatic int two(void) \{ struct s \{ char c; \} v; v.c = 1; return v.c; \}\nint main(void) \{ return one() - two(); \}\n", "")
+        t |> equal(conv.ok, true, conv.error)
     }
     t |> run("a record under the converter's own `__STDC_NO_VLA__`, which no clang defines, is a record of both passes") @(t : T?) {
         let conv <- guard_convert(dir, "no_vla_record", "#ifdef __STDC_NO_VLA__\nstruct fixed \{ int v[4]; \};\n#endif\nint main(void) \{ struct fixed f; f.v[0] = 0; return f.v[0]; \}\n", "")
