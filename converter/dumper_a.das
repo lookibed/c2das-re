@@ -4287,11 +4287,16 @@ def private reference_layouts(var d : Dumper; var c : CXCursor; var layouts : ta
             clang_visitChildren(kid) $(var fc, _fp) {
                 if (clang_getCursorKind(fc) == CXCursorKind.FieldDecl) {
                     let is_bf = clang_Cursor_isBitField(fc) != 0u
-                    fields |> push(field_layout(string(clang_getCursorSpelling(fc)), clang_Cursor_getOffsetOfField(fc), is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bf))
+                    let name = string(clang_getCursorSpelling(fc))
+                    let bit_off = clang_Cursor_getOffsetOfField(fc)
+                    let bit_w = is_bf ? clang_getFieldDeclBitWidth(fc) : 0
+                    fields |> push(field_layout(name, bit_off, bit_w, is_bf))
                 }
                 return CXChildVisitResult.Continue
             }
-            layouts[cursor_key(d, kid)] = record_layout(clang_Type_getSizeOf(ct), clang_Type_getAlignOf(ct), fields)
+            let size = clang_Type_getSizeOf(ct)
+            let align = clang_Type_getAlignOf(ct)
+            layouts[cursor_key(d, kid)] = record_layout(size, align, fields)
         }
         return CXChildVisitResult.Recurse
     }
