@@ -283,7 +283,7 @@ def test_layout_guard_finer(t : T?) {
     rmdir_rec(dir)
 }
 
-[test(description = "the layout guard's keys of unnamed definitions: one as a field's type, an owner's ordinal, no second unit, clang's builtin record", timeout = 1200)]
+[test(description = "the layout guard's keys of unnamed definitions as a field's type: the record, an array of it, a pointer to it", timeout = 1200)]
 def test_layout_guard_unnamed(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_layout_guard_unnamed", dir_error)
@@ -310,6 +310,14 @@ def test_layout_guard_unnamed(t : T?) {
         t |> equal(pointed.ok, false, pointed.das_text)
         t |> success(pointed.error |> contains("p@64 `struct (unnamed) *` = at ") && !(pointed.error |> contains("nowhere")) && pointed.error |> contains("`void (*)(struct (unnamed) *)` 8/8, p@64"), pointed.error)
     }
+    rmdir_rec(dir)
+}
+
+[test(description = "the layout guard's last cases: signatures that differ at their end, an owner's ordinal, no second unit, clang's builtin record", timeout = 1200)]
+def test_layout_guard_last(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_layout_guard_last", dir_error)
+    t |> equal(dir_error, "")
     t |> run("two record signatures that differ in their last character alone are a layout difference, not an enum's type") @(t : T?) {
         let conv <- guard_convert(dir, "last_character", "#ifdef __clang__\n#define ATTR __attribute__((packed, aligned(4)))\n#else\n#define ATTR __attribute__((aligned(4)))\n#endif\nstruct rec \{ int i; char a; struct \{ short x; \}; \} ATTR;\nint main(void) \{ return 0; \}\n", "")
         t |> equal(conv.ok, false, conv.das_text)
