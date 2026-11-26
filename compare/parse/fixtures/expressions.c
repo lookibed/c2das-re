@@ -1,0 +1,32 @@
+/* every expression form the parser reads, as file-scope initializers; an operand that is no
+   constant stands under sizeof, which does not evaluate it */
+int a, b, arr[10], *ptr, f(int, int);
+struct S { int m; struct S *next; } s, *sp;
+__builtin_va_list vl;
+int e_ident = sizeof(a);
+unsigned long long e_int = 10 + 0x1F + 017 + 0b101 + 42u + 7ull + 18446744073709551615ULL;
+float e_float = 1.5f + 2e3 + 0x1p4;
+int e_char = 'a' + '\n' + L'w';
+char *e_string = "ab" "cd";
+int e_paren = (1 + 2) * 3;
+int e_binary = 1 * 2 / 3 % 4 + 5 - 6 << 1 >> 2 < 3 == 4 > 5 != 6 <= 7 == 8 >= 9 & 9 ^ 10 | 11 && 12 || 13;
+int e_assign = sizeof(a = 1, a *= 2, a /= 3, a %= 4, a += 5, a -= 6, a <<= 7, a >>= 8, a &= 9, a ^= 10, a |= 11);
+int e_cond = 1 ? 2 : 3 ? 4 : 5;
+int e_gnu_cond = 1 ? : 3;
+int e_unary = -1 + +2 + ~3 + !4 + sizeof(*ptr + &a - &a + ++a + --a + a++ + a--);
+long e_cast = (long)1 + (unsigned char)2 + (long)(short)3;
+int *e_cast_ptr = (int *)0;
+unsigned long e_sizeof = sizeof a + sizeof(int) + sizeof(int[3]) + sizeof(char *(*)(void)) + sizeof (int){1};
+unsigned long e_alignof = _Alignof(double) + __alignof__(long) + __alignof__(a);
+int e_call = sizeof(f(1, 2) + f(a, b));
+int *e_index = &arr[3];
+int e_index2 = sizeof(3[arr] + arr[a]);
+int e_member = sizeof(s.m + sp->next->m);
+int *e_compound = (int[]){1, 2, 3};
+int e_ext = __extension__ 1;
+int e_va = sizeof(__builtin_va_arg(vl, int));
+unsigned long e_off = __builtin_offsetof(struct S, next);
+int e_compat = __builtin_types_compatible_p(int, long);
+int e_choose = __builtin_choose_expr(1, 2, 3);
+int e_deep = ((((((((((1))))))))));
+int e_list[] = {1, [2] = 3, 4};
