@@ -63,6 +63,24 @@ def private write_text(path, text : string) {
     }
 }
 
+// a provider whose files all exist and only `main.c` reads: an #include of any other name finds a
+// file it cannot read
+class ReadFailsProvider : PpFileProvider {
+    def override exists(path : string) : bool => true
+    def override identity(path : string) : string => path
+    def override read(path : string; var bytes : array<uint8>) : bool {
+        return false if (path != "main.c")
+        let text = "#include \"x.h\"\nafter\n"
+        bytes |> reserve(length(text) + 1)
+        peek_data(text) $(chars) {
+            for (c in chars) {
+                bytes |> push(c)
+            }
+        }
+        return true
+    }
+}
+
 // the inclusions, `<spelled>:<path or ->:<skip>`
 def private inclusions(pp : Preprocessor) : string {
     let parts <- [for (inc in pp.inclusions); "{inc.spelled}:{inc.file >= 0 ? pp.files[inc.file].path : "-"}:{inc.skip}"]
@@ -386,12 +404,121 @@ def test_normalized_path(t : T?) {
     t |> equal(normalized_path("/../a"), "/../a")
 }
 
+[test(description = "#ifdef, #ifndef or #elifndef with no name or a non-identifier is an error, and its group is skipped as clang skips it")]
+def test_ifdef_name_errors(t : T?) {
+    var pp <- started([("main.c", "#ifdef\nno1\n#endif\n#ifndef 1\nno2\n#endif\n#if 0\n#elifndef\nno3\n#endif\nend\n")])
+    t |> equal(stream(pp), "end")
+    t |> equal(diagnostics(pp), "E 1:2 macro name missing in #ifdef | E 4:9 macro names must be identifiers | E 8:2 macro name missing in #elifndef")
+}
+
+[test(description = "tokens after an #else or #endif that close a group nested in a skipped one, or an #else after a taken group, are dropped without a warning")]
+def test_skipped_trailing_tokens_quiet(t : T?) {
+    var pp <- started([("main.c", "#if 1\na\n#elif 1\nb\n#else junk\nc\n#endif\n#if 0\n#if 1\n#else junk\n#endif junk\n#endif\n")])
+    t |> equal(stream(pp), "a")
+    t |> equal(diagnostics(pp), "")
+}
+
+[test(description = "tokens after the #endif of a top-level skipped conditional warn, as clang warns")]
+def test_endif_of_skipped_top_level_warns(t : T?) {
+    var pp <- started([("main.c", "#if 0\n#endif junk\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "W 2:8 extra tokens at end of #endif directive")
+}
+
+[test(description = "a stray #endif drops the rest of its line: its tokens never reach the stream")]
+def test_stray_endif_drops_line(t : T?) {
+    var pp <- started([("main.c", "#endif junk\nx\n")])
+    t |> equal(stream(pp), "x")
+    t |> equal(diagnostics(pp), "E 1:2 #endif without #if")
+}
+
+[test(description = "no include guard: a directive or a conditional before the #ifndef, an #elif of it, a second group after it, or an #if with more than !defined X; a file read again keeps one entry")]
+def test_guard_negatives(t : T?) {
+    let files <- [("main.c", "#include \"v.h\"\n#include \"v.h\"\n#include \"w.h\"\n#include \"w.h\"\n#include \"x.h\"\n#define X_H\n#include \"x.h\"\n#include \"y.h\"\n#define Y_H\n#include \"y.h\"\n#include \"z.h\"\n#define Z_H\n#include \"z.h\"\n#include \"d.h\"\n#include \"d.h\"\n#include \"f.h\"\n#include \"f.h\"\n"),
+                  ("v.h", "#if 1\n#endif\n#ifndef V_H\n#define V_H\nv\n#endif\n"),
+                  ("w.h", "#ifndef W1\n#define W1\nw\n#endif\n#ifndef W2\n#endif\n"),
+                  ("x.h", "#if !defined(X_H) && 1\n#endif\n"),
+                  ("y.h", "#if !defined Y_H || 0\n#endif\n"),
+                  ("z.h", "#if ~defined Z_H\n#endif\n"),
+                  ("d.h", "#define D 1\n#ifndef D_H\n#define D_H\nd\n#endif\n"),
+                  ("f.h", "#ifndef F_H\n#define F_H\nf\n#elif 1\n#endif\n")]
+    var pp <- started(files)
+    t |> equal(stream(pp), "v w d f")
+    t |> equal(inclusions(pp), "\"v.h\":v.h:none \"v.h\":v.h:none \"w.h\":w.h:none \"w.h\":w.h:none \"x.h\":x.h:none \"x.h\":x.h:none \"y.h\":y.h:none \"y.h\":y.h:none \"z.h\":z.h:none \"z.h\":z.h:none \"d.h\":d.h:none \"d.h\":d.h:none \"f.h\":f.h:none \"f.h\":f.h:none")
+    let v_h = pp.file_of?["v.h"] ?? -1
+    t |> equal(pp.files[v_h].entered, 2)
+    t |> equal(length([for (f in pp.files); f; where f.path == "v.h"]), 1)
+}
+
+[test(description = "a null directive before the #ifndef keeps the include guard, as clang's include-guard detection ignores it")]
+def test_guard_after_null_directive(t : T?) {
+    var pp <- started([("main.c", "#include \"u.h\"\n#include \"u.h\"\n"), ("u.h", "#\n#ifndef U_H\n#define U_H\nu\n#endif\n#\n")])
+    t |> equal(stream(pp), "u")
+    t |> equal(inclusions(pp), "\"u.h\":u.h:none \"u.h\":u.h:guard")
+}
+
+[test(description = "a diagnostic and a pragma ledger entry carry the presumed line and file #line gives their place")]
+def test_presumed_place_of_ledgers(t : T?) {
+    var pp <- started([("main.c", "#line 100 \"p.c\"\n#pragma foo\n#error e\n")])
+    t |> equal(stream(pp), "")
+    t |> equal("{pp.names[pp.pragmas[0].pname]}:{int64(pp.pragmas[0].pline)}", "p.c:100")
+    t |> equal("{pp.names[pp.diags[0].pname]}:{int64(pp.diags[0].pline)}", "p.c:101")
+}
+
+[test(description = "a parameter list ending after '(', after a comma or after a GNU name..., or going on past a variadic parameter, is missing its ')'")]
+def test_define_param_list_ends(t : T?) {
+    var pp <- started([("main.c", "#define A(\n#define B(x,\n#define C(x...\n#define D(..., y)\n#define E(x... y)\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "E 1:10 missing ')' in macro parameter list | E 2:12 missing ')' in macro parameter list | E 3:12 missing ')' in macro parameter list | E 4:14 missing ')' in macro parameter list | E 5:16 missing ')' in macro parameter list")
+    t |> equal(length(pp.macros), 0)
+}
+
+[test(description = "an object-like body may hold '#'; a function-like body ending in '#' is an error")]
+def test_define_hash_in_body(t : T?) {
+    var pp <- started([("main.c", "#define S # x\n#define T(x) x #\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "E 2:2 '#' is not followed by a macro parameter")
+    t |> equal(join([for (m in pp.macros); pp_name(pp, m.name)], ","), "S")
+}
+
 [test(description = "an object-like body with no space after the name warns as clang's C99 mode does, and is defined")]
 def test_define_no_space_after_name(t : T?) {
     var pp <- started([("main.c", "#define NOWS+\n#define NOWS2\"s\"\n#define SP +\n#define FN(x)x\n")])
     t |> equal(stream(pp), "")
     t |> equal(diagnostics(pp), "W 1:13 ISO C99 requires whitespace after the macro name | W 2:14 ISO C99 requires whitespace after the macro name")
     t |> equal(pp_macro_body_text(pp, pp.macros[pp_macro_index(pp, "NOWS")]), "+")
+}
+
+[test(description = "a redefinition differing in kind, variadic marker, parameter count or names, token count, a spelling's length or inner whitespace warns")]
+def test_redefinition_differences(t : T?) {
+    var pp <- started([("main.c", "#define A() a\n#define A a\n#define V(a...) a\n#define V(a) a\n#define P(a) 1\n#define P(a, b) 1\n#define C 1\n#define C 1 2\n#define N(a) 1\n#define N(b) 1\n#define L 1\n#define L 12\n#define W a+b\n#define W a + b\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "W 2:2 'A' macro redefined | W 4:2 'V' macro redefined | W 6:2 'P' macro redefined | W 8:2 'C' macro redefined | W 10:2 'N' macro redefined | W 12:2 'L' macro redefined | W 14:2 'W' macro redefined")
+}
+
+[test(description = "#undef with no name, a non-identifier or `defined` is an error")]
+def test_undef_errors(t : T?) {
+    var pp <- started([("main.c", "#define defined_not 1\n#undef\n#undef 1\n#undef defined\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "E 2:2 macro name missing | E 3:8 macro name must be an identifier | E 4:8 'defined' cannot be used as a macro name")
+}
+
+[test(description = "an absolute name is read as it is, not under the includer's folder; a missing one names itself as searched")]
+def test_include_absolute(t : T?) {
+    var pp <- started([("src/main.c", "#include \"/abs/./a.h\"\n#include \"/abs/none.h\"\n"), ("/abs/a.h", "abs_a\n")], "src/main.c")
+    t |> equal(stream(pp), "abs_a")
+    t |> equal(inclusions(pp), "\"/abs/./a.h\":/abs/a.h:none \"/abs/none.h\":-:not_found")
+    t |> equal(diagnostics(pp), "F 2:10 '/abs/none.h' file not found; searched: /abs/none.h")
+}
+
+[test(description = "a quoted #include_next skips the includer's folder; one in a file found by its quote folder warns and searches the whole path")]
+def test_include_next_forms(t : T?) {
+    var quoted <- started([("main.c", "#include <x.h>\n"), ("a/x.h", "a_x\n#include_next \"x.h\"\n"), ("b/x.h", "b_x\n")], "main.c", array<string>(), ["a", "b"])
+    t |> equal(stream(quoted), "a_x b_x")
+    t |> equal(diagnostics(quoted), "")
+    var relative <- started([("main.c", "#include \"q.h\"\n"), ("q.h", "#include_next <r.h>\n"), ("inc/r.h", "r\n")], "main.c", array<string>(), ["inc"])
+    t |> equal(stream(relative), "r")
+    t |> equal(diagnostics(relative), "W 1:15 #include_next in file found relative to primary source file or found by absolute path; will search from start of include path")
 }
 
 [test(description = "#include_next searches after the folder of the inclusion, not of the file: a file found in its includer's folder inherits the includer's, as gcc's limits.h -> syslimits.h -> #include_next <limits.h> needs")]
@@ -460,4 +587,88 @@ def test_import(t : T?) {
     t |> equal(stream(pp), "i j k")
     t |> equal(inclusions(pp), "\"i.h\":i.h:none \"i.h\":i.h:pragma_once \"j.h\":j.h:none \"j.h\":j.h:pragma_once \"j.h\":j.h:pragma_once \"k.h\":k.h:none \"k.h\":k.h:pragma_once")
     t |> equal(diagnostics(pp), "E 6:2 expected \"FILENAME\" or <FILENAME>")
+}
+
+[test(description = "a file that exists but cannot be read is a fatal error naming it, recorded as not found, and the unit ends there")]
+def test_include_read_fails(t : T?) {
+    var pp : Preprocessor
+    t |> success(pp_start(pp, new ReadFailsProvider(), "main.c", array<string>(), array<string>()))
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "F 1:10 cannot read 'x.h'")
+    t |> equal(inclusions(pp), "\"x.h\":-:not_found")
+}
+
+[test(description = "#if reads only 0, 1 and a whole defined X or defined(X): another number, defined of a non-name, an unclosed or trailing form is left to PP.4")]
+def test_if_hook_rejects(t : T?) {
+    var pp <- started([("main.c", "#define X\n#if 2\na\n#endif\n#if 10\nb\n#endif\n#if defined 1\nc\n#endif\n#if defined(X Y\nd\n#endif\n#if 1 && 0\ne\n#endif\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "E 2:2 #if expression needs the PP.4 evaluator: 2 | E 5:2 #if expression needs the PP.4 evaluator: 10 | E 8:2 #if expression needs the PP.4 evaluator: defined 1 | E 11:2 #if expression needs the PP.4 evaluator: defined(X Y | E 14:2 #if expression needs the PP.4 evaluator: 1 && 0")
+}
+
+[test(description = "a #pragma pack read by clang's grammar: each malformed form gets clang's warning at clang's column and no ledger entry")]
+def test_pack_malformed(t : T?) {
+    var pp <- started([("main.c", "#pragma pack(push\n#pragma pack 4)\n#pragma pack(foo)\n#pragma pack(push 1 2)\n#pragma pack(push, \"s\")\n#pragma pack(4 4)\n#pragma pack(,)\n#pragma pack(push, 4, id2)\n#pragma pack(push, a, b)\n#pragma pack(4) x\n#pragma pack(show, 1)\n#pragma pack\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(length(pp.packs), 0)
+    t |> equal(diagnostics(pp), "W 1:18 missing ')' after '#pragma pack' - ignoring | W 2:14 missing '(' after '#pragma pack' - ignoring | W 3:14 unknown action for '#pragma pack' - ignored | W 4:19 missing ')' after '#pragma pack' - ignoring | W 5:20 expected integer or identifier in '#pragma pack' - ignored | W 6:16 missing ')' after '#pragma pack' - ignoring | W 7:14 missing ')' after '#pragma pack' - ignoring | W 8:21 missing ')' after '#pragma pack' - ignoring | W 9:23 expected integer or identifier in '#pragma pack' - ignored | W 10:17 extra tokens at end of '#pragma pack' - ignored | W 11:18 missing ')' after '#pragma pack' - ignoring | W 12:13 missing '(' after '#pragma pack' - ignoring")
+}
+
+[test(description = "pack(show) keeps the alignment in force, pop with a value sets it, a pop on an empty stack warns as clang does and keeps it, a pop of an unknown tag keeps it")]
+def test_pack_stack_edges(t : T?) {
+    var pp <- started([("main.c", "#pragma pack(pop)\n#pragma pack(8)\n#pragma pack(show)\n#pragma pack(push, 1)\n#pragma pack(pop, 2)\n#pragma pack(push, t, 4)\n#pragma pack(pop, nosuch)\n#pragma pack(pop, t, 1)\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(pack_rows(pp), "pop 0  -> 0 | set 8  -> 8 | show 0  -> 8 | push 1  -> 1 | pop 2  -> 2 | push 4 t -> 4 | pop 0 nosuch -> 4 | pop 1 t -> 1")
+    t |> equal(diagnostics(pp), "W 1:9 #pragma pack(pop, ...) failed: stack empty")
+}
+
+[test(description = "push_macro of a wide string or with trailing tokens is malformed; popping a name saved undefined leaves it undefined to #ifdef")]
+def test_push_pop_macro_edges(t : T?) {
+    var pp <- started([("main.c", "#pragma push_macro(L\"A\")\n#pragma push_macro(\"A\") x\n#pragma push_macro(\"U\")\n#define U\n#pragma pop_macro(\"U\")\n#ifdef U\nu\n#endif\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "W 1:2 malformed #pragma push_macro, ignored | W 2:2 malformed #pragma push_macro, ignored")
+}
+
+[test(description = "tokens after #pragma once warn, and the file is still read once")]
+def test_pragma_once_extra_tokens(t : T?) {
+    var pp <- started([("main.c", "#include \"a.h\"\n#include \"a.h\"\n"), ("a.h", "#pragma once junk\na\n")])
+    t |> equal(stream(pp), "a")
+    t |> equal(diagnostics(pp), "W 1:2 extra tokens at end of #pragma once directive")
+}
+
+[test(description = "a #line file name reads \\\\ and \\\" as one character each")]
+def test_line_name_escapes(t : T?) {
+    var pp <- started([("main.c", "#line 5 \"a\\\\b\\\".c\"\nx\n")])
+    t |> success(pp_next_token(pp))
+    t |> equal(pp.names[pp.tok.pname], "a\\b\".c")
+    t |> equal(pp.tok.pline, 5u)
+}
+
+[test(description = "a function-like predefined entry is defined with its parameters; an entry that is no definition is an error and skipped")]
+def test_predefined_entries(t : T?) {
+    var pp <- started([("main.c", "x\n")], "main.c", ["F(a, b)=a+b", "1BAD", "OK"])
+    t |> equal(stream(pp), "x")
+    t |> equal(diagnostics(pp), "E 0:0 not a macro definition: 1BAD")
+    let f := pp.macros[pp_macro_index(pp, "F")]
+    t |> success(f.function_like)
+    t |> equal(join([for (p in f.params); pp_name(pp, p)], ","), "a,b")
+    t |> equal(pp_macro_body_text(pp, f), "a+b")
+    t |> success(pp_macro_index(pp, "OK") >= 0)
+}
+
+[test(description = "the providers answer for their own files only: memory reads no unknown path, fio sees no folder as a file; the main path is normalized")]
+def test_provider_edges(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("a.c", "a\n")
+    var bytes : array<uint8>
+    t |> success(!mem->read("b.c", bytes))
+    t |> equal(mem->identity("/x/./y/../z.h"), "/x/z.h")
+    var fio = new PpFioProvider()
+    let dir = own_include_dir()
+    t |> success(!fio->exists(dir))
+    t |> success(fio->exists("{dir}/stdio.h"))
+    var folder : Preprocessor
+    t |> success(!pp_start(folder, fio, dir, array<string>(), array<string>()))
+    var dotted <- started([("main.c", "m\n")], "./main.c")
+    t |> equal(stream(dotted), "m")
+    t |> equal(dotted.files[0].path, "main.c")
 }

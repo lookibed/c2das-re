@@ -743,8 +743,8 @@ def private do_else(var pp : Preprocessor; at : PpToken) {
 
 def private do_endif(var pp : Preprocessor; at : PpToken) {
     return if (!has_open_cond(pp, at, "endif"))
-    let quiet = skipping(pp)
     pp.conds |> pop()
+    let quiet = skipping(pp)
     if (pp.state.guard == GuardState.inside && length(pp.conds) == pp.state.cond_base) {
         pp.state.guard = GuardState.closed
     }
@@ -1287,12 +1287,7 @@ def private do_ident(var pp : Preprocessor; at : PpToken) {
 def private directive(var pp : Preprocessor) {
     let skipped = skipping(pp)
     pp.last_tok = pp.lx.tok
-    if (!next_on_line(pp)) {
-        if (!skipped) {
-            guard_touched(pp)
-        }
-        return
-    }
+    return if (!next_on_line(pp))
     let at = pp.lx.tok
     let d = pp.lx.tok.kind == int(PpTok.IDENTIFIER) ? pp.directive_of?[pp.lx.tok.sym] ?? PpDirective.unknown : PpDirective.unknown
     if (skipped) {
