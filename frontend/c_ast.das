@@ -4,6 +4,7 @@ options indenting = 4
 module c_ast public
 
 require strings
+require daslib/strings_boost
 require c_tokens public
 
 //! The kind of a C AST node. `NODE_FORMS` holds, per kind in this order, its dump name and the
@@ -148,62 +149,89 @@ def c_append(var ast : CAst; var list : CList; n : int) {
     list.tail = n
 }
 
+//! one step of a dump: a node to write, or `text` when it is not empty
+struct private DumpStep {
+    node : int
+    text : string
+}
+
+//! the text of a scalar field of `node` whose role is `role` and value `v`
+def private field_text(var unit : CUnit; node : CNodeRec; role, v : int) : string {
+    if (role == 'k') {
+        return c_kind_name(v)
+    } elif (role == 's') {
+        return v < 0 ? "-" : pp_symbol_text(unit.lx, v)
+    } elif (role == 'i') {
+        return "{v}"
+    } elif (role == 't') {
+        let count = node.kind == CNode.STRING ? node.b : 1
+        return join([for (k in range(count)); c_spelling(unit, v + k)], " ")
+    }
+    let last = unit.toks[node.b]
+    return c_text(unit, unit.toks[v].start, last.start + last.len - unit.toks[v].start)
+}
+
 //! The tree under node `n` as one line: `(<name> <fields>)`, a missing node `-`, a list `[...]`;
-//! `places` writes `@<line>:<col>` after each name.
+//! `places` writes `@<line>:<col>` after each name. The walk keeps its own stack, so a tree of any
+//! depth costs no recursion.
 [arch(at="ARCHITECTURE_PARSER.md#c-ast")]
 def c_dump(ast : CAst; var unit : CUnit; n : int; places : bool = false) : string {
     return build_string() $(var w) {
-        dump_node(w, ast, unit, n, places)
-    }
-}
-
-def private dump_node(var w : StringBuilderWriter; ast : CAst; var unit : CUnit; n : int; places : bool) {
-    if (n < 0) {
-        w |> write("-")
-        return
-    }
-    let node = ast.nodes[n]
-    let form = NODE_FORMS[int(node.kind)]
-    w |> write("(")
-    w |> write(form._0)
-    if (places) {
-        let tok = unit.toks[node.tok]
-        w |> write("@{tok.line}:{tok.col}")
-    }
-    let fields = fixed_array(node.op, node.a, node.b, node.c, node.d)
-    for (role, v in form._1, fields) {
-        if (role == '-') {
-            continue
-        }
-        w |> write(" ")
-        if (role == 'k') {
-            w |> write(c_kind_name(v))
-        } elif (role == 's') {
-            w |> write(v < 0 ? "-" : pp_symbol_text(unit.lx, v))
-        } elif (role == 'i') {
-            w |> write("{v}")
-        } elif (role == 't') {
-            let count = node.kind == CNode.STRING ? node.b : 1
-            for (k in range(count)) {
-                w |> write(k > 0 ? " " : "")
-                w |> write(c_spelling(unit, v + k))
+        var steps : array<DumpStep>
+        var members : array<int>
+        steps |> push(DumpStep(node = n))
+        while (!empty(steps)) {
+            let step = steps[length(steps) - 1]
+            steps |> pop()
+            if (!empty(step.text)) {
+                w |> write(step.text)
+                continue
+            } elif (step.node < 0) {
+                w |> write("-")
+                continue
             }
-            break if (node.kind == CNode.STRING)
-        } elif (role == 'r') {
-            let last = unit.toks[node.b]
-            w |> write(c_text(unit, unit.toks[v].start, last.start + last.len - unit.toks[v].start))
-        } elif (role == 'n') {
-            dump_node(w, ast, unit, v, places)
-        } elif (role == 'l') {
-            w |> write("[")
-            var k = v
-            while (k >= 0) {
-                w |> write(k != v ? " " : "")
-                dump_node(w, ast, unit, k, places)
-                k = ast.nodes[k].next
+            let node = ast.nodes[step.node]
+            let form = NODE_FORMS[int(node.kind)]
+            w |> write("(")
+            w |> write(form._0)
+            if (places) {
+                let tok = unit.toks[node.tok]
+                w |> write("@{tok.line}:{tok.col}")
             }
-            w |> write("]")
+            steps |> push(DumpStep(node = -1, text = ")"))
+            var roles : int[5]
+            for (role, i in form._1, count()) {
+                roles[i] = role
+            }
+            let fields = fixed_array(node.op, node.a, node.b, node.c, node.d)
+            for (back in range(5)) {
+                let i = 4 - back
+                let role = roles[i]
+                let v = fields[i]
+                if (role == '-' || (role == 'i' && node.kind == CNode.STRING)) {
+                    continue
+                } elif (role == 'n') {
+                    steps |> push(DumpStep(node = v))
+                } elif (role == 'l') {
+                    members |> clear()
+                    var k = v
+                    while (k >= 0) {
+                        members |> push(k)
+                        k = ast.nodes[k].next
+                    }
+                    steps |> push(DumpStep(node = -1, text = "]"))
+                    for (m in range(length(members))) {
+                        steps |> push(DumpStep(node = members[length(members) - 1 - m]))
+                        if (m + 1 < length(members)) {
+                            steps |> push(DumpStep(node = -1, text = " "))
+                        }
+                    }
+                    steps |> push(DumpStep(node = -1, text = "["))
+                } else {
+                    steps |> push(DumpStep(node = -1, text = field_text(unit, node, role, v)))
+                }
+                steps |> push(DumpStep(node = -1, text = " "))
+            }
         }
     }
-    w |> write(")")
 }

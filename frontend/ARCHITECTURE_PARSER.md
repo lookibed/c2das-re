@@ -15,8 +15,12 @@ byte range in the lexer's working buffer, and its place: a file id, a line and a
 
 Nothing is allocated per token. The token array grows by doubling. A keyword is found by its
 symbol: `c_tokens_open` interns every keyword spelling in the lexer's interner once and records
-each one's kind in `keyword_of`, an array indexed by symbol, so an identifier's kind costs one
-index. A symbol interned later is past the array's end and is an identifier. The keyword table
+each one's kind in `kind_of_sym`, an array indexed by symbol, so an identifier's kind costs one
+index. A symbol the array does not know yet is read once, on its first token: a universal
+character name in it that C11 6.4.3p2 forbids (one naming a character below U+00A0 other than
+`$`, `@` and a backquote, a surrogate, or a code point past U+10FFFF) is an error,
+`invalid universal character name in '<spelling>'`, so no keyword is spelled through a UCN;
+otherwise the symbol is recorded as an identifier, the array growing by doubling. The keyword table
 `KEYWORDS` holds every spelling clang takes as a keyword under gnu17: the C99 and C11 keywords and
 the GNU alternates (`__const`, `__inline__`, `__restrict`, `__signed__`, `__volatile__`,
 `__attribute`, `asm`, `__typeof__`, `__alignof__`...), each alternate with its standard keyword's
@@ -37,8 +41,8 @@ OTHER and an unterminated comment are errors.
 
 A `#` that starts a line opens a line marker, `# <line> "<file>" <flags>` as `clang -E` writes it,
 or `#line <line> "<file>"`. The lines after it are placed at that line, in that file; a marker with
-no file keeps the file. The file name is interned as the bytes between its quotes, so a file a
-marker names again has its first id; file 0 is the unit's own name. Any other directive (`#pragma`
+no file keeps the file. A file name with a string prefix (`L"w.h"`) is an error. The file name is
+interned as the bytes between its quotes, so a file a marker names again has its first id; file 0 is the unit's own name. Any other directive (`#pragma`
 among them) is an error naming it. The first error ends the read and `unit.err` holds it as
 `file:line:col: what`.
 
@@ -58,7 +62,9 @@ line and column.
 `c_dump` writes a tree as one line, `(<name> <fields>)`: a missing node is `-`, a list is `[...]`,
 a symbol and a token are their spelling, and an attribute is its bytes as written. The roles drive
 the dump, so a new node kind needs only its row in `NODE_FORMS`. With `places`, each name carries
-`@line:col`. The tests compare trees through this text.
+`@line:col`. The tests compare trees through this text. The dump keeps its own stack of steps, a
+node or a piece of text each, so a tree of any depth costs no recursion: a flat sum of n terms is a
+left chain n nodes deep, though parsing it costs no recursion either (section 18).
 
 ## 16. The typedef-name table {#c-typedef-table}
 
@@ -73,7 +79,8 @@ The table decides each ambiguity at the token where it arises. A `(` opens a cas
 literal or a `sizeof`/`_Alignof` type operand when the token after it starts a type name: a type
 keyword or qualifier, a tag keyword, `typeof`, `_Alignas`, an attribute, a refused type word, or an
 identifier bound as a typedef. In a list of specifiers an identifier is a typedef name only while no
-type specifier came before it, so in `(long T)` the `T` is no type.
+type specifier came before it, so in `(long T)` the `T` is no type: it is left for the declarator,
+where a type name has no place for it.
 
 ## 17. Type names and declarators {#c-type-names}
 
@@ -82,6 +89,18 @@ specifiers are the builtin type keywords, the qualifiers (`_Atomic` as a qualifi
 `union` and `enum` with a tag and the attributes after the keyword, a typedef name, `typeof` of a
 type name or an expression, `_Alignas`, and `__attribute__((...))`. An attribute is kept whole: its
 node spans its tokens to the `)` that balances the first `(`, and nothing reads its content yet.
+
+The parser checks the type specifiers of a list as it reads them, by C11 6.7.2p2: each one is a
+bit of a set (a second `long` its own bit; a typedef name, a tag and `typeof` one bit for all), and
+the set must stay inside one of the largest sets that combine, `SPEC_SETS`: `void`; `char` with
+`signed` or `unsigned`; `short`, `int` and either sign; `long`, `long`, `int` and either sign;
+`float` with `_Complex`; `long`, `double` and `_Complex`; `_Bool`; a typedef name, a tag or
+`typeof` alone. A specifier already in the set, or one that takes the set outside them all, is an
+error at its token, `expected a type specifier that combines with those before it` (`(int int)`,
+`(short double)`, `(T int)`, `(int struct S)`). `_Complex` alone stays, as GNU C takes it. A list
+with no type specifier at all (`(const)`, `(_Alignas(8))`, a parameter `register x`) is refused,
+`a specifier list with no type specifier is not parsed`: C99 has no implicit `int`. So no
+combination check is left for the type pass.
 
 A declarator is parsed in one of three modes: named, abstract, or either, which a parameter takes.
 `*` with its qualifiers and attributes wraps the declarator after it; then a name, or a
@@ -93,10 +112,16 @@ specifiers may hold storage classes, and `...`.
 
 ## 18. Expressions {#c-expressions}
 
-Expressions follow C11 6.5 by recursive descent. The binary operators from `*` to `||` go by
-precedence climbing over ten levels, each left-associative; `?:` and the assignments bind to the
-right; the comma operator is a binary node of its own operator. A cast is tried before a unary
-expression: `(` and a type name make a cast, or a compound literal when `{` follows the `)`.
+Expressions follow C11 6.5 by recursive descent, but for the binary operators from `*` to `||`:
+those ten left-associative levels go by operator precedence over two explicit stacks in the parser
+(`operators`, `operands`), so `binary` is a loop. An operator waits on the stack until one that
+binds no tighter follows it; then it takes the two operands on top. A binary expression of any
+shape and length costs no recursion, and a nested one shares the stacks above the outer one's
+base. `?:` and the assignments bind to the right; the comma operator is a binary node of its own
+operator. A cast is tried before a unary expression: `(` and a type name make a cast, or a
+compound literal when `{` follows the `)`. Where a unary expression stands (the operand of `++`,
+`--` and `sizeof`) a `(` and a type name can only open a compound literal, so the `{` is required
+there. An argument list takes no trailing comma: `f(a,)` is `expected an expression`.
 `sizeof`, `_Alignof` and `__alignof__` take a parenthesised type name, a compound literal or a
 unary expression; the alignment nodes keep which keyword was spelled. A compound literal's
 initializer list holds positional items, `.member` and `[index]` designators, GNU `[first ...
@@ -118,10 +143,21 @@ not take reads `<construct> is not parsed`: a statement expression, a label addr
 `__real__`, `__imag__`, `__label__`, and the old GNU designator `member:`. Every loop either
 consumes a token or stops.
 
-Recursion is bounded: an assignment expression, a `?:` arm after the `:`, a prefix operator, a
-cast, an initializer list, a type name, a parameter list and a declarator's `*` or parentheses each
-open one level, and the 257th level is refused as `nesting deeper than 256 levels`. An expression
-in 255 parentheses is 256 levels. At the bound the interpreter's recursion takes up to about
-160 KiB of the context's stack, so a program that parses runs with `options stack = 262144` or more;
-without the bound, input nested deep enough ends the context with a stack overflow instead of a
-located error.
+Recursion is bounded so that deep input ends in a located refusal, never in a stack overflow,
+which ends the daslang context. A level is opened by each assignment expression, constant
+expression, `?:` arm after the `:`, prefix operator, cast, compound literal where a unary expression
+stands, initializer list, type name, parameter list, and a declarator's `*` or parentheses; every
+cycle of the parser's calls passes one of them. The 257th level is refused as `nesting deeper than
+256 levels`. An expression in 255 parentheses is 256 levels.
+
+The bound comes from the stack. Under the interpreter a level costs the frames between two
+openings, measured by the deepest input of each form that fits a 1 MiB stack: 80 bytes for a cast,
+an assignment, a `?:` arm or a `*`; 112 for a brace; 160 for a prefix operator; 320 for a parameter
+list or a `typeof`; 529 for a call; 593 for a parenthesis or a subscript; and 658, the most, for a
+`__builtin_offsetof` designator's index. 256 levels of the costliest form take about 165 KiB. The
+parser therefore runs on a context stack of at least 256 KiB (`options stack = 262144`), which
+leaves a third of it for the caller. A context's stack is the `options stack` of the program that
+made it, 16 KiB when none is given (daslang's default): a test's context takes its test file's
+option; a macro runs at compile time in the macro context of its own module, sized by that
+module's option, never by the module being compiled. So the module whose macro or program runs the
+parser states the option; on the default 16 KiB 24 parentheses fit.

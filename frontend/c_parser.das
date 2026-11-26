@@ -31,14 +31,15 @@ struct CParser {
     pos : int
     last : int          //!< the index of the EOF token
     depth : int         //!< the nesting the parser is in, bounded by `C_MAX_DEPTH`
+    operators : array<int>  //!< the binary operators waiting for their right operand, of every `binary` running
+    operands : array<int>   //!< the operands waiting for their operator, of every `binary` running
     failed : bool
     err : string
 }
 
-//! The deepest nesting the parser takes, in levels: an assignment expression, a `?:` arm after
-//! the `:`, a prefix operator, a cast, an initializer list, a type name, a parameter list and a
-//! declarator's `*` or parentheses each open one. Past it the input is refused, so the recursion
-//! stays within the stack the caller gives (`ARCHITECTURE_PARSER.md` section 19).
+//! The deepest nesting the parser takes, in levels (`ARCHITECTURE_PARSER.md` section 19 lists what
+//! opens one); past it the input is refused. 256 levels of the costliest form fit a 256 KiB stack
+//! with a third to spare, the stack a caller of the parser gives it.
 let C_MAX_DEPTH = 256
 
 //! Open a scope: the bindings made from now on end at its close.
@@ -85,6 +86,8 @@ def c_parser_open_text(var p : CParser; text, name : string) : bool {
     p.pos = 0
     p.last = length(p.unit.toks) - 1
     p.depth = 0
+    p.operators |> clear()
+    p.operands |> clear()
     p.failed = !clean
     p.err = p.unit.err
     return clean
@@ -257,34 +260,86 @@ def private typeof_or_alignas(var p : CParser) : int {
     return n
 }
 
+//! A type specifier of C11 6.7.2 as one bit of a set: a builtin keyword's bit by its kind's place
+//! after `void`, a second `long` its own bit, and a typedef name, a tag or `typeof` one bit for all.
+let private SPEC_LONG = 1 << (int(CTok.LONG) - int(CTok.VOID))
+
+let private SPEC_LONG_LONG = 1 << 12
+
+let private SPEC_OTHER = 1 << 13
+
+//! The largest sets of type specifiers that combine (C11 6.7.2p2, `_Complex` as GNU C takes it); a
+//! set combines when one of these holds it.
+let private SPEC_SETS = fixed_array(
+    spec_set(fixed_array(CTok.VOID)),
+    spec_set(fixed_array(CTok.CHAR, CTok.SIGNED)),
+    spec_set(fixed_array(CTok.CHAR, CTok.UNSIGNED)),
+    spec_set(fixed_array(CTok.SHORT, CTok.INT, CTok.SIGNED)),
+    spec_set(fixed_array(CTok.SHORT, CTok.INT, CTok.UNSIGNED)),
+    spec_set(fixed_array(CTok.LONG, CTok.INT, CTok.SIGNED)) | SPEC_LONG_LONG,
+    spec_set(fixed_array(CTok.LONG, CTok.INT, CTok.UNSIGNED)) | SPEC_LONG_LONG,
+    spec_set(fixed_array(CTok.FLOAT, CTok.COMPLEX)),
+    spec_set(fixed_array(CTok.LONG, CTok.DOUBLE, CTok.COMPLEX)),
+    spec_set(fixed_array(CTok.BOOL)),
+    SPEC_OTHER)
+
+def private spec_set(kinds : CTok[]) : int {
+    var set = 0
+    for (k in kinds) {
+        set |= 1 << (int(k) - int(CTok.VOID))
+    }
+    return set
+}
+
+//! the set `set` of type specifiers with the one of kind `k` added (`IDENTIFIER` for a typedef name,
+//! a tag or `typeof`), or -1 when the result is in no set of `SPEC_SETS`
+[arch(at="ARCHITECTURE_PARSER.md#c-type-names")]
+def private with_specifier(set, k : int) : int {
+    var bit = is_type_keyword(k) ? 1 << (k - int(CTok.VOID)) : SPEC_OTHER
+    if (bit == SPEC_LONG && (set & SPEC_LONG) != 0) {
+        bit = SPEC_LONG_LONG
+    }
+    return -1 if ((set & bit) != 0)
+    let joined = set | bit
+    for (valid in SPEC_SETS) {
+        return joined if ((joined & ~valid) == 0)
+    }
+    return -1
+}
+
 //! Specifiers and qualifiers at the cursor, as a list; storage classes and function specifiers
 //! only when `storage` allows them. An identifier is a typedef name only while no type specifier
-//! came before it.
+//! came before it; a type specifier that does not combine with those before it is an error.
+//! `typed` answers whether a type specifier came.
 [arch(at="ARCHITECTURE_PARSER.md#c-typedef-table")]
-def private specifiers(var p : CParser; storage : bool) : int {
+def private specifiers(var p : CParser; storage : bool; var typed : bool&) : int {
     var list = CList()
-    var seen_type = false
+    var set = 0
     while (!p.failed) {
         let k = kind(p)
+        let typedef_name = k == int(CTok.IDENTIFIER) && set == 0 && c_is_typedef(p, sym(p))
+        if (typedef_name || is_type_keyword(k) || (k >= int(CTok.STRUCT) && k <= int(CTok.ENUM)) || k == int(CTok.TYPEOF)) {
+            set = with_specifier(set, k)
+            if (set < 0) {
+                fail(p, "a type specifier that combines with those before it")
+                break
+            }
+        }
         var n = -1
         if (is_type_keyword(k) || is_qualifier(k) || (storage && k >= int(CTok.TYPEDEF) && k <= int(CTok.NORETURN))) {
             if (k == int(CTok.ATOMIC) && kind_at(p, 1) == int(CTok.LPAREN)) {
                 refuse(p, "the _Atomic(type) specifier")
                 break
             }
-            seen_type = seen_type || is_type_keyword(k)
             n = node(p, CNode.SPEC_KEYWORD, p.pos, k)
             p.pos++
         } elif (k == int(CTok.IDENTIFIER)) {
-            break if (seen_type || !c_is_typedef(p, sym(p)))
+            break if (!typedef_name)
             n = node(p, CNode.SPEC_TYPEDEF_NAME, p.pos, 0, sym(p))
             p.pos++
-            seen_type = true
         } elif (k >= int(CTok.STRUCT) && k <= int(CTok.ENUM)) {
             n = tag_specifier(p)
-            seen_type = true
         } elif (k == int(CTok.TYPEOF) || k == int(CTok.ALIGNAS)) {
-            seen_type = seen_type || k == int(CTok.TYPEOF)
             n = typeof_or_alignas(p)
         } elif (k == int(CTok.ATTRIBUTE)) {
             n = attribute(p)
@@ -297,7 +352,15 @@ def private specifiers(var p : CParser; storage : bool) : int {
         }
         c_append(p.ast, list, n)
     }
+    typed = set != 0
     return list.head
+}
+
+//! the refusal of a specifier list starting at token `at` that holds no type specifier: C99 has no
+//! implicit `int`
+def private untyped(var p : CParser; at : int) {
+    p.pos = at
+    refuse(p, "a specifier list with no type specifier")
 }
 
 //! qualifiers and attributes after a `*` or inside `[]`
@@ -368,9 +431,13 @@ def private parameters(var p : CParser; f : int) {
                 break
             }
             let at = p.pos
-            let specs = specifiers(p, true)
+            var typed = false
+            let specs = specifiers(p, true, typed)
             if (specs < 0) {
                 fail(p, "a parameter declaration")
+                break
+            } elif (!typed) {
+                untyped(p, at)
                 break
             }
             let d = declarator(p, CDeclarator.EITHER)
@@ -449,10 +516,13 @@ def private declarator(var p : CParser; mode : CDeclarator) : int {
 def c_type_name(var p : CParser) : int {
     let at = p.pos
     return -1 if (!enter(p))
-    let specs = specifiers(p, false)
+    var typed = false
+    let specs = specifiers(p, false, typed)
     var n = -1
     if (specs < 0) {
         fail(p, "a type name")
+    } elif (!typed) {
+        untyped(p, at)
     } else {
         n = node(p, CNode.TYPE_NAME, at, 0, specs, declarator(p, CDeclarator.ABSTRACT))
     }
@@ -528,9 +598,11 @@ def private postfix(var p : CParser; first : int) : int {
             lhs = node(p, CNode.INDEX, at, 0, lhs, index)
         } elif (accept(p, CTok.LPAREN)) {
             var args = CList()
-            while (!p.failed && kind(p) != int(CTok.RPAREN)) {
+            if (kind(p) != int(CTok.RPAREN)) {
                 c_append(p.ast, args, c_assignment(p))
-                break if (!accept(p, CTok.COMMA))
+                while (!p.failed && accept(p, CTok.COMMA)) {
+                    c_append(p.ast, args, c_assignment(p))
+                }
             }
             take(p, CTok.RPAREN)
             lhs = node(p, CNode.CALL, at, 0, lhs, args.head)
@@ -647,6 +719,24 @@ def private size_or_align(var p : CParser; at, k : int) : int {
 }
 
 //! `k` starts a unary expression by a prefix operator or keyword
+//! a compound literal where a unary expression stands (the operand of `++`, `--`, `sizeof`): `(`, a
+//! type name, `)` and the `{` a cast would not need
+def private paren_compound_literal(var p : CParser) : int {
+    let at = p.pos
+    return -1 if (!enter(p))
+    p.pos++
+    let t = c_type_name(p)
+    take(p, CTok.RPAREN)
+    var n = -1
+    if (kind(p) == int(CTok.LBRACE)) {
+        n = compound_literal(p, at, t)
+    } else {
+        fail(p, "'\{' after a parenthesised type name")
+    }
+    leave(p)
+    return n
+}
+
 def private is_prefix(k : int) : bool {
     return (k == int(CTok.INC) || k == int(CTok.DEC) || k == int(CTok.AMP) || k == int(CTok.STAR) || k == int(CTok.PLUS)
         || k == int(CTok.MINUS) || k == int(CTok.TILDE) || k == int(CTok.EXCLAIM) || k == int(CTok.SIZEOF)
@@ -659,6 +749,8 @@ def private unary(var p : CParser) : int {
     if (k == int(CTok.AND_AND)) {
         refuse(p, "a label address (&&label)")
         return -1
+    } elif (k == int(CTok.LPAREN) && type_starts_at(p, p.pos + 1)) {
+        return paren_compound_literal(p)
     } elif (!is_prefix(k)) {
         return postfix(p, primary(p))
     }
@@ -725,23 +817,48 @@ def private binary_level(k : int) : int {
     return k == int(CTok.OR_OR) ? 1 : 0
 }
 
-//! precedence climbing over the left-associative binary operators of `min_level` and up
+//! the operator on top of `p.operators` applied to the two operands on top of `p.operands`
+def private reduce(var p : CParser) {
+    let top = length(p.operands) - 1
+    let lhs = p.operands[top - 1]
+    let rhs = p.operands[top]
+    let op = p.operators[length(p.operators) - 1]
+    p.operators |> pop()
+    p.operands |> pop()
+    let n = node(p, CNode.BINARY, start_of(p, lhs), op, lhs, rhs)
+    p.operands[top - 1] = n
+}
+
+//! the left-associative binary operators by operator precedence over explicit stacks, so a binary
+//! expression of any shape costs no recursion: an operator waits on `p.operators` until one that
+//! binds no tighter follows it
 [arch(at="ARCHITECTURE_PARSER.md#c-expressions")]
-def private binary(var p : CParser; min_level : int) : int {
-    var lhs = cast_expr(p)
+def private binary(var p : CParser) : int {
+    let base = length(p.operators)
+    let first = cast_expr(p)
+    p.operands |> push(first)
     while (!p.failed) {
         let k = kind(p)
         let level = binary_level(k)
-        break if (level == 0 || level < min_level)
+        break if (level == 0)
+        while (length(p.operators) > base && binary_level(p.operators[length(p.operators) - 1]) >= level) {
+            reduce(p)
+        }
+        p.operators |> push(k)
         p.pos++
-        let rhs = binary(p, level + 1)
-        lhs = node(p, CNode.BINARY, start_of(p, lhs), k, lhs, rhs)
+        let operand = cast_expr(p)
+        p.operands |> push(operand)
     }
-    return lhs
+    while (length(p.operators) > base) {
+        reduce(p)
+    }
+    let result = p.operands[length(p.operands) - 1]
+    p.operands |> pop()
+    return result
 }
 
 def private conditional(var p : CParser) : int {
-    let c = binary(p, 1)
+    let c = binary(p)
     return c if (p.failed || !accept(p, CTok.QUESTION))
     let then_value = kind(p) != int(CTok.COLON) ? c_expression(p) : -1
     take(p, CTok.COLON)
@@ -751,8 +868,14 @@ def private conditional(var p : CParser) : int {
     return node(p, CNode.COND, start_of(p, c), 0, c, then_value, else_value)
 }
 
-//! A constant expression at the cursor (C11 6.6): a conditional expression.
-def c_constant_expression(var p : CParser) : int => conditional(p)
+//! A constant expression at the cursor (C11 6.6): a conditional expression, one nesting level.
+[arch(at="ARCHITECTURE_PARSER.md#c-parser-errors")]
+def c_constant_expression(var p : CParser) : int {
+    return -1 if (!enter(p))
+    let n = conditional(p)
+    leave(p)
+    return n
+}
 
 def private is_assign_op(k : int) : bool => k == int(CTok.ASSIGN) || (k >= int(CTok.MUL_ASSIGN) && k <= int(CTok.OR_ASSIGN))
 

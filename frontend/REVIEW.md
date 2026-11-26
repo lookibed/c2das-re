@@ -46,5 +46,7 @@ a panic. Each new error message has a test with its exact text and place.**
 
 **A diff that adds a loop to `c_parser.das` makes each turn consume a token or end at the first
 error; one that adds a recursion a run of tokens can repeat makes it open a nesting level
-(`enter`), so the bound of `ARCHITECTURE_PARSER.md` section 19 holds.** Malformed input must end,
-and deep input must end in a refusal, not a stack overflow.
+(`enter`), so the bound of `ARCHITECTURE_PARSER.md` section 19 holds; one that adds frames between
+two levels re-measures that section's bytes per level and keeps `tests/test_c_parse_expr.das`'s
+costliest form at the bound.** Malformed input must end, and deep input must end in a refusal, not
+a stack overflow.

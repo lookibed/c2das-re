@@ -49,6 +49,9 @@ def test_postfix(t : T?) {
     t |> equal(parsed("a[i]"), "(index (ident a) (ident i))")
     t |> equal(parsed("f()"), "(call (ident f) [])")
     t |> equal(parsed("f(a, b = 1)"), "(call (ident f) [(ident a) (assign = (ident b) (int 1))])")
+    t |> equal(parsed("f(a,)"), "error: t.c:1:5: expected an expression, got ')'")
+    t |> equal(parsed("f(a, b,)"), "error: t.c:1:8: expected an expression, got ')'")
+    t |> equal(parsed("f(,)"), "error: t.c:1:3: expected an expression, got ','")
     t |> equal(parsed("s.x"), "(member . (ident s) x)")
     t |> equal(parsed("p->x"), "(member -> (ident p) x)")
     t |> equal(parsed("i++"), "(postfix ++ (ident i))")
@@ -62,6 +65,48 @@ def test_compound_literal(t : T?) {
                "(compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (int 1)) (init [(field x)] (int 2)) (init [(index_desig (int 3) -)] (int 4)) (init [(index_desig (int 1) (int 2))] (int 5)) (init [] (init_list [(init [] (int 6))]))]))")
     t |> equal(parsed("(int[])\{\}"), "(compound_literal (type_name [(spec int)] (d_array 0 - - [])) (init_list []))")
     t |> equal(parsed("(T)\{.a.b[0] = 1\}.a"), "(member . (compound_literal (type_name [(typedef_name T)] -) (init_list [(init [(field a) (field b) (index_desig (int 0) -)] (int 1))])) a)")
+}
+
+[test(description = "a compound literal is a postfix expression, so it is the operand of `++`, `--`, `sizeof` and every other unary operator; a parenthesised type name there without its braces is an error")]
+def test_compound_literal_operands(t : T?) {
+    t |> equal(parsed("++(T)\{1\}"), "(unary ++ (compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (int 1))])))")
+    t |> equal(parsed("--(T)\{1\}.x"), "(unary -- (member . (compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (int 1))])) x))")
+    t |> equal(parsed("++(int)\{1\}"), "(unary ++ (compound_literal (type_name [(spec int)] -) (init_list [(init [] (int 1))])))")
+    t |> equal(parsed("sizeof ++(T)\{1\}"), "(sizeof_expr (unary ++ (compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (int 1))]))))")
+    t |> equal(parsed("&(T)\{1\}"), "(unary & (compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (int 1))])))")
+    t |> equal(parsed("++(int)x"), "error: t.c:1:8: expected '\{' after a parenthesised type name, got 'x'")
+}
+
+[test(description = "the type specifiers of a list combine by C11 6.7.2p2 or the one that does not is an error at its token; a typedef name after a type specifier is no type; a list with no type specifier is refused")]
+def test_specifier_combinations(t : T?) {
+    t |> run("the combinations 6.7.2p2 lists, in any order, and GNU `_Complex` alone") @(t : T?) {
+        t |> equal(parsed("(long long int)x"), "(cast (type_name [(spec long) (spec long) (spec int)] -) (ident x))")
+        t |> equal(parsed("(int long long unsigned)x"), "(cast (type_name [(spec int) (spec long) (spec long) (spec unsigned)] -) (ident x))")
+        t |> equal(parsed("(short unsigned int)x"), "(cast (type_name [(spec short) (spec unsigned) (spec int)] -) (ident x))")
+        t |> equal(parsed("(signed char)x"), "(cast (type_name [(spec signed) (spec char)] -) (ident x))")
+        t |> equal(parsed("(long double _Complex)x"), "(cast (type_name [(spec long) (spec double) (spec _Complex)] -) (ident x))")
+        t |> equal(parsed("(_Complex)x"), "(cast (type_name [(spec _Complex)] -) (ident x))")
+        t |> equal(parsed("(const T const)x"), "(cast (type_name [(spec const) (typedef_name T) (spec const)] -) (ident x))")
+    }
+    t |> run("a specifier that does not combine with those before it") @(t : T?) {
+        let cases = fixed_array(("(T int)x", "1:4", "int"), ("(int int)x", "1:6", "int"), ("(long long long)x", "1:12", "long"),
+            ("(short double)x", "1:8", "double"), ("(unsigned float)x", "1:11", "float"), ("(signed unsigned)x", "1:9", "unsigned"),
+            ("(void int)x", "1:7", "int"), ("(_Bool char)x", "1:8", "char"), ("(struct S int)x", "1:11", "int"),
+            ("(int struct S)x", "1:6", "struct"), ("(T typeof(x))y", "1:4", "typeof"))
+        for (c in cases) {
+            t |> equal(parsed(c._0), "error: t.c:{c._1}: expected a type specifier that combines with those before it, got '{c._2}'", c._0)
+        }
+    }
+    t |> run("a typedef name after a type specifier is no type specifier") @(t : T?) {
+        t |> equal(parsed("(long T)x"), "error: t.c:1:7: expected ')', got 'T'")
+        t |> equal(parsed("(typeof(x) T)x"), "error: t.c:1:12: expected ')', got 'T'")
+    }
+    t |> run("no type specifier at all: C99 has no implicit int") @(t : T?) {
+        t |> equal(parsed("(const)x"), "error: t.c:1:2: a specifier list with no type specifier is not parsed")
+        t |> equal(parsed("sizeof(const)"), "error: t.c:1:8: a specifier list with no type specifier is not parsed")
+        t |> equal(parsed("(_Alignas(8))x"), "error: t.c:1:2: a specifier list with no type specifier is not parsed")
+        t |> equal(parsed("(void (*)(register x))f"), "error: t.c:1:11: a specifier list with no type specifier is not parsed")
+    }
 }
 
 [test(description = "every unary operator, `sizeof` of an expression, a type name and a compound literal, and `_Alignof` and `__alignof__` keeping which keyword was spelled")]
@@ -285,20 +330,44 @@ def test_malformed(t : T?) {
     }
 }
 
-[test(description = "nesting is bounded: 256 levels parse, one more is refused at the token that opens it, and no chain of any recursive form runs the stack out")]
+// `text` repeated `count` times, then `inner`, then `closer` repeated `count` times
+def private nested(text : string; count : int; inner, closer : string) : string => "{repeat(text, count)}{inner}{repeat(closer, count)}"
+
+[test(description = "nesting is bounded: 256 levels parse within the test's 256 KiB stack, one more is refused at the token that opens it, a binary operator ladder costs no level, and no chain of any recursive form runs the stack out")]
 def test_nesting_bound(t : T?) {
     t |> run("an expression in 255 parentheses is 256 levels and parses; 256 parentheses are refused at the last") @(t : T?) {
-        t |> success(parsed("{repeat("(", 255)}x{repeat(")", 255)}") |> starts_with("(paren (paren"))
-        t |> equal(parsed("{repeat("(", 256)}x{repeat(")", 256)}"), "error: t.c:1:257: nesting deeper than 256 levels is not parsed")
+        t |> success(parsed(nested("(", 255, "x", ")")) |> starts_with("(paren (paren"))
+        t |> equal(parsed(nested("(", 256, "x", ")")), "error: t.c:1:257: nesting deeper than 256 levels is not parsed")
+    }
+    t |> run("a ladder of every binary level inside each parenthesis costs no more than the parenthesis; a subscript or a call and its parenthesis cost two") @(t : T?) {
+        let ladder = "(a||a&&a|a^a&a==a<a<<a+a*"
+        t |> success(parsed(nested(ladder, 255, "x", ")")) |> starts_with("(paren (binary || (ident a) (binary &&"))
+        t |> equal(parsed(nested(ladder, 256, "x", ")")), "error: t.c:1:{255 * length(ladder) + 2}: nesting deeper than 256 levels is not parsed")
+        t |> success(parsed(nested("a[{ladder}", 127, "x", ")]")) |> starts_with("(index (ident a)"))
+        t |> success(parsed(nested("f({ladder}", 127, "x", "))")) |> starts_with("(call (ident f)"))
+    }
+    t |> run("the deepest frames per level, `__builtin_offsetof` designators, at the bound") @(t : T?) {
+        t |> success(parsed(nested("__builtin_offsetof(T, a[", 255, "0", "])")) |> starts_with("(offsetof"))
+        t |> equal(parsed(nested("__builtin_offsetof(T, a[", 256, "0", "])")), "error: t.c:1:{255 * 24 + 20}: nesting deeper than 256 levels is not parsed")
     }
     t |> run("every recursive form ends with the refusal") @(t : T?) {
         let chains = fixed_array("{repeat("- ", 3000)}x", "(int {repeat("*", 3000)})x", "(T){repeat("\{", 3000)}",
-            "{repeat("a ? b : ", 3000)}c", "{repeat("a = ", 3000)}c", "{repeat("(T)", 3000)}x", "{repeat("f(", 3000)}",
-            "(int {repeat("(int ", 3000)})x", "{repeat("sizeof ", 3000)}x", "(typeof({repeat("typeof(", 3000)}", "{repeat("a[", 3000)}")
+            "{repeat("a ? b : ", 3000)}c", "{repeat("a ? ", 3000)}c", "{repeat("a = ", 3000)}c", "{repeat("(T)", 3000)}x", "{repeat("f(", 3000)}",
+            "(int {repeat("(int ", 3000)})x", "{repeat("sizeof ", 3000)}x", "(typeof({repeat("typeof(", 3000)}", "{repeat("a[", 3000)}",
+            "{repeat("++(T)\{", 3000)}", "{repeat("sizeof(typeof(", 3000)}", "{repeat("__builtin_offsetof(T, a[", 3000)}",
+            "(int {repeat("(*", 3000)}")
         for (text in chains) {
             t |> success(parsed(text) |> ends_with("nesting deeper than 256 levels is not parsed"), slice(text, 0, 12))
         }
     }
+}
+
+[test(description = "the dump walks a tree of any depth with its own stack: a flat sum of 5000 terms is a left chain 5000 nodes deep")]
+def test_deep_dump(t : T?) {
+    let text = "a{repeat(" + a", 4999)}"
+    let dump = parsed(text)
+    t |> success(dump |> starts_with("{repeat("(binary + ", 4999)}(ident a)"))
+    t |> success(dump |> ends_with(" (ident a))"))
 }
 
 [test(description = "every node is placed at its first token, through a line marker too, and an error names the file a marker named")]
