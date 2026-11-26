@@ -79,13 +79,18 @@ def test_compound_literal_operands(t : T?) {
 
 [test(description = "the type specifiers of a list combine by C11 6.7.2p2 or the one that does not is an error at its token; a typedef name after a type specifier is no type; a list with no type specifier is refused")]
 def test_specifier_combinations(t : T?) {
-    t |> run("the combinations 6.7.2p2 lists, in any order, and GNU `_Complex` alone") @(t : T?) {
+    t |> run("the combinations 6.7.2p2 lists, in any order, GNU `_Complex` beside every integer type, and `_Complex` alone") @(t : T?) {
         t |> equal(parsed("(long long int)x"), "(cast (type_name [(spec long) (spec long) (spec int)] -) (ident x))")
         t |> equal(parsed("(int long long unsigned)x"), "(cast (type_name [(spec int) (spec long) (spec long) (spec unsigned)] -) (ident x))")
         t |> equal(parsed("(short unsigned int)x"), "(cast (type_name [(spec short) (spec unsigned) (spec int)] -) (ident x))")
         t |> equal(parsed("(signed char)x"), "(cast (type_name [(spec signed) (spec char)] -) (ident x))")
         t |> equal(parsed("(long double _Complex)x"), "(cast (type_name [(spec long) (spec double) (spec _Complex)] -) (ident x))")
         t |> equal(parsed("(_Complex)x"), "(cast (type_name [(spec _Complex)] -) (ident x))")
+        for (text in fixed_array("_Complex int", "int _Complex", "_Complex signed char", "unsigned _Complex char", "short int _Complex",
+                "_Complex unsigned short", "_Complex signed short", "long _Complex int", "signed long long _Complex", "_Complex long long", "unsigned long long _Complex", "_Complex unsigned")) {
+            var inscope specs <- [for (w in split(text, " ")); "(spec {w})"]
+            t |> equal(parsed("({text})x"), "(cast (type_name [{join(specs, " ")}] -) (ident x))", text)
+        }
         t |> equal(parsed("(const T const)x"), "(cast (type_name [(spec const) (typedef_name T) (spec const)] -) (ident x))")
         t |> equal(parsed("(unsigned char)x"), "(cast (type_name [(spec unsigned) (spec char)] -) (ident x))")
         t |> equal(parsed("(signed short)x"), "(cast (type_name [(spec signed) (spec short)] -) (ident x))")
@@ -97,7 +102,8 @@ def test_specifier_combinations(t : T?) {
         let cases = fixed_array(("(T int)x", "1:4", "int"), ("(int int)x", "1:6", "int"), ("(long long long)x", "1:12", "long"),
             ("(short double)x", "1:8", "double"), ("(unsigned float)x", "1:11", "float"), ("(signed unsigned)x", "1:9", "unsigned"),
             ("(void int)x", "1:7", "int"), ("(_Bool char)x", "1:8", "char"), ("(struct S int)x", "1:11", "int"),
-            ("(int struct S)x", "1:6", "struct"), ("(T typeof(x))y", "1:4", "typeof"))
+            ("(int struct S)x", "1:6", "struct"), ("(T typeof(x))y", "1:4", "typeof"), ("(_Complex _Bool)x", "1:11", "_Bool"),
+            ("(_Bool _Complex)x", "1:8", "_Complex"), ("(_Complex void)x", "1:11", "void"), ("(_Complex long float)x", "1:16", "float"))
         for (c in cases) {
             t |> equal(parsed(c._0), "error: t.c:{c._1}: expected a type specifier that combines with those before it, got '{c._2}'", c._0)
         }
