@@ -82,12 +82,14 @@ def test_records(t : T?) {
     }
 }
 
-[test(description = "attributes on a record and its members are kept as nodes: after the keyword, after the body, before a later member declarator and after a member, a bit-field's included")]
+[test(description = "attributes on a record and its members are kept as nodes: after the keyword, after the body, before a later member declarator and after a member, a bit-field's included; several in a row keep their order")]
 def test_record_attributes(t : T?) {
     t |> equal(unit("struct __attribute__((packed)) P \{ int a __attribute__((aligned(8))), __attribute__((x)) b; \} __attribute__((aligned(16)));"),
                "(decl 0 [(record struct P 1 [(member_decl 0 [(spec int)] [(member (d_name a) - [(attribute __attribute__((aligned(8))))]) (member (d_name b) - [(attribute __attribute__((x)))])])] [(attribute __attribute__((packed))) (attribute __attribute__((aligned(16))))])] [])")
     t |> equal(unit("struct Q \{ int a : 3 __attribute__((packed)); \} __attribute__((packed)) __attribute__((aligned(4))) q;"),
                "(decl 0 [(record struct Q 1 [(member_decl 0 [(spec int)] [(member (d_name a) (int 3) [(attribute __attribute__((packed)))])])] [(attribute __attribute__((packed))) (attribute __attribute__((aligned(4))))])] [(init_decl (d_name q) - -)])")
+    t |> equal(unit("struct __attribute__((a)) __attribute__((b)) R \{ int x, __attribute__((c)) __attribute__((d)) y __attribute__((e)); \} __attribute__((f));"),
+               "(decl 0 [(record struct R 1 [(member_decl 0 [(spec int)] [(member (d_name x) -) (member (d_name y) - [(attribute __attribute__((c))) (attribute __attribute__((d))) (attribute __attribute__((e)))])])] [(attribute __attribute__((a))) (attribute __attribute__((b))) (attribute __attribute__((f)))])] [])")
 }
 
 [test(description = "enum bodies: enumerators with and without constant expressions, a trailing comma, attributes on the enum and an enumerator; each enumerator an ordinary identifier from the end of its own definition on")]
