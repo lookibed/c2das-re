@@ -41,7 +41,8 @@ def daslang_run(name, source : string; flags : array<string>; modules : array<st
     args |> push_from(flags)
     args |> push(path)
     args |> push_from(args_after)
-    let rc = run_and_capture(args, out, 60.0)
+    // a JIT child beside a full test lane has taken more than a minute; a killed child prints no result
+    let rc = run_and_capture(args, out, 300.0)
     if (jit) {
         set_env_variable("DAS_LOG_LEVEL", level)
     }
