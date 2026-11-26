@@ -5,8 +5,9 @@ holds the part of the converter that reads C with no clang behind it. Today that
 header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
 `converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
 sidecar reader and Dumper A read, the first stage of Dumper C's preprocessor, the pp-token
-lexer of section 4, and the C tokens of a preprocessed unit, which Dumper C's parser reads
-(`ARCHITECTURE_PARSER.md`, section 5). No converter pass calls the lexer or the token view.
+lexer of section 4, and the first part of Dumper C's parser, which reads the C tokens of a
+preprocessed unit, its expressions and its type names (`ARCHITECTURE_PARSER.md`, sections 5 to
+10). No converter pass calls the lexer or the parser.
 
 ## 1. File charters
 
@@ -20,8 +21,13 @@ lexer of section 4, and the C tokens of a preprocessed unit, which Dumper C's pa
   pp-token rules, the placing of a token in its original file. Requires dasFlex's `flex/flex_macro`.
 - `c_tokens.das` - the C tokens of a preprocessed unit over the pp-lexer: keywords by symbol,
   pp-numbers classified, line markers read (`ARCHITECTURE_PARSER.md` section 5).
-- `tests/test_c_tokens.das` - every token class, keyword family and line-marker case, each error
-  with its place, and the allocation probe.
+- `c_ast.das` - the tree in one node array and its one-line dump (section 6). No parsing.
+- `c_parser.das` - the recursive-descent parser: the typedef-name table, type names and
+  declarators, expressions, the errors and the nesting bound (sections 7 to 10). One module, since
+  the grammar's parts call each other.
+- `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and
+  line-marker case; every expression and type-name form as a dumped tree, the ambiguities, every
+  refusal and malformed input with its message, the nesting bound, and the allocation probes.
 - `tests/test_pp_lexer.das` - every token class and edge case of section 4, the placing through
   splices, interning, and the no-allocation probe over a real header. The clang comparison lives
   outside this folder: `compare/pp/` (section 2).

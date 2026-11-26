@@ -23,3 +23,17 @@ test is never loosened - and runs the oracle (`das compare/pp/run.das -- --corpu
 c-testsuite`, and `--raw compare/pp/fixtures/edge_tokens.c compare/pp/fixtures/bom_tokens.c`) with its difference
 count stated.**
 A rule change that still passes the unit tests can split or merge a token clang lexes otherwise.
+
+**A diff to `c_tokens.das` or `c_parser.das` never makes a token or a node allocate on its own -
+the allocation tests of `tests/test_c_tokens.das` and `tests/test_c_parse_expr.das` are never
+loosened.**
+
+**A diff that makes `c_tokens.das` or `c_parser.das` reject an input ends it with one error at a
+token's place, `file:line:col: ...`: a construct it does not take as `<construct> is not parsed`,
+malformed input as `expected <what>, got <token>` - never a tree built past the error, a guess, or
+a panic. Each new error message has a test with its exact text and place.**
+
+**A diff that adds a loop to `c_parser.das` makes each turn consume a token or end at the first
+error; one that adds a recursion a run of tokens can repeat makes it open a nesting level
+(`enter`), so the bound of `ARCHITECTURE_PARSER.md` section 10 holds.** Malformed input must end,
+and deep input must end in a refusal, not a stack overflow.
