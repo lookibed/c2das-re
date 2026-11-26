@@ -130,7 +130,7 @@ def test_punctuators(t : T?) {
         t |> equal(c_kind_name(int(CTok.SHL_ASSIGN)), "<<=")
         t |> equal(c_kind_name(int(CTok.LBRACE)), "\{")
         t |> equal(c_kind_name(int(CTok.GNU_ALIGNOF)), "__alignof__")
-        t |> equal(c_kind_name(int(CTok.IDENTIFIER)), "an identifier")
+        t |> equal(c_kind_name(int(CTok.IDENTIFIER)), "token kind 256")
     }
     t |> run("a digraph") @(t : T?) {
         t |> equal(kind_of("<:"), int(CTok.LBRACKET))
@@ -173,6 +173,7 @@ def test_line_markers(t : T?) {
         t |> equal(lexed("x\n#\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
         t |> equal(lexed("#line x"), "error: t.c:1:7: the directive '#x' is not parsed")
         t |> equal(lexed("# 0x10 \"a.c\""), "error: t.c:1:3: the directive '#0x10' is not parsed")
+        t |> equal(lexed("# 9999999999 \"a.c\""), "error: t.c:1:3: the directive '#9999999999' is not parsed")
     }
 }
 

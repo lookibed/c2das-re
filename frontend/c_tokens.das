@@ -189,7 +189,8 @@ def c_where(var unit : CUnit; t : int) : string {
     return "{c_file_name(unit, tok.file)}:{tok.line}:{tok.col}"
 }
 
-//! The name of token kind `k` as a message spells it: a punctuator or a keyword's first spelling.
+//! The name of token kind `k` as a message spells it: a punctuator or a keyword's first spelling;
+//! any other kind by its number.
 def c_kind_name(k : int) : string {
     return to_char(k) if (k > 0 && k < 256)
     let puncts = fixed_array("...", "->", "++", "--", "<<", ">>", "<=", ">=", "==", "!=", "&&", "||", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=", "^=", "|=")
@@ -197,7 +198,7 @@ def c_kind_name(k : int) : string {
     for (kw in KEYWORDS) {
         return kw._0 if (int(kw._1) == k)
     }
-    return k == int(CTok.EOF) ? "end of input" : k == int(CTok.IDENTIFIER) ? "an identifier" : "a constant"
+    return "token kind {k}"
 }
 
 //! The symbol of `name` in the unit's interner, interned when new.
