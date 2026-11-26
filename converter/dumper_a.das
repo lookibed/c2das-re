@@ -4414,9 +4414,12 @@ def private name_unnamed_types(var layouts : LayoutSet) {
             while (open >= 0) {
                 let close = find(entry.signature, PLACE_CLOSE, open)
                 let place = slice(entry.signature, open + length(PLACE_OPEN), close)
+                // the place is that of an unnamed type's declaration, which C can only write as its
+                // definition, and `collect_layouts` holds every definition under the unit; were one
+                // missing, the index below is out of range and stops the conversion
                 let named = layouts.by_loc?[place] ?? -1
                 w |> write(slice(entry.signature, from, open))
-                w |> write(named < 0 ? " = nowhere" : " = {layouts.entries[named].key}")
+                w |> write(" = {layouts.entries[named].key}")
                 from = close + length(PLACE_CLOSE)
                 open = find(entry.signature, PLACE_OPEN, from)
             }

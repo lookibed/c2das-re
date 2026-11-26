@@ -208,7 +208,8 @@ def test_layout_guard_keys(t : T?) {
     t |> run("an enum the dump defines is compared too: `packed` behind `__clang__` is refused") @(t : T?) {
         let conv <- guard_convert(dir, "enum_packed", "#ifdef __clang__\n#define ATTR __attribute__((packed))\n#else\n#define ATTR\n#endif\nenum small \{ S0, S1 \} ATTR;\nint main(void) \{ enum small e = S1; return e - 1; \}\n", "")
         t |> equal(conv.ok, false, conv.das_text)
-        t |> success(conv.error |> contains("`enum small` is laid out as [size 4, align 4, of `unsigned int`] under the dialect's predefined macros and as [size 1, align 1, of `unsigned char`] under clang's own"), conv.error)
+        t |> success(conv.error |> contains("`enum small` is laid out as [size 4, align 4, of `unsigned int`] under the dialect's predefined macros and as [size 1, align 1, of `unsigned char`] under clang's own: a layout attribute behind a compiler test; "), conv.error)
+        t |> success(!(conv.error |> contains("its underlying type")), conv.error)
     }
     t |> run("a record of a header outside the program root that the program holds by value is compared like its own") @(t : T?) {
         let headers = path_join(dir, "outside")
@@ -291,6 +292,10 @@ def test_layout_guard_unnamed(t : T?) {
         let conv <- guard_convert(dir, "typeof_unnamed", "static struct \{ int a; \} gx;\nstatic struct \{ float a; \} gy;\n#ifdef __clang__\nstruct s \{ __typeof__(gx) f; \};\n#else\nstruct s \{ __typeof__(gy) f; \};\n#endif\nint main(void) \{ struct s v; gx.a = 0; gy.a = 0; return (int) sizeof(v) - 4; \}\n", "")
         t |> equal(conv.ok, false, conv.das_text)
         t |> success(conv.error |> contains("typeof_unnamed.c:6:8: `struct s` is laid out as [size 4, align 4, members f@0 `struct (unnamed)` = at ") && conv.error |> contains("typeof_unnamed.c:36 4/4] under the dialect's predefined macros") && conv.error |> contains("typeof_unnamed.c:7 4/4] under clang's own"), conv.error)
+        // an array's element is looked through to the record it is
+        let arrayed <- guard_convert(dir, "typeof_arrayed", "static struct \{ int a; \} gx;\nstatic struct \{ float a; \} gy;\n#ifdef __clang__\nstruct s \{ __typeof__(gx) f[2]; \};\n#else\nstruct s \{ __typeof__(gy) f[2]; \};\n#endif\nint main(void) \{ struct s v; gx.a = 0; gy.a = 0; return (int) sizeof(v) - 8; \}\n", "")
+        t |> equal(arrayed.ok, false, arrayed.das_text)
+        t |> success(arrayed.error |> contains("members f@0 `struct (unnamed)[2]` = at ") && arrayed.error |> contains("typeof_arrayed.c:36 8/4] under the dialect's predefined macros") && arrayed.error |> contains("typeof_arrayed.c:7 8/4] under clang's own"), arrayed.error)
         // the same variable's type in both arms is one record: nothing differs
         let same <- guard_convert(dir, "typeof_same", "static struct \{ int a; \} gx;\n#ifdef __clang__\nstruct s \{ __typeof__(gx) f; \};\n#else\nstruct s \{ __typeof__(gx) f; \};\n#endif\nint main(void) \{ struct s v; gx.a = 0; return (int) sizeof(v) - 4; \}\n", "")
         t |> equal(same.ok, true, same.error)
@@ -304,6 +309,11 @@ def test_layout_guard_unnamed(t : T?) {
         let pointed <- guard_convert(dir, "typeof_pointed", "static struct \{ int a; \} gx;\nstatic struct \{ float a; \} gy;\n#ifdef __clang__\nstruct s \{ void (*call)(__typeof__(gx) *); __typeof__(gx) *p; \};\n#else\nstruct s \{ void (*call)(__typeof__(gx) *); __typeof__(gy) *p; \};\n#endif\nint main(void) \{ struct s v; gx.a = 0; gy.a = 0; v.p = 0; return v.p != 0; \}\n", "")
         t |> equal(pointed.ok, false, pointed.das_text)
         t |> success(pointed.error |> contains("p@64 `struct (unnamed) *` = at ") && !(pointed.error |> contains("nowhere")) && pointed.error |> contains("`void (*)(struct (unnamed) *)` 8/8, p@64"), pointed.error)
+    }
+    t |> run("two record signatures that differ in their last character alone are a layout difference, not an enum's type") @(t : T?) {
+        let conv <- guard_convert(dir, "last_character", "#ifdef __clang__\n#define ATTR __attribute__((packed, aligned(4)))\n#else\n#define ATTR __attribute__((aligned(4)))\n#endif\nstruct rec \{ int i; char a; struct \{ short x; \}; \} ATTR;\nint main(void) \{ return 0; \}\n", "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("`struct rec` is laid out as [size 8, align 4, members i@0 `int` 4/4, a@32 `char` 1/1, (anonymous)@48] under the dialect's predefined macros and as [size 8, align 4, members i@0 `int` 4/4, a@32 `char` 1/1, (anonymous)@40] under clang's own: a layout attribute behind a compiler test; "), conv.error)
     }
     t |> run("an owner's unnamed record is counted among its unnamed records alone: a named one clang's macros add before it changes nothing") @(t : T?) {
         let conv <- guard_convert(dir, "named_beside", "struct o \{\n#ifdef __clang__\n    struct helper \{ int z; \};\n#endif\n    struct \{ int y; \} v;\n\};\nint main(void) \{ struct o x; x.v.y = 0; return x.v.y; \}\n", "")
