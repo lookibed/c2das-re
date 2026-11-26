@@ -112,3 +112,71 @@ char *decay_string(void) {
     s = (char *)s;
     return s + 1;
 }
+
+struct bits {
+    unsigned low : 3;
+    int whole;
+};
+
+typedef __builtin_va_list va_list;
+
+static int kr(p)
+int *p;
+{
+    return p != 0;
+}
+
+static long kr_long(n)
+long n;
+{
+    return n;
+}
+
+int kr_call(char c) {
+    return kr(0) + (int)kr_long(c);
+}
+
+int members(struct bits s, struct bits *ps) {
+    return s.low + ps->whole;
+}
+
+int logic(char c, int t) {
+    return (c && t) + !c;
+}
+
+long commas(int a, long b) {
+    return (a, b);
+}
+
+int va_first(int n, ...) {
+    va_list ap;
+    __builtin_va_start(ap, n);
+    char r = __builtin_va_arg(ap, int);
+    __builtin_va_end(ap);
+    return r;
+}
+
+long literal(void) {
+    return ((struct bits){1, 'c'}).whole;
+}
+
+int loops(char c) {
+    int s = 0;
+    for (char i = 0; i < c; (void)(i += 1)) {
+        s += i;
+    }
+    do {
+        s--;
+    } while (c);
+    if (s) {
+        s = 1;
+    } else {
+        s = c;
+    }
+    return s;
+}
+
+int counter(void) {
+    static long count = 1;
+    return count;
+}

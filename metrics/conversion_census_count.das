@@ -17,10 +17,11 @@ require ../converter/sidecar.das
 
 //! The dimensions a census counts under, each key `<dimension>\t<fields...>`: `kind` (castKind,
 //! `implicit` or `explicit`), `pair` (castKind, implicit or explicit, operand class, result
-//! class), `context` (castKind, implicit or explicit, context), `rule` (the rule's name), `clause`
+//! class), `context` (castKind, implicit or explicit, context), `rule` (the rule's name and the
+//! castKind, a context and kind key), `crule` (the C rule alone, the rule's name before the kind), `clause`
 //! (the C11 6.3 clause of the conversion), `chain` (the castKinds of a chain, outermost first),
 //! `anomaly` (the anomaly's name) and `total` (`units`, `exprs`, `casts`).
-let DIMENSIONS <- ["kind", "pair", "context", "rule", "clause", "chain", "anomaly", "total"]
+let DIMENSIONS <- ["kind", "pair", "context", "rule", "crule", "clause", "chain", "anomaly", "total"]
 
 //! The counts of a census: one count per key of a dimension.
 struct ConversionCensus {
@@ -33,11 +34,11 @@ let CLAUSES <- ["6.3.1.1p2 integer promotion", "6.3.1.2 to _Bool", "6.3.1.3p1 in
 
 //! The context rules of an implicit conversion that is not an lvalue, array, function or null
 //! pointer conversion, each with its C11 clause; one the inputs never hit is listed as such.
-let CONTEXT_RULES <- ["6.3.1.1p2 integer promotion (binary operand)", "6.3.1.8 usual arithmetic conversions", "6.5.6-6.5.9 pointer operand", "6.5.7p3 shift operand promotion", "6.5.3.3 unary operand promotion", "6.5.13-6.5.14 logical operand", "6.5.16.1 simple assignment", "6.5.16.2 compound assignment", "6.5.2.2p7 prototyped argument", "6.5.2.2p6-7 default argument promotion (variadic)", "6.5.2.2p6 default argument promotion (no prototype)", "6.8.6.4p3 return", "6.7.9p11 scalar initializer", "6.7.9 aggregate element initializer", "6.5.15p3-6 conditional operator arms", "6.8.4-6.8.5 controlling expression", "6.5.15p2 conditional operator condition", "6.8.4.2p5 switch promotion", "6.5.2.1 subscript"]
+let CONTEXT_RULES <- ["6.3.1.1p2 integer promotion (binary operand)", "6.3.1.8 usual arithmetic conversions", "6.5.6-6.5.9 pointer operand", "6.5.7p3 shift operand promotion", "6.5.3.3 unary operand promotion", "6.5.13-6.5.14 logical operand", "6.5.3.3p5 logical negation operand", "6.5.16.1 simple assignment", "6.5.16.2 compound assignment", "6.5.2.2p7 prototyped argument", "6.5.2.2p6-7 default argument promotion (variadic)", "6.5.2.2p6 default argument promotion (no prototype)", "K&R definition argument converted to the parameter type (clang, not 6.5.2.2p6)", "6.8.6.4p3 return", "6.7.9p11 scalar initializer", "6.7.9 aggregate element initializer", "6.5.15p3-6 conditional operator arms", "6.8.4-6.8.5 controlling expression", "6.5.15p2 conditional operator condition", "6.8.4.2p5 switch promotion", "6.5.2.1 subscript"]
 
 //! The contexts a cast can stand in, as `context_of` names them; `sizeof operand` and `case label`
 //! never appear, since the C-IR keeps neither a `sizeof` operand nor a case label's expression.
-let CONTEXTS <- ["binary arithmetic", "comparison", "bitwise", "shift", "logical", "unary arithmetic", "unary not", "unary address", "unary deref", "increment", "assign rhs", "assign lhs", "compound rhs", "compound lhs", "argument prototyped", "argument variadic", "argument unprototyped", "callee", "return", "init scalar", "init element", "condition if", "condition while", "condition do", "condition for", "condition ?:", "?: arm", "switch", "subscript base", "subscript index", "member base", "cast operand", "comma lhs", "comma rhs", "expr stmt", "for inc", "va_arg list", "sizeof operand", "case label"]
+let CONTEXTS <- ["binary arithmetic", "comparison", "bitwise", "shift", "logical", "unary arithmetic", "unary not", "unary address", "unary deref", "increment", "assign rhs", "assign lhs", "compound rhs", "compound lhs", "argument prototyped", "argument variadic", "argument unprototyped", "argument K&R definition", "callee", "return", "init scalar", "init element", "condition if", "condition while", "condition do", "condition for", "condition ?:", "?: arm", "switch", "subscript base", "subscript index", "member base", "cast operand", "comma lhs", "comma rhs", "expr stmt", "for inc", "va_arg list", "sizeof operand", "case label"]
 
 def private bump(var c : ConversionCensus; key : string; by : int = 1) {
     c.n[key] += by
@@ -137,9 +138,18 @@ def private is_small(cls : string) : bool {
     return (w > 0 && w < 32) || cls == "enum"
 }
 
-// the contexts that promote a small integer operand by itself (C11 6.3.1.1p2)
+// the contexts that promote a small integer operand (C11 6.3.1.1p2): by itself, or as the first
+// step of the usual arithmetic conversions, which clang folds into the one cast to the common type
 def private promotes(ctx : string) : bool =>
-    ctx == "binary arithmetic" || ctx == "comparison" || ctx == "bitwise" || ctx == "shift" || ctx == "unary arithmetic" || ctx == "switch" || ctx == "argument variadic" || ctx == "argument unprototyped"
+    ctx == "binary arithmetic" || ctx == "comparison" || ctx == "bitwise" || ctx == "shift" || ctx == "logical" || ctx == "unary arithmetic" || ctx == "unary not" || ctx == "switch" || ctx == "condition ?:" || ctx == "?: arm" || ctx == "argument variadic" || ctx == "argument unprototyped"
+
+//! Whether an `IntegralCast` from class `src` to class `dst` in context `ctx` is an integer
+//! promotion (C11 6.3.1.1p2), `bit_field` when the operand is a bit-field narrower than `int`: a
+//! type below `int`'s rank, or such a bit-field, to `int` (with a 32-bit `int` every one of them
+//! fits), or an enum whose compatible type is `unsigned int` to it, in a context that promotes.
+//! A small type converted to `unsigned int` is the usual arithmetic conversions, not a promotion.
+def is_promotion(src, dst, ctx : string; bit_field : bool) : bool =>
+    promotes(ctx) && ((dst == "int" && (bit_field || is_small(src))) || (dst == "uint" && src == "enum"))
 
 // the 6.3.1.3 paragraph of an integer conversion from `src` to `dst`
 def private integer_clause(src, dst : string) : string {
@@ -154,8 +164,8 @@ def private integer_clause(src, dst : string) : string {
 
 //! The C11 6.3 clause a cast of `kind` from class `src` to class `dst` applies in context `ctx`;
 //! `null_operand` when the operand is a null pointer constant already converted. A conversion no
-//! clause names is `no clause: <kind> <src> -> <dst>`.
-def conversion_clause(kind, src, dst, ctx : string; is_explicit, null_operand : bool) : string {
+//! clause names is `no clause: <kind> <src> -> <dst>`; `bit_field` as `is_promotion` takes it.
+def conversion_clause(kind, src, dst, ctx : string; is_explicit, null_operand : bool; bit_field : bool = false) : string {
     if (kind == "LValueToRValue") {
         return "6.3.2.1p2 lvalue conversion"
     } elif (kind == "ArrayToPointerDecay") {
@@ -170,7 +180,7 @@ def conversion_clause(kind, src, dst, ctx : string; is_explicit, null_operand : 
         if (dst == "bool") {
             return "6.3.1.2 to _Bool"
         }
-        return (is_small(src) && (dst == "int" || dst == "uint") && promotes(ctx)) ? "6.3.1.1p2 integer promotion" : integer_clause(src, dst)
+        return is_promotion(src, dst, ctx, bit_field) ? "6.3.1.1p2 integer promotion" : integer_clause(src, dst)
     } elif (kind == "IntegralToFloating") {
         return "6.3.1.4p2 integer to real floating"
     } elif (kind == "FloatingToIntegral") {
@@ -210,12 +220,13 @@ let private CONTEXT_RULE_OF <- {
     "shift" => "6.5.7p3 shift operand promotion",
     "unary arithmetic" => "6.5.3.3 unary operand promotion",
     "logical" => "6.5.13-6.5.14 logical operand",
-    "unary not" => "6.5.13-6.5.14 logical operand",
+    "unary not" => "6.5.3.3p5 logical negation operand",
     "assign rhs" => "6.5.16.1 simple assignment",
     "compound rhs" => "6.5.16.2 compound assignment",
     "argument prototyped" => "6.5.2.2p7 prototyped argument",
     "argument variadic" => "6.5.2.2p6-7 default argument promotion (variadic)",
     "argument unprototyped" => "6.5.2.2p6 default argument promotion (no prototype)",
+    "argument K&R definition" => "K&R definition argument converted to the parameter type (clang, not 6.5.2.2p6)",
     "return" => "6.8.6.4p3 return",
     "init scalar" => "6.7.9p11 scalar initializer",
     "init element" => "6.7.9 aggregate element initializer",
@@ -231,12 +242,12 @@ let private CONTEXT_RULE_OF <- {
 }
 
 // the context rule of an implicit conversion of `kind` from `src` to `dst` in context `ctx`
-def private context_rule(kind, src, dst, ctx : string) : string {
+def private context_rule(kind, src, dst, ctx : string; bit_field : bool) : string {
     if (ctx == "binary arithmetic" || ctx == "comparison" || ctx == "bitwise") {
         if (is_pointer_class(dst) || is_pointer_class(src)) {
             return "6.5.6-6.5.9 pointer operand"
         }
-        return (kind == "IntegralCast" && is_small(src) && (dst == "int" || dst == "uint")) ? "6.3.1.1p2 integer promotion (binary operand)" : "6.3.1.8 usual arithmetic conversions"
+        return (kind == "IntegralCast" && is_promotion(src, dst, ctx, bit_field)) ? "6.3.1.1p2 integer promotion (binary operand)" : "6.3.1.8 usual arithmetic conversions"
     }
     return CONTEXT_RULE_OF?[ctx] ?? "context {ctx}"
 }
@@ -244,8 +255,9 @@ def private context_rule(kind, src, dst, ctx : string) : string {
 //! The rule a cast of `kind` from `src` to `dst` in context `ctx` applies: an explicit cast is
 //! `6.5.4 cast operator: <kind>`; an lvalue, array, function or null pointer conversion is its
 //! 6.3.2 rule, whatever the context (a decayed string literal, `string_operand`, and a callee's
-//! decay named apart); any other implicit conversion is its context's rule and its kind.
-def cast_rule(kind, src, dst, ctx : string; is_explicit, string_operand : bool) : string {
+//! decay named apart); any other implicit conversion is its context's rule and its kind,
+//! `bit_field` as `is_promotion` takes it.
+def cast_rule(kind, src, dst, ctx : string; is_explicit, string_operand : bool; bit_field : bool = false) : string {
     if (is_explicit) {
         return "6.5.4 cast operator: {kind}"
     } elif (kind == "LValueToRValue") {
@@ -257,7 +269,7 @@ def cast_rule(kind, src, dst, ctx : string; is_explicit, string_operand : bool) 
     } elif (kind == "NullToPointer") {
         return "6.3.2.3p3 null pointer constant"
     }
-    return "{context_rule(kind, src, dst, ctx)}: {kind}"
+    return "{context_rule(kind, src, dst, ctx, bit_field)}: {kind}"
 }
 
 let private BINARY_CONTEXTS <- {
@@ -292,6 +304,29 @@ def private null_operand(x : CirExpr const?) : bool {
     return false
 }
 
+// whether `x` below its casts is a bit-field narrower than `int`, which the C-IR types as its
+// declared type
+def private narrow_bit_field(tu : CirTu; x : CirExpr const?) : bool {
+    let m = below_casts(x)
+    if (m == null || m.e != "member" || m.base == null) {
+        return false
+    }
+    var rec = resolved(tu, m.base.t)
+    if (m.arrow && rec >= 0 && rec < length(tu.types) && tu.types[rec].k == "ptr") {
+        rec = resolved(tu, tu.types[rec].to)
+    }
+    if (rec < 0 || rec >= length(tu.types) || m.field < 0 || m.field >= length(tu.types[rec].fields)) {
+        return false
+    }
+    return tu.types[rec].fields[m.field].is_bitfield && tu.types[rec].fields[m.field].bit_w < 32
+}
+
+// the rule's name before its castKind: the C rule a context and kind key belongs to
+def private c_rule(rule : string) : string {
+    let colon = find(rule, ": ")
+    return colon < 0 ? rule : slice(rule, 0, colon)
+}
+
 // the castKinds of the chain from cast `x` down, outermost first, an explicit one marked `!`
 def private chain_shape(x : CirExpr const?) : string {
     var kinds : array<string>
@@ -313,8 +348,14 @@ def private count_cast(tu : CirTu; x : CirExpr const?; ctx : string; top : bool;
     c |> bump("kind\t{x.cast_kind}\t{how}")
     c |> bump("pair\t{x.cast_kind}\t{how}\t{src}\t{dst}")
     c |> bump("context\t{x.cast_kind}\t{how}\t{ctx}")
-    c |> bump("rule\t{cast_rule(x.cast_kind, src, dst, ctx, x.explicit_cast, operand == "str_lit")}")
-    c |> bump("clause\t{conversion_clause(x.cast_kind, src, dst, ctx, x.explicit_cast, null_operand(x.a))}")
+    let bit_field = x.cast_kind == "IntegralCast" && narrow_bit_field(tu, x.a)
+    let rule = cast_rule(x.cast_kind, src, dst, ctx, x.explicit_cast, operand == "str_lit", bit_field)
+    c |> bump("rule\t{rule}")
+    c |> bump("crule\t{c_rule(rule)}")
+    c |> bump("clause\t{conversion_clause(x.cast_kind, src, dst, ctx, x.explicit_cast, null_operand(x.a), bit_field)}")
+    if (bit_field) {
+        c |> bump("anomaly\tIntegralCast {how} of a bit-field narrower than int")
+    }
     if (top) {
         let shape = chain_shape(x)
         c |> bump("chain\t{shape}")
@@ -367,8 +408,21 @@ def private callee_function(tu : CirTu; t : int) : int {
     return at >= 0 && at < length(tu.types) && tu.types[at].k == "func" ? at : -1
 }
 
+// whether the unit defines the function `name` with a K&R definition of more than `idx` parameters,
+// whose type has none: clang converts a call's argument to the definition's parameter type
+def private knr_parameter(tu : CirTu; name : string; idx : int) : bool {
+    for (d in tu.decls) {
+        if (d.k == "func" && d.name == name && d.body != null && length(d.params) > idx) {
+            return true
+        }
+    }
+    return false
+}
+
 // the context of argument `idx` of call `x`: prototyped within the parameters, variadic past them
-// of a variadic function, unprototyped past them of any other (the C-IR spells `T ()` as `T (void)`)
+// of a variadic function, a K&R definition's past the parameters of a function type with none that
+// the unit defines with that many, unprototyped past them of any other (the C-IR spells `T ()` as
+// `T (void)`)
 def private argument_context(tu : CirTu; x : CirExpr const?; idx : int) : string {
     let fn = x.fn != null ? callee_function(tu, x.fn.t) : -1
     if (fn < 0) {
@@ -377,7 +431,10 @@ def private argument_context(tu : CirTu; x : CirExpr const?; idx : int) : string
     if (idx < length(tu.types[fn].params)) {
         return "argument prototyped"
     }
-    return tu.types[fn].variadic ? "argument variadic" : "argument unprototyped"
+    if (tu.types[fn].variadic) {
+        return "argument variadic"
+    }
+    return empty(tu.types[fn].params) && knr_parameter(tu, called_name(*x), idx) ? "argument K&R definition" : "argument unprototyped"
 }
 
 // call `x`: its callee and each argument in its context
@@ -628,26 +685,28 @@ def render_pairs(c : ConversionCensus; limit : int) : string => render_by_kind(c
 //! The context table: per castKind and form the contexts with their counts.
 def render_contexts(c : ConversionCensus; limit : int) : string => render_by_kind(c, "context", ["castKind", "form", "context", "count"], limit)
 
-//! The number of rules, most frequent first, whose casts reach `share` percent of all casts.
-def rules_covering(c : ConversionCensus; share : int) : int {
+//! The number of keys of dimension `dim` (`rule`, the context and kind keys, or `crule`, the C
+//! rules), most frequent first, whose casts reach `share` percent of all casts.
+def rules_covering(c : ConversionCensus; share : int; dim : string = "rule") : int {
     let all = casts_of(c)
     var sum = 0
-    for (idx, e in count(), entries(c, "rule")) {
+    let ranked <- entries(c, dim)
+    for (idx, e in count(), ranked) {
         sum += e.n
         if (int64(sum) * 100l >= int64(all) * int64(share)) {
             return idx + 1
         }
     }
-    return length(entries(c, "rule"))
+    return length(ranked)
 }
 
-//! The ranked rule table: every rule the casts apply, most frequent first, its count, share and
-//! the cumulative share down to it.
-def render_rules(c : ConversionCensus) : string {
+//! The ranked table of dimension `dim` (`rule` or `crule`): every key the casts hit, most frequent
+//! first, its count, share and the cumulative share down to it.
+def render_rules(c : ConversionCensus; dim : string = "rule") : string {
     let all = casts_of(c)
     var sum = 0
-    return md_head(["#", "rule", "count", "share", "cumulative"]) + build_string() $(var w) {
-        for (idx, e in count(), entries(c, "rule")) {
+    return md_head(["#", dim == "crule" ? "C rule" : "rule (C rule: castKind)", "count", "share", "cumulative"]) + build_string() $(var w) {
+        for (idx, e in count(), entries(c, dim)) {
             sum += e.n
             w |> write(md_row(["{idx + 1}", e.key, "{e.n}", percent(e.n, all), percent(sum, all)]))
         }
@@ -709,9 +768,8 @@ def never_contexts(c : ConversionCensus) : array<string> {
 //! The context rules of `CONTEXT_RULES` no implicit cast of `c` applies, in their order.
 def never_context_rules(c : ConversionCensus) : array<string> {
     var seen : table<string>
-    for (e in entries(c, "rule")) {
-        let colon = find(e.key, ": ")
-        seen |> insert(colon < 0 ? e.key : slice(e.key, 0, colon))
+    for (e in entries(c, "crule")) {
+        seen |> insert(e.key)
     }
     return <- [for (r in CONTEXT_RULES); r; where !key_exists(seen, r)]
 }
@@ -730,9 +788,12 @@ def render_set(row : CensusRow; limit : int) : string {
     let all = casts_of(c)
     let units = count_of(c, "total\tunits")
     let exprs = count_of(c, "total\texprs")
-    let rules = length(entries(c, "rule"))
-    var out = "### {row.name}\n\n{units} units, {exprs} expression nodes, {all} casts ({implicit_n} implicit, {all - implicit_n} explicit); {rules_covering(c, 99)} rules cover 99% of the casts, {rules} rules in all.\n\n"
-    out += "castKinds:\n\n{render_kinds(c)}\nRules, most frequent first:\n\n{render_rules(c)}\nC11 6.3 clauses:\n\n{render_clauses(c)}\n"
+    let keys_n = length(entries(c, "rule"))
+    let crules_n = length(entries(c, "crule"))
+    let keys_99 = rules_covering(c, 99)
+    let crules_99 = rules_covering(c, 99, "crule")
+    var out = "### {row.name}\n\n{units} units, {exprs} expression nodes, {all} casts ({implicit_n} implicit, {all - implicit_n} explicit); {crules_n} C rules, {crules_99} of them cover 99% of the casts; {keys_n} C rule and castKind keys, {keys_99} of them cover 99%.\n\n"
+    out += "castKinds:\n\n{render_kinds(c)}\nC rules, most frequent first:\n\n{render_rules(c, "crule")}\nC rule and castKind keys, most frequent first:\n\n{render_rules(c)}\nC11 6.3 clauses:\n\n{render_clauses(c)}\n"
     out += "Contexts:\n\n{render_contexts(c, limit)}\nOperand and result classes:\n\n{render_pairs(c, limit)}\nChains, top 30:\n\n{render_chains(c, 30)}\nAnomalies:\n\n{render_anomalies(c)}\n"
     out += "castKinds never met: {listed(never_kinds(c))}.\n\nContexts never met: {listed(never_contexts(c))}.\n\nContext rules never met: {listed(never_context_rules(c))}.\n\n"
     return out
