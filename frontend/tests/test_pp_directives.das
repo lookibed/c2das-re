@@ -2,6 +2,7 @@ options gen2
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
+require daslib/fio
 require ../pp_directives.das
 require ../c_defines.das
 
@@ -41,6 +42,13 @@ def private preprocessed(text : string; files : array<tuple<string; string>> = a
 def private diagnostics(pp : Preprocessor) : string {
     let parts <- [for (d in pp.diags); "{d.severity == PpSeverity.error ? "E" : "W"} {d.line}:{d.col} {d.what}"]
     return join(parts, " | ")
+}
+
+// `text` written to the file `path`
+def private write_text(path, text : string) {
+    fopen(path, "wb") $(f) {
+        fwrite(f, text)
+    }
 }
 
 // the inclusions, `<spelled>:<path or ->:<skip>`
@@ -325,9 +333,70 @@ def test_fio_own_headers(t : T?) {
     t |> equal(missing.diags[0].what, "cannot read none.c")
 }
 
-[test(description = "a path is one key with its `.` components and `name/..` pairs removed")]
+[test(description = "a path loses its `.` components and doubled `/`, keeps every `..` and its root")]
 def test_normalized_path(t : T?) {
-    t |> equal(normalized_path("./a/./b/../c.h"), "a/c.h")
-    t |> equal(normalized_path("/x//y/../z"), "/x/z")
-    t |> equal(normalized_path("../a/../../b"), "../../b")
+    t |> equal(normalized_path("./a/./b/../c.h"), "a/b/../c.h")
+    t |> equal(normalized_path("/x//y/../z"), "/x/y/../z")
+    t |> equal(normalized_path("../a/../../b"), "../a/../../b")
+    t |> equal(normalized_path("/"), "/")
+    t |> equal(normalized_path("/../a"), "/../a")
+}
+
+[test(description = "#include_next searches after the folder of the inclusion, not of the file: a file found in its includer's folder inherits the includer's, as gcc's limits.h -> syslimits.h -> #include_next <limits.h> needs")]
+def test_include_next_per_inclusion(t : T?) {
+    t |> run("gcc's limits.h pattern reads the next limits.h once, as clang does") @(t : T?) {
+        let files <- [("main.c", "#include <limits.h>\nend\n"),
+                      ("g1/limits.h", "#ifndef _GCC_LIMITS_H_\n#ifndef _GCC_NEXT_LIMITS_H\n#include \"syslimits.h\"\n#endif\ngcc_limits\n#endif\n"),
+                      ("g1/syslimits.h", "#define _GCC_NEXT_LIMITS_H\n#include_next <limits.h>\n#undef _GCC_NEXT_LIMITS_H\n"),
+                      ("g2/limits.h", "libc_limits\n")]
+        var pp <- started(files, "main.c", array<string>(), ["g1", "g2"])
+        t |> equal(stream(pp), "libc_limits gcc_limits end")
+        t |> equal(diagnostics(pp), "")
+    }
+    t |> run("a file found in its includer's folder searches after the includer's folder") @(t : T?) {
+        let files <- [("main.c", "#include <x.h>\nend\n"), ("a/x.h", "a_x\n#include \"s.h\"\n"), ("a/s.h", "a_s\n#include_next <x.h>\n"), ("b/x.h", "b_x\n")]
+        var pp <- started(files, "main.c", array<string>(), ["a", "b"])
+        t |> equal(stream(pp), "a_x a_s b_x end")
+        t |> equal(diagnostics(pp), "")
+    }
+    t |> run("one file reached by two inclusions searches after each inclusion's own folder") @(t : T?) {
+        let files <- [("main.c", "#include \"b/y.h\"\n#include <y.h>\n"), ("b/y.h", "#include_next <z.h>\n"), ("a/z.h", "a_z\n"), ("c/z.h", "c_z\n")]
+        var pp <- started(files, "main.c", array<string>(), ["a", "b", "c"])
+        t |> equal(stream(pp), "a_z c_z")
+        t |> equal(diagnostics(pp), "W 1:15 #include_next in file found relative to primary source file or found by absolute path; will search from start of include path")
+        t |> equal(length(pp.files), 5)
+    }
+}
+
+[test(description = "a `..` after a linked folder leads where the link's target says, and one file reached through a link and directly is one file")]
+def test_identity_through_link(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->link("inc/l", "real/deep")
+    mem->add("main.c", "#include <l/x.h>\n#include \"real/deep/x.h\"\n")
+    mem->add("real/deep/x.h", "#pragma once\n#include \"../y.h\"\n")
+    mem->add("real/y.h", "real_y\n")
+    mem->add("inc/y.h", "inc_y\n")
+    var pp : Preprocessor
+    t |> success(pp_start(pp, mem, "main.c", array<string>(), ["inc"]))
+    t |> equal(stream(pp), "real_y")
+    t |> equal(inclusions(pp), "<l/x.h>:inc/l/x.h:none \"../y.h\":inc/l/../y.h:none \"real/deep/x.h\":inc/l/x.h:pragma_once")
+    t |> equal(join([for (f in pp.files); f.identity], " "), "main.c  real/deep/x.h real/y.h")
+}
+
+[test(description = "the fio provider knows a file by its real path: one header reached by a relative and an absolute spelling is one file, for #pragma once and for an include guard")]
+def test_identity_relative_absolute(t : T?) {
+    let dir = get_full_file_name(path_join(test_temp_dir(), "pp2_identity"))
+    mkdir_rec(path_join(dir, "sub"))
+    write_text(path_join(dir, "once.h"), "#pragma once\nonce\n")
+    write_text(path_join(dir, "guarded.h"), "#ifndef G_H\n#define G_H\nguarded\n#endif\n")
+    write_text(path_join(dir, "main.c"), "#include <once.h>\n#include \"{dir}/once.h\"\n#include \"sub/../once.h\"\n#include <guarded.h>\n#include \"{dir}/guarded.h\"\nend\n")
+    var error : string
+    let rel = relative(dir, getcwd(), error)
+    t |> equal(error, "")
+    var pp : Preprocessor
+    t |> success(pp_start(pp, new PpFioProvider(), path_join(dir, "main.c"), array<string>(), [rel]))
+    t |> equal(stream(pp), "once guarded end")
+    let skips <- [for (inc in pp.inclusions); "{inc.skip}"]
+    t |> equal(join(skips, " "), "none pragma_once pragma_once none guard")
+    t |> equal(length(pp.files), 4)
 }

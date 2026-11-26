@@ -10,28 +10,61 @@ require pp_lexer public
 require c_defines
 
 //! Where the preprocessor reads a file: `exists` answers whether `path` names a readable file,
-//! `read` fills `bytes` with it and one byte of spare capacity, as `pp_open` wants.
+//! `read` fills `bytes` with it and one byte of spare capacity, as `pp_open` wants, and
+//! `identity` names the file `path` reaches, the same for every path that reaches it.
 class PpFileProvider {
     def abstract exists(path : string) : bool
     def abstract read(path : string; var bytes : array<uint8>) : bool
+    def abstract identity(path : string) : string
 }
 
-//! The provider of the file system, read through `fio`.
+//! The provider of the file system, read through `fio`: a file's identity is its real path, every
+//! link and `..` resolved by the file system.
+[arch(at="ARCHITECTURE_PP.md#pp-files")]
 class PpFioProvider : PpFileProvider {
     def override exists(path : string) : bool => stat(path).is_reg
     def override read(path : string; var bytes : array<uint8>) : bool => pp_read_file(path, bytes)
+    def override identity(path : string) : string => get_full_file_name(path)
 }
 
-//! A provider over texts in memory, a path each: `add` sets one.
+//! A provider over texts in memory, a path each: `add` sets one, `link` makes a folder path stand
+//! for another, as a symbolic link does, before the files under it are added.
+[arch(at="ARCHITECTURE_PP.md#pp-files")]
 class PpMemoryProvider : PpFileProvider {
     files : table<string; string>
+    links : table<string; string>
     def add(path, text : string) {
-        files |> insert(path, text)
+        files |> insert(identity(path), text)
     }
-    def override exists(path : string) : bool => key_exists(files, path)
+    def link(path, target : string) {
+        links |> insert(path, target)
+    }
+    def override exists(path : string) : bool => key_exists(files, identity(path))
+    def override identity(path : string) : string {
+        var parts : array<string>
+        if (starts_with(path, "/")) {
+            parts |> push("")
+        }
+        for (part in split(path, "/")) {
+            if (empty(part) || part == ".") {
+                continue
+            } elif (part == ".." && !empty(parts) && parts[length(parts) - 1] != ".." && !empty(parts[length(parts) - 1])) {
+                parts |> pop()
+            } else {
+                parts |> push(part)
+                let target = links?[join(parts, "/")] ?? ""
+                if (!empty(target)) {
+                    delete parts
+                    parts <- split(identity(target), "/")
+                }
+            }
+        }
+        return join(parts, "/")
+    }
     def override read(path : string; var bytes : array<uint8>) : bool {
-        return false if (!key_exists(files, path))
-        let text = files?[path] ?? ""
+        let key = identity(path)
+        return false if (!key_exists(files, key))
+        let text = files?[key] ?? ""
         bytes |> reserve(length(text) + 1)
         peek_data(text) $(chars) {
             for (c in chars) {
@@ -140,13 +173,12 @@ struct PpPack {
     current : int
 }
 
-//! A file the preprocessor opened: `dir` is its quote directory, `found_at` the search folder it
-//! was found in (-1: the quote directory, an absolute path or the main file).
+//! A file the preprocessor opened, known by its provider's `identity`: `path` and `name` are those
+//! of its first inclusion.
 struct PpFile {
     path : string
-    dir : string
+    identity : string
     name : int
-    found_at : int
     once : bool
     guard : int         //!< the macro of its whole-file include guard, -1 when it has none
     entered : int
@@ -179,9 +211,12 @@ enum private GuardState {
     none
 }
 
-//! the state of the file being read that a nested `#include` suspends
+//! the state of the inclusion being read that a nested `#include` suspends: `dir` is its quote
+//! directory, `found_at` the include-path folder `#include_next` searches after (-1: none)
 struct PpFileState {
     file : int
+    dir : string
+    found_at : int
     line_delta : int
     pname : int
     cond_base : int
@@ -296,26 +331,22 @@ def private intern_directives(var pp : Preprocessor) {
     pp.sym_pop_macro = intern_text(pp, "pop_macro")
 }
 
-//! `path` with its `.` components and every `name/..` pair removed: one file, one key
+//! `path` with its `.` components and doubled `/` removed; a `..` stays, since only the file
+//! system knows where it leads past a link
 [arch(at="ARCHITECTURE_PP.md#pp-files")]
 def normalized_path(path : string) : string {
     var parts : array<string>
     for (part in split(path, "/")) {
-        if (part == "." || (empty(part) && !empty(parts))) {
-            continue
-        } elif (part == ".." && !empty(parts) && parts[length(parts) - 1] != ".." && !empty(parts[length(parts) - 1])) {
-            parts |> pop()
-        } else {
-            parts |> push(part)
-        }
+        continue if (part == "." || (empty(part) && !empty(parts)))
+        parts |> push(part)
     }
     return length(parts) == 1 && empty(parts[0]) ? "/" : join(parts, "/")
 }
 
-def private register_file(var pp : Preprocessor; path : string; found_at : int) : int {
+def private register_file(var pp : Preprocessor; path, identity : string) : int {
     let id = length(pp.files)
-    pp.files |> push(PpFile(path = path, dir = dir_name(path), name = name_id(pp, path), found_at = found_at, guard = -1))
-    pp.file_of |> insert(path, id)
+    pp.files |> push(PpFile(path = path, identity = identity, name = name_id(pp, path), guard = -1))
+    pp.file_of |> insert(identity, id)
     return id
 }
 
@@ -347,21 +378,23 @@ def private builtin_text(var pp : Preprocessor; predefines : array<string>) : st
     }
 }
 
-def private open_file(var pp : Preprocessor; id : int; var bytes : array<uint8>) {
-    pp_open(pp.lx, bytes, id, pp.files[id].path)
+//! read file `id` by `path`, found in the include-path folder `found_at` (-1: none)
+[arch(at="ARCHITECTURE_PP.md#pp-search")]
+def private open_file(var pp : Preprocessor; id : int; path : string; found_at : int; var bytes : array<uint8>) {
+    pp_open(pp.lx, bytes, id, path)
     pp.files[id].entered++
     pp.pending = false
-    pp.state = PpFileState(file = id, pname = pp.files[id].name, cond_base = length(pp.conds), guard = GuardState.start,
-                           guard_sym = -1)
+    pp.state = PpFileState(file = id, dir = dir_name(path), found_at = found_at, pname = name_id(pp, path),
+                           cond_base = length(pp.conds), guard = GuardState.start, guard_sym = -1)
 }
 
 //! suspend the file being read, with its next token, and open file `id`
-def private push_file(var pp : Preprocessor; id : int; var bytes : array<uint8>) {
+def private push_file(var pp : Preprocessor; id : int; path : string; found_at : int; var bytes : array<uint8>) {
     var frame = PpFrame(lx <- pp.lx, state = pp.state, pending = pp.pending)
     pp.lx.flex.syms <- frame.lx.flex.syms
     pp.lx.diags <- frame.lx.diags
     pp.frames |> emplace(frame)
-    open_file(pp, id, bytes)
+    open_file(pp, id, path, found_at, bytes)
 }
 
 //! close the file being read and resume the one that included it, at the token it stopped on;
@@ -397,7 +430,7 @@ def pp_start(var pp : Preprocessor; var provider : PpFileProvider?; main : strin
         pp.diags |> push(PpDiagnostic(severity = PpSeverity.error, what = "cannot read {main}"))
         return false
     }
-    open_file(pp, register_file(pp, path, -1), bytes)
+    open_file(pp, register_file(pp, path, provider->identity(path)), path, -1, bytes)
     var builtin : array<uint8>
     let text = builtin_text(pp, predefines)
     builtin |> reserve(length(text) + 1)
@@ -407,8 +440,8 @@ def pp_start(var pp : Preprocessor; var provider : PpFileProvider?; main : strin
         }
     }
     let id = length(pp.files)
-    pp.files |> push(PpFile(path = PP_BUILTIN_NAME, name = name_id(pp, PP_BUILTIN_NAME), found_at = -1, guard = -1))
-    push_file(pp, id, builtin)
+    pp.files |> push(PpFile(path = PP_BUILTIN_NAME, name = name_id(pp, PP_BUILTIN_NAME), guard = -1))
+    push_file(pp, id, PP_BUILTIN_NAME, -1, builtin)
     return true
 }
 
@@ -851,7 +884,9 @@ def private do_undef(var pp : Preprocessor; at : PpToken) {
 // #include
 
 //! the file `name` names, searched as clang does: a `"..."` name first in the includer's
-//! directory, then the include path from `from` on; "" and the folders searched when none has it
+//! directory, then the include path from `from` on; "" and the folders searched when none has it.
+//! The second value is the include-path folder it was found in; a file found in the includer's
+//! directory has the includer's.
 [arch(at="ARCHITECTURE_PP.md#pp-search")]
 def private search_file(var pp : Preprocessor; name : string; angled : bool; from : int; var tried : array<string>) : tuple<string; int> {
     if (starts_with(name, "/")) {
@@ -861,9 +896,9 @@ def private search_file(var pp : Preprocessor; name : string; angled : bool; fro
         return ("", -1)
     }
     if (!angled && from == 0) {
-        let dir = pp.files[pp.state.file].dir
+        let dir = pp.state.dir
         let path = normalized_path(path_join(dir, name))
-        return (path, -1) if (pp.provider->exists(path))
+        return (path, pp.state.found_at) if (pp.provider->exists(path))
         tried |> push(dir)
     }
     tried |> reserve(length(tried) + length(pp.search))
@@ -895,7 +930,7 @@ def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; ne
     }
     var from = 0
     if (next) {
-        let found_at = pp.files[pp.state.file].found_at
+        let found_at = pp.state.found_at
         if (empty(pp.frames) || found_at < 0) {
             diagnose_at(pp, PpSeverity.warning, at, empty(pp.frames) ? "#include_next in primary source file" : "#include_next in file found relative to primary source file or found by absolute path; will search from start of include path")
         } else {
@@ -909,7 +944,8 @@ def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; ne
         record_inclusion(pp, at, spelled, -1, PpIncludeSkip.not_found)
         return
     }
-    var id = pp.file_of?[found._0] ?? -1
+    let identity = pp.provider->identity(found._0)
+    var id = pp.file_of?[identity] ?? -1
     if (id >= 0 && pp.files[id].once && pp.files[id].entered > 0) {
         record_inclusion(pp, at, spelled, id, PpIncludeSkip.pragma_once)
         return
@@ -925,10 +961,10 @@ def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; ne
         return
     }
     if (id < 0) {
-        id = register_file(pp, found._0, found._1)
+        id = register_file(pp, found._0, identity)
     }
     record_inclusion(pp, at, spelled, id, PpIncludeSkip.none)
-    push_file(pp, id, bytes)
+    push_file(pp, id, found._0, found._1, bytes)
 }
 
 //! `#include` and `#include_next` (`next`): a header name, or the tokens PP.3 expands into one
