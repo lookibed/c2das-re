@@ -83,6 +83,13 @@ that is not clang. `converter/tests/test_predefined.das` holds the rule against 
 `include/tests/test_headers.das` holds every name the own headers read
 (`include/ARCHITECTURE.md` section 5) to be an entry of both tables.
 
+The `linux` table states the GNU dialect as clang states it under that triple: `__GNUC__=4`,
+`__GNUC_MINOR__=2`, `__GNUC_PATCHLEVEL__=1`. The dialect is GNU C (gnu17, the builtins, the
+attributes, case ranges), and a program that guards a layout attribute or a builtin by `__GNUC__`
+(doomgeneric's `PACKEDATTR`) keeps the meaning a GNU compiler gives it; without the names it loses
+`packed` with no error. `__clang__` is no entry, so a program's clang-only arm is never taken. The
+`msvc` table has none of the three: clang defines no `__GNUC__` under that triple.
+
 In the tables: the language's `__STDC` names, the platform (`__linux__`, `__unix__`, `__ELF__`,
 `__x86_64__`; `_WIN32`, `_WIN64`, `_M_X64`), the data model and byte order, every size, width,
 limit and type name (`__SIZEOF_INT__`, `__INT_MAX__`, `__SIZE_TYPE__`, `__SIZEOF_INT128__`), the
@@ -92,7 +99,7 @@ Excluded, by what the name states, each class a list of names and prefixes in th
 
 | Class | Names | Why no entry |
 |---|---|---|
-| compiler identity and version | `__GNUC__` and its parts, `__GNUC_STDC_INLINE__`, `__GXX_ABI_VERSION`, `__VERSION__`, `__clang__`, `__clang_*`, `__llvm__`, `_MSC_VER`, `_MSC_FULL_VER`, `_MSC_BUILD`, `_MSC_EXTENSIONS`, `_MSVC_*`, `_CRT_USE_BUILTIN_OFFSETOF`, `__CONSTANT_CFSTRINGS__`, `__PRAGMA_REDEFINE_EXTNAME`, `__GCC_ASM_FLAG_OUTPUTS__`, `__GCC_HAVE_DWARF2_CFI_ASM` | the input is read by two frontends and neither is GCC or MSVC; a program that asks takes its portable arm under both |
+| compiler identity and version | `__GNUC_STDC_INLINE__`, `__GXX_ABI_VERSION`, `__VERSION__`, `__clang__`, `__clang_*`, `__llvm__`, `_MSC_VER`, `_MSC_FULL_VER`, `_MSC_BUILD`, `_MSC_EXTENSIONS`, `_MSVC_*`, `_CRT_USE_BUILTIN_OFFSETOF`, `__CONSTANT_CFSTRINGS__`, `__PRAGMA_REDEFINE_EXTNAME`, `__GCC_ASM_FLAG_OUTPUTS__`, `__GCC_HAVE_DWARF2_CFI_ASM` | the input is read by two frontends and neither is clang, GCC or MSVC; a program that asks for one of these takes its other arm under both |
 | code generation | `__NO_INLINE__`, `__NO_MATH_INLINES`, `__PIC__`, `__PIE__`, `__pic__`, `__pie__`, `__code_model_*`, `_M_FP_*`, `__REGISTER_PREFIX__`, `__USER_LABEL_PREFIX__`, `__GCC_CONSTRUCTIVE_SIZE`, `__GCC_DESTRUCTIVE_SIZE` | no machine code, symbol or cache line of clang's exists in a converted program |
 | CPU features | `__SSE*`, `__MMX__`, `__FXSR__`, `__k8`, `__k8__`, `__tune_*`, `__SEG_*`, `__seg_*` | no intrinsic header is in the own set, and no intrinsic or segment is lowered |
 | atomics | `__ATOMIC_*`, `__GCC_ATOMIC_*`, `__CLANG_ATOMIC_*`, `__GCC_HAVE_SYNC_COMPARE_AND_SWAP_*`, `__MEMORY_SCOPE_*` | a converted program has one thread, and the own set has no `<stdatomic.h>` |

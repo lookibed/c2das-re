@@ -6,7 +6,7 @@ Companion to `ARCHITECTURE.md` in this folder, continuing section 3 of `ARCHITEC
 
 Both clang runs of a unit, the libclang pass and the JSON dump, start with `frontend_flags`: the
 dialect's triple; `DUMPER_FLAGS` (`-funsigned-char`, `-w`); `-undef`, so that clang predefines no
-macro of its own (`__GNUC__`, `__clang__`, `_MSC_VER`); the dialect's predefined-macro table
+macro of its own (`__clang__`, `_MSC_VER`; `__GNUC__` is the `linux` table's entry, not clang's); the dialect's predefined-macro table
 (`frontend/ARCHITECTURE.md` section 3) as `-D<entry>` each, in the table's order; then `-nostdinc`
 and the own libc headers' folder, canonical, as the one `-isystem` directory (the program's files,
 `ARCHITECTURE_DUMPER.md`). The sidecar's `defines` follow, and a later `-D` of a name wins. A table

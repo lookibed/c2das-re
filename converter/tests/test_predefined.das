@@ -18,7 +18,7 @@ require ../tiers.das
 // the classes of predefined names no table holds, each a list of names, a trailing `*` standing
 // for any rest
 let private EXCLUDED <- [
-    (title = "compiler identity and version", names = ["__GNUC__", "__GNUC_MINOR__", "__GNUC_PATCHLEVEL__", "__GNUC_STDC_INLINE__", "__GXX_ABI_VERSION", "__VERSION__",
+    (title = "compiler identity and version", names = ["__GNUC_STDC_INLINE__", "__GXX_ABI_VERSION", "__VERSION__",
             "__clang__", "__clang_*", "__llvm__", "_MSC_VER", "_MSC_FULL_VER", "_MSC_BUILD", "_MSC_EXTENSIONS", "_MSVC_*", "_CRT_USE_BUILTIN_OFFSETOF",
             "__CONSTANT_CFSTRINGS__", "__PRAGMA_REDEFINE_EXTNAME", "__GCC_ASM_FLAG_OUTPUTS__", "__GCC_HAVE_DWARF2_CFI_ASM"]),
     (title = "code generation", names = ["__NO_INLINE__", "__NO_MATH_INLINES", "__PIC__", "__PIE__", "__pic__", "__pie__", "__code_model_*", "_M_FP_*",
@@ -185,9 +185,9 @@ def test_dumper_macro_flags(t : T?) {
     }
 }
 
-// a program printing which compiler names it sees, a table macro in an expression and in an
-// `#if`, and `__STDC_VERSION__`
-let private IDENTITY_SOURCE = "int printf(const char *, ...);\n#if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER) || defined(__llvm__)\n#define WHO 1\n#else\n#define WHO 0\n#endif\n#if __SIZEOF_INT__ == 4 && __STDC_NO_VLA__\n#define SIZED 1\n#else\n#define SIZED 0\n#endif\nint main(void) \{ int top = __INT_MAX__; long version = __STDC_VERSION__; printf(\"%d %d %d %ld %d\\n\", WHO, SIZED, top, version, __CHAR_BIT__ * (int)sizeof(__SIZE_TYPE__)); return 0; \}\n"
+// a program printing whether it sees a compiler's own name (clang, MSVC, llvm), the GNU version
+// it sees (0 for none), a table macro in an expression and in an `#if`, and `__STDC_VERSION__`
+let private IDENTITY_SOURCE = "int printf(const char *, ...);\n#if defined(__clang__) || defined(_MSC_VER) || defined(__llvm__) || defined(__clang_major__) || defined(__VERSION__)\n#define WHO 1\n#else\n#define WHO 0\n#endif\n#ifdef __GNUC__\n#define GNU (__GNUC__ * 100 + __GNUC_MINOR__ * 10 + __GNUC_PATCHLEVEL__)\n#else\n#define GNU 0\n#endif\n#if __SIZEOF_INT__ == 4 && __STDC_NO_VLA__\n#define SIZED 1\n#else\n#define SIZED 0\n#endif\nint main(void) \{ int top = __INT_MAX__; long version = __STDC_VERSION__; printf(\"%d %d %d %d %ld %d\\n\", WHO, GNU, SIZED, top, version, __CHAR_BIT__ * (int)sizeof(__SIZE_TYPE__)); return 0; \}\n"
 
 // `IDENTITY_SOURCE` converted under `dialect` in `<dir>/<name>`, `sidecar` beside it when given,
 // and run under the interpreter: its output
@@ -210,7 +210,7 @@ def private identity_run(t : T?; dir, name, dialect, sidecar : string) : string 
     return output
 }
 
-[test(description = "a program is dumped under the table: no compiler's name, the table's values, a sidecar define over them", timeout = 1200)]
+[test(description = "a program is dumped under the table: no compiler's own name, the dialect's GNU version, the table's values, a sidecar define over them", timeout = 1200)]
 def test_dump_under_the_table(t : T?) {
     var dir_error : string
     let dir = create_temp_directory("c2das_predefined", dir_error)
@@ -218,14 +218,14 @@ def test_dump_under_the_table(t : T?) {
         t |> failure("no temp directory: {dir_error}")
         return
     }
-    t |> run("under both dialects the program sees no compiler's name, and the table's sizes, limits and language") @(t : T?) {
-        for (dialect in DIALECTS) {
-            t |> equal(identity_run(t, dir, dialect, dialect, ""), "0 1 2147483647 201710 64\n", dialect)
+    t |> run("under both dialects the program sees no compiler's own name and the table's sizes, limits and language; under linux GNU C 4.2.1, under msvc no GNU C") @(t : T?) {
+        for (dialect, line in DIALECTS, ["0 421 1 2147483647 201710 64\n", "0 0 1 2147483647 201710 64\n"]) {
+            t |> equal(identity_run(t, dir, dialect, dialect, ""), line, dialect)
         }
     }
     t |> run("a sidecar's define of a table's name comes later and wins") @(t : T?) {
-        let side = "\{\"defines\": [\"__STDC_VERSION__=199901L\", \"__GNUC__=4\"]\}\n"
-        t |> equal(identity_run(t, dir, "sidecar", "linux", side), "1 1 2147483647 199901 64\n")
+        let side = "\{\"defines\": [\"__STDC_VERSION__=199901L\", \"__GNUC__=14\", \"__clang__\"]\}\n"
+        t |> equal(identity_run(t, dir, "sidecar", "linux", side), "1 1421 1 2147483647 199901 64\n")
     }
     rmdir_rec(dir)
 }
