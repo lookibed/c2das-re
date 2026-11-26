@@ -317,9 +317,8 @@ def private first_splice(bytes : array<uint8>; len : int) : int {
     return -1
 }
 
-def private has_bom(bytes : array<uint8>) : bool {
-    return length(bytes) >= 3 && bytes[0] == 0xEFu8 && bytes[1] == 0xBBu8 && bytes[2] == 0xBFu8
-}
+def private has_bom(bytes : array<uint8>) : bool =>
+    length(bytes) >= 3 && bytes[0] == 0xEFu8 && bytes[1] == 0xBBu8 && bytes[2] == 0xBFu8
 
 //! Open the file `file` (an id the caller numbers) for lexing; `bytes` is the file as read, taken
 //! over without a copy when it holds no line splice - one byte of spare capacity past its end (as

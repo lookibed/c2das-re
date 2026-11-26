@@ -74,7 +74,7 @@ def test_token_classes(t : T?) {
     }
     t |> run("every punctuator of 6.4.6, the longest first, `#` and `##` among them") @(t : T?) {
         let puncts = "[ ] ( ) \{ \} . -> ++ -- & * + - ~ ! / % << >> < > <= >= == != ^ | && || ? : ; ... = *= /= %= += -= <<= >>= &= ^= |= , # ##"
-        var expected <- [for (p in split(puncts, " ")); "P:{p}"]
+        let expected <- [for (p in split(puncts, " ")); "P:{p}"]
         t |> equal(lexed(puncts), join(expected, " "))
         t |> equal(lexed("a...b ..c x->y a+++b"), "I:a P:... I:b P:. P:. I:c I:x P:-> I:y I:a P:++ P:+ I:b")
     }
