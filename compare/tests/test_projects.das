@@ -61,7 +61,7 @@ def test_project_row(t : T?) {
         t |> equal(project_path(p, p.fixture), "/m/tests/manual/wasm3/fixtures/fib32.wasm")
         t |> equal(join(clang_args(p), " "), "-std=c11 -I/m/tests/manual/wasm3/include -I/m/tests/manual/wasm3/upstream/wasm3/source -I/m/tests/manual/wasm3/src")
         t |> equal("{p.cases} {p.case_id} {p.expected}", "/m/tests/canonical/cases.json wasm3-fib32-std ")
-        t |> equal(join(p.rust_flags, "|"), "--das-option|stack = 4194304")
+        t |> equal("{join(p.rust_flags, "|")} ours {join(p.ours_defines, " ")}", "--das-option|stack = 4194304 ours d_m3HasPosixHost=0")
         var q : Project
         t |> success(!find_project("/m", "doom", q))
     }

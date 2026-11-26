@@ -46,7 +46,7 @@ def test_pointer_index(t : T?) {
         t |> success(jit.out |> contains("p is null"), jit.out)
     }
     t |> run("the JIT null-checks `p` once before a `p[i]` loop and the computed pointer per element in a `deref(p + i)` loop (F100)") @(t : T?) {
-        let ir = "{temp_directory_result() as value}/c2das_probe_ptr_index.ll"
+        let ir = "{test_temp_dir()}/c2das_probe_ptr_index.ll"
         let r = runtime_child_ir("ptr_index_ir", SPELLINGS, "jit", ir)
         t |> success(program_output(r.out) |> contains("99 309 309"), r.out)
         let dump = fread(ir)

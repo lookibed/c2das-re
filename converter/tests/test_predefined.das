@@ -7,15 +7,18 @@ require daslib/strings_boost
 require ../../frontend/c_defines.das
 require ../cir.das
 require ../dumper_a.das
+require ../pipeline.das
+require ../tiers.das
 
 //! The predefined-macro tables against the pinned clang (`frontend/ARCHITECTURE.md` section 3):
 //! every macro clang predefines under a dialect's triple is an entry with clang's value or a name
-//! of a listed exclusion class.
+//! of a listed exclusion class, the dumper's flags leave clang with the table's macros and no
+//! other, and a program is dumped under them.
 
 // the classes of predefined names no table holds, each a list of names, a trailing `*` standing
 // for any rest
 let private EXCLUDED <- [
-    (title = "compiler identity and version", names = ["__GNUC__", "__GNUC_MINOR__", "__GNUC_PATCHLEVEL__", "__GNUC_STDC_INLINE__", "__GXX_ABI_VERSION", "__VERSION__",
+    (title = "compiler identity and version", names = ["__GNUC_STDC_INLINE__", "__GXX_ABI_VERSION", "__VERSION__",
             "__clang__", "__clang_*", "__llvm__", "_MSC_VER", "_MSC_FULL_VER", "_MSC_BUILD", "_MSC_EXTENSIONS", "_MSVC_*", "_CRT_USE_BUILTIN_OFFSETOF",
             "__CONSTANT_CFSTRINGS__", "__PRAGMA_REDEFINE_EXTNAME", "__GCC_ASM_FLAG_OUTPUTS__", "__GCC_HAVE_DWARF2_CFI_ASM"]),
     (title = "code generation", names = ["__NO_INLINE__", "__NO_MATH_INLINES", "__PIC__", "__PIE__", "__pic__", "__pie__", "__code_model_*", "_M_FP_*",
@@ -23,12 +26,6 @@ let private EXCLUDED <- [
     (title = "CPU features", names = ["__SSE*", "__MMX__", "__FXSR__", "__k8", "__k8__", "__tune_*", "__SEG_*", "__seg_*"]),
     (title = "atomics", names = ["__ATOMIC_*", "__GCC_ATOMIC_*", "__CLANG_ATOMIC_*", "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_*", "__MEMORY_SCOPE_*"]),
     (title = "other languages", names = ["__OBJC_*", "__OPENCL_*"])]
-
-// the entries no clang defines: the converter's own statement
-let private CONVERTER_OWN <- ["__STDC_NO_VLA__=1"]
-
-// the flags of every clang run of the dumper besides its macros
-let private DUMPER_FLAGS <- ["-funsigned-char", "-w"]
 
 // the exclusion class of `name`, "" when it has none
 def private excluded_as(name : string) : string {
@@ -42,12 +39,19 @@ def private excluded_as(name : string) : string {
     return ""
 }
 
-// the macros clang reports after preprocessing an empty file under `triple` and `flags`
-// (`-E -dM`), each as a table entry `NAME=value` or `NAME(params)=value`, sorted; one line
-// `clang: ...` when it fails or prints anything else
-def private clang_macros(triple : string; flags : array<string>) : array<string> {
-    var argv <- [default_clang(), "-target", triple]
-    argv |> push_from(DUMPER_FLAGS, flags, ["-E", "-dM", "-x", "c", "/dev/null"])
+// the dumper's flags of `dialect` that are neither a macro nor a path, then `more`
+def private plain_flags(dialect : string; more : array<string> = array<string>()) : array<string> {
+    var flags <- ["-target", target_by_name(dialect).triple]
+    flags |> push_from(DUMPER_FLAGS, more)
+    return <- flags
+}
+
+// the macros clang reports after preprocessing an empty file under `flags` (`-E -dM`), each as a
+// table entry `NAME=value` or `NAME(params)=value`, sorted; one line `clang: ...` when it fails or
+// prints anything else
+def private clang_macros(flags : array<string>) : array<string> {
+    var argv <- [default_clang()]
+    argv |> push_from(flags, ["-E", "-dM", "-x", "c", "/dev/null"])
     var out : string
     let rc = run_and_capture(argv, out, 60.0)
     var entries : array<string>
@@ -107,7 +111,7 @@ def test_tables_partition_clang(t : T?) {
     for (dialect in DIALECTS) {
         t |> run("{dialect}: every macro clang predefines is an entry with clang's value or a name of one exclusion class, never both") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            let clang <- clang_macros(target_by_name(dialect).triple, array<string>())
+            let clang <- clang_macros(plain_flags(dialect))
             t |> success(length(clang) > 100, "{dialect}: {clang[0]}")
             for (entry in clang) {
                 let name = name_of(entry)
@@ -121,19 +125,19 @@ def test_tables_partition_clang(t : T?) {
         }
         t |> run("{dialect}: every entry is a macro clang predefines, or the converter's own") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            var inscope clang_names <- names_of(clang_macros(target_by_name(dialect).triple, array<string>()))
+            var inscope clang_names <- names_of(clang_macros(plain_flags(dialect)))
             var own = 0
             for (name, entry in keys(by_name), values(by_name)) {
                 if (!key_exists(clang_names, name)) {
                     own++
-                    t |> success(has_value(CONVERTER_OWN, entry), "{dialect}: `{entry}` is no macro of clang's and none of the converter's own")
+                    t |> success(has_value(CONVERTER_ENTRIES, entry), "{dialect}: `{entry}` is no macro of clang's and none of the converter's own")
                 }
             }
-            t |> equal(own, length(CONVERTER_OWN))
+            t |> equal(own, length(CONVERTER_ENTRIES))
         }
         t |> run("{dialect}: every macro `-undef` leaves is an entry with its value") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            let left <- clang_macros(target_by_name(dialect).triple, ["-undef"])
+            let left <- clang_macros(plain_flags(dialect, ["-undef"]))
             t |> success(length(left) >= 7 && length(left) < 20, "{dialect}: -undef leaves {length(left)}: {left[0]}")
             for (entry in left) {
                 t |> equal(by_name?[name_of(entry)] ?? "{entry}: left by -undef, no entry", canonical(entry), dialect)
@@ -143,7 +147,7 @@ def test_tables_partition_clang(t : T?) {
     t |> run("every name and prefix of an exclusion class matches a macro clang predefines under a dialect") @(t : T?) {
         var all : array<string>
         for (dialect in DIALECTS) {
-            all |> push_from(clang_macros(target_by_name(dialect).triple, array<string>()))
+            all |> push_from(clang_macros(plain_flags(dialect)))
         }
         for (group in EXCLUDED) {
             for (pattern in group.names) {
@@ -155,4 +159,73 @@ def test_tables_partition_clang(t : T?) {
             }
         }
     }
+}
+
+[test(description = "the dumper's frontend flags leave clang with the table's macros and no other", timeout = 1200)]
+def test_dumper_macro_flags(t : T?) {
+    for (dialect in DIALECTS) {
+        t |> run("{dialect}: clang takes the flags with no error and defines the table's entries, each with its value, and nothing else") @(t : T?) {
+            var error : string
+            let flags <- dumper_frontend_flags(target_by_name(dialect), error)
+            t |> equal(error, "")
+            var table_error : string
+            let entries <- read_predefined(predefined_path(dialect), table_error)
+            var defined <- [for (entry in entries); canonical(entry)]
+            sort(defined)
+            let seen <- clang_macros(flags)
+            t |> equal(join([for (entry in seen); canonical(entry)], "\n"), join(defined, "\n"))
+        }
+    }
+    t |> run("a table that is missing fails naming its path, and gives no flag to run clang under") @(t : T?) {
+        let missing = path_join(test_temp_dir(), "no_such_dialect.defs")
+        var error : string
+        let flags <- frontend_flags(target_by_name("linux"), missing, own_include_dir(), error)
+        t |> equal(error, "{missing}: no such predefined-macro table")
+        t |> equal(length(flags), 0)
+    }
+}
+
+// a program printing whether it sees a compiler's own name (clang, MSVC, llvm), the GNU version
+// it sees (0 for none), a table macro in an expression and in an `#if`, and `__STDC_VERSION__`
+let private IDENTITY_SOURCE = "int printf(const char *, ...);\n#if defined(__clang__) || defined(_MSC_VER) || defined(__llvm__) || defined(__clang_major__) || defined(__VERSION__)\n#define WHO 1\n#else\n#define WHO 0\n#endif\n#ifdef __GNUC__\n#define GNU (__GNUC__ * 100 + __GNUC_MINOR__ * 10 + __GNUC_PATCHLEVEL__)\n#else\n#define GNU 0\n#endif\n#if __SIZEOF_INT__ == 4 && __STDC_NO_VLA__\n#define SIZED 1\n#else\n#define SIZED 0\n#endif\nint main(void) \{ int top = __INT_MAX__; long version = __STDC_VERSION__; printf(\"%d %d %d %d %ld %d\\n\", WHO, GNU, SIZED, top, version, __CHAR_BIT__ * (int)sizeof(__SIZE_TYPE__)); return 0; \}\n"
+
+// `IDENTITY_SOURCE` converted under `dialect` in `<dir>/<name>`, `sidecar` beside it when given,
+// and run under the interpreter: its output
+def private identity_run(t : T?; dir, name, dialect, sidecar : string) : string {
+    let at = path_join(dir, name)
+    mkdir_rec(at)
+    let c_path = path_join(at, "identity.c")
+    fwrite(c_path, IDENTITY_SOURCE)
+    if (!empty(sidecar)) {
+        fwrite(path_join(at, "identity.c2das"), sidecar)
+    }
+    let conv <- convert(c_path, path_join(at, "out"), dialect)
+    if (!conv.ok) {
+        t |> failure(conv.error)
+        return ""
+    }
+    var output : string
+    let rc = run_tier(conv.das_path, "interp", at, output, CONVERTED_MODULES)
+    t |> equal(rc, 0, output)
+    return output
+}
+
+[test(description = "a program is dumped under the table: no compiler's own name, the dialect's GNU version, the table's values, a sidecar define over them", timeout = 1200)]
+def test_dump_under_the_table(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_predefined", dir_error)
+    if (!empty(dir_error)) {
+        t |> failure("no temp directory: {dir_error}")
+        return
+    }
+    t |> run("under both dialects the program sees no compiler's own name and the table's sizes, limits and language; under linux GNU C 4.2.1, under msvc no GNU C") @(t : T?) {
+        for (dialect, line in DIALECTS, ["0 421 1 2147483647 201710 64\n", "0 0 1 2147483647 201710 64\n"]) {
+            t |> equal(identity_run(t, dir, dialect, dialect, ""), line, dialect)
+        }
+    }
+    t |> run("a sidecar's define of a table's name comes later and wins") @(t : T?) {
+        let side = "\{\"defines\": [\"__STDC_VERSION__=199901L\", \"__GNUC__=14\", \"__clang__\"]\}\n"
+        t |> equal(identity_run(t, dir, "sidecar", "linux", side), "1 1421 1 2147483647 199901 64\n")
+    }
+    rmdir_rec(dir)
 }

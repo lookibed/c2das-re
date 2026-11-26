@@ -35,7 +35,7 @@ class BitsPair : AstStructureAnnotation \{
 def bits_source(annotation, storage_field, body : string) : string => "options gen2\nrequire bits_pair_mod\n{annotation}\nstruct S \{\n    {storage_field}\n\}\n[export]\ndef main : int \{\n    var s : S\n{body}    return 0\n\}\n"
 
 def bits_run(t : T?; name, annotation, storage_field, body : string) {
-    let dir = temp_directory_result() as value
+    let dir = test_temp_dir()
     let module_path = "{dir}/bits_pair_mod.das"
     fwrite(module_path, BITS_MODULE)
     let r = runtime_child(name, bits_source(annotation, storage_field, body), false)
@@ -75,7 +75,7 @@ def test_c_storage(t : T?) {
         bits_run(t, "wide", "[bits_pair(field = \"_bits0\", storage = \"uint8\", count = 6, name = \"f\", off = 3, width = 44)]", "_bits0 : uint8[6]", "    s.f = 0xffffffffffful\n    if (s.f != 0xffffffffffful || s._bits0[0] != 0xf8u8 || s._bits0[5] != 0x7fu8) \{\n        return 1\n    \}\n    s.f = s.f + 1ul\n    if (s.f != 0ul) \{\n        return 2\n    \}\n")
     }
     t |> run("add_bit_pair reports an operator the struct already has") @(t : T?) {
-        let dir = temp_directory_result() as value
+        let dir = test_temp_dir()
         let module_path = "{dir}/bits_pair_mod.das"
         fwrite(module_path, BITS_MODULE)
         let r = runtime_child("twice", "options gen2\nrequire bits_pair_mod\n[bits_pair(field = \"a\", storage = \"uint\", name = \"f\", width = 3), bits_pair(field = \"a\", storage = \"uint\", name = \"f\", width = 3)]\nstruct S \{\n    a : uint\n\}\n[export]\ndef main \{\n\}\n", true)

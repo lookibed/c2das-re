@@ -33,7 +33,7 @@ def test_stdlib(t : T?) {
         }
     }
     t |> run("memcpy with an `int` size is daslang's builtin beside crt's `uint64` one, right under the interpreter and the JIT, which folds a one-byte copy to one unaligned load (docs/probe-findings.md F81, F82)") @(t : T?) {
-        let ir = "{temp_directory_result() as value}/c2das_probe_builtin_memcpy.ll"
+        let ir = "{test_temp_dir()}/c2das_probe_builtin_memcpy.ll"
         let interp = runtime_child("builtin_memcpy", BUILTIN_MEMCPY, false)
         t |> equal(interp.out, "0x4 84148994 1.5 513\n")
         let jit = daslang_run("builtin_memcpy_jit", BUILTIN_MEMCPY, jit_flags(), [for (m in RUNTIME_MODULES); m], "c2das_probe", ["--", "--jit-dump={ir}"])

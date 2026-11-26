@@ -67,8 +67,10 @@ the `va_` macros. So `<math.h>` has no `NAN`, `INFINITY` or `isnan`, whose built
 lowers, and `<float.h>` no `LDBL_` macro, `long double` being `double` to the converter. Section 6
 holds the one macro outside this.
 
-`<unistd.h>` and `<fcntl.h>` declare nothing: no function of theirs is bound, and a converted
-project (doomgeneric) includes them and uses none. `<sys/types.h>` holds `mode_t` for `mkdir` of
+`<unistd.h>`, `<fcntl.h>` and `<endian.h>` declare nothing: no function of theirs is bound, and a
+converted project includes them and uses none (doomgeneric the first two; wasm3 the last, on the
+arm it takes where no compiler it knows is named, whose `__bswap_16` test then fails and leaves its
+own byte swaps). `<sys/types.h>` holds `mode_t` for `mkdir` of
 `<sys/stat.h>`. `<string.h>` includes `<strings.h>`, as glibc's does by default, so
 `strcasecmp` is visible through either.
 

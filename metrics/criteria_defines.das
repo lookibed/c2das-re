@@ -6,6 +6,7 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require ../converter/dumper_a.das
+require ../converter/cir.das
 require criteria_scan
 
 //! The program's numeric-constant macros (`metrics/ARCHITECTURE_CRITERIA.md`, constant names):
@@ -98,11 +99,16 @@ def read_preprocessed(text, main_path : string) : Preprocessed {
 }
 
 //! `c_path` preprocessed by the pinned clang with `-D` for each of `defines`, `-I` for each of
-//! `include_dirs` and `-include` for each of `include_files`, as the dumper passes a sidecar's;
-//! `error` names a unit clang refused.
+//! `include_dirs` and `-include` for each of `include_files`, as the dumper passes a sidecar's,
+//! under the frontend flags the dumper gives the `linux` dialect: its triple, macros and the own
+//! libc headers; `error` names a unit clang refused.
 def preprocess(c_path : string; defines, include_dirs, include_files : array<string>; var error : string&) : Preprocessed {
     var argv <- [default_clang(), "-E", "-C", "-dD"]
-    argv |> push_from(CONVERTER_DEFINES, [for (d in defines); "-D{d}"], [for (d in include_dirs); "-I{d}"])
+    let frontend <- dumper_frontend_flags(target_by_name("linux"), error)
+    if (!empty(error)) {
+        return <- Preprocessed()
+    }
+    argv |> push_from(frontend, [for (d in defines); "-D{d}"], [for (d in include_dirs); "-I{d}"])
     for (f in include_files) {
         argv |> push_from(["-include", f])
     }

@@ -26,7 +26,7 @@ def private loop_source(option_lines, hint : string) : string =>
 
 // the JIT run of `source` and the IR of its function `scale`, spelled `fn` in the dump (`--jit-dump=<file>`)
 def private scale_ir(t : T?; name, source : string; fn : string = "scale") : string {
-    let ir = "{temp_directory_result() as value}/c2das_probe_{name}.ll"
+    let ir = "{test_temp_dir()}/c2das_probe_{name}.ll"
     let jit = daslang_run(name, source, jit_flags(), [for (m in RUNTIME_MODULES); m], "c2das_probe", ["--", "--jit-dump={ir}"])
     t |> equal(jit.out |> ends_with("52\n"), true, jit.out)
     let dump = fread(ir)
@@ -54,7 +54,7 @@ def test_jit_tbaa(t : T?) {
         t |> equal(body |> contains("!tbaa"), false, body)
     }
     t |> run("`options strict_aliasing = false` in a required module is ignored: the option is the root program's alone") @(t : T?) {
-        let dir = temp_directory_result() as value
+        let dir = test_temp_dir()
         let module_path = "{dir}/c2das_probe_tbaa_mod.das"
         let lines <- split(loop_source("options strict_aliasing = false\nmodule c2das_probe_tbaa_mod public\n", ""), "\n")
         let main_at = find_index(lines, "[export]")

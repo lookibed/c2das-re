@@ -4,7 +4,7 @@ require daslib/fio
 require strings
 require _daslang_child
 
-def child_path(name : string) : string => "{temp_directory_result() as value}/c2das_probe_{name}.das"
+def child_path(name : string) : string => "{test_temp_dir()}/c2das_probe_{name}.das"
 
 def stdout_of(name, source : string) : string {
     let path = child_path(name)

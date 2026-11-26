@@ -118,9 +118,9 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 - `benchmarks/bench_for_shapes.das` - the loop-shape race behind section 4
   (`ARCHITECTURE_EMITTER.md`), run with `dastest -- --bench` under the interpreter and
   under `-jit`.
-- `tests/test_lowerings.das` - the P1 fixtures under `tests/fixtures/p1_*.c`, each converted
-  and run against the native build of the same file by the pinned clang (output and exit
-  code), plus the lowering shapes the text must carry.
+- `tests/test_lowerings.das` - the P1 fixtures under `tests/fixtures/p1_*.c`, each converted and run against the native build of the same file by the pinned clang (output and exit code), plus the lowering shapes the text must carry.
+- `tests/test_predefined.das`, `tests/test_own_headers.das` - Dumper A's frontend against the pinned clang (`ARCHITECTURE_DUMPER_MACROS.md`): the predefined-macro tables name by name, the frontend flags, every own libc header alone and all together under them in both dialects, a program over them under both, the folder external under any program root, the refusal of a header it lacks.
+- `tests/external/` - headers outside every fixture's folder, so outside its program root: `minmax.h`, which `tests/fixtures/p9_fn_macros.c` includes as an external header's function-like macro.
 - `tests/test_cir_emit.das` - `cir_to_das` over the C-IR of `tests/fixtures/p1_loops.c` and `p2_arrays.c` gives the pipeline's module byte for byte under the defaults and `goto` dispatch; a C-IR that does not read gives the reader's error, and a call to a function no unit defines the emitter's.
 - `tests/test_cli.das` - `main.das` run as a child process over `tests/fixtures/p4_param_writes.c`:
   `--param-writes copy` and `in-place` reach the emitter, and a bad value exits 2; over
@@ -147,7 +147,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   the same `-D` prints; and `tests/fixtures/p8_include_dirs/` (a unit including a sibling folder's
   C file through `include_dirs` and a `../` header, under a `program_root` above both) printing what
   its native build prints, with the refusals of a C file outside the root and of a main file
-  outside it, and the program converting with its folder named in `CPATH`.
+  outside it, and of a dump under a set `CPATH` or `C_INCLUDE_PATH`.
 - `tests/test_link.das` - the three files of `tests/fixtures/p5_multi_link/` linked into one module
   that prints what their native build prints, with the renames, the header copies and the scoping
   the text must carry; the file list and the fixture's manifest giving one module through

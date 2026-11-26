@@ -7,16 +7,18 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 ### The program's files {#file-policy}
 
 A C program is its main file and every file under the program root, subdirectories included: the
-sidecar's `program_root`, else the main file's directory. Clang's resource directory and the
-directories clang searches for `<...>` under the target (its `-v` list) stay external wherever
-they lie (a main file in `/root` holds the default `/root/libclang`), but for the folders `CPATH`
-and `C_INCLUDE_PATH` name, which `-v` lists with them and which hold the user's headers. A main
-file that is no file of the program fails the dump naming it and the root, and so does a
-top-level declaration of a `.c` file outside the root and the system directories (a unit that
+sidecar's `program_root`, else the main file's directory. Libc is the own header set alone: both
+clang runs get `-nostdinc`, so neither clang's resource directory nor the host's libc is searched,
+and `frontend/include/` (repo root) as the one `-isystem` folder, found beside `frontend/c_defines.das`
+wherever the converter runs from. That folder stays external wherever it lies (a program root
+above it holds it); the sidecar's `include_dirs` hold the user's headers. clang reads `CPATH` and `C_INCLUDE_PATH` under `-nostdinc` too and searches their
+folders before the `-isystem` one, where a host libc would replace the own headers with no error, so a dump with either set fails before clang runs, naming the variable. A `<...>` header no searched folder holds fails
+the dump with clang's error naming it. A main file that is no file of the program fails the dump naming it and the root, and so does a
+top-level declaration of a `.c` file outside the root (a unit that
 includes another unit's source through `include_dirs`), since its definitions would stay external
 and leave the module empty with no error: a header beside the `.c` (or under a folder of it) declares the program's records,
 typedefs, enums, prototypes, objects and static functions, and they convert with the file. Every
-other file is external, a system header's above all: its records stay out of the C-IR, and a
+other file is external, an own libc header's above all: its records stay out of the C-IR, and a
 reference to one of its functions or objects binds by name (`strlen`, `stderr`). Paths compare
 canonical (`get_full_file_name`, symbolic links and `..` resolved, memoized per spelling), so
 `#include "../dir/x.h"` back into the folder is the program's too. The rule is one test,
@@ -25,7 +27,7 @@ it, the JSON walk a top-level declaration whose location's file does. The rule d
 boundary per translation unit, so a program whose headers live outside the folder of its C files
 names a wider `program_root`; Lua's sources and headers share one folder. An external record the program reaches a member of, declares a
 variable or a record field of, or names under `sizeof` as a type or an operand's (`sizeof *p`)
-(`struct tm`, `struct lconv`, `mbstate_t`) is laid out with the program's records: the libclang pass registers its definition from the system header, and every external
+(`struct tm`, `struct lconv`) is laid out with the program's records: the libclang pass registers its definition from the header, and every external
 record it holds by value, an anonymous one nested in it included, and the walk anchors it where it first interns it, so it converts and is
 layout-checked under its C tag; one the program reaches only through pointers (`FILE`) stays
 opaque.
@@ -76,15 +78,12 @@ spells the declaration (`int a[n]`). A VLA parameter is no array: clang decays i
 cursor and is the dialect's pointer-wide integer. Widths follow the selected dialect (`msvc`:
 int 32, long 32, long long 64; `linux`: long 64); plain `char` is unsigned in both
 (`docs/probe-findings.md` F17), which the dumper enforces with `-funsigned-char`. Both passes
-define `CONVERTER_DEFINES`: `__NO_CTYPE` (else glibc's `isalpha(c)` is a macro indexing a locale
-table; with it the crt function) and `__STDC_NO_VLA__` 1 (C11 6.10.8.3, no VLAs), so a program
-testing it (wasm3's `M3_HAS_VLA`) takes its fixed-size path. The dump
+start from the dialect's predefined-macro table in place of clang's own macros
+(`ARCHITECTURE_DUMPER_MACROS.md`, the frontend flags a unit is read under). The dump
 desugars only the top level of a spelling, so a typedef name inside `P_t *` or `P_t (P_t, int)`
 resolves through the canonical spelling libclang gives the typedef. Records come from a
-libclang pass over the same file under the same flags and the pinned clang's resource directory
-(`clang -print-resource-dir`; libclang finds none of its own, and without it `stddef.h` and the
-`size_t` a libc prototype spells are missing; an error the pass reports fails the dump with its
-text, since a missing header leaves records and typedefs out), run before the JSON walk: every `struct`
+libclang pass over the same file under the same flags (an error the pass reports fails the dump
+with its text, since a missing header leaves records and typedefs out), run before the JSON walk: every `struct`
 and `union` definition of the program, nested ones included, with clang's size, alignment and
 field offsets, keyed by the canonical spelling the JSON desugars to (`struct X`, `struct
 thinker_t` for a typedef-named anonymous record, which libclang spells bare and the pass
@@ -109,7 +108,7 @@ record spelling is keyed with the scope dropped. A typedef is a `typedef` type a
 anchor, nothing more. A file-scope `static` gets the TU-qualified name `<stem>__<name>` (a stem
 that starts with a digit, as the c-testsuite's do, takes a leading underscore, since `00099__f`
 is not a name) and a local `static` is hoisted into `decls` as `<fn>_<name>` with `from_func`
-(`<fn>_<name>1` and up past another hoisted static, a file-scope name the dump declares, a system
+(`<fn>_<name>1` and up past another hoisted static, a file-scope name the dump declares, a libc
 header's included, and a parameter or local of the function). A file-scope `static` declared
 again without `static` keeps its internal linkage (C11 6.2.2p4). A reference binds by the
 declaration id clang resolved it to (`referencedDecl.id`), never by its spelling, so a local
@@ -129,10 +128,9 @@ Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarD
 Statements: compound, `DeclStmt` (one `decl` per variable), expression statements,
 `if`, `while`, `do`, `for` (its five slots, an absent one spelled `{}`), `break`,
 `continue`, `return`, the null statement. An expression statement that is a GNU statement
-expression `({ ... })` through parentheses, `__extension__` and a cast to `void` is its block, and
-one that is a comma expression holding such an operand is its operands as statements in order
-(glibc's `assert` without `NDEBUG`, `((void) sizeof (e), __extension__ ({ if (e) ; else
-__assert_fail (...); }))`); a statement expression anywhere else fails closed. Expressions: integer, character, floating (as a
+expression `({ ... })` through parentheses, `__extension__` and a cast to `void` is its block; a
+statement expression anywhere else, a comma's operand included, fails closed (the own `<assert.h>`
+spells `assert` as a conditional expression over `__assert_fail`, so no libc macro holds one). Expressions: integer, character, floating (as a
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
 comma operators, calls, subscripts, `sizeof` and `_Alignof` (clang's `alignof`, with clang's
@@ -199,14 +197,14 @@ the arithmetic and bitwise operators, parentheses, casts and enumerators; a GNU 
 label by declaration id, and the label may follow the goto): a `LabelStmt` is a `label` marker
 followed by its statement, flattened like a case, a `GotoStmt` is a `goto` naming the label, and
 an `IndirectGotoStmt` (a computed goto through a label address) is outside the dialect.
-Every type spelling that carries `__jmp_buf_tag` (glibc's `jmp_buf`, `struct
+Every type spelling that carries `__jmp_buf_tag` (glibc's `jmp_buf`, which the own `<setjmp.h>` keeps, `struct
 __jmp_buf_tag[1]`; its decay and a pointer to it, `struct __jmp_buf_tag *`; a pointer to the
 array, `(*)[1]`) is the one opaque record `jmp_buf` of one `int` field, or a pointer to it,
 which the lowering spells as the protocol's `CJmpBuf`; a main-file definition of `struct
 __jmp_buf_tag` (a file that includes no header declares glibc's tag itself) adds no record. A `va_list` is known by its declaration, since
 msvc's desugaring to `char *` loses it and a program's own `typedef char *va_list` desugars
 alike: a typedef is one when its chain of typedefs reaches clang's implicit `__builtin_va_list`
-declaration, which the `va_list` and `__gnuc_va_list` of clang's `stdarg.h` do. The JSON walk
+declaration, which the `va_list` and `__gnuc_va_list` of the own headers do. The JSON walk
 follows a node type's `typeAliasDeclId` to the typedef declarations that reach it (collected
 in tree order before the walk); the libclang pass follows a typedef's and a record field's
 declared type through `clang_getTypeDeclaration`, so a field of a pointer to a `va_list` fails
@@ -286,7 +284,7 @@ pass never saw.
 An expression node an object-like macro of the program expands to whole carries the macro's name in
 `macro` (the spec's section 6.2 names the field for a literal; Dumper A writes it on any expression
 node): both ends of its range expand from one identifier no `(` follows, spelled in a program file
-(`in_program`: a system header's macro may share a das builtin's name, `INT_MAX`; the emitter skips
+(`in_program`: a libc header's macro may share a das builtin's name, `INT_MAX`; the emitter skips
 a program macro so named, `PI`). The outermost such node is named, a conversion's operand rather
 than the conversion. A node whose parent starts or ends in the same expansion is named only when
 the macro's body (its `#define` line, in the file of the node's first token or the main file) is

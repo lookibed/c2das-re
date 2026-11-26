@@ -77,7 +77,7 @@ def test_constant_p_evaluation(t : T?) {
     t |> run("clang_Cursor_Evaluate on a __builtin_constant_p call gives the pinned clang's -O0 answer, no result where that answer is 0, except across a comma or over a nested unfolded call") @(t : T?) {
         let source = constant_p_program()
         let native = native_battery("c2das_probe_constant_p", ["-O0"], source)
-        let path = "{temp_directory_result() as value}/c2das_probe_constant_p_lib.c"
+        let path = "{test_temp_dir()}/c2das_probe_constant_p_lib.c"
         fwrite(path, source)
         let answers <- libclang_answers(path)
         remove(path)
@@ -109,7 +109,7 @@ let CONVENTION_PROGRAM = "#define vectorcall __attribute__((preserve_none))\ntyp
 [test]
 def test_convention_spelling(t : T?) {
     t |> run("clang -ast-dump=json spells a calling convention a macro names by the macro before the result, its attribute after the parameters, and the macro's MacroQualifiedType over the AttributedType that leads with the attribute") @(t : T?) {
-        let path = "{temp_directory_result() as value}/c2das_probe_convention.c"
+        let path = "{test_temp_dir()}/c2das_probe_convention.c"
         fwrite(path, CONVENTION_PROGRAM)
         var out : string
         let rc = run_and_capture([battery_clang(), "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-target", "x86_64-pc-linux-gnu", path], out, 120.0)

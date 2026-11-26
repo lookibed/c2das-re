@@ -23,7 +23,7 @@ def daslang_run(name, source : string; flags : array<string>; modules : array<st
 
 //! The same with `args` after the source path (`utils/aot/main.das -- -ctx <in> <out>`).
 def daslang_run(name, source : string; flags : array<string>; modules : array<string>; prefix : string; args_after : array<string>) : tuple<rc : int; out : string> {
-    let path = "{temp_directory_result() as value}/{prefix}_{name}.das"
+    let path = "{test_temp_dir()}/{prefix}_{name}.das"
     fwrite(path, source)
     var out : string
     // the JIT reports itself at `info`; a run under it carries the line `jit_ran` reads
@@ -41,7 +41,8 @@ def daslang_run(name, source : string; flags : array<string>; modules : array<st
     args |> push_from(flags)
     args |> push(path)
     args |> push_from(args_after)
-    let rc = run_and_capture(args, out, 60.0)
+    // a JIT child beside a full test lane has taken more than a minute; a killed child prints no result
+    let rc = run_and_capture(args, out, 300.0)
     if (jit) {
         set_env_variable("DAS_LOG_LEVEL", level)
     }
@@ -117,7 +118,7 @@ def battery_clang : string =>
 //! run once: the native side of a byte-for-byte battery. A build failure returns the compiler's
 //! text after `clang failed:`.
 def native_battery(stem : string; flags : array<string>; source : string) : string {
-    let dir = "{temp_directory_result() as value}"
+    let dir = "{test_temp_dir()}"
     let c_path = "{dir}/{stem}.c"
     let bin = "{dir}/{stem}"
     fwrite(c_path, source)

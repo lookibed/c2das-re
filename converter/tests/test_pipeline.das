@@ -249,13 +249,17 @@ def test_include_dirs(t : T?) {
         t |> success(res.das_text |> contains("let private FORCED_VALUE = 17\n"), res.das_text)
         t |> success(res.das_text |> contains("f.v = FORCED_VALUE\n"), res.das_text)
     }
-    t |> run("a folder `CPATH` names holds the user's headers, never the system's: the program in it converts") @(t : T?) {
-        // a child converter under `env CPATH=<root>`, so this process's environment stays as it was
-        var argv <- ["env", "CPATH={root}"]
-        argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["converter/main.das", "--", path_join(WIDE, "app/main.c"), "--out", path_join(dir, "cpath"), "--target", "linux"])
-        var out : string
-        t |> equal(run_and_capture(argv, out, 300.0), 0, out)
-        has_wide_program(t, fread(path_join(path_join(dir, "cpath"), "main.das")))
+    t |> run("a set `CPATH` or `C_INCLUDE_PATH` refuses the dump, naming the variable and the sidecar's `include_dirs`: clang would search it before the own headers") @(t : T?) {
+        // a child converter under `env <NAME>=<folder>`, so this process's environment stays as it was
+        for (name in ["CPATH", "C_INCLUDE_PATH"]) {
+            var inscope argv <- ["env", "{name}=/usr/include"]
+            argv |> push_from(daslang_cmd(CONVERTED_MODULES), ["converter/main.das", "--", "converter/tests/fixtures/ret42.c", "--out", path_join(dir, "env_{name}"), "--target", "linux"])
+            var out : string
+            t |> success(run_and_capture(argv, out, 300.0) != 0, out)
+            t |> success(out |> contains("the environment variable {name} is set (/usr/include)") && out |> contains("`include_dirs`"), out)
+            t |> success(!fexist(path_join(path_join(dir, "env_{name}"), "ret42.das")), "a module was written under {name}")
+        }
+        t |> equal(include_variable_refusal("CPATH", ""), "")
     }
     rmdir_rec(dir)
 }

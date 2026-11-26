@@ -114,10 +114,17 @@ def test_read_predefined(t : T?) {
             var inscope entries <- read_predefined(path, error)
             t |> equal(error, "")
             t |> success(has_value(entries, "__STDC_VERSION__=201710L"), "{path} states no gnu17 __STDC_VERSION__")
-            t |> success(has_value(entries, "__STDC_NO_VLA__=1"), "{path} states no __STDC_NO_VLA__")
+            for (own in CONVERTER_ENTRIES) {
+                t |> success(has_value(entries, own), "{path} does not state the converter's own {own}")
+            }
             for (entry in entries) {
                 t |> success(find(entry, "=") > 0, "{path}: `{entry}` spells no value")
             }
         }
+    }
+    t |> run("the own headers' folder lies beside the module") @(t : T?) {
+        let headers = own_include_dir()
+        t |> success(headers |> ends_with("frontend/include"), headers)
+        t |> success(fexist(path_join(headers, "stdio.h")), "{headers} holds no stdio.h")
     }
 }

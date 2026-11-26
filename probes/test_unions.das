@@ -192,7 +192,7 @@ def test_unions(t : T?) {
         t |> equal(annotations_Seen(), 0)
     }
     t |> run("patch runs only once the whole program infers without error") @(t : T?) {
-        let dir = temp_directory_result() as value
+        let dir = test_temp_dir()
         let module_path = "{dir}/probe_patch_mod.das"
         fwrite(module_path, PATCH_MODULE)
         let clean = daslang_child("patch_clean", patch_source("    var p : P\n    p.x = 1\n"), true)

@@ -334,6 +334,25 @@ def test_defines(t : T?) {
         var refused : string
         preprocess(path_join(dir, "missing.c"), array<string>(), array<string>(), array<string>(), refused)
         t |> success(refused |> contains("missing.c"), refused)
+        // the dumper's frontend flags: the table's names and no clang's, the own libc headers alone
+        let flagged = path_join(dir, "flags.c")
+        fwrite(flagged, "#ifdef __clang__\n#define UNDER_CLANG 1\n#endif\n#ifdef __STDC_NO_VLA__\n#define UNDER_TABLE 2\n#endif\nint g;\n")
+        var flags_error : string
+        var under <- preprocess(flagged, array<string>(), array<string>(), array<string>(), flags_error)
+        t |> equal(flags_error, "")
+        t |> success(key_exists(under.macros, "UNDER_TABLE") && !key_exists(under.macros, "UNDER_CLANG"), "{[for (k in keys(under.macros)); k; where k |> starts_with("UNDER")]}")
+        fwrite(flagged, "#include <wchar.h>\nint g;\n")
+        var header_error : string
+        preprocess(flagged, array<string>(), array<string>(), array<string>(), header_error)
+        t |> success(header_error |> contains("'wchar.h' file not found"), header_error)
+        // a set include variable refuses the preprocessing as it refuses a dump
+        let saved = has_env_variable("C_INCLUDE_PATH") ? get_env_variable("C_INCLUDE_PATH") : ""
+        set_env_variable("C_INCLUDE_PATH", "/usr/include")
+        var variable_error : string
+        let unread <- preprocess(c_path, array<string>(), array<string>(), array<string>(), variable_error)
+        set_env_variable("C_INCLUDE_PATH", saved)
+        t |> success(variable_error |> contains("the environment variable C_INCLUDE_PATH is set (/usr/include)"), variable_error)
+        t |> success(empty(unread.emitted) && empty(unread.macros), "the unit was preprocessed under the variable")
         rmdir_rec(dir)
     }
 }

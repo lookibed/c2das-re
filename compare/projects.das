@@ -95,6 +95,7 @@ def project_table(checkout : string) : array<Project> {
         tu = "src/all_host.c",
         bench_tu = "src/all_host_bench.c",
         include_dirs <- ["include", "upstream/wasm3/source", "src"],
+        ours_defines <- ["d_m3HasPosixHost=0"],
         c_std = "c11",
         native_flags <- ["-O2"],
         fixture = "fixtures/fib32.wasm",
