@@ -221,7 +221,7 @@ storage class, then member declarators, each a declarator, a bit-field width or 
 attributes written before a later one and after each. A member declaration with no declarator is
 an anonymous member, `struct { int a; };` or the `int;` clang warns on alike. A `;` alone and
 `_Static_assert` stand among the members. A flexible array member is an array declarator with no
-size; the parser checks no rule on members beyond the grammar (C11 6.7.2.1: a flexible array
+size, and a member's array takes no qualifier, `static` or `[*]` (section 17); the parser checks no rule on members beyond the grammar (C11 6.7.2.1: a flexible array
 last, a width's value, a bit-field's type), which the checker owns.
 
 An enum body holds enumerators: a name, its attributes, then an optional `=` and constant
@@ -247,11 +247,13 @@ function through its own function declarator, that declarator holds the only ide
 there is no asm label and no `typedef`, and a `{` follows, or, after an identifier list, anything
 but `;`, `,` or `=`. Otherwise its `{` is `expected ';'`, as for `int a, f(void) {}`, a pointer
 to a function, or an asm label, which clang rejects on a definition. Attributes after the
-declarator stay, as clang takes them.
+declarator stay, as clang takes them. A definition's own parameters take no `[*]` at any level, as
+clang requires a bound there; a prototype inside one may.
 
 The function's name is bound as an ordinary identifier around the definition. Then a scope opens
 for the parameters. After an identifier list, the old-style declaration list follows: each
-declaration takes `register` alone as its storage class and no initializer, and declares names of
+declaration takes `register` alone as its storage class and no initializer, an array in it a
+qualifier or `static` as a parameter's but no `[*]`, and declares names of
 the identifier list, each once (`expected a name of the identifier list`, `expected a parameter
 declared once`); a typedef name in it is a type as anywhere. A name the list leaves untyped is an
 error at the body's `{`, since clang under gnu17 refuses the implicit `int`. Each identifier
