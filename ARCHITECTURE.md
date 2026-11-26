@@ -49,7 +49,8 @@ the continuous integration section 7.
   `DASLANG_ROOT`.
 - `fetch/` - gitignored: `fetch/dasFlex/`, the lexer generator `frontend/` builds on, cloned at its
   `VERSIONS.md` pin by `scripts/fetch_dasflex.sh` (which the preflight `env` gate runs) and loaded
-  as a module folder by `das`; never copied into the tree.
+  as a module folder by `das`; never copied into the tree. `tests/test_fetch_dasflex.das` holds the
+  pin against the checkout, the script's branches over a local origin, and `das`'s module flag.
 - `lua/`, `doom/`, `chibicc/` - the vendored programs, each fetched at a `VERSIONS.md` pin and never
   committed, with their sidecars and harnesses (`docs/implementation_order.md`, P5, P6 and P10):
   `chibicc/` converts the chibicc C compiler (`chibicc/ARCHITECTURE.md`);

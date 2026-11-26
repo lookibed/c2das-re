@@ -139,14 +139,15 @@ two symbols: the interner compares bytes.
 
 `pp_open` skips a UTF-8 byte order mark at offset 0, as clang and gcc do: the first token keeps its
 byte offset and column (4) and has no space. It replaces no trigraph, as clang does by default
-under gnu17. It removes every line splice - a backslash, any blanks, then `\n` or `\r\n`; the blanks
-are clang's and gcc's extension - before the scanner runs, since a scanner rule that skipped one
-would set `has_space` and one that matched across it would need it in every pattern. A file with no
-splice is lexed in its own bytes: `pp_open` takes the array over (`<-`), and one byte of spare
-capacity (`pp_read_file` leaves it) holds the scanner's end zero without a reallocation. A file with
-a splice is copied once into a working buffer without them, and a table records, per removed
-splice, the file offset of its backslash, the buffer offset where the bytes after it start and
-their offset in the file.
+under gnu17. A lone `\r` (no `\n` after it) is a newline to clang, in the line count and wherever a
+newline ends a token, so `pp_open` turns it into `\n`, one byte for one. It removes every line
+splice - a backslash, any blanks, then `\n`, `\r\n` or a lone `\r`; the blanks are clang's and gcc's
+extension - before the scanner runs, since a scanner rule that skipped one would set `has_space`
+and one that matched across it would need it in every pattern. A file with neither is lexed in
+its own bytes: `pp_open` takes the array over (`<-`), and one byte of spare capacity
+(`pp_read_file` leaves it) holds the scanner's end zero without a reallocation. A file with either
+is copied once into a working buffer, and a table records, per removed splice, the file offset of
+its backslash, the buffer offset where the bytes after it start and their offset in the file.
 
 A token is placed back through that table: the splices before its first byte give its file offset
 (the buffer offset plus their removed bytes) and its line (the buffer line plus their count, each
@@ -166,23 +167,50 @@ The rule list is C11 6.4's pp-token grammar with clang's choices where the stand
 - a pp-number (6.4.8) is a digit or a dot and a digit, then digits, letters, `_`, dots, UCNs,
   Annex D code points and an exponent sign after `e`, `E`, `p` or `P`: `1..2`, `.5e`, `12abc` and
   `1é` are one token each, `1$` is `1` then `$`;
-- a character constant takes the prefixes `L`, `u`, `U` (`u8'c'` is `u8` then `'c'` before C23),
-  a string literal those and `u8`; a backslash escapes any one character, as clang lexes an
-  unknown escape; an unterminated literal is one OTHER token to the end of its line, as in clang;
-- every punctuator of 6.4.6, `#` and `##` among them, the longest first; the six digraphs, which
-  clang takes under gnu17, have the kind of the punctuator they spell and keep their spelling;
+- a character constant takes the prefixes `L`, `u`, `U` (`u8'c'` is `u8` then `'c'` before C23)
+  and one character at least, a string literal those prefixes and `u8`; a backslash escapes any
+  one character, as clang lexes an unknown escape; an unterminated literal is one OTHER token to
+  the end of its line, a backslash ending the file included, and `''` is one OTHER token, as in
+  clang;
+- a raw string literal, `R"delim(...)delim"` with the string prefixes, is one STRING_LITERAL, a
+  newline inside it included: clang 22 takes it under gnu17. Its end repeats the delimiter, which
+  no regular expression can match, so the `R"` rule's action reads the delimiter (up to 16
+  printable ASCII bytes but a blank, `(`, `)` and `\`) and scans the bytes for `)delim"`. As in
+  clang, a malformed delimiter makes the token OTHER through the next `"`, and a raw string nothing
+  closes is OTHER to the end of the file;
+- every punctuator of 6.4.6, `#` and `##` among them, and `::`, which clang 22 lexes as one token
+  under gnu17, the longest first; the six digraphs, which clang takes under gnu17, have the kind of
+  the punctuator they spell and keep their spelling;
 - a header name only in `pp_next_header_name`'s condition, which ends with its token;
+- a NUL byte is whitespace, as clang takes it;
 - any other code point is one OTHER token (6.4p3), and a byte that starts no UTF-8 character is
-  one too, with a diagnostic (`lx.diags`) at its file offset; an unterminated block comment ends
-  the file with a diagnostic.
+  one too, with a diagnostic (`lx.diags`) at its file offset. dasFlex's `.` checks a lead byte and
+  its count of continuation bytes, which is wider than valid UTF-8: it admits a surrogate
+  (`ED A0..BF`), an overlong form (`E0 80..9F`, `F0 80..8F`) and a code point past U+10FFFF
+  (`F4 90..BF`). The `.` rule's action checks the second byte after such a lead and cuts the token
+  back to the lead, so each byte of the sequence is an OTHER token with a diagnostic, as clang
+  splits it;
+- an unterminated block comment ends the file with a diagnostic at its `/*`.
+
+Two of clang's choices stay unfollowed. The identifier rule takes any UCN whole, so a UCN naming
+a code point outside Annex D (`a\u00A0b`), or an Annex D.2 one (a combining mark) first
+(`\u0301x`), is part of an identifier here, while clang makes that UCN an OTHER token of its own.
+A line splice inside a raw string is removed here, while clang keeps the raw string's bytes as
+written: the spelling differs, the token does not.
 
 ### The token flags across comments {#pp-flags}
 
-`has_space` is set when whitespace or a comment lies between a token and the one before it, and
-stays set across a newline, as clang and gcc keep it. `at_bol` is set for the first token of a file
-and a token a newline separates from the previous one. A block comment is one space (phase 3), so
-a newline inside it does not set `at_bol`: `x /*` newline `*/ # y` holds no directive in clang or
-gcc. The scanner cannot tell a comment from other skipped text, so the comment's rules move
-dasFlex's `prev_end_line` by the lines it spans: `/*` takes its own line off, `*/` adds its line. A
-comment opening after a newline still leaves the next token at the start of its line, as the space
-it stands for would.
+`has_space` is set when any skipped text - whitespace, a newline or a comment - lies between a
+token and the one before it: it is dasFlex's flag, the token's start against the previous token's
+end. Clang's `LeadingSpace` differs after a newline, which clang does not count: a token first on
+its line has `StartOfLine` and no `LeadingSpace` unless blanks precede it on that line. The oracle
+maps the one onto the other (`compare/pp/ARCHITECTURE.md#flags`). `at_bol` is set for the first
+token of a file and a token a newline separates from the previous one. A block comment is one space
+(phase 3), so a newline inside it does not set `at_bol`: `x /*` newline `*/ # y` holds no directive
+in clang or gcc. The `/*` rule's action skips the comment itself, scanning the bytes for `*/`, and
+moves dasFlex's `prev_end_line` by the lines the comment spans, so the next token's line is
+compared with the comment's last line. A comment opening after a newline still leaves the next
+token at the start of its line, as the space it stands for would. The action leaves the start
+condition alone, so a comment before a header name keeps `pp_next_header_name`'s condition; with no
+`*/` it moves to the end of the file and stops the scanner as failed (dasFlex's `failed` and
+`err`), its token still the `/*`, which `pp_next` places for the diagnostic.
