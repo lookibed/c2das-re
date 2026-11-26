@@ -31,6 +31,8 @@ def test_simple(t : T?) {
     t |> equal(stmt("\{ int a = 1; a++; \{ ; \} T b; \}"),
                "(compound [(decl 0 [(spec int)] [(init_decl (d_name a) (int 1) -)]) (expr_stmt (postfix ++ (ident a))) (compound [(null)]) (decl 0 [(typedef_name T)] [(init_decl (d_name b) - -)])])")
     t |> equal(stmt("\{\}"), "(compound [])")
+    t |> equal(stmt("\{ static int s; _Static_assert(1, \"m\"); \}"),
+               "(compound [(decl 0 [(spec static) (spec int)] [(init_decl (d_name s) - -)]) (static_assert (int 1) (string \"m\"))])")
     t |> equal(stmt("f(x), y = 2;"), "(expr_stmt (binary , (call (ident f) [(ident x)]) (assign = (ident y) (int 2))))")
     t |> equal(stmt(";"), "(null)")
     t |> equal(stmt("\{ goto out; continue; break; return; return a + 1; \}"),
@@ -41,6 +43,7 @@ def test_simple(t : T?) {
 def test_labels(t : T?) {
     t |> equal(stmt("l: x;"), "(label l (expr_stmt (ident x)))")
     t |> equal(stmt("T: x;"), "(label T (expr_stmt (ident x)))")
+    t |> equal(stmt("\{ T: x; \}"), "(compound [(label T (expr_stmt (ident x)))])")
     t |> equal(stmt("switch (x) \{ case 1 ... 3: case (T)4 + sizeof(T): break; default: ; \}"),
                "(switch (ident x) (compound [(case (int 1) (int 3) (case (binary + (cast (type_name [(typedef_name T)] -) (int 4)) (sizeof_type (type_name [(typedef_name T)] -))) - (break))) (default (null))]))")
     t |> equal(stmt("a: b: default: x;"), "(label a (label b (default (expr_stmt (ident x)))))")
@@ -101,6 +104,22 @@ def test_scopes(t : T?) {
         t |> equal(stmt("\{ if (1) \{ int T; \} T a; while (1) \{ int T; \} T b; \}"),
                    "(compound [(if (int 1) (compound [(decl 0 [(spec int)] [(init_decl (d_name T) - -)])]) -) (decl 0 [(typedef_name T)] [(init_decl (d_name a) - -)]) (while (int 1) (compound [(decl 0 [(spec int)] [(init_decl (d_name T) - -)])])) (decl 0 [(typedef_name T)] [(init_decl (d_name b) - -)])])")
     }
+    t |> run("an enumerator an `if` condition declares ends with the `if`, one its body declares with the body") @(t : T?) {
+        t |> equal(stmt("\{ if (sizeof(enum \{ T \})) ; T x; \}"),
+                   "(compound [(if (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -)) (null) -) (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)])])")
+        t |> equal(stmt("if (1) sizeof(enum \{ T \}); else (T)1;"),
+                   "(if (int 1) (expr_stmt (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -))) (expr_stmt (cast (type_name [(typedef_name T)] -) (int 1))))")
+    }
+    t |> run("an enumerator a `while` condition or a `for` clause declares ends with the statement") @(t : T?) {
+        t |> equal(stmt("\{ while (sizeof(enum \{ T \})) ; T x; \}"),
+                   "(compound [(while (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -)) (null)) (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)])])")
+        t |> equal(stmt("\{ for (; sizeof(enum \{ T \}); ) ; T x; \}"),
+                   "(compound [(for - (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -)) - (null)) (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)])])")
+    }
+    t |> run("an enumerator a `do` condition declares ends with the `do`") @(t : T?) {
+        t |> equal(stmt("\{ do ; while (sizeof(enum \{ T \})); T x; \}"),
+                   "(compound [(do (null) (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -))) (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)])])")
+    }
     t |> run("an enumerator a `switch` condition declares ends with the `switch`") @(t : T?) {
         t |> equal(stmt("\{ switch (sizeof(enum \{ T \})) ; T x; \}"),
                    "(compound [(switch (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -)) (null)) (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)])])")
@@ -131,6 +150,7 @@ def test_malformed(t : T?) {
         ("for (;;", "t.c:1:8: expected an expression, got end of input"),
         ("for (int i = 0 i;;) ;", "t.c:1:16: expected ';', got 'i'"),
         ("for (i; i ) ;", "t.c:1:11: expected ';', got ')'"),
+        ("for (i i;;) ;", "t.c:1:8: expected ';', got 'i'"),
         ("goto 1;", "t.c:1:6: expected a label name, got '1'"),
         ("return 1", "t.c:1:9: expected ';', got end of input"),
         ("case 1 x;", "t.c:1:8: expected ':', got 'x'"),
