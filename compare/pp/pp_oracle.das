@@ -169,19 +169,83 @@ def compare_tokens(clang, ours : array<OracleToken>; show : int; var shown : arr
 //! folder; `error` names what is missing.
 def preprocess_flags(var error : string&) : array<string> => <- dumper_frontend_flags(target_lp64_linux(), error)
 
-//! The tokens, differences and clang failures of `units`, each unit with differences printed with
-//! its first `show` ones, then a line of the totals headed `name`.
-def run_set(name : string; units : array<string>; work : string; flags : array<string>; show : int; raw : bool = false) : int3 {
-    var totals : int3
+//! A unit the reference cannot preprocess by decision: `clang -E` under the dumper's flags fails on
+//! it, for `reason`. `suffix` is the end of the unit's path.
+struct ReferenceFailure {
+    suffix : string
+    reason : string
+}
+
+//! The list the runner reads, from the repository root.
+let REFERENCE_FAILURES = "compare/pp/reference_failures.txt"
+
+//! The reference failures listed in the text `list`: a line `<unit path suffix>\t<reason>`, a line
+//! starting `#` a comment.
+[arch(at="ARCHITECTURE.md#reference-failures")]
+def reference_failures(list : string) : array<ReferenceFailure> {
+    var listed : array<ReferenceFailure>
+    for (line in split(list, "\n")) {
+        let tab = find(line, "\t")
+        continue if (tab <= 0 || starts_with(line, "#"))
+        listed |> push(ReferenceFailure(suffix = slice(line, 0, tab), reason = slice(line, tab + 1)))
+    }
+    return <- listed
+}
+
+//! The reason `unit` is listed for, "" when no entry's suffix ends its path.
+def listed_reason(listed : array<ReferenceFailure>; unit : string) : string {
+    for (f in listed) {
+        return f.reason if (unit == f.suffix || ends_with(unit, "/{f.suffix}"))
+    }
+    return ""
+}
+
+//! What a set of units gave: the tokens and differences of the units compared, the reference
+//! failures listed and unlisted, and the listed units the reference preprocessed after all.
+struct OracleTotals {
+    tokens : int
+    diffs : int
+    listed : int
+    unlisted : int
+    stale : int
+}
+
+def operator +=(var a : OracleTotals; b : OracleTotals) {
+    a.tokens += b.tokens
+    a.diffs += b.diffs
+    a.listed += b.listed
+    a.unlisted += b.unlisted
+    a.stale += b.stale
+}
+
+//! The totals line of `t` headed `name`.
+def describe_totals(name : string; t : OracleTotals) : string =>
+    "{name}: {t.tokens} tokens, {t.diffs} diffs, {t.listed} reference failures (listed), {t.unlisted} reference failures (unlisted), {t.stale} listed units preprocessed"
+
+//! The totals of `units`, each unit with differences printed with its first `show` ones, each
+//! reference failure with its listed reason or its error, then a line of the totals headed `name`.
+def run_set(name : string; units : array<string>; work : string; flags : array<string>; listed : array<ReferenceFailure>;
+            show : int; raw : bool = false) : OracleTotals {
+    var totals : OracleTotals
     for (unit in units) {
         let r <- compare_unit(unit, work, flags, show, raw)
+        let reason = listed_reason(listed, unit)
         if (!empty(r.error)) {
-            totals.z++
-            print("{unit}: {r.error}\n")
+            if (empty(reason)) {
+                totals.unlisted++
+                print("{unit}: reference failure (unlisted): {r.error}\n")
+            } else {
+                totals.listed++
+                print("{unit}: reference failure (listed): {reason}\n")
+            }
             continue
         }
-        totals.x += r.clang_tokens
-        totals.y += r.diffs
+        if (!empty(reason)) {
+            totals.stale++
+            print("{unit}: listed as a reference failure ({reason}), preprocessed: drop its line\n")
+        }
+        totals.tokens += r.clang_tokens
+        totals.diffs += r.diffs
         if (r.diffs > 0) {
             print("{unit}: {r.clang_tokens} tokens, {r.diffs} diffs\n")
             for (line in r.shown) {
@@ -189,7 +253,8 @@ def run_set(name : string; units : array<string>; work : string; flags : array<s
             }
         }
     }
-    print("{name}: {length(units)} units, {totals.z} clang failures, {totals.x} tokens, {totals.y} diffs\n")
+    let head = "{name}: {length(units)} units"
+    print("{describe_totals(head, totals)}\n")
     return totals
 }
 
@@ -229,7 +294,8 @@ def compare_unit(unit, work : string; flags : array<string>; show : int; raw : b
 }
 
 //! The units of a named corpus under `root`: `frontend`, every header of the own set; `c-testsuite`,
-//! the single-exec suite as `suites/c_testsuite/fetch.sh` fetches it. Sorted, so a run is stable.
+//! the single-exec suite as `suites/c_testsuite/fetch.sh` fetches it; `gcc-torture`, the `execute`
+//! folder's own units as `suites/gcc_torture/fetch.sh` fetches it. Sorted, so a run is stable.
 def corpus_units(root, corpus : string) : array<string> {
     var units : array<string>
     if (corpus == "frontend") {
@@ -239,8 +305,9 @@ def corpus_units(root, corpus : string) : array<string> {
                 units |> push(path_join(folder, name))
             }
         }
-    } elif (corpus == "c-testsuite") {
-        let folder = path_join(root, "suites/c_testsuite/fetch/c-testsuite/tests/single-exec")
+    } elif (corpus == "c-testsuite" || corpus == "gcc-torture") {
+        let at = corpus == "c-testsuite" ? "c_testsuite/fetch/c-testsuite/tests/single-exec" : "gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute"
+        let folder = path_join(root, "suites/{at}")
         dir(folder) $(name) {
             if (ends_with(name, ".c")) {
                 units |> push(path_join(folder, name))
@@ -254,7 +321,7 @@ def corpus_units(root, corpus : string) : array<string> {
 //! The command line of `run.das`.
 [CommandLineArgs]
 struct OracleArgs {
-    @clarg_doc = "a corpus to compare: frontend or c-testsuite (repeatable)"
+    @clarg_doc = "a corpus to compare: frontend, c-testsuite or gcc-torture (repeatable)"
     corpus : array<string>
     @clarg_doc = "the differences shown per unit"
     show : int = 3
@@ -268,7 +335,7 @@ struct OracleArgs {
 }
 
 //! The corpora and units `args` names compared, from the repository root, each set's line and the
-//! total printed; 0 when no unit differs, 1 when one does or the flags cannot be built.
+//! total printed; 0 when no unit differs, 1 when one does or the flags or the list cannot be read.
 def run_oracle(args : OracleArgs) : int {
     var error : string
     let flags <- preprocess_flags(error)
@@ -276,15 +343,21 @@ def run_oracle(args : OracleArgs) : int {
         to_log(LOG_ERROR, "{error}\n")
         return 1
     }
+    let listed <- reference_failures(fread(REFERENCE_FAILURES))
+    if (empty(listed)) {
+        to_log(LOG_ERROR, "{REFERENCE_FAILURES}: no entry read\n")
+        return 1
+    }
     mkdir_rec(args.work)
     let root = getcwd()
-    var total : int3
+    var total : OracleTotals
     for (corpus in args.corpus) {
-        total += run_set(corpus, corpus_units(root, corpus), args.work, flags, args.show)
+        total += run_set(corpus, corpus_units(root, corpus), args.work, flags, listed, args.show)
     }
     if (!empty(args.units)) {
-        total += run_set("units", args.units, args.work, flags, args.show, args.raw)
+        total += run_set("units", args.units, args.work, flags, listed, args.show, args.raw)
     }
-    print("total: {total.x} tokens, {total.y} diffs, {total.z} clang failures\n")
-    return total.y == 0 ? 0 : 1
+    let line = describe_totals("total", total)
+    print("{line}\n")
+    return total.diffs == 0 ? 0 : 1
 }

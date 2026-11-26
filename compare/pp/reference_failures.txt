@@ -1,0 +1,9 @@
+# Units clang -E cannot preprocess under the dumper's flags, by decision: <unit path suffix><TAB><reason>.
+# compare/pp/ARCHITECTURE.md#reference-failures; run_set counts these apart from an unlisted failure.
+gcc.c-torture/execute/loop-2f.c	<sys/mman.h>, absent from the own header set by decision
+gcc.c-torture/execute/loop-2g.c	<sys/mman.h>, absent from the own header set by decision
+gcc.c-torture/execute/pr105777.c	a quoted include of a gcc.dg file outside the sparse fetch
+gcc.c-torture/execute/pr109938.c	a quoted include of a gcc.dg file outside the sparse fetch
+gcc.c-torture/execute/pr109986.c	a quoted include of a gcc.dg file outside the sparse fetch
+gcc.c-torture/execute/pr30314.c	a quoted include of a gcc.dg file outside the sparse fetch
+gcc.c-torture/execute/pr98304-2.c	a quoted include of a gcc.dg file outside the sparse fetch

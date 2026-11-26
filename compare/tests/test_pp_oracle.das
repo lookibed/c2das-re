@@ -177,8 +177,35 @@ def test_clang_failure(t : T?) {
     let r <- compare_unit("compare/pp/fixtures/no_such_unit.c", test_temp_dir(), flags, 5)
     t |> success(starts_with(r.error, "clang -E: "), r.error)
     let units <- ["compare/pp/fixtures/no_such_unit.c", "compare/pp/fixtures/bom_tokens.c"]
-    let totals = run_set("missing", units, test_temp_dir(), flags, 5, true)
-    t |> equal(totals, int3(5, 0, 1))
+    let none : array<ReferenceFailure>
+    let totals = run_set("missing", units, test_temp_dir(), flags, none, 5, true)
+    t |> equal(describe_totals("t", totals), "t: 5 tokens, 0 diffs, 0 reference failures (listed), 1 reference failures (unlisted), 0 listed units preprocessed")
+}
+
+[test(description = "the list of units the reference cannot preprocess: every line read with its reason, a unit matched by the end of its path")]
+def test_reference_failures(t : T?) {
+    let listed <- reference_failures(fread(REFERENCE_FAILURES))
+    t |> equal(length(listed), 7)
+    for (f in listed) {
+        t |> success(starts_with(f.suffix, "gcc.c-torture/execute/") && ends_with(f.suffix, ".c"), f.suffix)
+        t |> success(!empty(f.reason), f.suffix)
+    }
+    let one <- reference_failures("# a comment\n\nx/a.c\twhy\nno tab\n")
+    t |> equal(length(one), 1)
+    t |> equal(listed_reason(one, "/r/x/a.c"), "why")
+    t |> equal(listed_reason(one, "x/a.c"), "why")
+    t |> equal(listed_reason(one, "/r/xx/a.c"), "")
+    t |> equal(listed_reason(one, "/r/x/a.cc"), "")
+}
+
+[test(description = "a set counts a listed reference failure apart from an unlisted one, and a listed unit the reference preprocessed as stale", timeout = 600)]
+def test_listed_failures(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    let listed <- reference_failures("pp/fixtures/no_such_listed.c\tby decision\npp/fixtures/bom_tokens.c\tnot really\n")
+    let units <- ["compare/pp/fixtures/no_such_listed.c", "compare/pp/fixtures/no_such_unit.c", "compare/pp/fixtures/bom_tokens.c"]
+    let totals = run_set("listed", units, test_temp_dir(), flags, listed, 5)
+    t |> equal(describe_totals("t", totals), "t: 5 tokens, 0 diffs, 1 reference failures (listed), 1 reference failures (unlisted), 1 listed units preprocessed")
 }
 
 [test(description = "the corpora: every header of the own set, the fetched single-exec suite, and none for an unknown name")]
@@ -189,13 +216,15 @@ def test_corpus_units(t : T?) {
     t |> equal(find_index_if(headers, $(u) => !ends_with(u, ".h")), -1)
     t |> success(find_index_if(headers, $(u) => ends_with(u, "/stdio.h")) >= 0)
     t |> equal(length(corpus_units(root, "no-such-corpus")), 0)
-    let suite <- corpus_units(root, "c-testsuite")
-    if (empty(suite)) {
-        t |> skip("no c-testsuite fetch: suites/c_testsuite/fetch.sh")
-        return
+    for (corpus, fetch in fixed_array("c-testsuite", "gcc-torture"), fixed_array("suites/c_testsuite/fetch.sh", "suites/gcc_torture/fetch.sh")) {
+        var inscope suite <- corpus_units(root, corpus)
+        if (empty(suite)) {
+            to_log(LOG_INFO, "no {corpus} fetch ({fetch}): its corpus is not checked\n")
+            continue
+        }
+        t |> success(length(suite) > 100, "{corpus}: {length(suite)} units")
+        t |> equal(find_index_if(suite, $(u) => !ends_with(u, ".c")), -1, corpus)
     }
-    t |> success(length(suite) > 100, "{length(suite)} units")
-    t |> equal(find_index_if(suite, $(u) => !ends_with(u, ".c")), -1)
 }
 
 [test(description = "the command line's run: units compared raw or after clang -E, the exit code 0 only when no unit differs", timeout = 600)]

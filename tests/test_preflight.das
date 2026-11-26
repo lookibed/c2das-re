@@ -113,3 +113,45 @@ def test_parallel_lane(t : T?) {
     }
     rmdir_rec(dir)
 }
+
+// `scripts/preflight.sh --only lint` over the `.das` files of `dir` alone, at env.sh's log level
+def private lint_gate(dir : string; var out : string&) : int {
+    let cmd = "DAS_LOG_LEVEL=info PREFLIGHT_DAS_DIRS=\"$1\" exec bash scripts/preflight.sh --only lint 2>&1"
+    return run_and_capture(["bash", "-c", cmd, "lint", dir], out, 300.0)
+}
+
+[test(description = "the lint gate reads any output as findings: a compile's LOG_INFO lines never reach it, a real finding still turns it red", timeout = 600)]
+def test_lint_gate(t : T?) {
+    var dir_error : string
+    let root = create_temp_directory("c2das_preflight_lint", dir_error)
+    t |> equal(dir_error, "")
+    let clean = path_join(root, "clean")
+    mkdir_rec(clean)
+    let scanner = path_join(clean, "scanner.das")
+    fwrite(scanner, "options gen2\n\nrequire flex/flex_macro\n\n//! a stand-in scanner\n[flex]\ndef scan(var lx : FlexLexer) : bool \{\n    rule(\"a\") \{\n        lx |> emit(1)\n    \}\n\}\n")
+    let red = path_join(root, "red")
+    mkdir_rec(red)
+    fwrite(path_join(red, "finding.das"), "options gen2\n\n//! a stand-in with one finding\ndef probe : int \{\n    var x = 1\n    return x\n\}\n")
+    t |> run("the stand-in's compile logs at LOG_INFO, which env.sh's level shows") @(t : T?) {
+        var out : string
+        let cmd = ". scripts/env.sh && DAS_LOG_LEVEL=info das \"$DASLANG_ROOT/utils/lint/main.das\" -- \"$1\" --quiet 2>&1"
+        let rc = run_and_capture(["bash", "-c", cmd, "lint", scanner], out, 300.0)
+        t |> equal(rc, 0, out)
+        t |> success(out |> contains("[I] [flex] scan"), out)
+    }
+    t |> run("a clean folder whose compile logs at LOG_INFO passes the gate, no log line in its output") @(t : T?) {
+        var out : string
+        let rc = lint_gate(clean, out)
+        t |> equal(rc, 0, out)
+        t |> success(out |> contains("[PASS] lint"), out)
+        t |> success(!(out |> contains("[I] ")), out)
+    }
+    t |> run("a planted finding turns the gate red, the finding printed") @(t : T?) {
+        var out : string
+        let rc = lint_gate(red, out)
+        t |> equal(rc, 1, out)
+        t |> success(out |> contains("LINT003"), out)
+        t |> success(out |> contains("[FAIL] lint - findings above"), out)
+    }
+    rmdir_rec(root)
+}

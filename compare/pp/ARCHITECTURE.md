@@ -11,13 +11,15 @@ the plan's PP.6 grows from it.
 
 - `pp_oracle.das` - the module: a unit preprocessed by clang (`compare_unit`), clang's token dump
   read (`clang_tokens`, `clang_kind`), the lexer's tokens (`lexed_tokens`), the comparison
-  (`compare_tokens`), the corpora (`corpus_units`), a set's run (`run_set`) and the command line's
-  run (`OracleArgs`, `run_oracle`). The clang it runs
+  (`compare_tokens`), the corpora (`corpus_units`), the list of reference failures
+  (`reference_failures`, section 3), a set's run (`run_set`) and the command line's run
+  (`OracleArgs`, `run_oracle`). The clang it runs
   and its flags are Dumper A's (`default_clang`, `dumper_frontend_flags`, `DUMPER_FLAGS` of
   `converter/dumper_a.das`): the oracle preprocesses as the converter does.
 - `run.das` - the command line's entry, its arguments parsed into `run_oracle`; from the repository
   root with `das`: `--corpus frontend` (every
-  header of `frontend/include/`), `--corpus c-testsuite` (the fetched single-exec suite), units
+  header of `frontend/include/`), `--corpus c-testsuite` (the fetched single-exec suite), `--corpus gcc-torture` (the fetched
+  `execute` folder's own units), units
   named after the flags, `--raw`, `--show N`, `--work <folder>` (default `compare/work/pp`, under
   the gitignored `compare/work/`). It prints each unit that differs with its first differences, a
   line per set and the total; exit 0 when no unit differs.
@@ -25,6 +27,8 @@ the plan's PP.6 grows from it.
   directive: pp-numbers, UCNs, prefixes, every punctuator and digraph, `::`, raw strings, OTHER
   characters, splices, comments. `fixtures/bom_tokens.c` - a byte order mark and leading blanks,
   compared raw.
+- `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
+  (section 3).
 - The tests are `compare/tests/test_pp_oracle.das`.
 
 ## 2. What is compared {#flags}
@@ -53,3 +57,15 @@ one difference, and the walk moves on past it on that side alone, so a token one
 costs its own differences and the tokens after it still compare. Each token one side has past the
 other's end is one more. A unit clang refuses (a header the own set lacks) is a clang failure,
 counted apart and never a difference.
+
+## 3. Reference failures {#reference-failures}
+
+Some corpus units `clang -E` itself cannot preprocess under the dumper's flags, by a decision made
+elsewhere: a header the own set leaves out (`<sys/mman.h>` for gcc-torture's `loop-2f.c` and
+`loop-2g.c`), or a quoted include of a `gcc.dg` file the sparse gcc-torture fetch does not hold.
+Nothing on the lexer's side can be compared for them. `reference_failures.txt` lists them, one line
+per unit: the end of its path (`gcc.c-torture/execute/loop-2f.c`), a tab, the reason. `run_set`
+counts a failing unit the list names as a listed reference failure, with that reason, and any
+other failing unit as an unlisted one, with clang's error, so a new failure shows up apart from the
+known ones. A listed unit that preprocesses after all is counted and printed too, so a stale line
+is dropped. None of the three counts is a difference: the exit code follows the differences alone.
