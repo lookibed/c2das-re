@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
             jobs="$2"; shift ;;
         --list-gates)
             cat <<'TABLE'
-env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin
+env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin; dasFlex fetched at its pin
 native       fast   scripts/build_crt.sh builds dasCRuntime (the crt module) against DASLANG_ROOT
 untracked    fast   `git ls-files --others --exclude-standard` prints nothing
 format       fast   das-fmt --verify over every .das folder (mirrors daScript's CI format gate)
@@ -47,7 +47,10 @@ changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-file
 pass() { echo "[PASS] $1"; }
 fail() { echo "[FAIL] $1 - $2"; return 1; }
 skipped() { echo "[SKIP] $1 - $2"; }
-gate_env() { scripts/verify_daslang.sh >/dev/null && pass env || fail env "scripts/verify_daslang.sh names what is missing"; }
+gate_env() {
+    scripts/verify_daslang.sh >/dev/null || { fail env "scripts/verify_daslang.sh names what is missing"; return 1; }
+    scripts/fetch_dasflex.sh >/dev/null && pass env || fail env "scripts/fetch_dasflex.sh cannot put dasFlex at the VERSIONS.md pin"
+}
 gate_native() { local out; out=$(scripts/build_crt.sh 2>&1) && pass native || { echo "$out" | tail -20; fail native "dasCRuntime does not build"; }; }
 gate_untracked() { local u; u=$(git ls-files --others --exclude-standard); [ -z "$u" ] && pass untracked || fail untracked "$(echo "$u" | tr '\n' ' ')"; }
 gate_format() {

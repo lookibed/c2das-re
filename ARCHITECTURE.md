@@ -41,10 +41,14 @@ the continuous integration section 7.
 - `skills/` - agent instructions: vendored daScript skills (never edited here) and this
   repository's own under `skills/internal/`.
 - `scripts/` - `env.sh` (the toolchain variables and `das`, daslang with both module folders
-  loaded), `verify_daslang.sh`, `preflight.sh`, `sync_daslang_skills.sh` and the runners
+  loaded, and `fetch/dasFlex` once fetched), `verify_daslang.sh`, `fetch_dasflex.sh`,
+  `preflight.sh`, `sync_daslang_skills.sh` and the runners
   `run_suite.sh`, `run_perf.sh` and `run_readability.sh`; `build_c2das_rust.sh` builds the Rust
   translator `compare/` runs, at its `VERSIONS.md` pin. Shell only; anything that reads `.das` is a daslang tool from
   `DASLANG_ROOT`.
+- `fetch/` - gitignored: `fetch/dasFlex/`, the lexer generator `frontend/` builds on, cloned at its
+  `VERSIONS.md` pin by `scripts/fetch_dasflex.sh` (which the preflight `env` gate runs) and loaded
+  as a module folder by `das`; never copied into the tree.
 - `lua/`, `doom/`, `chibicc/` - the vendored programs, each fetched at a `VERSIONS.md` pin and never
   committed, with their sidecars and harnesses (`docs/implementation_order.md`, P5, P6 and P10):
   `chibicc/` converts the chibicc C compiler (`chibicc/ARCHITECTURE.md`);

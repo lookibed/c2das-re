@@ -22,7 +22,7 @@ and `work/`; a folder of house `.das` code outside that list is a defect of the 
 
 | Gate | What it runs | Red means |
 |---|---|---|
-| env | `scripts/verify_daslang.sh` | the toolchain lacks a part, or `DASLANG_ROOT` is behind the `VERSIONS.md` pin |
+| env | `scripts/verify_daslang.sh`, then `scripts/fetch_dasflex.sh` (dasFlex into `fetch/dasFlex/` at its `VERSIONS.md` pin, the module folder `das` loads) | the toolchain lacks a part, `DASLANG_ROOT` is behind the `VERSIONS.md` pin, or the dasFlex checkout has local changes |
 | native | `scripts/build_crt.sh` | `dasCRuntime/` (the `crt` module) does not build against `DASLANG_ROOT` |
 | untracked | `git ls-files --others --exclude-standard` | an untracked file exists: commit it, ignore it with a reason, or delete it |
 | format | `utils/das-fmt/dasfmt.das -- --verify` per `.das` file of every `.das` folder outside `fetch/` and `work/`; the first unformatted file is named | a file is not formatted: run the formatter (MCP `format_file` or the CLI) |
