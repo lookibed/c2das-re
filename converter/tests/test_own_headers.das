@@ -129,11 +129,11 @@ def test_frontend_flags(t : T?) {
     for (dialect in DIALECTS) {
         let target = target_by_name(dialect)
         var error : string
-        let flags <- dumper_frontend_flags(target, error)
+        var inscope flags <- dumper_frontend_flags(target, error)
         t |> equal(error, "")
         var table_error : string
-        let entries <- read_predefined(predefined_path(dialect), table_error)
-        var expected <- ["-target", target.triple]
+        var inscope entries <- read_predefined(predefined_path(dialect), table_error)
+        var inscope expected <- ["-target", target.triple]
         expected |> push_from(DUMPER_FLAGS, ["-undef"])
         expected |> push_from([for (entry in entries); "-D{entry}"], ["-nostdinc", "-isystem", get_full_file_name(own_include_dir())])
         t |> equal(join(flags, "\n"), join(expected, "\n"))
