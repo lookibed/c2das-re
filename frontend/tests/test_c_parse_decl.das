@@ -278,3 +278,56 @@ def test_no_allocation(t : T?) {
     t |> equal(strings_used, 0, "string allocations")
     t |> success(heap_used <= 16, "heap allocations {heap_used} over {length(p.unit.toks)} tokens and {count} declarations")
 }
+
+// the declarations of `text` under the msvc dialect, as `decls` gives them
+def private decls_msvc(text : string) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c", true)
+    var parts : array<string>
+    while (!p.failed && p.unit.toks[p.pos].kind != int(CTok.EOF)) {
+        let d = c_declaration(p)
+        if (!p.failed) {
+            parts |> push(c_dump(p.ast, p.unit, d))
+        }
+    }
+    return p.failed ? "error: {p.err}" : join(parts, " ")
+}
+
+[test(description = "the typedef names clang declares before a unit: both dialects' builtins, msvc's `size_t`, and the 128-bit integer names refused where they are used")]
+def test_builtin_typedefs(t : T?) {
+    t |> equal(decls("__builtin_ms_va_list a; __NSConstantString s;"),
+               "(decl 0 [(typedef_name __builtin_ms_va_list)] [(init_decl (d_name a) - -)]) (decl 0 [(typedef_name __NSConstantString)] [(init_decl (d_name s) - -)])")
+    t |> equal(decls("int n = sizeof(__builtin_ms_va_list);"), "(decl 0 [(spec int)] [(init_decl (d_name n) (sizeof_type (type_name [(typedef_name __builtin_ms_va_list)] -)) -)])")
+    t |> equal(decls_msvc("size_t n;"), "(decl 0 [(typedef_name size_t)] [(init_decl (d_name n) - -)])")
+    t |> equal(decls("size_t n;"), "error: t.c:1:1: expected a declaration, got 'size_t'")
+    t |> equal(decls("__int128_t x;"), "error: t.c:1:1: the __int128 type is not parsed")
+    t |> equal(decls("const __uint128_t y;"), "error: t.c:1:7: the __int128 type is not parsed")
+}
+
+[test(description = "an array declarator's `static`, qualifiers and `[*]` where clang takes them: `static` once and with a size, a qualifier or `static` in a parameter's outermost array only, `[*]` in a prototype's parameter only; `...` after a parameter; an asm label of unprefixed literals")]
+def test_declarator_contexts(t : T?) {
+    t |> run("accepted: a parameter's outermost array, `[*]` at any level of a prototype's parameter") @(t : T?) {
+        t |> equal(decls("void f(int a[*], int b[3][*], int c[*][3], int d[const], int e[const *], int (*p)(int q[*]));"),
+                   "(decl 0 [(spec void)] [(init_decl (d_function 0 (d_name f) [(param [(spec int)] (d_array 2 (d_name a) - [])) (param [(spec int)] (d_array 2 (d_array 0 (d_name b) (int 3) []) - [])) (param [(spec int)] (d_array 0 (d_array 2 (d_name c) - []) (int 3) [])) (param [(spec int)] (d_array 0 (d_name d) - [(spec const)])) (param [(spec int)] (d_array 2 (d_name e) - [(spec const)])) (param [(spec int)] (d_function 0 (d_paren (d_pointer (d_name p) []) []) [(param [(spec int)] (d_array 2 (d_name q) - []))]))]) - -)])")
+    }
+    t |> equal(decls("void g(int (a)[const 3]);"), "(decl 0 [(spec void)] [(init_decl (d_function 0 (d_name g) [(param [(spec int)] (d_array 0 (d_paren (d_name a) []) (int 3) [(spec const)]))]) - -)])")
+    let cases = fixed_array(
+        ("void f(int a[static const static 3]);", "t.c:1:27: expected an expression, got 'static'"),
+        ("void f(int a[static]);", "t.c:1:20: expected an array size after 'static', got ']'"),
+        ("void f(int a[static *]);", "t.c:1:21: expected an array size after 'static', got '*'"),
+        ("int a[const 3];", "t.c:1:6: a qualifier or 'static' in an array declarator outside a parameter's outermost array is not parsed"),
+        ("int a[static 3];", "t.c:1:6: a qualifier or 'static' in an array declarator outside a parameter's outermost array is not parsed"),
+        ("void f(int a[3][const 3]);", "t.c:1:16: a qualifier or 'static' in an array declarator outside a parameter's outermost array is not parsed"),
+        ("void f(int (*a)[const 3]);", "t.c:1:16: a qualifier or 'static' in an array declarator outside a parameter's outermost array is not parsed"),
+        ("int a[*];", "t.c:1:6: '[*]' outside a function prototype's parameter is not parsed"),
+        ("typedef int T[*];", "t.c:1:14: '[*]' outside a function prototype's parameter is not parsed"),
+        ("int (*q)[*];", "t.c:1:9: '[*]' outside a function prototype's parameter is not parsed"),
+        ("int n = sizeof(int[*]);", "t.c:1:19: '[*]' outside a function prototype's parameter is not parsed"),
+        ("int f(...);", "t.c:1:7: a variadic parameter list with no parameter before '...' is not parsed"),
+        ("char *s __asm__(L\"w\");", "t.c:1:17: a prefixed string literal in an asm label is not parsed"),
+        ("char *s __asm__(u8\"x\");", "t.c:1:17: a prefixed string literal in an asm label is not parsed"),
+        ("char *s __asm__(\"a\" L\"b\");", "t.c:1:21: a prefixed string literal in an asm label is not parsed"))
+    for (c in cases) {
+        t |> equal(decls(c._0), "error: {c._1}", c._0)
+    }
+}

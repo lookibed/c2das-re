@@ -264,10 +264,10 @@ def test_type_names(t : T?) {
     t |> equal(parsed("(int (*)())f"), "(cast (type_name [(spec int)] (d_function 0 (d_paren (d_pointer - []) []) [])) (ident f))")
     t |> equal(parsed("(int (*[2])(void))0"),
                "(cast (type_name [(spec int)] (d_function 0 (d_paren (d_pointer (d_array 0 - (int 2) []) []) []) [(param [(spec void)] -)])) (int 0))")
-    t |> equal(parsed("(char [static const 3])x"), "(cast (type_name [(spec char)] (d_array 1 - (int 3) [(spec const)])) (ident x))")
-    t |> equal(parsed("(int [*])x"), "(cast (type_name [(spec int)] (d_array 2 - - [])) (ident x))")
+    t |> equal(parsed("(void (*)(char [static const 3]))f"), "(cast (type_name [(spec void)] (d_function 0 (d_paren (d_pointer - []) []) [(param [(spec char)] (d_array 1 - (int 3) [(spec const)]))])) (ident f))")
+    t |> equal(parsed("(void (*)(char [*]))f"), "(cast (type_name [(spec void)] (d_function 0 (d_paren (d_pointer - []) []) [(param [(spec char)] (d_array 2 - - []))])) (ident f))")
     t |> equal(parsed("(int [*p])x"), "(cast (type_name [(spec int)] (d_array 0 - (unary * (ident p)) [])) (ident x))")
-    t |> equal(parsed("(char [const static 3])x"), "(cast (type_name [(spec char)] (d_array 1 - (int 3) [(spec const)])) (ident x))")
+    t |> equal(parsed("(void (*)(char [const static 3]))f"), "(cast (type_name [(spec void)] (d_function 0 (d_paren (d_pointer - []) []) [(param [(spec char)] (d_array 1 - (int 3) [(spec const)]))])) (ident f))")
     t |> equal(parsed("(int ((*)))x"), "(cast (type_name [(spec int)] (d_paren (d_paren (d_pointer - []) []) [])) (ident x))")
     t |> equal(parsed("(int ([3]))x"), "(cast (type_name [(spec int)] (d_paren (d_array 0 - (int 3) []) [])) (ident x))")
     t |> equal(parsed("(T)\{x\}"), "(compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (ident x))]))")
