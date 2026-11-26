@@ -24,6 +24,17 @@ c-testsuite`, and `--raw compare/pp/fixtures/edge_tokens.c compare/pp/fixtures/b
 count stated.**
 A rule change that still passes the unit tests can split or merge a token clang lexes otherwise.
 
+**A diff to `pp_directives.das` runs the directive oracle (`das compare/pp/run.das -- --pp2
+--corpus pp2 --corpus frontend`) and states its class counts, and adds a case to
+`tests/test_pp_directives.das` for each directive behaviour it changes.** Clang's `-E` output is
+the reference for what a directive leaves in the stream; the unit tests hold the diagnostics and
+ledgers no token stream shows.
+
+**A diff to `pp_directives.das` never drops a `#pragma` without a ledger entry or a diagnostic,
+and never expands a macro outside the hooks PP.3 and PP.4 fill (`ARCHITECTURE_PP.md` sections 8
+and 11).** A pragma lost there never reaches the C-IR's ledger, and an expansion here would be a
+second expander beside PP.3's.
+
 **A diff to `c_tokens.das` or `c_parser.das` never makes a token or a node allocate on its own -
 the allocation tests of `tests/test_c_tokens.das` and `tests/test_c_parse_expr.das` are never
 loosened.**
@@ -35,5 +46,5 @@ a panic. Each new error message has a test with its exact text and place.**
 
 **A diff that adds a loop to `c_parser.das` makes each turn consume a token or end at the first
 error; one that adds a recursion a run of tokens can repeat makes it open a nesting level
-(`enter`), so the bound of `ARCHITECTURE_PARSER.md` section 10 holds.** Malformed input must end,
+(`enter`), so the bound of `ARCHITECTURE_PARSER.md` section 19 holds.** Malformed input must end,
 and deep input must end in a refusal, not a stack overflow.

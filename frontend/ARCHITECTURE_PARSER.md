@@ -5,7 +5,7 @@ describes Dumper C's parser: the C tokens it reads, the tree it builds, and how 
 reads. The parser reads expressions and type names; it has no entry for a declaration or a
 statement.
 
-## 5. The C tokens {#c-tokens}
+## 14. The C tokens {#c-tokens}
 
 `c_tokens.das` turns the pp-tokens of section 4 into C tokens (C11 5.1.1.2, translation phase 7).
 Its input today is a preprocessed unit, the text `clang -E` prints. `c_tokens_open` takes the bytes
@@ -42,7 +42,11 @@ marker names again has its first id; file 0 is the unit's own name. Any other di
 among them) is an error naming it. The first error ends the read and `unit.err` holds it as
 `file:line:col: what`.
 
-## 6. The tree {#c-ast}
+The token view reads the pp-lexer itself, not the directive layer of section 5, so it reads the
+line markers of a preprocessed unit with its own reader and shares nothing with the directive
+layer's `#line` (section 10): it takes the name's bytes as written, escapes included, and no flag.
+
+## 15. The tree {#c-ast}
 
 `c_ast.das` holds the tree: every node of a unit in one array, `CNodeRec`, a small plain struct.
 A node refers to its children by index and holds no heap object. Its fields `op`, `a`, `b`, `c`
@@ -56,7 +60,7 @@ a symbol and a token are their spelling, and an attribute is its bytes as writte
 the dump, so a new node kind needs only its row in `NODE_FORMS`. With `places`, each name carries
 `@line:col`. The tests compare trees through this text.
 
-## 7. The typedef-name table {#c-typedef-table}
+## 16. The typedef-name table {#c-typedef-table}
 
 An identifier in C is a type name or an ordinary name, and only the declarations in scope say
 which. The parser asks `c_is_typedef`, one index into an array that holds every symbol's binding
@@ -71,7 +75,7 @@ keyword or qualifier, a tag keyword, `typeof`, `_Alignas`, an attribute, a refus
 identifier bound as a typedef. In a list of specifiers an identifier is a typedef name only while no
 type specifier came before it, so in `(long T)` the `T` is no type.
 
-## 8. Type names and declarators {#c-type-names}
+## 17. Type names and declarators {#c-type-names}
 
 A type name (C11 6.7.7) is a list of specifiers and qualifiers and an abstract declarator. The
 specifiers are the builtin type keywords, the qualifiers (`_Atomic` as a qualifier), `struct`,
@@ -87,7 +91,7 @@ parameter, an identifier no typedef binds; otherwise it opens a parameter list. 
 `static`, qualifiers, a size or `*`. A parameter list holds parameter declarations, whose
 specifiers may hold storage classes, and `...`.
 
-## 9. Expressions {#c-expressions}
+## 18. Expressions {#c-expressions}
 
 Expressions follow C11 6.5 by recursive descent. The binary operators from `*` to `||` go by
 precedence climbing over ten levels, each left-associative; `?:` and the assignments bind to the
@@ -104,7 +108,7 @@ and `__builtin_types_compatible_p(T, U)` keep their type names, and `__func__`, 
 `__PRETTY_FUNCTION__` are one node kind. A node starts at its first token; a binary node at its
 left operand's.
 
-## 10. Errors and the nesting bound {#c-parser-errors}
+## 19. Errors and the nesting bound {#c-parser-errors}
 
 The parser stops at the first error: `failed` is set, `err` holds `file:line:col: what` at the
 token where it stopped, and the cursor moves to the EOF token, so every loop ends. Malformed input

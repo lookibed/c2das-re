@@ -4,10 +4,11 @@ Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this docume
 holds the part of the converter that reads C with no clang behind it. Today that is the libc
 header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
 `converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
-sidecar reader and Dumper A read, the first stage of Dumper C's preprocessor, the pp-token
-lexer of section 4, and the first part of Dumper C's parser, which reads the C tokens of a
-preprocessed unit, its expressions and its type names (`ARCHITECTURE_PARSER.md`, sections 5 to
-10). No converter pass calls the lexer or the parser.
+sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token
+lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
+`#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
+C tokens of a preprocessed unit, its expressions and its type names (`ARCHITECTURE_PARSER.md`,
+sections 14 to 19). No converter pass calls the preprocessor or the parser yet.
 
 ## 1. File charters
 
@@ -19,11 +20,17 @@ preprocessed unit, its expressions and its type names (`ARCHITECTURE_PARSER.md`,
 - `predefined/linux.defs`, `predefined/msvc.defs` - the predefined-macro table of each dialect.
 - `pp_lexer.das` - the preprocessing-token lexer (section 4): translation phases 1 and 2, the
   pp-token rules, the placing of a token in its original file. Requires dasFlex's `flex/flex_macro`.
+- `pp_directives.das` - the directive layer over the lexer (`ARCHITECTURE_PP.md`): the file
+  providers, the `#include` stack and search, include guards, `#line`, the conditionals, the macro
+  table, the pragma and pack ledgers, and the hook PP.4's `#if` evaluator fills. It expands no
+  macro.
+- `tests/test_pp_directives.das` - every directive over in-memory files, the predefined-macro table,
+  and the own headers read through `fio`. The comparison with clang is `compare/pp/`'s `--pp2`.
 - `c_tokens.das` - the C tokens of a preprocessed unit over the pp-lexer: keywords by symbol,
-  pp-numbers classified, line markers read (`ARCHITECTURE_PARSER.md` section 5).
-- `c_ast.das` - the tree in one node array and its one-line dump (section 6). No parsing.
+  pp-numbers classified, line markers read (`ARCHITECTURE_PARSER.md` section 14).
+- `c_ast.das` - the tree in one node array and its one-line dump (section 15). No parsing.
 - `c_parser.das` - the recursive-descent parser: the typedef-name table, type names and
-  declarators, expressions, the errors and the nesting bound (sections 7 to 10). One module, since
+  declarators, expressions, the errors and the nesting bound (sections 16 to 19). One module, since
   the grammar's parts call each other.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and
   line-marker case; every expression and type-name form as a dumped tree, the ambiguities, every

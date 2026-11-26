@@ -38,7 +38,7 @@ struct CParser {
 //! The deepest nesting the parser takes, in levels: an assignment expression, a `?:` arm after
 //! the `:`, a prefix operator, a cast, an initializer list, a type name, a parameter list and a
 //! declarator's `*` or parentheses each open one. Past it the input is refused, so the recursion
-//! stays within the stack the caller gives (`ARCHITECTURE_PARSER.md` section 10).
+//! stays within the stack the caller gives (`ARCHITECTURE_PARSER.md` section 19).
 let C_MAX_DEPTH = 256
 
 //! Open a scope: the bindings made from now on end at its close.
