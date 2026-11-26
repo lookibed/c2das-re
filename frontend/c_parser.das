@@ -270,16 +270,16 @@ let private SPEC_LONG_LONG = 1 << 12
 
 let private SPEC_OTHER = 1 << 13
 
-//! The largest sets of type specifiers that combine (C11 6.7.2p2, `_Complex` as GNU C takes it); a
-//! set combines when one of these holds it.
+//! The largest sets of type specifiers that combine (C11 6.7.2p2; `_Complex` beside every integer
+//! type and alone, as GNU C takes it); a set combines when one of these holds it.
 let private SPEC_SETS = fixed_array(
     spec_set(fixed_array(CTok.VOID)),
-    spec_set(fixed_array(CTok.CHAR, CTok.SIGNED)),
-    spec_set(fixed_array(CTok.CHAR, CTok.UNSIGNED)),
-    spec_set(fixed_array(CTok.SHORT, CTok.INT, CTok.SIGNED)),
-    spec_set(fixed_array(CTok.SHORT, CTok.INT, CTok.UNSIGNED)),
-    spec_set(fixed_array(CTok.LONG, CTok.INT, CTok.SIGNED)) | SPEC_LONG_LONG,
-    spec_set(fixed_array(CTok.LONG, CTok.INT, CTok.UNSIGNED)) | SPEC_LONG_LONG,
+    spec_set(fixed_array(CTok.CHAR, CTok.SIGNED, CTok.COMPLEX)),
+    spec_set(fixed_array(CTok.CHAR, CTok.UNSIGNED, CTok.COMPLEX)),
+    spec_set(fixed_array(CTok.SHORT, CTok.INT, CTok.SIGNED, CTok.COMPLEX)),
+    spec_set(fixed_array(CTok.SHORT, CTok.INT, CTok.UNSIGNED, CTok.COMPLEX)),
+    spec_set(fixed_array(CTok.LONG, CTok.INT, CTok.SIGNED, CTok.COMPLEX)) | SPEC_LONG_LONG,
+    spec_set(fixed_array(CTok.LONG, CTok.INT, CTok.UNSIGNED, CTok.COMPLEX)) | SPEC_LONG_LONG,
     spec_set(fixed_array(CTok.FLOAT, CTok.COMPLEX)),
     spec_set(fixed_array(CTok.LONG, CTok.DOUBLE, CTok.COMPLEX)),
     spec_set(fixed_array(CTok.BOOL)),
