@@ -17,6 +17,8 @@ tables yet.
 - `tests/test_c_defines.das` - the parser and the reader, and that each table reads clean.
 - `REVIEW.das` - the mechanical gate of section 2, over every `.das` file under this folder.
 - `tests/test_review_gate.das` - the gate's findings on stand-in files, one per ban.
+  `tests/test_frontend_gate.das` (repo root) runs the gate itself, on this tree and on a stand-in
+  root: a test that starts a process cannot live under this folder.
 
 ## 2. No clang, no child process
 
@@ -24,13 +26,14 @@ A `.das` file under this folder runs where no clang is installed and no process 
 a daslang compile, and in a web page. So it requires no `cbind`, the libclang binding of daScript's
 `dasClangBind`, whose submodules are `cbind/<name>`; and it names none of the daslang functions
 that start a process: `popen`, `popen_binary`, `popen_timeout`, `popen_argv`, `popen_argv_pipe`,
-`run_and_capture` (all of `fio`) and `system` (of `fio` and of `crt`).
+`spawn_process`, `spawn_argv`, `with_process`, `run_and_capture`, `executable_on_path` (all of
+`fio`; the last probes `PATH` through a shell) and `system` (of `fio` and of `crt`).
 
 The ban holds for what a file pulls in as well. `REVIEW.das` reads each `.das` file under the
 folder with its comments and the characters of its string and character literals blanked (the code
 inside a string's `{...}` stays: it runs), and reports, each with the file and line:
 
-- any of the seven names as a whole identifier, called or not: `x |> system`, `system (x)` and
+- any of those names as a whole identifier, called or not: `x |> system`, `system (x)` and
   `@@system` are findings like `system(x)`, and so is a local or a field of such a name, which is
   renamed;
 - a line that holds the word `require` and the word `cbind` anywhere; and a line that holds

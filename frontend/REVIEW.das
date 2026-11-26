@@ -22,7 +22,7 @@ let private TABLES = "predefined"
 
 let private TABLE_EXT = ".defs"
 
-let SPAWNERS <- ["popen", "popen_binary", "popen_timeout", "popen_argv", "popen_argv_pipe", "run_and_capture", "system"]
+let SPAWNERS <- ["popen", "popen_binary", "popen_timeout", "popen_argv", "popen_argv_pipe", "spawn_process", "spawn_argv", "with_process", "run_and_capture", "executable_on_path", "system"]
 
 // the length of the character literal at `at` of `chars` (`'a'`, `'\\n'`), 0 when none starts there
 def private char_literal_length(chars; at : int) : int {
