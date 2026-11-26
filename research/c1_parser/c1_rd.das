@@ -428,11 +428,29 @@ def private nested_paren(p : Rd; mode : int) : bool {
     if (mode == 0) {
         return true
     }
-    let k = kind_at(p, 1)
-    if (k == int(TK.STAR) || k == int(TK.LPAREN) || k == int(TK.LBRACKET) || k == int(TK.ATTRIBUTE)) {
+    // attributes may open either: decide on the first token past them (an unbounded lookahead)
+    var at = p.pos + 1
+    while (p.src.toks[at].kind == int(TK.ATTRIBUTE)) {
+        at++
+        var depth = 0
+        while (at < p.eof) {
+            let t = p.src.toks[at].kind
+            at++
+            if (t == int(TK.LPAREN)) {
+                depth++
+            } elif (t == int(TK.RPAREN)) {
+                depth--
+                if (depth == 0) {
+                    break
+                }
+            }
+        }
+    }
+    let k = p.src.toks[at].kind
+    if (k == int(TK.STAR) || k == int(TK.LPAREN) || k == int(TK.LBRACKET)) {
         return true
     }
-    return mode == 2 && k == int(TK.IDENTIFIER) && !typedef_at(p, p.pos + 1)
+    return mode == 2 && k == int(TK.IDENTIFIER) && !typedef_at(p, at)
 }
 
 def private direct_declarator(var p : Rd; mode : int) : int {

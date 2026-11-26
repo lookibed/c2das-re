@@ -30,7 +30,7 @@ def short(path, msg : string) : string {
     if (cut >= 0) {
         let rest = slice(s, cut + 19)
         let names <- split(rest, ", ")
-        let head = join([for (n in names) ; n], ", ")
+        let head = join([for (n in names); n], ", ")
         return length(names) > 4 ? "{slice(s, 0, cut)}, expected one of: {join([for (i in range(4)); names[i]], ", ")}, ... ({length(names)} names)" : "{slice(s, 0, cut)}, expected one of: {head}"
     }
     return s

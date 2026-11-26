@@ -22,6 +22,10 @@ the continuous integration section 7.
 - `frontend/` - the part of the converter that reads C with no clang behind it; today the own
   libc header set `frontend/include/`, which declares what `crt` binds and the emitter lowers
   (`frontend/ARCHITECTURE.md`, `frontend/include/ARCHITECTURE.md`).
+- `research/` - probes of a design decision that are not yet production code, one folder
+  each, outside the preflight's gated folders: `research/c1_parser/` is the C.1 parser probe of
+  Part 2 (`research/c1_parser/ARCHITECTURE.md`), whose LR candidate loads the dasBison and dasFlex
+  checkouts `scripts/fetch_dasbison.sh` fetches into the gitignored `fetch/`.
 - `probes/` - the das-facts regression net: one dastest probe per fact the backend relies
   on. Runs first in every test lane.
 - `suites/` - fetch scripts, runners, ratchet state and skip ledgers for c-testsuite, GCC

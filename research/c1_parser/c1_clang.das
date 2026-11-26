@@ -237,6 +237,7 @@ def private cl_top(var n : ClangNorm; js : JsonValue?) {
 }
 
 //! The lines of clang's JSON dump `text` for the declarations of `main_file`.
+[arch(at="ARCHITECTURE.md#clang-lines")]
 def clang_lines(text : string; main_file : string; var error : string&) : array<string> {
     var n : ClangNorm
     n.main_file = main_file
@@ -761,6 +762,7 @@ def private an_expr(var n : AstNorm; ast : Ast; src : Source; at, depth : int) {
 }
 
 //! The lines of a candidate's tree for the declarations of file `main_file`.
+[arch(at="ARCHITECTURE.md#clang-lines")]
 def ast_lines(ast : Ast; src : Source; main_file : string) : array<string> {
     var n : AstNorm
     n.main_file = find_index(src.files, main_file)
