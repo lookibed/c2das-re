@@ -221,6 +221,38 @@ def test_layout_guard_keys(t : T?) {
         t |> equal(placed.ok, false, placed.das_text)
         t |> success(placed.error |> contains("is defined under the dialect's predefined macros and not under clang's own"), placed.error)
     }
+    rmdir_rec(dir)
+}
+
+[test(description = "the layout guard's finer shapes: nested anonymous members, a tag one parse defines twice, an enum of one arm or of both, clang's builtin record", timeout = 1200)]
+def test_layout_guard_shapes(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_layout_guard_shapes", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("an anonymous member's offset is found through an anonymous member inside it, and is the member's, not the visible field's") @(t : T?) {
+        let attr = "#ifdef __clang__\n#define ATTR __attribute__((packed))\n#else\n#define ATTR\n#endif\n"
+        let nested <- guard_convert(dir, "anonymous_nested", "{attr}struct rec \{ char c; struct \{ struct \{ int x; \}; \}; long y __attribute__((aligned(8))); \} ATTR;\nint main(void) \{ return 0; \}\n", "")
+        t |> equal(nested.ok, false, nested.das_text)
+        t |> success(nested.error |> contains("`struct rec` is laid out as [size 16, align 8, members c@0 `char` 1/1, (anonymous)@32, y@64 `long` 8/8] under the dialect's predefined macros and as [size 16, align 8, members c@0 `char` 1/1, (anonymous)@8, y@64 `long` 8/8]"), nested.error)
+        // the visible `x` stands 32 bits into the member: the member is at 32 and 8, `x` at 64 and 40
+        let inside <- guard_convert(dir, "anonymous_inside", "{attr}struct rec \{ char c; struct \{ int : 8; int x; \}; long y __attribute__((aligned(8))); \} ATTR;\nint main(void) \{ return 0; \}\n", "")
+        t |> equal(inside.ok, false, inside.das_text)
+        t |> success(inside.error |> contains("members c@0 `char` 1/1, (anonymous)@32, y@128 `long` 8/8] under the dialect's predefined macros and as [size 24, align 8, members c@0 `char` 1/1, (anonymous)@8, y@128"), inside.error)
+    }
+    t |> run("a tag defined twice in either parse is found by place: a block's definition under `#ifndef __clang__` is refused, one more under `#ifdef __clang__` changes nothing") @(t : T?) {
+        let ours_twice <- guard_convert(dir, "tag_twice_ours", "static int one(void) \{ struct s \{ int a; \} v; v.a = 1; return v.a; \}\n#ifndef __clang__\nstatic int two(void) \{ struct s \{ int a; \} v; v.a = 1; return v.a; \}\n#else\nstatic int two(void) \{ return 1; \}\n#endif\nint main(void) \{ return one() - two(); \}\n", "")
+        t |> equal(ours_twice.ok, false, ours_twice.das_text)
+        t |> success(ours_twice.error |> contains("tag_twice_ours.c:3:31: `struct s` is defined under the dialect's predefined macros and not under clang's own"), ours_twice.error)
+        let theirs_twice <- guard_convert(dir, "tag_twice_theirs", "static int one(void) \{ struct s \{ int a; \} v; v.a = 1; return v.a; \}\n#ifdef __clang__\nstatic int two(void) \{ struct s \{ char a; \} v; v.a = 1; return v.a; \}\n#else\nstatic int two(void) \{ return 1; \}\n#endif\nint main(void) \{ return one() - two(); \}\n", "")
+        t |> equal(theirs_twice.ok, true, theirs_twice.error)
+    }
+    t |> run("an enum under `#ifndef __clang__` is refused; one definition of an enum in each arm is one enum") @(t : T?) {
+        let only <- guard_convert(dir, "enum_only", "#ifndef __clang__\nenum only \{ V \};\n#endif\nint main(void) \{ return 0; \}\n", "")
+        t |> equal(only.ok, false, only.das_text)
+        t |> success(only.error |> contains("enum_only.c:2:6: `enum only` is defined under the dialect's predefined macros and not under clang's own"), only.error)
+        let both <- guard_convert(dir, "enum_both", "#ifdef __clang__\nenum e \{ A \};\n#else\nenum e \{ A \};\n#endif\nint main(void) \{ enum e v = A; return v; \}\n", "")
+        t |> equal(both.ok, true, both.error)
+    }
     t |> run("clang's builtin `__va_list_tag`, which a variadic function's `va_list` reaches, stands in no file and is not compared") @(t : T?) {
         let conv <- guard_convert(dir, "va_builtin", "#include <stdarg.h>\nstatic int sum(int n, ...) \{ va_list ap; va_start(ap, n); int s = 0; for (int i = 0; i < n; i++) s += va_arg(ap, int); va_end(ap); return s; \}\nint main(void) \{ return sum(2, 1, 2) - 3; \}\n", "")
         t |> equal(conv.ok, true, conv.error)
