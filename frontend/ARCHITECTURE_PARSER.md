@@ -109,8 +109,12 @@ A declarator is parsed in one of three modes: named, abstract, or either, which 
 parenthesised declarator, then any `[...]` and `(...)` suffixes. In the abstract modes a `(` opens a
 nested declarator when the first token past any attributes after it is `*`, `(` or `[`, or, for a
 parameter, an identifier no typedef binds; otherwise it opens a parameter list. A `[...]` holds
-`static`, qualifiers, a size or `*`. A parameter list holds parameter declarations, whose one
-storage class may be `register`, each with the attributes after its declarator, and `...`. In a
+`static` once, qualifiers, a size or `*`; `static` needs a size. As clang takes them (C11 6.7.6.2p1,
+6.7.6.3p7), a qualifier or `static` stands only in a parameter's outermost array, `[*]` only in a
+parameter's array at any level, and each array declarator keeps its `[` (the node's `d`) to place
+the refusal of either elsewhere. A parameter list holds parameter declarations, whose one storage
+class may be `register`, each with the attributes after its declarator, and `...` after one of
+them: C23 takes `...` alone, gnu17 does not. In a
 named declarator an identifier no typedef binds right after the `(` opens an old-style identifier
 list instead (C11 6.7.6.3p3): its names are `ident_param` nodes and the function declarator's flag
 is 2.
@@ -183,13 +187,17 @@ class that breaks that rule is `expected a storage class that combines with thos
 token. A repeated one stays, as clang takes it with a warning. The type specifiers follow
 section 17, and a declaration with no type specifier is refused.
 
-An init-declarator is a named declarator, a GNU asm label `__asm__("name")`, then attributes; the
+An init-declarator is a named declarator, a GNU asm label `__asm__("name")` of unprefixed string
+literals (clang takes no wide or Unicode one there), then attributes; the
 attributes written before a later declarator of the list join them. Each name is bound in the
 innermost scope right after its init-declarator, before its initializer: as a typedef name when the
 specifiers hold `typedef`, else as an ordinary identifier. So `int T = T;` reads its own `T`, and in
 `int x = sizeof(T), T = 1;` the first `T` is still the type. A typedef takes no initializer. A
-typedef name declared again as the same typedef stays a typedef name. `__builtin_va_list` is a
-typedef name before the first token, as clang declares it.
+typedef name declared again as the same typedef stays a typedef name. Before the first token the
+table holds the typedef names clang declares in every C unit of the dialect's triples:
+`__builtin_va_list`, `__builtin_ms_va_list`, `__NSConstantString`, `__int128_t` and
+`__uint128_t`, and under msvc `size_t` (`c_parser_open_text`'s `msvc`). The two 128-bit names
+name a refused type, so a use of either is refused there, `the __int128 type is not parsed`.
 
 A declarator followed by `{` is a function definition, and an old-style identifier list outside one
 is invalid C (C11 6.7.6.3p3); `c_declaration` refuses both at their token, so the entry for
