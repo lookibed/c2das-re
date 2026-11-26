@@ -8,8 +8,9 @@ sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - 
 lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
 `#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
 C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
-statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23). No converter pass calls the preprocessor or the
-parser yet.
+statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23), and the
+type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28). No converter
+pass calls the preprocessor, the parser or the type table yet.
 
 ## 1. File charters
 
@@ -34,6 +35,14 @@ parser yet.
   declarators, expressions, the errors and the nesting bound, declarations, records and enums,
   function definitions and the unit, statements (sections 16 to 23).
   One module, since the grammar's parts call each other.
+- `c_types.das` - the C-IR type table of a unit (`ARCHITECTURE_TYPES.md`): the pool of types met,
+  each use interning a type into `CirTu.types` in Dumper A's order, the specifiers, declarators,
+  initializer-sized arrays, the walk over declarations, definitions and bodies, the own headers'
+  declarations. It writes `converter/cir.das`'s structures and requires no other converter module.
+- `tests/test_c_types.das` - per type form its entry and spelling under both dialects, a unit's
+  order through every statement form, typedefs, adjusted parameters, old-style definitions,
+  unsized arrays, the own headers' declarations, and every refusal with its place. The comparison
+  with Dumper A is `compare/types/`.
 - `tests/test_c_parse_decl.das` - every declaration specifier, declarator and init-declarator form
   as a dumped tree, the typedef table's scope cases, the refusals and malformed declarations, the
   declarator nesting bound, and the allocation probe over the preprocessed own headers.

@@ -1,0 +1,137 @@
+options gen2
+options stack = 262144
+require dastest/testing_boost public
+require strings
+require daslib/strings_boost
+require ../c_types.das
+
+//! `frontend/c_types.das`: per type form its table entry and clang's spelling, under both dialects;
+//! the order a unit's declarations, definitions and bodies first use their types in; typedefs,
+//! parameter adjustment, old-style definitions, unsized arrays sized by their initializers, the own
+//! headers' declarations; and every refusal with its place.
+
+// a table entry as one word: its key, a typedef by its name and target
+def private entry(t : CirType) : string => t.k == "typedef" ? "typedef:{t.name}:{t.to}" : c_type_key(t)
+
+// the type table of unit `text` (named `t.c`) as its entries in order, blank-separated; `error: `
+// and the builder's error, or `parse error: ` and the parser's; `library` is the own headers'
+// folder
+def private types_of(text : string; msvc : bool = false; library : string = "") : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c", msvc)
+    let u = c_unit(p)
+    return "parse error: {p.err}" if (p.failed)
+    var b : CTypes
+    c_types_open(b, msvc ? target_llp64_msvc() : target_lp64_linux(), library)
+    return "error: {b.err}" if (!c_types_unit(b, p, u))
+    return join([for (t in b.tu.types); entry(t)], " ")
+}
+
+let SCALARS = "char a; signed char b; unsigned char c; short d; unsigned short e; int f; unsigned g; long h; unsigned long i; long long j; unsigned long long k; _Bool l; float m; double n; long double o; void q(void); short int d2; int signed f2; signed f3; long int h2; long unsigned int i2; long long int j2; unsigned char signed_twice; char unsigned c2; const volatile int cv;"
+
+[test(description = "every builtin type keyword set as clang spells it, each width the dialect's, plain char unsigned, alternate spellings and qualifiers folding into one entry")]
+def test_scalars(t : T?) {
+    t |> run("linux, LP64") @(t : T?) {
+        t |> equal(types_of(SCALARS), "int:8:false:char int:8:true:signed char int:8:false:unsigned char int:16:true:short int:16:false:unsigned short int:32:true:int int:32:false:unsigned int int:64:true:long int:64:false:unsigned long int:64:true:long long int:64:false:unsigned long long int:8:false:_Bool float:32 float:64:double float:64:long double void func:15::false")
+    }
+    t |> run("msvc, LLP64: long is 32 bits") @(t : T?) {
+        t |> equal(types_of(SCALARS, true), "int:8:false:char int:8:true:signed char int:8:false:unsigned char int:16:true:short int:16:false:unsigned short int:32:true:int int:32:false:unsigned int int:32:true:long int:32:false:unsigned long int:64:true:long long int:64:false:unsigned long long int:8:false:_Bool float:32 float:64:double float:64:long double void func:15::false")
+    }
+    t |> run("msvc declares size_t before the unit, linux does not") @(t : T?) {
+        t |> equal(types_of("size_t n; long l;", true), "int:64:false:unsigned long long int:32:true:long")
+        t |> equal(types_of("size_t n;"), "parse error: t.c:1:1: expected a declaration, got 'size_t'")
+    }
+}
+
+[test(description = "pointers, arrays and functions: each part before the type it builds, a function's result before its parameters, C's inside-out declarator reading")]
+def test_derived(t : T?) {
+    t |> run("a function returning a function pointer, an array of arrays of pointers, a pointer to an array") @(t : T?) {
+        t |> equal(types_of("int (*f(char))(long); int *a[3][4]; int (*r)[5];"),
+                   "int:32:true:int int:64:true:long func:0:1:false ptr:2 int:8:false:char func:3:4:false ptr:0 array:6:4 array:7:3 array:0:5 ptr:9")
+    }
+    t |> run("(void) and () are one type; variadic apart; a parameter's qualifiers and name dropped") @(t : T?) {
+        t |> equal(types_of("int f(void); int g(); int h(int, ...); int k(const int x);"),
+                   "int:32:true:int func:0::false func:0:0:true func:0:0:false")
+    }
+    t |> run("an array size in parentheses, octal, hex and suffixed") @(t : T?) {
+        t |> equal(types_of("char a[(2)], b[010], c[0x10u], d[3UL], e[0];"),
+                   "int:8:false:char array:0:2 array:0:8 array:0:16 array:0:3 array:0:0")
+    }
+}
+
+[test(description = "typedefs: the entry after the type it names, a use adding no entry, one entry per name, a typedef of a function type declaring a function, typeof of a type name")]
+def test_typedefs(t : T?) {
+    t |> run("file scope") @(t : T?) {
+        t |> equal(types_of("typedef unsigned long size; typedef size *sp, arr[2]; sp x; typedef int F(int); F *fp; F g; typeof(char *) tc;"),
+                   "int:64:false:unsigned long typedef:size:0 ptr:0 typedef:sp:2 array:0:2 typedef:arr:4 int:32:true:int func:6:6:false typedef:F:7 ptr:7 int:8:false:char ptr:10")
+    }
+    t |> run("block scope: a name ends with its block, and one name keeps one entry whatever type a later block gives it") @(t : T?) {
+        t |> equal(types_of("typedef short T; void f(void) \{ \{ typedef long T; T a; \} T b; \{ typedef char T; T c; \} \}"),
+                   "int:16:true:short typedef:T:0 void func:2::false int:64:true:long int:8:false:char")
+    }
+}
+
+[test(description = "parameters adjusted as clang adjusts them: an array, an array of unknown size, a function and an array typedef become pointers, the array never entered")]
+def test_parameters(t : T?) {
+    t |> equal(types_of("typedef char row[8]; void h(int a[3], int b[][4], int fn(void), row d, const int *e, ...);"),
+               "int:8:false:char array:0:8 typedef:row:1 void int:32:true:int ptr:4 array:4:4 ptr:6 func:4::false ptr:8 ptr:0 func:3:5,7,9,10,5:true")
+}
+
+let BODY = "short g(long a, char *b) \{ unsigned x; \{ typedef double D; D y; \} for (float i; ; ) ; if (1) \{ long long z; \} else \{ signed char w; \} static unsigned short s; extern float e; int g2(void); short g(long, char *); switch (1) \{ case 1: \{ unsigned char c1; \} default: \{ _Bool b1; \} \} while (0) \{ long double ld; \} do \{ unsigned long ul; \} while (0); lab: \{ int *ip; \} return 0; \}"
+
+[test(description = "a definition: its type, its parameters, then its body's declarations depth-first in source order, a block function declaration of a declared name adding nothing")]
+def test_definition(t : T?) {
+    t |> run("every statement form") @(t : T?) {
+        t |> equal(types_of(BODY),
+                   "int:16:true:short int:64:true:long int:8:false:char ptr:2 func:0:1,3:false int:32:false:unsigned int float:64:double typedef:D:6 float:32 int:64:true:long long int:8:true:signed char int:16:false:unsigned short int:32:true:int func:12::false int:8:false:unsigned char int:8:false:_Bool float:64:long double int:64:false:unsigned long ptr:12")
+    }
+    t |> run("an old-style definition: R (), then each parameter in the identifier list's order") @(t : T?) {
+        t |> equal(types_of("int k(a, b, c) char b; double a; int c[2]; \{ return 0; \}"),
+                   "int:32:true:int func:0::false float:64:double int:8:false:char ptr:0")
+    }
+    t |> run("a block declaration of a function no declaration named yet adds its type and parameters") @(t : T?) {
+        t |> equal(types_of("void f(void) \{ int g(char *); \}"), "void func:0::false int:32:true:int int:8:false:char ptr:3 func:2:4:false")
+    }
+}
+
+[test(description = "an unsized array takes its count from its initializer: a string literal run's bytes, escapes and universal character names counted, a list's items, a braced string, braced rows")]
+def test_unsized_arrays(t : T?) {
+    t |> equal(types_of("char s[] = \"ab\\n\\x41\\101\\u00e9\" \"c\"; int v[] = \{1, 2, 3\}; char u[] = \{\"xy\"\}; int m[][2] = \{\{1, 2\}, \{3, 4\}, \{5\}\}; extern int e[]; char w[][3] = \{\"a\", \"b\"\};"),
+               "int:8:false:char array:0:9 int:32:true:int array:2:3 array:0:3 array:2:2 array:5:3 array:2:-1 array:4:2")
+}
+
+let LIBRARY = "# 1 \"/lib/h.h\" 1\ntypedef unsigned long size_t;\ntypedef struct F FILE;\nint puts(const char *);\nstatic int lib_def(void) \{ return 0; \}\n# 2 \"t.c\" 2\nsize_t n; int f(void) \{ int puts(const char *); int lib_def(void); return 0; \}\n"
+
+[test(description = "the own headers' declarations add no type: their typedef names resolve, their function names count as declared, an untyped one refused where the unit uses it")]
+def test_library(t : T?) {
+    t |> equal(types_of(LIBRARY, false, "/lib/"), "int:64:false:unsigned long int:32:true:int func:1::false")
+    t |> equal(types_of(LIBRARY + "FILE *fp;\n", false, "/lib/"),
+               "error: t.c:3:1: the typedef name 'FILE' is not typed yet: /lib/h.h:2:9: a struct type is not typed yet")
+    t |> equal(types_of(LIBRARY), "error: /lib/h.h:2:9: a struct type is not typed yet")
+}
+
+[test(description = "every construct the builder does not type yet is refused at its place")]
+def test_refusals(t : T?) {
+    t |> equal(types_of("struct S \{ int a; \} s;"), "error: t.c:1:1: a struct type is not typed yet")
+    t |> equal(types_of("int x; union U u;"), "error: t.c:1:8: a union type is not typed yet")
+    t |> equal(types_of("enum E \{ A \};"), "error: t.c:1:1: an enum type is not typed yet")
+    t |> equal(types_of("_Complex double c;"), "error: t.c:1:1: a complex type is not typed yet")
+    t |> equal(types_of("_Atomic int a;"), "error: t.c:1:1: an _Atomic type is not typed yet")
+    t |> equal(types_of("__builtin_va_list ap;"), "error: t.c:1:1: the typedef name '__builtin_va_list' is not typed yet")
+    t |> equal(types_of("typeof(1) x;"), "error: t.c:1:1: typeof of an expression is not typed yet")
+    t |> equal(types_of("_Alignas(8) int x;"), "error: t.c:1:1: an _Alignas alignment is not typed yet")
+    t |> equal(types_of("int x __attribute__((mode(DI)));"), "error: t.c:1:22: the attribute 'mode', which changes a type, is not typed yet")
+    t |> equal(types_of("typedef int v4 __attribute__((__vector_size__(16)));"), "error: t.c:1:31: the attribute '__vector_size__', which changes a type, is not typed yet")
+    t |> equal(types_of("int __attribute__((vector_size(8))) *p;"), "error: t.c:1:20: the attribute 'vector_size', which changes a type, is not typed yet")
+    t |> equal(types_of("int * __attribute__((mode(DI))) p;"), "error: t.c:1:22: the attribute 'mode', which changes a type, is not typed yet")
+    t |> equal(types_of("int (__attribute__((mode(DI))) p);"), "error: t.c:1:21: the attribute 'mode', which changes a type, is not typed yet")
+    t |> equal(types_of("void f(int x __attribute__((mode(DI))));"), "error: t.c:1:29: the attribute 'mode', which changes a type, is not typed yet")
+    t |> equal(types_of("int a[2 + 1];"), "error: t.c:1:7: an array size other than an integer literal is not typed yet")
+    t |> equal(types_of("int a[0b11];"), "error: t.c:1:7: the array size '0b11' is not typed yet")
+    t |> equal(types_of("int a[4294967296];"), "error: t.c:1:7: an array size past 2^31 - 1 is not typed yet")
+    t |> equal(types_of("void f(int n, int (*a)[*]);"), "error: t.c:1:19: a variable-length array is not typed yet")
+    t |> equal(types_of("int a[] = \{[2] = 1\};"), "error: t.c:1:12: an array sized by a designated initializer is not typed yet")
+    t |> equal(types_of("int m[][2] = \{1, 2, 3\};"), "error: t.c:1:15: an unsized array of arrays initialized with elided braces is not typed yet")
+    t |> equal(types_of("char s[] = L\"x\";"), "error: t.c:1:12: a prefixed string literal is not typed yet")
+    t |> equal(types_of("int s[] = (\{ 1; \});"), "error: t.c:1:11: an unsized array initialized by this expression is not typed yet")
+}
