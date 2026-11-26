@@ -44,22 +44,32 @@ that holds it.
   only adds `const` has one class on both sides.
 - `context` - the castKind, the form and the slot the chain's top cast fills: an operator's operand
   by operator group (`binary arithmetic`, `comparison`, `bitwise`, `shift`, `logical`, the unary
-  groups), `assign rhs`, `compound rhs`, a call's argument (`prototyped` within the callee type's
-  parameters, `variadic` past a variadic one's, `unprototyped` past any other's, since the C-IR
-  spells `T ()` as `T (void)`), `callee`, `return`, `init scalar`, `init element`, the conditions
+  groups, `unary not` apart), `assign rhs`, `compound rhs`, a call's argument (`prototyped` within
+  the callee type's parameters, `variadic` past a variadic one's, `K&R definition` past the
+  parameters of a type with none when the unit defines the function with that many parameters,
+  which clang converts to the parameter type, `unprototyped` past any other's, since the C-IR spells
+  `T ()` as `T (void)`), `callee`, `return`, `init scalar`, `init element`, the conditions
   of `if`, `while`, `do`, `for` and `?:`, a `?:` arm, `switch`, a subscript's base and index, a
   member's base, `comma lhs` and `rhs`, `expr stmt`, `for inc`, `va_arg list`. An implicit cast
-  takes the context of the cast over it; the operand of an explicit cast is `cast operand`. The
-  C-IR keeps no `sizeof` operand and no case label expression, so those contexts never occur.
+  takes the context of the cast over it; the operand of an explicit cast is `cast operand`.
 - `rule` - an explicit cast is `6.5.4 cast operator: <kind>`; an lvalue conversion (a record's
   apart), an array decay (a string literal's apart), a function decay (a callee's apart) and a null
   pointer constant are their C11 6.3.2 rule in any context; any other implicit cast is its
-  context's rule (6.3.1.1p2 for a binary operand promoted to `int` alone, 6.3.1.8 for the usual
-  arithmetic conversions, 6.5.7p3, 6.5.3.3, 6.5.16.1, 6.5.16.2, 6.5.2.2p6-7, 6.8.6.4p3, 6.7.9,
-  6.5.15, 6.8.4-6.8.5, 6.8.4.2p5, 6.5.2.1) and its castKind.
+  context's rule (6.3.1.1p2 for a binary operand whose cast is a promotion, 6.3.1.8 for any other
+  conversion to the common type, 6.5.7p3, 6.5.3.3, 6.5.3.3p5, 6.5.13-6.5.14, 6.5.16.1, 6.5.16.2,
+  6.5.2.2p6-7, clang's K&R definition argument, 6.8.6.4p3, 6.7.9, 6.5.15, 6.8.4-6.8.5, 6.8.4.2p5,
+  6.5.2.1) and its castKind. clang writes one cast for a promotion and the conversion to the common
+  type after it, so an operand cast is labelled by its result: a promotion when it reaches `int`
+  (or an unsigned enum's `unsigned int`), the usual arithmetic conversions otherwise.
+- `crule` - the C rule alone: the rule's name before its castKind, so the context and kind keys of
+  one rule (`6.5.4 cast operator` over ten castKinds) count as one.
 - `clause` - the C11 6.3 paragraph the conversion applies, by castKind and classes: an integer
-  conversion is a promotion (6.3.1.1p2) from below `int`'s rank, or an enum, to `int` or `unsigned
-  int` in a promoting context, else 6.3.1.3 p1, p2 or p3 by width and signedness; a pointer bit cast
+  conversion is a promotion (6.3.1.1p2) in a promoting context (an operator's operand, `&&` and
+  `||` included, a `?:` condition or arm, a switch condition, a variadic or unprototyped argument)
+  from below `int`'s rank, an enum, or a bit-field narrower than `int` (read from the record's
+  field, since the C-IR types a bit-field as its declared type) to `int`, or from an enum to
+  `unsigned int`; else 6.3.1.3 p1, p2 or p3 by width and signedness, by the classes and not the
+  value; a pointer bit cast
   is 6.3.2.3 p1, p4, p7 or p8 by its classes; a `NoOp` between pointers is 6.3.2.3p2, an explicit
   one to the same class 6.5.4. A conversion no paragraph names is `no clause: <kind> <from> -> <to>`.
 - `chain` - per top cast, the castKinds down its chain of casts, outermost first, an explicit one
@@ -73,3 +83,18 @@ that holds it.
   chain of three or more casts, an argument past a non-variadic callee's parameters, and a compound
   assignment whose operands' classes differ, whose computation type the C-IR does not hold.
 - `total` - the units, the expression nodes and the casts.
+
+## 3. What the census cannot see
+
+The C-IR holds the result of conversions clang made in places that are no expression of it, so
+these conversions exist in clang's dump and are not counted:
+
+- a `sizeof` or `_Alignof` operand, a `typeof` operand: the C-IR keeps the value and the type only;
+- a case label: the C-IR keeps the folded value, and the `IntegralCast` clang gives the label's
+  constant to the promoted controlling type (6.8.4.2p5) is lost;
+- an enumerator's initializer, an array bound, a bit-field width, a `_Static_assert`: folded to
+  their values;
+- the `ToVoid` of an expression statement `(void)({ ... })`, which the dumper unwraps to the block;
+- a compound assignment's left operand converted to the computation type and the result converted
+  back, which clang writes as attributes of the operator, not as cast nodes;
+- qualifiers: a qualifying `NoOp` is counted, but its operand and result have one class.
