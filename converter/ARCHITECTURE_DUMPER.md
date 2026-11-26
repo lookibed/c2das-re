@@ -11,8 +11,8 @@ sidecar's `program_root`, else the main file's directory. Libc is the own header
 clang runs get `-nostdinc`, so neither clang's resource directory nor the host's libc is searched,
 and `frontend/include/` (repo root) as the one `-isystem` folder, found beside `frontend/c_defines.das`
 wherever the converter runs from. That folder stays external wherever it lies (a program root
-above it holds it); the sidecar's `include_dirs` and the folders `CPATH` and `C_INCLUDE_PATH` name,
-which clang searches too, hold the user's headers. A `<...>` header no searched folder holds fails
+above it holds it); the sidecar's `include_dirs` hold the user's headers. clang reads `CPATH` and `C_INCLUDE_PATH` under `-nostdinc` too and searches their
+folders before the `-isystem` one, where a host libc would replace the own headers with no error, so a dump with either set fails before clang runs, naming the variable. A `<...>` header no searched folder holds fails
 the dump with clang's error naming it. A main file that is no file of the program fails the dump naming it and the root, and so does a
 top-level declaration of a `.c` file outside the root (a unit that
 includes another unit's source through `include_dirs`), since its definitions would stay external

@@ -147,7 +147,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   the same `-D` prints; and `tests/fixtures/p8_include_dirs/` (a unit including a sibling folder's
   C file through `include_dirs` and a `../` header, under a `program_root` above both) printing what
   its native build prints, with the refusals of a C file outside the root and of a main file
-  outside it, and the program converting with its folder named in `CPATH`.
+  outside it, and of a dump under a set `CPATH` or `C_INCLUDE_PATH`.
 - `tests/test_link.das` - the three files of `tests/fixtures/p5_multi_link/` linked into one module
   that prints what their native build prints, with the renames, the header copies and the scoping
   the text must carry; the file list and the fixture's manifest giving one module through

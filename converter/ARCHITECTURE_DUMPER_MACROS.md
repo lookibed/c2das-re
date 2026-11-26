@@ -11,13 +11,13 @@ macro of its own (`__clang__`, `_MSC_VER`; `__GNUC__` is the `linux` table's ent
 and the own libc headers' folder, canonical, as the one `-isystem` directory (the program's files,
 `ARCHITECTURE_DUMPER.md`). The sidecar's `defines` follow, and a later `-D` of a name wins. A table
 that is missing or malformed fails the dump naming the file, and a missing header folder naming it.
-The converter passes no define of its own and the dumper reads no libc's private spelling of a
-macro: the own `<ctype.h>` declares `isalpha` as the function the crt module binds, and the own
+No define is passed outside the table (the converter's own statement, `__STDC_NO_VLA__=1`, is a table
+entry) and the dumper reads no libc's private spelling of a macro: the own `<ctype.h>` declares `isalpha` as the function the crt module binds, and the own
 `<assert.h>` spells `assert` as one conditional expression. Clang's dump
 writes a table macro's token as spelled in `<built-in>`, as it writes its own (the command line is a
 part of that buffer, named only as the `presumedFile`), and libclang gives neither a file, so a
-location reads the same under both. `metrics/criteria_defines.das` preprocesses under the same
-flags; a native build (`tiers.das`, the harnesses) never gets them and reads the host's libc.
+location reads the same under both. `metrics/criteria_defines.das` preprocesses under
+the `linux` dialect's flags whatever dialect a unit is converted under (the criteria are measured on `linux` conversions); a native build (`tiers.das`, the harnesses) never gets them and reads the host's libc.
 
 ### Function-like macro expansions {#fn-macros}
 

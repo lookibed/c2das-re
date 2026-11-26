@@ -4326,9 +4326,28 @@ def frontend_flags(target : CirTarget; table_path, include_dir : string; var err
     return <- flags
 }
 
-//! `frontend_flags` of `target` over its dialect's table and the own libc headers' folder.
-def dumper_frontend_flags(target : CirTarget; var error : string&) : array<string> =>
-    frontend_flags(target, predefined_table(target), own_include_dir(), error)
+//! The environment variables clang reads include folders from, `-nostdinc` or not, and searches
+//! before the `-isystem` folder.
+let INCLUDE_VARIABLES <- ["CPATH", "C_INCLUDE_PATH"]
+
+//! Why a clang run of the dumper is refused when the environment variable `name` holds `value`:
+//! "" for an empty one; else the folders it names would be searched before the own libc headers,
+//! and a host libc found there would replace them with no error.
+def include_variable_refusal(name, value : string) : string =>
+    empty(value) ? "" : "the environment variable {name} is set ({value}): clang would search its folders before the own libc headers; unset it and name a program's include folders in the sidecar's `include_dirs`"
+
+//! `frontend_flags` of `target` over its dialect's table and the own libc headers' folder;
+//! `error` also names a set variable of `INCLUDE_VARIABLES`.
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
+def dumper_frontend_flags(target : CirTarget; var error : string&) : array<string> {
+    for (name in INCLUDE_VARIABLES) {
+        error = include_variable_refusal(name, has_env_variable(name) ? get_env_variable(name) : "")
+        if (!empty(error)) {
+            return <- array<string>()
+        }
+    }
+    return <- frontend_flags(target, predefined_table(target), own_include_dir(), error)
+}
 
 // the sidecar's `defines`, `include_dirs` and `include_files` as clang flags, `-D<entry>`, `-I<dir>`
 // and `-include <file>` each
