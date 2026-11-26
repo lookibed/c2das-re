@@ -70,7 +70,9 @@ holds the one macro outside this.
 `<unistd.h>`, `<fcntl.h>` and `<endian.h>` declare nothing: no function of theirs is bound, and a
 converted project includes them and uses none (doomgeneric the first two; wasm3 the last, on the
 arm it takes where no compiler it knows is named, whose `__bswap_16` test then fails and leaves its
-own byte swaps). `<sys/types.h>` holds `mode_t` for `mkdir` of
+own byte swaps). `<wchar.h>` holds `wchar_t` alone, through `<stddef.h>`: no wide function is
+bound, and c-testsuite's `00220` includes it for the type of a wide string literal, which the
+dumper refuses by name. `<sys/types.h>` holds `mode_t` for `mkdir` of
 `<sys/stat.h>`. `<string.h>` includes `<strings.h>`, as glibc's does by default, so
 `strcasecmp` is visible through either.
 

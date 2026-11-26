@@ -78,6 +78,15 @@ def test_dump_over_own_headers(t : T?) {
             t |> equal(output, line, dialect)
         }
     }
+    t |> run("`<wchar.h>` gives `wchar_t` and no function: a unit using the type converts, a wide string literal is the dumper's refusal, no missing header") @(t : T?) {
+        let typed = path_join(dir, "wide_type.c")
+        fwrite(typed, "#include <wchar.h>\nint main(void) \{ wchar_t c = 65; return (int) sizeof(c) - 4 + (c - 65); \}\n")
+        let conv <- convert(typed, path_join(dir, "wide_type"), "linux")
+        t |> equal(conv.ok, true, conv.error)
+        fwrite(typed, "#include <wchar.h>\nint main(void) \{ wchar_t s[] = L\"ab\"; return s[1] != 98; \}\n")
+        let wide <- convert(typed, path_join(dir, "wide_literal"), "linux")
+        t |> success(!wide.ok && wide.error |> contains("a wide string literal") && !(wide.error |> contains("file not found")), wide.error)
+    }
     t |> run("a header's declarations stay out of the C-IR: only what the program names binds, by name") @(t : T?) {
         let conv <- convert(c_path, path_join(dir, "external"), "linux")
         t |> equal(conv.ok, true, conv.error)
@@ -87,7 +96,7 @@ def test_dump_over_own_headers(t : T?) {
         }
     }
     t |> run("an `#include <...>` of a header the folder does not hold fails the dump naming it, a system's own included") @(t : T?) {
-        for (header in ["wchar.h", "sys/param.h", "c2das_no_such.h"]) {
+        for (header in ["sys/mman.h", "sys/param.h", "c2das_no_such.h"]) {
             let missing = path_join(dir, "missing.c")
             fwrite(missing, "#include <{header}>\nint main(void) \{ return 0; \}\n")
             let conv <- convert(missing, path_join(dir, "missing"), "linux")
