@@ -98,6 +98,7 @@ gates and the review machinery. Codex sessions take their MCP wiring from
   |---|---|
   | `converter/` (or adds a plan item's feature) | `converter/tests`, `lua/tests`, `doom/tests`, gcc-torture, c-testsuite, csmith |
   | `c_runtime/`, `dasCRuntime/` | `c_runtime/tests`, `dasCRuntime/tests`, `probes`, `converter/tests`, gcc-torture, c-testsuite, csmith |
+  | `frontend/` | `frontend/tests`, `frontend/include/tests` |
   | `probes/` | `probes` |
   | `perf/` | `perf/tests` |
   | `ports/` | `ports/tests` |

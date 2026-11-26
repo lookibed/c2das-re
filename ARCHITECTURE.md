@@ -19,6 +19,9 @@ the continuous integration section 7.
   (malloc family, mem*, string.h, libm exotica, errno, time, locale, stdio, rand, getenv, the
   per-directive `snprintf` family) under their C names, qualified `crt::` at every use. No logic; built by
   `scripts/build_crt.sh` and loaded with `-load_module` (`dasCRuntime/ARCHITECTURE.md`).
+- `frontend/` - the part of the converter that reads C with no clang behind it; today the own
+  libc header set `frontend/include/`, which declares what `crt` binds and the emitter lowers
+  (`frontend/ARCHITECTURE.md`, `frontend/include/ARCHITECTURE.md`).
 - `probes/` - the das-facts regression net: one dastest probe per fact the backend relies
   on. Runs first in every test lane.
 - `suites/` - fetch scripts, runners, ratchet state and skip ledgers for c-testsuite, GCC
