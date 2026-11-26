@@ -1,0 +1,27 @@
+c2das-re fix of PureDOOM's doomu.wad path buffer, applied by doom/fetch.sh after 0004.
+
+Copyright (C) 2026 the c2das-re authors. This patch modifies PureDOOM, which is distributed
+under the GNU General Public License version 2 (PureDOOM's LICENSE); the patch and the files it
+produces are distributed under the same license, WITHOUT ANY WARRANTY.
+
+- d_main.c: IdentifyVersion allocates the retail wad's path as strlen(DOOMWADDIR) + 1 + 8 + 1
+  bytes and writes DOOMWADDIR, "/doomu.wad" (ten characters) and the NUL into it: the NUL lands
+  one byte past the block, in every build (linuxdoom-1.10 has the same line). glibc's chunk slack
+  hides it unless strlen(DOOMWADDIR) % 16 == 14; then the NUL clears the low byte of the next
+  chunk's size and malloc aborts, natively every run, converted (the neighbour a daslang chunk)
+  intermittently, `corrupted size vs. prev_size`. The patch gives the path 1 + 9 + 1 bytes, as
+  doom2.wad's.
+
+diff --git a/src/DOOM/d_main.c b/src/DOOM/d_main.c
+--- a/src/DOOM/d_main.c
++++ b/src/DOOM/d_main.c
+@@ -605,7 +605,8 @@
+     doom_concat(doom2wad, "/doom2.wad");
+ 
+     // Retail.
+-    doomuwad = doom_malloc(doom_strlen(doomwaddir) + 1 + 8 + 1);
++    // [c2das] "/doomu.wad" is ten characters, as "/doom2.wad" is: 1 + 9 + 1 with the NUL, not 1 + 8 + 1.
++    doomuwad = doom_malloc(doom_strlen(doomwaddir) + 1 + 9 + 1);
+     //doom_sprintf(doomuwad, "%s/doomu.wad", doomwaddir);
+     doom_strcpy(doomuwad, doomwaddir);
+     doom_concat(doomuwad, "/doomu.wad");
