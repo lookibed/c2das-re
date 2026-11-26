@@ -65,8 +65,10 @@ entry (a blank at either end included) and a name a line above defines, and refu
 missing or holds no entry. `predefined_path` names a dialect's table beside the module, so the
 converter finds it from wherever it runs.
 
-The tables are the whole set of predefined macros for a frontend that reads them: clang drops its
-own under `-undef` and takes the entries as `-D`. Their content follows one rule: **a table never disagrees with clang.** Every entry has the
+The tables are every macro a frontend that reads them defines before the first line: clang drops
+its own under `-undef` and takes the entries as `-D`. They hold no name the preprocessor itself
+answers, which `clang -E -dM` does not list and `-undef` does not drop: `__FILE__`, `__LINE__`,
+`__COUNTER__`, `__DATE__`, `__TIME__`, `__FLT_EVAL_METHOD__`, `__has_include` and its kin. Their content follows one rule: **a table never disagrees with clang.** Every entry has the
 value the pinned clang predefines for that name under the dialect's triple with `-funsigned-char`
 and no `-std` (so the language is clang's default, gnu17: `__STDC_VERSION__` is `201710L`), and
 every name clang predefines there is an entry unless a class below excludes it. The one entry

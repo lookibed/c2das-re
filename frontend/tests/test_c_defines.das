@@ -30,6 +30,7 @@ def test_parse_define(t : T?) {
         t |> equal(parsed_as("__INT64_C(c)=c##L"), "fn __INT64_C|c|c##L")
         t |> equal(parsed_as("TRY(L, c, a)=\{ a \}"), "fn TRY|L,c,a|\{ a \}")
         t |> equal(parsed_as("NONE()=0"), "fn NONE||0")
+        t |> equal(parsed_as("F( )=0"), "fn F||0")
         t |> equal(parsed_as("LOG(fmt, ...)=f(fmt)"), "fn LOG|fmt,...|f(fmt)")
     }
     t |> run("a head that is no identifier, and a function-like head that is malformed or has no value, are refused") @(t : T?) {
@@ -55,12 +56,29 @@ def test_parse_predefined(t : T?) {
         t |> equal(error, "")
         t |> equal(join(entries, ";"), "B=2;A;F(x)=x##L;E=")
     }
-    t |> run("a line that is no entry is refused with the file and its line, a blank at either end included") @(t : T?) {
-        for (bad in fixed_array("1A=2", "A B", " A=1", "A=1 ", "\tA", "F(x)", "-DA")) {
+    t |> run("a line that is no entry is refused with the file and its line, a blank ahead of the name included") @(t : T?) {
+        for (bad in fixed_array("1A=2", "A B", " A=1", "\tA", "F(x)", "-DA")) {
             var error : string
             parse_predefined("A0=1\n\n{bad}\nZ=1\n", "dir/t.defs", error)
             t |> equal(error, "dir/t.defs:3: `{bad}` is no entry `NAME`, `NAME=value` or `NAME(params)=value`")
         }
+    }
+    t |> run("a blank at the end of a line, which the entry parser would take into the value, is refused") @(t : T?) {
+        for (bad in fixed_array("A=1 ", "A=1\t", "F(x)=x ")) {
+            t |> equal(is_define(bad), true, bad)
+            var error : string
+            parse_predefined("A0=1\n{bad}\n", "t.defs", error)
+            t |> equal(error, "t.defs:2: `{bad}` is no entry `NAME`, `NAME=value` or `NAME(params)=value`")
+        }
+    }
+    t |> run("the first bad line is the one named: of two lines that are no entry, and of two names defined again") @(t : T?) {
+        var malformed : string
+        let before <- parse_predefined("A=1\n1B\nC=1\n2D\n", "t.defs", malformed)
+        t |> equal(malformed, "t.defs:2: `1B` is no entry `NAME`, `NAME=value` or `NAME(params)=value`")
+        t |> equal(join(before, ";"), "A=1")
+        var twice : string
+        parse_predefined("A=1\nB=2\nA=3\nB=4\n", "t.defs", twice)
+        t |> equal(twice, "t.defs:3: `A` is defined at line 1 already")
     }
     t |> run("a name defined twice is refused at its second line, naming the first, whatever its form") @(t : T?) {
         for (again in fixed_array("A=1", "A", "A(x)=x", "A=")) {
@@ -73,7 +91,7 @@ def test_parse_predefined(t : T?) {
 
 [test(description = "the table files: a missing or empty one is refused by its path, and each dialect's own is well formed")]
 def test_read_predefined(t : T?) {
-    t |> run("a file that does not exist, and one with no entry, are refused naming the path") @(t : T?) {
+    t |> run("a file that does not exist or has no entry is refused naming the path, a malformed one by its line") @(t : T?) {
         let missing = path_join(test_temp_dir(), "c_defines_missing.defs")
         var error : string
         t |> equal(length(read_predefined(missing, error)), 0)
@@ -84,9 +102,9 @@ def test_read_predefined(t : T?) {
         read_predefined(hollow, hollow_error)
         t |> equal(hollow_error, "{hollow}: the predefined-macro table holds no entry")
         var malformed_error : string
-        fwrite(hollow, "A=1\nA=2\n")
+        fwrite(hollow, "A B\n")
         read_predefined(hollow, malformed_error)
-        t |> equal(malformed_error, "{hollow}:2: `A` is defined at line 1 already")
+        t |> equal(malformed_error, "{hollow}:1: `A B` is no entry `NAME`, `NAME=value` or `NAME(params)=value`")
     }
     t |> run("each dialect's table lies beside the module, reads clean, and states the language once") @(t : T?) {
         for (dialect in DIALECTS) {

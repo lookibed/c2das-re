@@ -108,12 +108,12 @@ def test_frontend_gate_requires(t : T?) {
         let folder = path_join(test_temp_dir(), "gate_tree")
         mkdir_rec(path_join(folder, "sub"))
         mkdir_rec(path_join(folder, "predefined"))
-        for (name in fixed_array("a.das", "predefined/linux.defs", "sub/body.inc", "sub/other.defs", "sub/part.das.inc", "sub/x.h", "sub/y.md")) {
+        for (name in fixed_array("a.das", "predefined/linux.defs", "predefined/x.das.inc", "sub/body.inc", "sub/other.defs", "sub/part.das.inc", "sub/x.h", "sub/y.md")) {
             fwrite(path_join(folder, name), "let n = {SPAWNERS[0]}(x)\n")
         }
         let found <- tree_findings(folder)
         let other = "is no .das, .h or .md file and no predefined/*.defs table: the gate reads no other source"
-        let wanted = fixed_array("a.das:1: names `{SPAWNERS[0]}`: nothing under frontend/ starts a process", "sub/body.inc: {other}", "sub/other.defs: {other}", "sub/part.das.inc: {other}")
+        let wanted = fixed_array("a.das:1: names `{SPAWNERS[0]}`: nothing under frontend/ starts a process", "predefined/x.das.inc: {other}", "sub/body.inc: {other}", "sub/other.defs: {other}", "sub/part.das.inc: {other}")
         t |> equal(length(found), length(wanted), join(found, "\n"))
         for (finding, want in found, wanted) {
             t |> success(finding |> ends_with(want), finding)
