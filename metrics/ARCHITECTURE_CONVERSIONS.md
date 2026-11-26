@@ -12,7 +12,8 @@ writes the raw counts.
 - `conversion_census.das` - the driver: `das metrics/conversion_census.das -- [--filter <row>]
   [--jobs N] [--limit N] [--json <file>]` from the repository root. The rows are the c-testsuite,
   gcc-torture and csmith suites, Lua (its two programs pooled), PureDOOM and each compare project,
-  then the total. A program row converts through `convert_input` of `readability_inputs.das` in a
+  then the total and, past one row, the total without csmith, whose generated programs hold most
+  of the casts. A program row converts through `convert_input` of `readability_inputs.das` in a
   worker of its own, one at a time, and the worker counts every unit's `.cir.json` the conversion
   wrote, so a program whose emission fails is still counted from its dump; each file is removed once
   read. A suite row dumps every id its `expected_pass.txt` lists alone, with the sidecar the

@@ -32,6 +32,8 @@ def private suite_chunks(suite : string) : int => suite == "csmith" ? 48 : 8
 
 let SUITE_PREFIX = "suite/"
 
+let CSMITH_ROW = "csmith"
+
 // a row of the report: its name and the inputs whose units it pools, a unit two inputs share (a
 // file of both Lua programs) counted once
 struct private Row {
@@ -42,7 +44,7 @@ struct private Row {
 def private suite_row(name, suite : string) : Row => Row(name = name, keys <- [for (k in range(suite_chunks(suite))); "{SUITE_PREFIX}{suite}@{k}"])
 
 def private all_rows : array<Row> {
-    return <- [suite_row("c-testsuite", "c_testsuite"), suite_row("gcc-torture", "gcc_torture"), suite_row("csmith", "csmith"),
+    return <- [suite_row("c-testsuite", "c_testsuite"), suite_row("gcc-torture", "gcc_torture"), suite_row(CSMITH_ROW, "csmith"),
         Row(name = "Lua 5.4.8", keys <- ["lua/lua", "lua/luac"]),
         Row(name = "PureDOOM", keys <- [PUREDOOM_ROW]),
         Row(name = "binjgb", keys <- ["project/binjgb"]),
@@ -222,15 +224,23 @@ def private keys_of(rows : array<Row>; suites : bool) : array<string> {
 }
 
 // the report of `rows` from the counts their workers wrote, `failed` the workers that left none:
-// the castKind shares per row, each row's tables, the total's, then what was not read
+// each row's tables, the total's and, past one row, the total's without csmith, whose generated
+// programs hold most of the casts, then what was not read
 def private print_report(rows : array<Row>; failed : array<string>; limit : int; json : string) {
     var failures : array<string>
     var read <- [for (r in rows); gather(r, failures)]
     var total = CensusRow(name = "total")
+    var but_csmith = CensusRow(name = "total without csmith")
     for (r in read) {
         total.c |> add_census(r.c)
+        if (r.name != CSMITH_ROW) {
+            but_csmith.c |> add_census(r.c)
+        }
     }
     read |> emplace(total)
+    if (length(read) > 2) {
+        read |> emplace(but_csmith)
+    }
     for (r in read) {
         print(render_set(r, limit))
     }
