@@ -100,6 +100,9 @@ def test_ucn_identifiers(t : T?) {
     t |> equal(lexed("x \\U00000041"), "error: t.c:1:3: invalid universal character name in '\\U00000041'")
     t |> equal(lexed("\\ud800"), "error: t.c:1:1: invalid universal character name in '\\ud800'")
     t |> equal(lexed("\\U00110000"), "error: t.c:1:1: invalid universal character name in '\\U00110000'")
+    t |> equal(lexed("\\u0080"), "error: t.c:1:1: invalid universal character name in '\\u0080'")
+    t |> equal(lexed("\\udfff"), "error: t.c:1:1: invalid universal character name in '\\udfff'")
+    t |> equal(lexed("\\U0010FFFF"), "I:\\U0010FFFF")
     t |> equal(lexed("\\u0024y \\u0040 \\u0060 a\\u00e9 \\U0001F600"), "I:\\u0024y I:\\u0040 I:\\u0060 I:a\\u00e9 I:\\U0001F600")
     t |> equal(lexed("x\\u00e9 x\\u00e9 \\u0069nt"), "error: t.c:1:17: invalid universal character name in '\\u0069nt'")
 }
@@ -115,7 +118,7 @@ def test_numbers(t : T?) {
                    "F:1.0 F:.5 F:1. F:1e10 F:1E-3 F:1.5f F:1.5F F:1.5l F:2e+3L F:09.5 F:0x1p3 F:0x1.8p-2 F:0x.8P1f F:0X1P+4L F:1.e5")
     }
     t |> run("a pp-number that is no constant is an error at its place") @(t : T?) {
-        let bad = fixed_array("09", "0b2", "0x", "0xg", "1lL", "1uu", "1lul", "1lll", "1.5ff", "1.5u", "0x1.8", "1e", "1e+", "0x1p", "1i", "12abc", "1..2", "0b", ".5e3x")
+        let bad = fixed_array("09", "0b2", "0x", "0xg", "1lL", "1uu", "1lul", "1lll", "1.5ff", "1.5u", "0x1.8", "1e", "1e+", "0x1p", "1i", "12abc", "1..2", "0b", ".5e3x", "0xp1", "0x.p1", "0b12", "0b1z", "08")
         for (text in bad) {
             t |> equal(lexed("x {text}"), "error: t.c:1:3: invalid numeric constant '{text}'", text)
         }
@@ -176,11 +179,14 @@ def test_line_markers(t : T?) {
     t |> run("a marker at the end of the unit leaves the end placed after the last token") @(t : T?) {
         t |> equal(placed("x\n# 4 \"y.h\""), "x@t.c:1:1 $@t.c:1:2")
         t |> equal(placed(""), "$@t.c:1:1")
+        t |> equal(placed("# 5\n\"s\""), "\"s\"@t.c:5:1 $@t.c:5:4")
     }
     t |> run("a directive that is no line marker is an error naming it") @(t : T?) {
         t |> equal(lexed("x\n#pragma once\ny"), "error: t.c:2:2: the directive '#pragma' is not parsed")
         t |> equal(lexed("# 1 \"h.h\"\n#define A 1"), "error: h.h:1:2: the directive '#define' is not parsed")
         t |> equal(lexed("x\n#\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
+        t |> equal(lexed("x\n#\nline 7\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
+        t |> equal(lexed("x\n#\n5\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
         t |> equal(lexed("#line x"), "error: t.c:1:7: the directive '#x' is not parsed")
         t |> equal(lexed("# 0x10 \"a.c\""), "error: t.c:1:3: the directive '#0x10' is not parsed")
         t |> equal(lexed("# 3 L\"w.h\"\nx"), "error: t.c:1:5: a line marker's file name 'L\"w.h\"' is not parsed")
