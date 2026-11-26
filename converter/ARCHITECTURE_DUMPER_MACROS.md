@@ -45,19 +45,24 @@ beside it has its tag); any other unnamed
 definition (the type of a variable, an unnamed enum) by the file and offsets of its definition.
 A tag one parse defines more than once (two blocks' `struct s`) is found by place too. A
 definition keyed by place that stands in another arm in the second pass has no twin there and is
-refused: nothing names it across the arms, and the guard fails closed. That is the one shape
-refused with no layout difference: an unnamed record with no owner (`static struct { ... } v;`)
-written once in each arm of a conditional.
+refused: nothing names it across the arms, and the guard fails closed. So every definition keyed
+by place is refused with no layout difference when it is written once in each arm of a
+conditional: an unnamed record with no owner (`static struct { ... } v;`), an unnamed enum at file
+scope or nested, and a tag a parse defines twice.
 
 **The signature.** A record's size and alignment, and each member in order: a field's name, bit
 offset, bitfield width, canonical type spelling (the place of an unnamed record cut out of it) and
 that type's size and alignment, and, where the type is an unnamed record or enum (or an array of
 one), the key of that definition, so `__typeof__` of one variable is not another's; an anonymous
-member's bit offset, by a name it makes visible. An enum's size, alignment and underlying type. The record's size is implied by the rest and printed for the reader.
+member's bit offset, by a name it makes visible. An enum's size, alignment and underlying type; where that type alone differs (an enumerator
+of one arm made clang pick another), the refusal says so and names no layout attribute. A pointer
+to an unnamed record is signed with the record's key as an array of one is; a function type that
+names one has no declaration and gets no key. The record's size is implied by the rest and printed for the reader.
 
 A definition whose signature differs fails the dump naming it, its place and both signatures, and
 so does one with no twin (an error the second pass met is quoted beside it); a second parse that
-gives no translation unit at all fails the dump with that one reason; records are judged
+gives no translation unit at all fails the dump with that one reason (`second_parse_refusal`), unless
+the first pass laid nothing out (a main file clang cannot open, which the dump's clang run names); records are judged
 before enums, each in the order the first pass met them. The message names the way out: a sidecar
 `defines` entry, which both passes get, selects one arm for both. Under the `msvc` dialect the second parse has clang's own `_MSC_VER` and the table has not, so the
 guard compares the converter's arm with the program's MSVC arm: `#pragma pack` and

@@ -4307,6 +4307,9 @@ let private TAG_KEY = "tag "
 let private PLACE_OPEN = "<<"
 let private PLACE_CLOSE = ">>"
 
+// what stands before an enum's underlying type in its signature
+let private ENUM_OF = ", of "
+
 // `spelling` with the place of every unnamed record or enum it names cut out: `(unnamed at
 // f:l:c)` and `(anonymous at f:l:c)` are `(unnamed)`, so a spelling reads alike wherever the
 // definition stands
@@ -4375,16 +4378,25 @@ def private member_signature(var d : Dumper; var owner : CXType; var fc : CXCurs
     let spelling = placeless(raw)
     let size = clang_Type_getSizeOf(canonical)
     let align = clang_Type_getAlignOf(canonical)
-    // an unnamed record or enum as the type: which one, by the place of its definition until
+    // an unnamed record or enum as the type, an array's element or a pointer's target: which one, by the place of its definition until
     // `name_unnamed_types` puts its key there
     var which : string
     if (spelling != raw) {
+        // through arrays and pointers, to the type that has a declaration
         var element = canonical
-        while (element.kind == CXTypeKind.ConstantArray || element.kind == CXTypeKind.IncompleteArray) {
-            element = clang_getCanonicalType(clang_getArrayElementType(element))
+        var through = true
+        while (through) {
+            if (element.kind == CXTypeKind.ConstantArray || element.kind == CXTypeKind.IncompleteArray) {
+                element = clang_getCanonicalType(clang_getArrayElementType(element))
+            } elif (element.kind == CXTypeKind.Pointer) {
+                element = clang_getCanonicalType(clang_getPointeeType(element))
+            } else {
+                through = false
+            }
         }
         var declared = clang_getTypeDeclaration(element)
-        if (clang_Cursor_isNull(declared) == 0) {
+        // a function type that names an unnamed record has no declaration of its own
+        if (clang_getCursorKind(declared) != CXCursorKind.NoDeclFound) {
             which = "{PLACE_OPEN}{cursor_key(d, declared)}{PLACE_CLOSE}"
         }
     }
@@ -4453,7 +4465,7 @@ def private collect_layouts(var d : Dumper; var c : CXCursor; owner : string; va
         if (!is_record) {
             var underlying = clang_getEnumDeclIntegerType(kid)
             let of_type = string(clang_getTypeSpelling(clang_getCanonicalType(underlying)))
-            add_layout(layouts, key, loc, "size {size}, align {align}, of `{of_type}`")
+            add_layout(layouts, key, loc, "size {size}, align {align}{ENUM_OF}`{of_type}`")
             return CXChildVisitResult.Continue
         }
         var inscope members : array<string>
@@ -4471,6 +4483,12 @@ def private collect_layouts(var d : Dumper; var c : CXCursor; owner : string; va
     }
 }
 
+// whether two enum signatures agree in all that stands before the underlying type
+def private same_but_enum_type(ours, theirs : string) : bool {
+    let at = find(ours, ENUM_OF)
+    return at >= 0 && at == find(theirs, ENUM_OF) && slice(ours, 0, at) == slice(theirs, 0, at)
+}
+
 // the entry of `theirs` that is `ours`'s twin: by key when the tag the key starts with is defined
 // once in each parse, else by place; -1 for none
 def private twin_layout(layouts, theirs : LayoutSet; ours : LayoutEntry) : int {
@@ -4480,10 +4498,12 @@ def private twin_layout(layouts, theirs : LayoutSet; ours : LayoutEntry) : int {
     return once ? theirs.by_key?[ours.key] ?? -1 : theirs.by_loc?[ours.loc] ?? -1
 }
 
-//! The refusal of a unit whose second parse, with clang's own predefined macros back, gave no
-//! translation unit: nothing can be compared, so no record of `c_path` is taken.
-def no_second_parse(c_path : string) : string =>
-    "{c_path}: the layout guard's parse with clang's own predefined macros gave no translation unit, so no layout can be compared"
+//! The refusal of a unit of `definitions` records and enums whose second parse, with clang's own
+//! predefined macros back, gave a translation unit or (`has_unit` false) none: "" when it gave
+//! one, and when the first pass laid nothing out, so that nothing was to compare (a main file
+//! clang cannot open: the dump's own clang run names it).
+def second_parse_refusal(has_unit : bool; definitions : int; c_path : string) : string =>
+    has_unit || definitions == 0 ? "" : "{c_path}: the layout guard's parse with clang's own predefined macros gave no translation unit, so none of {definitions} layouts can be compared"
 
 // The layout guard: every record the dump lays out, an external header's the program holds by
 // value included, and every enum it defines has one layout under `frontend`, the dumper's flags,
@@ -4512,8 +4532,8 @@ def private check_layouts(var d : Dumper; frontend : array<string>; inputs : arr
         clang_disposeTranslationUnit(unit)
     }
     clang_disposeIndex(idx)
-    if (unit == null) {
-        d.error = no_second_parse(d.c_path)
+    d.error = second_parse_refusal(unit != null, length(d.records) + length(d.enums), d.c_path)
+    if (!empty(d.error)) {
         return
     }
     let hint = "a sidecar `defines` entry selects the arm for both"
@@ -4541,7 +4561,10 @@ def private check_layouts(var d : Dumper; frontend : array<string>; inputs : arr
             let why = empty(stopped) ? "" : " (that pass met an error: {stopped})"
             fail(d, "`{item.name}` is defined under the dialect's predefined macros and not under clang's own{why}; {hint}", item.at)
         } elif (theirs.entries[twin].signature != ours.signature) {
-            fail(d, "`{item.name}` is laid out as [{ours.signature}] under the dialect's predefined macros and as [{theirs.entries[twin].signature}] under clang's own: a layout attribute behind a compiler test; {hint}", item.at)
+            // an enum of one size and alignment differs in its underlying type alone
+            let type_alone = same_but_enum_type(ours.signature, theirs.entries[twin].signature)
+            let what = type_alone ? "its underlying type, and with it the sign of its values, changes behind a compiler test" : "a layout attribute behind a compiler test"
+            fail(d, "`{item.name}` is laid out as [{ours.signature}] under the dialect's predefined macros and as [{theirs.entries[twin].signature}] under clang's own: {what}; {hint}", item.at)
         }
     }
 }
