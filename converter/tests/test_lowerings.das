@@ -2825,10 +2825,12 @@ def p8_input_fixtures(t : T?) {
         check_fixture(t, "p9_fscanf", text)
         has_text(t, text, "fscanf(reinterpret<void?>(f), cstr(\"%i\\n\"), addr(version))")
     }
-    t |> run("a bare statement expression as a statement, and one under `__extension__`, is its block") @(t : T?) {
-        let text = converts(t, "bare_stmt_expr", "int main(void) \{ int x = 1; (\{ x += 2; \}); __extension__ (\{ x++; \}); return x - 4; \}\n")
+    t |> run("a bare statement expression as a statement, and one under `__extension__` or a cast to void, is its block; one as a comma's operand is refused") @(t : T?) {
+        let text = converts(t, "bare_stmt_expr", "int main(void) \{ int x = 1; (\{ x += 2; \}); __extension__ (\{ x++; \}); (void) (\{ x *= 2; \}); return x - 8; \}\n")
         has_text(t, text, "x += 2")
         has_text(t, text, "x++")
+        has_text(t, text, "x *= 2")
+        rejects(t, "comma_stmt_expr", "int main(void) \{ int x = 1; ((void) sizeof(x), __extension__ (\{ if (x) ; else x = 2; \})); return x - 1; \}\n", "StmtExpr")
     }
     t |> run("a documentation comment clang attaches to a function (`FullComment`) is dropped") @(t : T?) {
         let text = converts(t, "doc_comment", "/**\n * Twice the value.\n * @param v the value\n */\nstatic int twice(int v) \{ return v * 2; \}\nint main(void) \{ return twice(2) - 4; \}\n")

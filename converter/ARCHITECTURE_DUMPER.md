@@ -128,9 +128,9 @@ Declarations: `FunctionDecl` with `ParmVarDecl` and a `CompoundStmt` body, `VarD
 Statements: compound, `DeclStmt` (one `decl` per variable), expression statements,
 `if`, `while`, `do`, `for` (its five slots, an absent one spelled `{}`), `break`,
 `continue`, `return`, the null statement. An expression statement that is a GNU statement
-expression `({ ... })` through parentheses, `__extension__` and a cast to `void` is its block, and
-one that is a comma expression holding such an operand is its operands as statements in order
-(`((void) sizeof (e), __extension__ ({ if (e) ; else f (); }))`); a statement expression anywhere else fails closed. Expressions: integer, character, floating (as a
+expression `({ ... })` through parentheses, `__extension__` and a cast to `void` is its block; a
+statement expression anywhere else, a comma's operand included, fails closed (the own `<assert.h>`
+spells `assert` as a conditional expression over `__assert_fail`, so no libc macro holds one). Expressions: integer, character, floating (as a
 hex-float through the CRT) and string literals (C escapes decoded, the NUL appended),
 `DeclRefExpr`, every pinned cast, the unary, binary, compound-assignment, conditional and
 comma operators, calls, subscripts, `sizeof` and `_Alignof` (clang's `alignof`, with clang's
