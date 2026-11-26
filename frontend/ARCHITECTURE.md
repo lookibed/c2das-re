@@ -4,8 +4,9 @@ Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this docume
 holds the part of the converter that reads C with no clang behind it. Today that is the libc
 header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
 `converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
-sidecar reader and Dumper A read, and the first stage of Dumper C's preprocessor, the pp-token
-lexer of section 4, which no converter pass calls yet.
+sidecar reader and Dumper A read, and the first stages of Dumper C's preprocessor, which no
+converter pass calls yet: the pp-token lexer of section 4 and the directive layer of
+`ARCHITECTURE_PP.md` (sections 5 to 13: directives, `#include`, the macro table, the ledgers).
 
 ## 1. File charters
 
@@ -17,6 +18,12 @@ lexer of section 4, which no converter pass calls yet.
 - `predefined/linux.defs`, `predefined/msvc.defs` - the predefined-macro table of each dialect.
 - `pp_lexer.das` - the preprocessing-token lexer (section 4): translation phases 1 and 2, the
   pp-token rules, the placing of a token in its original file. Requires dasFlex's `flex/flex_macro`.
+- `pp_directives.das` - the directive layer over the lexer (`ARCHITECTURE_PP.md`): the file
+  providers, the `#include` stack and search, include guards, `#line`, the conditionals, the macro
+  table, the pragma and pack ledgers, and the hook PP.4's `#if` evaluator fills. It expands no
+  macro.
+- `tests/test_pp_directives.das` - every directive over in-memory files, the predefined-macro table,
+  and the own headers read through `fio`. The comparison with clang is `compare/pp/`'s `--pp2`.
 - `tests/test_pp_lexer.das` - every token class and edge case of section 4, the placing through
   splices, interning, and the no-allocation probe over a real header. The clang comparison lives
   outside this folder: `compare/pp/` (section 2).
