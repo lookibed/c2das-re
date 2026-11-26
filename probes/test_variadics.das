@@ -199,7 +199,7 @@ def test_variadics(t : T?) {
     t |> run("a module cache write takes a same-module [variadic] call macro inside a generic body (F37's cache half, fixed upstream), as it takes the macro's own `va spelling") @(t : T?) {
         let head = "options gen2\nrequire c_runtime/variadic\n[variadic]\ndef inner(n : int; va : va_args) : int \{\n    var v = va_begin(va)\n    return n + int(va_i(v))\n\}\n[variadic]\ndef outer(n : int; va : va_args) : int \{\n    return "
         let tail = "\n\}\n[export]\ndef main \{\n    print(\"outer=\{outer`va(1, VaNone())\}\\n\")\n\}\n"
-        let cache = "{temp_directory_result() as value}/c2das_probe_cold_cache"
+        let cache = "{test_temp_dir()}/c2das_probe_cold_cache"
         remove(cache)
         let by_macro = runtime_child_flags("cold_cache_macro", "{head}inner(n, 5){tail}", ["-module-cache", cache])
         remove(cache)

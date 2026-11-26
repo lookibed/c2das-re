@@ -144,7 +144,7 @@ def test_fn_macros(t : T?) {
         let uses <- [for (m in tu.macros); "{m.name}={uses_text(m)}"]
         // through nested calls: IS_INT's `c` once through TAG_OF, TONUM's `c` twice, FOURTH's `x` four
         // times; APPLY calls `f`, and `x` passes through it: neither count is known; BIGGER calls a
-        // system header's MAX, which the pass does not follow
+        // external header's MAX, which the pass does not follow
         t |> equal(join(uses, " "), "ADD1=1 FIELD=1 SQ=2 FIRST=1,0 TONUM=2,1 IS_INT=1 TAG_OF=1 PLUS_LOCAL=1 CAST=1,1 SETV=1,1 SWAP=2,2 TWICE=1 BOTH=2 FOURTH=4 APPLY=-1,-1 S4=1 ANTI=2,2 SUB=1,1 BIGGER=-1,-1 OUTP=1 BOTH2=4 EITHER=2 IS_F=1 CHK=1,1 IS_V=1 APPLY3=-1,-1")
         t |> equal(tu.macros[2].text, "#define SQ(x) ((x) * (x))")
         t |> equal(tu.macros[2].line, 12)

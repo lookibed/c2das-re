@@ -137,7 +137,7 @@ def test_constant_let_folds(t : T?) {
         t |> success(kept |> contains("das_global<int32_t,0x"), kept)
     }
     t |> run("the JIT compiles the folded constant as an immediate and a `var` as a global load (P7.0zd)") @(t : T?) {
-        let ir = "{temp_directory_result() as value}/c2das_probe_constant_let.ll"
+        let ir = "{test_temp_dir()}/c2das_probe_constant_let.ll"
         let jit = daslang_run("constant_let", constant_let_source, jit_flags(), array<string>(), "c2das_probe", ["--", "--jit-dump={ir}"])
         t |> equal(jit.out |> ends_with("70263 5\n"), true, jit.out)
         let dump = fread(ir)
@@ -167,7 +167,7 @@ def test_compound_let_folds(t : T?) {
         t |> success(kept |> contains("das_global<int32_t,0x"), kept)
     }
     t |> run("the JIT compiles the chained constants as immediates and the `var` as a global load (P9.5)") @(t : T?) {
-        let ir = "{temp_directory_result() as value}/c2das_probe_compound_let.ll"
+        let ir = "{test_temp_dir()}/c2das_probe_compound_let.ll"
         let jit = daslang_run("compound_let", compound_let_source, jit_flags(), array<string>(), "c2das_probe", ["--", "--jit-dump={ir}"])
         t |> equal(jit.out |> ends_with("51 2\n"), true, jit.out)
         let dump = fread(ir)

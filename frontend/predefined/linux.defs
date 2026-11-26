@@ -13,6 +13,11 @@ __STDC_UTF_32__=1
 __STDC_VERSION__=201710L
 __STDC__=1
 
+# the GNU dialect: clang speaks it under this triple and states GCC 4.2.1; no __clang__
+__GNUC_MINOR__=2
+__GNUC_PATCHLEVEL__=1
+__GNUC__=4
+
 # the platform
 __ELF__=1
 __amd64=1

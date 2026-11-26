@@ -117,7 +117,7 @@ var records : table<string; ClangRecord>
 
 // the layout clang gives every struct of `source` into `into`, for `triple` (the host's when empty)
 def collect_layouts(source, triple : string; var into : table<string; ClangRecord>) {
-    let path = "{temp_directory_result() as value}/c2das_probe_layout.c"
+    let path = "{test_temp_dir()}/c2das_probe_layout.c"
     fwrite(path, source)
     var args <- ["-w"]
     if (!empty(triple)) {

@@ -88,8 +88,8 @@ Clang expands every `#define` before the converter sees the program, so the outp
 macro's value where the C source spells its name. The program's numeric-constant macros are the
 object-like `#define`s its own files make (its `.c` files and the headers they include by a quoted
 name, found beside the including file, transitively) whose body, expanded under the macros each
-unit's preprocessing reports (`clang -E -C -dD`, the dumper's `CONVERTER_DEFINES` and the sidecar's
-`defines` as the dumper passes them), is numbers and character literals under arithmetic, comparison and
+unit's preprocessing reports (`clang -E -C -dD`, the dumper's `frontend_flags` of the `linux`
+dialect and the sidecar's `defines` as the dumper passes them), is numbers and character literals under arithmetic, comparison and
 logic operators, once each cast (identifiers and `*` in parentheses before an operand that is not
 a sign) and each `sizeof(...)` is dropped. A function-like macro is expanded with its arguments; a
 macro already being expanded stays a name, which leaves the expression non-constant.

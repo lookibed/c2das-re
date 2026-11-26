@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <wchar.h>
 
 /* the condition takes every value, the one past the largest case too */
 static int past_case(int x) {
@@ -310,11 +309,12 @@ int main(int argc, char **argv) {
     const char *stderr = "hello";
     printf("%d %c\n", stream_named(stderr), stderr[1]);
     printf("%d %d %d %d %d %d\n", folded_if(7), folded_if(1), empty_then(7), empty_then(1), false_while(7), false_while(1));
-    /* signal: SIG_ERR with EINVAL for a number glibc refuses, SIG_IGN applied to the process */
+    /* signal: SIG_ERR with EINVAL for a number glibc refuses (9 is SIGKILL, 19 SIGSTOP), SIG_IGN
+       applied to the process (13 is SIGPIPE): POSIX's numbers, which the ISO <signal.h> does not name */
     errno = 0;
-    printf("kill=%d stop=%d zero=%d 32=%d 33=%d 65=%d errno=%d\n", signal(SIGKILL, handler) == SIG_ERR, signal(SIGSTOP, handler) == SIG_ERR, signal(0, handler) == SIG_ERR, signal(32, handler) == SIG_ERR, signal(33, handler) == SIG_ERR, signal(65, handler) == SIG_ERR, errno);
+    printf("kill=%d stop=%d zero=%d 32=%d 33=%d 65=%d errno=%d\n", signal(9, handler) == SIG_ERR, signal(19, handler) == SIG_ERR, signal(0, handler) == SIG_ERR, signal(32, handler) == SIG_ERR, signal(33, handler) == SIG_ERR, signal(65, handler) == SIG_ERR, errno);
     printf("segv dfl=%d\n", signal(SIGSEGV, handler) == SIG_DFL);
-    signal(SIGPIPE, SIG_IGN);
+    signal(13, SIG_IGN);
     system("kill -PIPE $PPID");
     printf("alive after SIGPIPE\n");
     /* libc records */
@@ -325,12 +325,7 @@ int main(int argc, char **argv) {
     char raw[sizeof(struct tm)];
     memcpy(raw, g, sizeof *g);
     struct tm *after = g + 1;
-    mbstate_t st;
-    memset(&st, 0, sizeof st);
-    div_t dv;
-    dv.quot = 3;
-    dv.rem = 1;
-    printf("%d %d %d %d %d %d %d\n", s.k, (int)sizeof s, (int)sizeof *g, (int)((char *)after - (char *)g), (int)sizeof st, dv.quot, dv.rem);
+    printf("%d %d %d %d\n", s.k, (int)sizeof s, (int)sizeof *g, (int)((char *)after - (char *)g));
     /* errno after a libm call whose result is dropped */
     double one = argc, zero = argc - 1;
     double d;

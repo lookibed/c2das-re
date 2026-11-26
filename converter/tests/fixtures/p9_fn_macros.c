@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stddef.h>
-#include <sys/param.h>
+#include "../external/minmax.h"
 #include "p9_fn_macros.h"
 
 /* A: each parameter once */
@@ -37,7 +37,7 @@
 #define ANTI(x, y) (SUB(x, y) + SUB(y, x) * 2)
 #define K 5
 #define ADDK(x) ((x) + K)
-/* system macros: a program macro calling one is followed no further */
+/* an external header's macro: a program macro calling one is followed no further */
 #define BIGGER(a, b) (MAX(a, b) + 0)
 /* one body calling another macro twice with arguments of its own text, and two bodies alike but
    for the constant they name */

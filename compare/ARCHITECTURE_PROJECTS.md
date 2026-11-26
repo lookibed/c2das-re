@@ -14,7 +14,7 @@ project's README in the Rust checkout (`$C2DAS_RUST`, else `/root/c2das`, read i
 copied or built): the translation unit and the bench unit relative to the project folder (no bench
 unit for a project without one), the include folders, the defines, the defines of our side alone
 (`ours_defines`: plmpeg-stream's `c2da_rt_reset(...)=`, a test-runtime hook the Rust runtime
-defines and the native build takes from the project's `shim.c`), further clang arguments
+defines and the native build takes from the project's `shim.c`; wasm3's `d_m3HasPosixHost=0`), further clang arguments
 (`clang_extra`, after the defines), the C standard, the native build's flags and its link flags
 (after the C files) the README gives, the fixture the program reads from its last argument, the id
 of the project's canonical case in the Rust repository's `tests/canonical/cases.json`, whose
@@ -31,7 +31,10 @@ our side's sidecar (`marshal`, `over_indexed`, `padded`, `flat_indexed`: facts o
 - wasm3: `src/all_host.c` and `src/all_host_bench.c`, `-std=c11 -Iinclude -Iupstream/wasm3/source
   -Isrc`, `-O2`, `fixtures/fib32.wasm`, the case `wasm3-fib32-std`, `--das-option "stack =
   4194304"`, `op_Call` (an op that ends in the dispatch to the next op) and `call_fib` (the
-  host's call of the module's `fib`), and `over_indexed` `M3CodePage.code`.
+  host's call of the module's `fib`), `over_indexed` `M3CodePage.code`, and `ours_defines`
+  `d_m3HasPosixHost=0`: the unit's `all.c` defines it so before any header, and with it on the
+  command line too a file of the program read alone (the readability criteria preprocess each)
+  takes the host the program has, not the POSIX one, whose headers the own libc set lacks.
 - binjgb: `src/binjgb_all.c` and `src/binjgb_bench_all.c`, `-std=c11 -DNDEBUG -Iinclude
   -Iupstream/binjgb/src -Isrc`, `-O2`, `fixtures/cgb-acid2.gbc`, the case `binjgb-cgb-acid2-std`
   (60 frames: the cartridge header, `frame[i]=` hashes, `frames=60`, `ticks=`), no translator

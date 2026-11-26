@@ -14,6 +14,7 @@ require daslib/algorithm
 require cir
 require bit_units
 require macro_sites
+require ../frontend/c_defines.das
 
 //! Dumper A: `clang -ast-dump=json` normalized into C-IR. Fails closed: the first construct it
 //! cannot represent exactly stops the dump with a location in `error`.
@@ -86,9 +87,13 @@ struct Dumper {
     // the canonical program root (the sidecar's `program_root`, else the main file's directory)
     // with a trailing `/`: a declaration in a file under it belongs to the program
     program_dir : string
-    // clang's resource directory and the system include directories, canonical with a trailing
-    // `/`: a file under one is external though it lies under `program_dir`
-    system_dirs : array<string>
+    // the own libc headers' folder, canonical with a trailing `/`: a file under it is external
+    // though it lies under `program_dir`
+    own_headers_dir : string
+    // every record and enum definition of the unit as the layout guard compares it
+    layouts : LayoutSet
+    // where each enum of `enum_by_loc` is defined, for the guard's message
+    enum_ats : table<string; CirLoc>
     // each file name the dump or libclang spells, made canonical
     canonical_files : table<string; string>
     linkage_names : table<string; string>
@@ -514,22 +519,11 @@ def private canonical_file(var d : Dumper; name : string) : string {
 }
 
 // whether a declaration in file `name` belongs to the program: a file under the program root
-// outside the system directories; every other file (a system header's) is external
+// outside the own libc headers' folder; every other file (a libc header's) is external
 [arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
 def private in_program(var d : Dumper; name : string) : bool {
     let full = canonical_file(d, name)
-    return full |> starts_with(d.program_dir) && !under_system_dir(d, name)
-}
-
-// whether file `name` lies under clang's resource directory or a system include directory
-def private under_system_dir(var d : Dumper; name : string) : bool {
-    let full = canonical_file(d, name)
-    for (dir in d.system_dirs) {
-        if (full |> starts_with(dir)) {
-            return true
-        }
-    }
-    return false
+    return full |> starts_with(d.program_dir) && !(full |> starts_with(d.own_headers_dir))
 }
 
 // the file of a libclang location, as `clang_getExpansionLocation` and its siblings give it
@@ -648,6 +642,7 @@ def private register_enum(var d : Dumper; var c : CXCursor) {
     }
     d.enum_by_spelling[en.spelling] = idx
     d.enum_by_loc[cursor_key(d, c)] = idx
+    d.enum_ats[cursor_key(d, c)] = cursor_loc(c)
     d.enums |> emplace(en)
 }
 
@@ -1089,16 +1084,14 @@ def private register_macro_definition(var d : Dumper; var c : CXCursor) {
 // libclang's `CXTranslationUnit_DetailedPreprocessingRecord`, which dasClangBind exports only as a type
 let private DETAILED_PREPROCESSING_RECORD = 1u
 
-def private collect_records(var d : Dumper; triple : string; resource_dir : string; inputs : array<string>) {
-    // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
-    // `size_t` a libc prototype spells) come from the pinned clang's
-    var args <- ["-target", triple, "-funsigned-char", "-w", "-resource-dir", resource_dir]
-    args |> push_from(CONVERTER_DEFINES, inputs)
+def private collect_records(var d : Dumper; frontend : array<string>; inputs : array<string>) {
+    var args : array<string>
+    args |> push_from(frontend, inputs)
     var idx = clang_createIndex(0, 0)
     // the detailed record lists each macro expansion of a file with its definition
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, DETAILED_PREPROCESSING_RECORD)
     if (unit != null) {
-        // an error libclang meets (a header the resource directory lacks) leaves records and
+        // an error libclang meets (a header the own set lacks) leaves records and
         // typedefs out of what the pass collects
         for (i in urange(clang_getNumDiagnostics(unit))) {
             var diag = clang_getDiagnostic(unit, i)
@@ -1110,6 +1103,7 @@ def private collect_records(var d : Dumper; triple : string; resource_dir : stri
         }
         var root = clang_getTranslationUnitCursor(unit)
         walk_records(d, root)
+        collect_layouts(d, root, "", d.layouts)
         if (!empty(d.shared_tags)) {
             note_shared_exprs(d, root)
         }
@@ -2289,8 +2283,7 @@ def private dump_cast(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
 def private dump_unary(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let opcode = js?["opcode"] ?? ""
     if (opcode == "__extension__" && child_count(js) == 1) {
-        // GNU `__extension__` only silences pedantic warnings: the operand is the value (glibc's
-        // `assert` without `NDEBUG`)
+        // GNU `__extension__` only silences pedantic warnings: the operand is the value
         return child_expr(d, js?["inner"], 0)
     }
     var op = ""
@@ -4049,14 +4042,11 @@ def private dump_stmt_node(var d : Dumper; js : JsonValue?) : CirStmt? {
     return null
 }
 
-// an expression statement: a statement block (`is_statement_block`) or a comma holding one as
-// statements, any other expression as the `expr` statement
+// an expression statement: a statement block (`is_statement_block`) as its block, any other
+// expression as the `expr` statement
 def private dump_expr_stmt(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
     if (is_statement_block(js)) {
         return dump_statement_block(d, js, at)
-    }
-    if (is_block_comma(js)) {
-        return dump_comma_statements(d, js, at)
     }
     var e = dump_expr(d, js)
     if (e == null) {
@@ -4066,8 +4056,7 @@ def private dump_expr_stmt(var d : Dumper; js : JsonValue?; at : CirLoc) : CirSt
 }
 
 // whether `js` is a GNU statement expression `({ ... })` that an expression statement evaluates for
-// its effect alone, through parentheses, `__extension__` and a cast to `void`: glibc's `assert`
-// without `NDEBUG` spells one
+// its effect alone, through parentheses, `__extension__` and a cast to `void`
 def private is_statement_block(js : JsonValue?) : bool {
     let kind = node_kind(js)
     if (child_count(js) != 1) {
@@ -4084,44 +4073,6 @@ def private is_statement_block(js : JsonValue?) : bool {
 def private dump_statement_block(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
     let inner = (js?["inner"] as _array)[0]
     return node_kind(js) == "StmtExpr" ? dump_compound(d, inner, at) : dump_statement_block(d, inner, at)
-}
-
-// whether `js` is a comma expression, through parentheses, with a statement block
-// (`is_statement_block`) as an operand, through nested commas
-def private is_block_comma(js : JsonValue?) : bool {
-    let kind = node_kind(js)
-    if (kind == "ParenExpr" && child_count(js) == 1) {
-        return is_block_comma((js?["inner"] as _array)[0])
-    }
-    if (kind != "BinaryOperator" || (js?["opcode"] ?? "") != ",") {
-        return false
-    }
-    for (idx in range(child_count(js))) {
-        let kid = (js?["inner"] as _array)[idx]
-        if (is_statement_block(kid) || is_block_comma(kid)) {
-            return true
-        }
-    }
-    return false
-}
-
-// a comma expression statement holding a statement block, its operands as statements in order:
-// the comma's value is discarded, so the sequence is the expression
-def private dump_comma_statements(var d : Dumper; js : JsonValue?; at : CirLoc) : CirStmt? {
-    if (node_kind(js) == "ParenExpr") {
-        return dump_comma_statements(d, (js?["inner"] as _array)[0], at)
-    }
-    var st = new CirStmt(s = "compound", loc = at)
-    st.body |> reserve(child_count(js))
-    for (idx in range(child_count(js))) {
-        var part = dump_stmt(d, (js?["inner"] as _array)[idx])
-        if (part == null) {
-            delete_stmt(st)
-            return null
-        }
-        st.body |> push(part)
-    }
-    return st
 }
 
 // a record's definition: nested records first, since a field's type precedes the field; a
@@ -4325,42 +4276,220 @@ def private clang_version(clang : string) : string {
     return at < 0 ? first : split(slice(first, at + length("clang version ")), " ")[0]
 }
 
-// the pinned clang's resource directory, "" when it reports none
-def private clang_resource_dir(clang : string) : string {
-    var out : string
-    let rc = run_and_capture([clang, "-print-resource-dir"], out, 30.0)
-    return rc == 0 ? strip(out) : ""
+// one record or enum definition as the layout guard compares it: `key` names it across two parses
+// of the unit (its tag, the path through its owner for an unnamed record nested in a record, else
+// its place), `loc` is its `cursor_key`, `signature` everything of its layout
+struct LayoutEntry {
+    key : string
+    loc : string
+    signature : string
 }
 
-// the resource directory and the directories clang searches for `<...>` under `triple`, as its
-// `-v` lists them but those `CPATH` and `C_INCLUDE_PATH` name, each canonical with a trailing `/`
-// (a main file in `/root` holds the default `/root/libclang`'s resource headers under its own
-// directory)
-[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
-def private system_dirs(clang, triple, resource_dir : string) : array<string> {
-    var dirs : array<string>
-    dirs |> push(get_full_file_name(resource_dir) + "/")
-    var out : string
-    if (run_and_capture([clang, "-target", triple, "-E", "-x", "c", "-v", "/dev/null", "-o", "/dev/null"], out, 30.0) != 0) {
-        return <- dirs
+// the definitions of one parse of the unit, by place and by key, and how often each tag is defined
+struct LayoutSet {
+    entries : array<LayoutEntry>
+    by_loc : table<string; int>
+    by_key : table<string; int>
+    tag_count : table<string; int>
+}
+
+// a record or an enum the dump lays out: its `cursor_key`, its spelling and its place
+struct LaidOut {
+    loc : string
+    name : string
+    at : CirLoc
+}
+
+let private TAG_KEY = "tag "
+
+// `spelling` with the place of every unnamed record or enum it names cut out: `(unnamed at
+// f:l:c)` and `(anonymous at f:l:c)` are `(unnamed)`, so a spelling reads alike wherever the
+// definition stands
+def private placeless(spelling : string) : string {
+    var cut_from, cut_to : array<int>
+    for (opening in ["(unnamed ", "(anonymous "]) {
+        var at = find(spelling, opening)
+        while (at >= 0) {
+            let close = find(spelling, ")", at)
+            break if (close < 0)
+            cut_from |> push(at)
+            cut_to |> push(close)
+            at = find(spelling, opening, close)
+        }
     }
-    let user_dirs <- user_path_dirs()
-    var listing = false
-    for (text in split(out, "\n")) {
-        let entry = strip(text)
-        if (entry |> starts_with("#include <...> search starts here")) {
-            listing = true
-        } elif (entry |> starts_with("End of search list")) {
-            listing = false
-        } elif (listing && !empty(entry)) {
-            let full = get_full_file_name(entry)
-            let dir = full |> ends_with("/") ? full : full + "/"
-            if (!empty(full) && !has_value(user_dirs, dir)) {
-                dirs |> push(dir)
+    if (empty(cut_from)) {
+        return spelling
+    }
+    return build_string() $(var w) {
+        for (i, ch in count(), spelling) {
+            var inside = false
+            for (from, to in cut_from, cut_to) {
+                inside ||= i >= from && i <= to
+                if (i == from) {
+                    w |> write("(unnamed)")
+                }
+            }
+            if (!inside) {
+                w |> write_char(ch)
             }
         }
     }
-    return <- dirs
+}
+
+// the first named field record `c` makes visible, through its anonymous members; "" for none
+def private visible_field(var c : CXCursor) : string {
+    var name : string
+    clang_visitChildren(c) $(var fc, _fp) {
+        let kind = clang_getCursorKind(fc)
+        if (kind == CXCursorKind.FieldDecl) {
+            name = string(clang_getCursorSpelling(fc))
+        } elif ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_Cursor_isAnonymousRecordDecl(fc) != 0u) {
+            name = visible_field(fc)
+        }
+        return empty(name) ? CXChildVisitResult.Continue : CXChildVisitResult.Break
+    }
+    return name
+}
+
+// one member of record `owner` in its signature: an anonymous member its bit offset, by a name
+// it makes visible; a field its name, bit offset, bitfield width, canonical type, and the size
+// and alignment of that type
+def private member_signature(var owner : CXType; var fc : CXCursor) : string {
+    if (clang_getCursorKind(fc) != CXCursorKind.FieldDecl) {
+        let name = visible_field(fc)
+        var inner = clang_getCursorType(fc)
+        let outer_off = empty(name) ? -1l : clang_Type_getOffsetOf(owner, name)
+        let inner_off = empty(name) ? 0l : clang_Type_getOffsetOf(inner, name)
+        return "(anonymous)@{outer_off < 0l ? -1l : outer_off - inner_off}"
+    }
+    let name = string(clang_getCursorSpelling(fc))
+    let bit_off = clang_Cursor_getOffsetOfField(fc)
+    let width = clang_Cursor_isBitField(fc) != 0u ? ":{clang_getFieldDeclBitWidth(fc)}" : ""
+    var canonical = clang_getCanonicalType(clang_getCursorType(fc))
+    let spelling = placeless(string(clang_getTypeSpelling(canonical)))
+    let size = clang_Type_getSizeOf(canonical)
+    let align = clang_Type_getAlignOf(canonical)
+    return "{name}@{bit_off}{width} `{spelling}` {size}/{align}"
+}
+
+// adds the definition at `c` to `layouts` under `key`
+def private add_layout(var layouts : LayoutSet; key, loc, signature : string) {
+    let idx = length(layouts.entries)
+    layouts.entries |> push(LayoutEntry(key = key, loc = loc, signature = signature))
+    layouts.by_loc[loc] = idx
+    layouts.by_key[key] = idx
+    if (key |> starts_with(TAG_KEY)) {
+        layouts.tag_count[key]++
+    }
+}
+
+// every record and enum definition under `c` into `layouts`, external headers' included; `owner`
+// is the key of the record `c` is, "" when it is none
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#layout-guard")]
+def private collect_layouts(var d : Dumper; var c : CXCursor; owner : string; var layouts : LayoutSet) {
+    var nested = 0
+    clang_visitChildren(c) $(var kid, _parent) {
+        let kind = clang_getCursorKind(kid)
+        let is_record = kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl
+        if ((!is_record && kind != CXCursorKind.EnumDecl) || clang_isCursorDefinition(kid) == 0u) {
+            collect_layouts(d, kid, "", layouts)
+            return CXChildVisitResult.Continue
+        }
+        let ordinal = nested
+        nested += is_record ? 1 : 0
+        let loc = cursor_key(d, kid)
+        if (key_exists(layouts.by_loc, loc)) {
+            // met before, as its owner's member or under a statement
+            return CXChildVisitResult.Continue
+        }
+        var ct = clang_getCursorType(kid)
+        let size = clang_Type_getSizeOf(ct)
+        let align = clang_Type_getAlignOf(ct)
+        let spelling = own_spelling(d, kid, kind == CXCursorKind.EnumDecl ? "enum" : kind == CXCursorKind.UnionDecl ? "union" : "struct")
+        let unnamed = find(spelling, "(anonymous ") >= 0 || find(spelling, "(unnamed ") >= 0
+        let key = !unnamed ? TAG_KEY + spelling : is_record && !empty(owner) ? "{owner}/{ordinal}" : "at {loc}"
+        if (!is_record) {
+            add_layout(layouts, key, loc, "size {size}, align {align}")
+            return CXChildVisitResult.Continue
+        }
+        var inscope members : array<string>
+        clang_visitChildren(kid) $(var fc, _fp) {
+            let fk = clang_getCursorKind(fc)
+            let anonymous = (fk == CXCursorKind.StructDecl || fk == CXCursorKind.UnionDecl) && clang_Cursor_isAnonymousRecordDecl(fc) != 0u
+            if (fk == CXCursorKind.FieldDecl || anonymous) {
+                members |> push(member_signature(ct, fc))
+            }
+            return CXChildVisitResult.Continue
+        }
+        add_layout(layouts, key, loc, "size {size}, align {align}, members {join(members, ", ")}")
+        collect_layouts(d, kid, key, layouts)
+        return CXChildVisitResult.Continue
+    }
+}
+
+// the entry of `theirs` that is `ours`'s twin: by key when the tag the key starts with is defined
+// once in each parse, else by place; -1 for none
+def private twin_layout(layouts, theirs : LayoutSet; ours : LayoutEntry) : int {
+    let slash = find(ours.key, "/")
+    let root = slash < 0 ? ours.key : slice(ours.key, 0, slash)
+    let once = root |> starts_with(TAG_KEY) && (layouts.tag_count?[root] ?? 0) == 1 && (theirs.tag_count?[root] ?? 0) == 1
+    return once ? theirs.by_key?[ours.key] ?? -1 : theirs.by_loc?[ours.loc] ?? -1
+}
+
+// The layout guard: every record the dump lays out, an external header's the program holds by
+// value included, and every enum it defines has one layout under `frontend`, the dumper's flags,
+// and with clang's own predefined macros back (`frontend` less `-undef`, then `inputs`). A
+// definition whose signature differs, or that the second parse lacks, fails the dump: a layout
+// attribute behind a test of a name the table does not hold would otherwise be lost with no error.
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#layout-guard")]
+def private check_layouts(var d : Dumper; frontend : array<string>; inputs : array<string>) {
+    var args <- [for (flag in frontend); flag; where flag != "-undef"]
+    args |> push_from(inputs)
+    var inscope theirs : LayoutSet
+    var stopped : string
+    var idx = clang_createIndex(0, 0)
+    var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
+    if (unit != null) {
+        for (i in urange(clang_getNumDiagnostics(unit))) {
+            var diag = clang_getDiagnostic(unit, i)
+            let severity = clang_getDiagnosticSeverity(diag)
+            if (empty(stopped) && (severity == CXDiagnosticSeverity.Error || severity == CXDiagnosticSeverity.Fatal)) {
+                stopped = string(clang_formatDiagnostic(diag, clang_defaultDiagnosticDisplayOptions()))
+            }
+            clang_disposeDiagnostic(diag)
+        }
+        collect_layouts(d, clang_getTranslationUnitCursor(unit), "", theirs)
+        clang_disposeTranslationUnit(unit)
+    }
+    clang_disposeIndex(idx)
+    let hint = "a sidecar `defines` entry selects the arm for both"
+    // records, then enums, each in the order the first pass met them: the first refusal is the same every run
+    var inscope laid_out : array<LaidOut>
+    laid_out |> resize(length(d.records) + length(d.enums))
+    for (loc, ridx in keys(d.record_by_loc), values(d.record_by_loc)) {
+        laid_out[ridx] = LaidOut(loc = loc, name = d.records[ridx].c_spelling, at = d.records[ridx].at)
+    }
+    for (loc, eidx in keys(d.enum_by_loc), values(d.enum_by_loc)) {
+        laid_out[length(d.records) + eidx] = LaidOut(loc = loc, name = d.enums[eidx].spelling, at = d.enum_ats?[loc] ?? CirLoc())
+    }
+    for (item in laid_out) {
+        // a record met twice has one place; clang's own builtin record (`__va_list_tag`) stands in
+        // no file and is the same under any macros
+        continue if (empty(item.loc) || empty(item.at.file))
+        let mine = d.layouts.by_loc?[item.loc] ?? -1
+        if (mine < 0) {
+            fail(d, "`{item.name}`: the layout guard found no definition at its place", item.at)
+            continue
+        }
+        assume ours = d.layouts.entries[mine]
+        let twin = twin_layout(d.layouts, theirs, ours)
+        if (twin < 0) {
+            let why = empty(stopped) ? "" : " (that pass met an error: {stopped})"
+            fail(d, "`{item.name}` is defined under the dialect's predefined macros and not under clang's own{why}; {hint}", item.at)
+        } elif (theirs.entries[twin].signature != ours.signature) {
+            fail(d, "`{item.name}` is laid out as [{ours.signature}] under the dialect's predefined macros and as [{theirs.entries[twin].signature}] under clang's own: a layout attribute behind a compiler test; {hint}", item.at)
+        }
+    }
 }
 
 // C allows several file-scope declarations of one object (tentative definitions); the one
@@ -4390,12 +4519,57 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
 def default_clang : string =>
     has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
 
-//! The defines every clang run of the converter passes before the sidecar's: glibc's <ctype.h>
-//! spells `isalpha(c)` as a macro indexing its locale table (`__ctype_b_loc`) unless `__NO_CTYPE`
-//! is defined, with it each is the libc function the crt module binds; and `__STDC_NO_VLA__`,
-//! which C11 6.10.8.3 has an implementation without variable-length arrays define, so a program
-//! that tests it takes its fixed-size path (the converter lowers no VLA)
-let CONVERTER_DEFINES <- ["-D__NO_CTYPE", "-D__STDC_NO_VLA__=1"]
+//! The flags of every clang run of the dumper's frontend besides the target, the macros and the
+//! include path: plain `char` is unsigned under both dialects, and no warning is read.
+let DUMPER_FLAGS <- ["-funsigned-char", "-w"]
+
+//! The file of the predefined-macro table `target` is dumped under, its dialect's.
+def predefined_table(target : CirTarget) : string => predefined_path(is_msvc(target) ? "msvc" : "linux")
+
+//! The flags every clang run of the dumper's frontend starts with: `target`'s triple,
+//! `DUMPER_FLAGS`, `-undef`, which drops clang's own predefined macros, the entries of the
+//! predefined-macro table file `table_path` as `-D<entry>` each in the table's order, then
+//! `-nostdinc` and the own libc headers' folder `include_dir`, canonical, as the one `-isystem`
+//! directory. `error` names a table that is missing or malformed, or a folder that is missing.
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#predefined")]
+def frontend_flags(target : CirTarget; table_path, include_dir : string; var error : string&) : array<string> {
+    var flags : array<string>
+    let entries <- read_predefined(table_path, error)
+    if (!empty(error)) {
+        return <- flags
+    }
+    if (!stat(include_dir).is_dir) {
+        error = "{include_dir}: no such folder of the own libc headers"
+        return <- flags
+    }
+    let headers = get_full_file_name(include_dir)
+    flags |> push_from(["-target", target.triple], DUMPER_FLAGS, ["-undef"])
+    flags |> push_from([for (entry in entries); "-D{entry}"], ["-nostdinc", "-isystem", headers])
+    return <- flags
+}
+
+//! The environment variables clang reads include folders from, `-nostdinc` or not, and searches
+//! before the `-isystem` folder.
+let INCLUDE_VARIABLES <- ["CPATH", "C_INCLUDE_PATH"]
+
+//! Why a clang run of the dumper is refused when the environment variable `name` holds `value`:
+//! "" for an empty one; else the folders it names would be searched before the own libc headers,
+//! and a host libc found there would replace them with no error.
+def include_variable_refusal(name, value : string) : string =>
+    empty(value) ? "" : "the environment variable {name} is set ({value}): clang would search its folders before the own libc headers; unset it and name a program's include folders in the sidecar's `include_dirs`"
+
+//! `frontend_flags` of `target` over its dialect's table and the own libc headers' folder;
+//! `error` also names a set variable of `INCLUDE_VARIABLES`.
+[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
+def dumper_frontend_flags(target : CirTarget; var error : string&) : array<string> {
+    for (name in INCLUDE_VARIABLES) {
+        error = include_variable_refusal(name, has_env_variable(name) ? get_env_variable(name) : "")
+        if (!empty(error)) {
+            return <- array<string>()
+        }
+    }
+    return <- frontend_flags(target, predefined_table(target), own_include_dir(), error)
+}
 
 // the sidecar's `defines`, `include_dirs` and `include_files` as clang flags, `-D<entry>`, `-I<dir>`
 // and `-include <file>` each
@@ -4410,25 +4584,8 @@ def private input_flags(inputs : DumpInputs) : array<string> {
     return <- flags
 }
 
-// the folders `CPATH` and `C_INCLUDE_PATH` name, canonical with a trailing `/`: clang's `-v` lists
-// them with its own `<...>` folders, yet they hold the user's headers, never the system's
-def private user_path_dirs : array<string> {
-    var dirs : array<string>
-    for (name in ["CPATH", "C_INCLUDE_PATH"]) {
-        if (has_env_variable(name)) {
-            for (entry in split(get_env_variable(name), ":")) {
-                let full = empty(entry) ? "" : get_full_file_name(entry)
-                if (!empty(full)) {
-                    dirs |> push(full |> ends_with("/") ? full : full + "/")
-                }
-            }
-        }
-    }
-    return <- dirs
-}
-
 // the top-level declarations of the dump `js` the program owns, dumped into `d.tu.decls`; a `.c`
-// file outside the program root and the system directories fails the dump naming it
+// file outside the program root fails the dump naming it
 def private dump_top_level(var d : Dumper; js : JsonValue?) {
     let top = js?["inner"]
     // clang declares a library function implicitly where the unit first names it, a block-scope
@@ -4446,7 +4603,7 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
             continue
         }
         if (!in_program(d, at.file)) {
-            if (at.file |> ends_with(".c") && !under_system_dir(d, at.file)) {
+            if (at.file |> ends_with(".c")) {
                 fail(d, "{at.file} is a C file outside the program root {d.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root", at)
                 break
             }
@@ -4595,24 +4752,27 @@ def dump_tu(var d : Dumper; c_path : string; target : CirTarget; clang : string;
     d.va_names |> insert(VA_BUILTIN)
     d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
     d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
-    let resource_dir = clang_resource_dir(clang)
-    if (empty(resource_dir)) {
-        d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
+    let frontend <- dumper_frontend_flags(target, d.error)
+    if (!empty(d.error)) {
         return
     }
-    d.system_dirs <- system_dirs(clang, target.triple, resource_dir)
+    d.own_headers_dir = get_full_file_name(own_include_dir()) + "/"
     if (!in_program(d, c_path)) {
-        d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under a folder clang searches for system headers"
+        d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under the own libc headers' folder {d.own_headers_dir}"
         return
     }
     let flags <- input_flags(inputs)
-    collect_records(d, target.triple, resource_dir, flags)
+    collect_records(d, frontend, flags)
+    if (!empty(d.error)) {
+        return
+    }
+    check_layouts(d, frontend, flags)
     if (!empty(d.error)) {
         return
     }
     var out : string
-    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple]
-    dump_args |> push_from(CONVERTER_DEFINES, flags, [c_path])
+    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only"]
+    dump_args |> push_from(frontend, flags, [c_path])
     let rc = run_and_capture(dump_args, out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"

@@ -1,6 +1,62 @@
-# converter Architecture - Dumper A's function-like macros
+# converter Architecture - Dumper A's macros
 
 Companion to `ARCHITECTURE.md` in this folder, continuing section 3 of `ARCHITECTURE_DUMPER.md`.
+
+### The frontend flags a unit is read under {#predefined}
+
+Both clang runs of a unit, the libclang pass and the JSON dump, start with `frontend_flags`: the
+dialect's triple; `DUMPER_FLAGS` (`-funsigned-char`, `-w`); `-undef`, so that clang predefines no
+macro of its own (`__clang__`, `_MSC_VER`; `__GNUC__` is the `linux` table's entry, not clang's); the dialect's predefined-macro table
+(`frontend/ARCHITECTURE.md` section 3) as `-D<entry>` each, in the table's order; then `-nostdinc`
+and the own libc headers' folder, canonical, as the one `-isystem` directory (the program's files,
+`ARCHITECTURE_DUMPER.md`). The sidecar's `defines` follow, and a later `-D` of a name wins. A table
+that is missing or malformed fails the dump naming the file, and a missing header folder naming it.
+No define is passed outside the table (the converter's own statement, `__STDC_NO_VLA__=1`, is a table
+entry) and the dumper reads no libc's private spelling of a macro: the own `<ctype.h>` declares `isalpha` as the function the crt module binds, and the own
+`<assert.h>` spells `assert` as one conditional expression. Clang's dump
+writes a table macro's token as spelled in `<built-in>`, as it writes its own (the command line is a
+part of that buffer, named only as the `presumedFile`), and libclang gives neither a file, so a
+location reads the same under both. `metrics/criteria_defines.das` preprocesses under
+the `linux` dialect's flags whatever dialect a unit is converted under (the criteria are measured on `linux` conversions); a native build (`tiers.das`, the harnesses) never gets them and reads the host's libc.
+
+### The layout guard {#layout-guard}
+
+A program can hide a layout attribute behind a test of a name the table does not hold (`#ifdef
+__clang__` around `__attribute__((packed))`); under the table it would lose the attribute and
+convert with another layout, with no error. So the dumper parses the unit a second time
+(`check_layouts`) with clang's own predefined macros back: the same flags without `-undef`. The
+table's entries stay, and each has clang's own value (`frontend/ARCHITECTURE.md` section 3) or is
+the converter's own statement, `__STDC_NO_VLA__=1`, a fact of the converter and no compiler's
+identity: a record a program defines under that name is a record of both passes.
+
+**The set.** Every record the dump lays out and every enum it defines: the records and enums of
+the program's files, and each record of an external header the program holds by value, reaches a
+member of or sizes, which the libclang pass registers with them (the program's files, section 3).
+A definition only the second pass holds is no part of the converted program and is not compared,
+and neither is clang's own builtin record (`struct __va_list_tag`), which stands in no file.
+The set is records and enums alone: an `aligned` typedef and an `_Alignas` object outside any
+record are not compared.
+
+**The key.** `collect_layouts` walks each parse alike and names every definition: a named record or
+enum, a typedef-named one included, by its tag spelling (`struct S`, `struct T`), so one
+definition in each arm of a conditional is one record; an unnamed record nested in a record by its
+owner's key and its ordinal among the owner's nested record definitions; any other unnamed
+definition (the type of a variable, an unnamed enum) by the file and offsets of its definition.
+A tag one parse defines more than once (two blocks' `struct s`) is found by place too. A
+definition keyed by place that stands in another arm in the second pass has no twin there and is
+refused: nothing names it across the arms, and the guard fails closed.
+
+**The signature.** A record's size and alignment, and each member in order: a field's name, bit
+offset, bitfield width, canonical type spelling (the place of an unnamed record cut out of it) and
+that type's size and alignment; an anonymous member's bit offset, by a name it makes visible. An
+enum's size and alignment. The record's size is implied by the rest and printed for the reader.
+
+A definition whose signature differs fails the dump naming it, its place and both signatures, and
+so does one with no twin (an error the second pass met is quoted beside it); records are judged
+before enums, each in the order the first pass met them. The message names the way out: a sidecar
+`defines` entry, which both passes get, selects one arm for both. The second parse reads no
+preprocessing record and makes no JSON, so the guard is always on: probed over Lua (33 units),
+PureDOOM (126) and wasm3 (1), its second parse took under 1% of the dump (0.3 s of 53 s, 0.8 s of 84 s, 0.1 s of 25 s; the first parse is walked once more for its own signatures).
 
 ### Function-like macro expansions {#fn-macros}
 
@@ -14,7 +70,7 @@ the dump already makes:
   program file spells, keyed by the canonical file and offset of its name to the definition it
   used (`register_macro_expansion`), the macros an argument of another call spells included. The
   definition is exact under `#if` variants; a name a body calls resolves to the one definition of
-  that name the unit processed, and to none when there are two. A system header's function-like
+  that name the unit processed, and to none when there are two. An external header's function-like
   macro (`offsetof`, `va_start`, `MAX`) is none of the program's: it is never marked, only its name
   is kept, and a call of it in a body is followed no further (the macro's `uses` are -1, an end
   spelled through it unknown). A system header's object-like macro an expansion spells (`NULL`) is
