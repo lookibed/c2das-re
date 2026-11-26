@@ -111,6 +111,18 @@ def place_of(map : PresumedMap; offset : int) : Place {
     return Place(file = map.files[lo], line = map.lines[lo], col = offset - map.starts[lo] + 1)
 }
 
+//! One line of the form: the file it stands in, its text, and, on clang's side, the cause clang's
+//! semantics give for a difference the line may show ("" for none).
+struct FormLine {
+    file : string
+    text : string
+    cause : string
+}
+
+//! The cause of a difference in the type of a library function clang knows as a builtin: clang
+//! gives a redeclaration its own type, the builtin's merged with the written one.
+let LIBRARY_BUILTIN = "a library builtin: clang's own type"
+
 //! A name an entity of a file-scope declaration binds in the ordinary name space, and whether as a
 //! typedef name.
 struct BoundName {
@@ -123,7 +135,7 @@ struct BoundName {
 //! oracle does not compare yet.
 struct ClangTop {
     key : string
-    lines : array<tuple<file : string; text : string>>
+    lines : array<FormLine>
     names : array<BoundName>
     not_compared : array<string>
 }
@@ -346,15 +358,16 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
     let name = js?["name"] ?? ""
     let loc = loc_of(map, js)
     if (k == "TypedefDecl") {
-        top.lines |> push((file = loc.file, text = "(typedef {name}{place_text(loc)} {type_text(js?["type"])})"))
+        top.lines |> push(FormLine(file = loc.file, text = "(typedef {name}{place_text(loc)} {type_text(js?["type"])})"))
         top.names |> push(BoundName(name = name, is_typedef = true))
     } elif (k == "VarDecl") {
         let init <- expression_children(map, js)
         let value = empty(init) ? "" : " = {init[0]}"
-        top.lines |> push((file = loc.file, text = "(decl {name}{place_text(loc)} {type_text(js?["type"])}{decl_flags(js)}{value})"))
+        top.lines |> push(FormLine(file = loc.file, text = "(decl {name}{place_text(loc)} {type_text(js?["type"])}{decl_flags(js)}{value})"))
         top.names |> push(BoundName(name = name))
     } elif (k == "FunctionDecl") {
         var params : array<string>
+        var builtin = false
         each_child(js) $(c) {
             let ck = kind_of(c)
             if (ck == "ParmVarDecl" && !(c?["isImplicit"] ?? false)) {
@@ -362,10 +375,13 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
                 params |> push(empty(pname) ? "-" : "{pname}{place_text(loc_of(map, c))}")
             } elif (ck == "CompoundStmt") {
                 top.not_compared |> push("a function body")
+            } elif (ck == "BuiltinAttr") {
+                builtin = true
             }
         }
         let list = empty(params) ? "" : " [{join(params, " ")}]"
-        top.lines |> push((file = loc.file, text = "(decl {name}{place_text(loc)} {type_text(js?["type"])}{decl_flags(js)}{list})"))
+        let line = "(decl {name}{place_text(loc)} {type_text(js?["type"])}{decl_flags(js)}{list})"
+        top.lines |> push(FormLine(file = loc.file, text = line, cause = builtin ? LIBRARY_BUILTIN : ""))
         top.names |> push(BoundName(name = name))
     } elif (k == "StaticAssertDecl") {
         let at = begin_of(map, js)
@@ -373,7 +389,7 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
         if (length(parts) == 1) {
             parts |> push("-")
         }
-        top.lines |> push((file = at.file, text = "(static_assert{place_text(at)} {join(parts, " ")})"))
+        top.lines |> push(FormLine(file = at.file, text = "(static_assert{place_text(at)} {join(parts, " ")})"))
     } elif (k == "RecordDecl" || k == "EnumDecl") {
         var enumerated = false
         each_child(js) $(c) {
@@ -386,7 +402,7 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
         enumerators(js, top.names)
     } else {
         let at = begin_of(map, js)
-        top.lines |> push((file = at.file, text = "(unknown {k}{place_text(at)})"))
+        top.lines |> push(FormLine(file = at.file, text = "(unknown {k}{place_text(at)})"))
     }
     return <- top
 }

@@ -68,7 +68,7 @@ def test_fixture_verdicts(t : T?) {
     let flags <- flags_of(t)
     let work = test_temp_dir()
     let expected <- {"expressions.c" => "same", "types.c" => "same", "typedefs.c" => "same", "static_assert.c" => "same",
-                     "skipped.c" => "same", "semantic.c" => "differs", "pragma.c" => "parser refused",
+                     "skipped.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "parser refused",
                      "clang_refuses.c" => "clang refused"}
     for (name, verdict in keys(expected), values(expected)) {
         let r <- compare_unit(path_join("compare/parse/fixtures", name), work, flags)
@@ -117,8 +117,35 @@ def test_semantic_difference(t : T?) {
     let flags <- flags_of(t)
     let r <- compare_unit("compare/parse/fixtures/semantic.c", test_temp_dir(), flags)
     t |> equal(r.verdict, "differs")
-    t |> equal(r.ours, "(decl g@4:6 \"void (F)\" [f@4:10])")
-    t |> equal(r.theirs, "(decl g@4:6 \"void (F *)\" [f@4:10])")
+    t |> equal(r.differences[0].ours, "(decl g@4:6 \"void (F)\" [f@4:10])")
+    t |> equal(r.differences[0].theirs, "(decl g@4:6 \"void (F *)\" [f@4:10])")
+}
+
+[test(description = "a library builtin's redeclaration differs by clang's own type, the difference named and the walk going on past it", timeout = 1200)]
+def test_library_builtin_named(t : T?) {
+    let flags <- flags_of(t)
+    let r <- compare_unit("compare/parse/fixtures/builtin.c", test_temp_dir(), flags)
+    t |> equal(r.verdict, "differs", describe_result(r))
+    t |> equal(length(r.differences), 1, describe_result(r))
+    t |> equal(unnamed_differences(r), 0)
+    for (d in r.differences) {
+        t |> equal(d.cause, LIBRARY_BUILTIN)
+    }
+    t |> equal(r.lines, 5)
+}
+
+[test(description = "the walk goes on past a line pair naming one entity, and stops at a pair naming two, which no longer align")]
+def test_line_differences(t : T?) {
+    let ours <- [FormLine(text = "(decl a@1:5 \"int\")"), FormLine(text = "(decl b@2:5 \"int\")"), FormLine(text = "(decl c@3:5 \"int\")"), FormLine(text = "(decl d@4:5 \"int\")")]
+    let theirs <- [FormLine(text = "(decl a@1:5 \"long\")", cause = "x"), FormLine(text = "(decl b@2:5 \"int\")"), FormLine(text = "(decl d@4:5 \"int\")"), FormLine(text = "(decl e@5:5 \"int\")")]
+    var compared = 0
+    let found <- line_differences(ours, theirs, compared)
+    t |> equal(length(found), 2)
+    t |> equal(found[0].line, 1)
+    t |> equal(found[0].cause, "x")
+    t |> equal(found[1].line, 3)
+    t |> equal(found[1].cause, "")
+    t |> equal(compared, 2)
 }
 
 [test(description = "a refusal names its place: the directive the tokens refuse, and clang's own error", timeout = 1200)]
@@ -150,7 +177,7 @@ def test_mutated_tree_differs(t : T?) {
         t |> success(find(unit.json, m._0) >= 0, m._0)
         let r <- compare_texts("expressions.c", unit.text, replace(unit.json, m._0, m._1))
         t |> equal(r.verdict, "differs", m._1)
-        t |> success(r.ours != r.theirs, "{r.ours} / {r.theirs}")
+        t |> success(!empty(r.differences) && r.differences[0].ours != r.differences[0].theirs, describe_result(r))
     }
     // a place: the name `a` of the first declaration one byte later
     let a = find(unit.text, "int a, b") + 4
@@ -158,8 +185,8 @@ def test_mutated_tree_differs(t : T?) {
     t |> success(moved != unit.json)
     let shifted <- compare_texts("expressions.c", unit.text, moved)
     t |> equal(shifted.verdict, "differs", describe_result(shifted))
-    t |> equal(shifted.ours, "(decl a@3:5 \"int\")")
-    t |> equal(shifted.theirs, "(decl a@3:6 \"int\")")
+    t |> equal(shifted.differences[0].ours, "(decl a@3:5 \"int\")")
+    t |> equal(shifted.differences[0].theirs, "(decl a@3:6 \"int\")")
 }
 
 [test(description = "a line one side has and the other lacks is a difference, the missing side shown as (none)")]
@@ -168,8 +195,8 @@ def test_extra_line_differs(t : T?) {
     let json = "\{\"kind\": \"TranslationUnitDecl\", \"inner\": [\{\"kind\": \"VarDecl\", \"loc\": \{\"offset\": 14\}, \"range\": \{\"begin\": \{\"offset\": 10\}\}, \"name\": \"x\", \"type\": \{\"qualType\": \"int\"\}\}]\}"
     let r <- compare_texts("u.i", text, json)
     t |> equal(r.verdict, "differs", describe_result(r))
-    t |> equal(r.ours, "(decl y@2:5 \"int\")")
-    t |> equal(r.theirs, "(none)")
+    t |> equal(r.differences[0].ours, "(decl y@2:5 \"int\")")
+    t |> equal(r.differences[0].theirs, "(none)")
     t |> equal(r.lines, 2)
 }
 
@@ -198,6 +225,6 @@ def test_corpus_errors(t : T?) {
     error = ""
     let fixtures <- corpus_units(getcwd(), "fixtures", error)
     t |> equal(error, "")
-    t |> equal(length(fixtures), 8)
+    t |> equal(length(fixtures), 9)
     t |> equal(length(none) + length(missing), 0)
 }

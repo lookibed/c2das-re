@@ -25,17 +25,19 @@ the meaning of the program is left to it (section 3).
 - `run.das` - the command line's entry, from the repository root with `das`: `--corpus fixtures`
   (the units of `fixtures/`), `--corpus frontend` (every header of `frontend/include/` as a unit),
   `--corpus c-testsuite` (the fetched single-exec suite), units named after the flags, `--quiet`
-  (only the units that are not the same), `--dump` (both sides' lines of every unit), `--work
-  <folder>` (default `compare/work/parse`, under the gitignored `compare/work/`). An unknown corpus,
-  or one whose folder is missing, is an error and exit 1, never an empty set. Exit 0 when no unit
-  differs and the parser refused none. It states the context stack the parser needs (`options
+  (only the units that are not the same), `--dump` (both sides' lines of every unit), `--define
+  <macro>` (a `-D` added to every unit's preprocessing, a program's own sidecar macros), `--work
+  <folder>` (default `compare/work/parse`, under the gitignored `compare/work/`), `--show N` (the
+  differences printed per unit). An unknown corpus, or one whose folder is missing, is an error and
+  exit 1, never an empty set. Exit 0 when the parser refused no unit and every difference has a
+  named cause. It states the context stack the parser needs (`options
   stack`, `frontend/ARCHITECTURE_PARSER.md` section 19) and room for the reductions' recursion.
 - `fixtures/` - a unit per construct family, each with the verdict the tests expect:
   `expressions.c` (every expression form, as file-scope initializers), `types.c` (type names,
   declarators, storage classes), `typedefs.c` (the typedef table's effect), `static_assert.c`,
   `skipped.c` (the constructs the parser refuses today, skipped), all `same`; `semantic.c` (a clang
-  semantic difference, `differs`); `pragma.c` (`parser refused`); `clang_refuses.c` (`clang
-  refused`).
+  semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
+  `pragma.c` (`parser refused`); `clang_refuses.c` (`clang refused`).
 - The tests are `compare/tests/test_parse_oracle.das`.
 
 ## 2. Places {#places}
@@ -100,9 +102,13 @@ does not know is `(unknown <name>@...)`: either differs from the other side. Cla
 call.
 
 A difference that clang's semantics make stays a difference: the parser has no way to know it, and
-the oracle does not hide it. Known ones: a parameter of a function or array typedef's type is
-adjusted to a pointer (`semantic.c`); a prototype merged into a later definition's type; a typedef
-of `void` as the only parameter; an attribute that changes a type (`mode`).
+the oracle does not hide it. Where clang's tree says why, the clang side names the cause on the
+line, and a difference on that line is counted under it: a declaration of a library function clang
+knows as a builtin (`BuiltinAttr`) has clang's own type, the builtin's merged with the written one
+(`__size_t` for `size_t`, `restrict` added; `builtin.c`). Other known ones, which the tree does not
+mark: a parameter of a function or array typedef's type is adjusted to a pointer (`semantic.c`); a
+prototype merged into a later definition's type; a typedef of `void` as the only parameter; an
+attribute that changes a type (`mode`).
 
 Not compared yet, by construct: a record or enum body and a function body. Clang's side counts
 each one it holds in the compared declarations by name (`a struct body`, `an enum body`, `a
@@ -132,12 +138,17 @@ A unit's verdict is the first of:
   line. Nothing is compared.
 - `parser refused`: the parser stopped with an error that is no construct refusal; its located
   message.
-- `differs`: the first line, in order, where the parser's line does not match clang's, both shown;
-  a line one side lacks is `(none)`.
+- `differs`: a line where the parser's line does not match clang's, both kept with clang's named
+  cause. The walk goes on past a pair of lines that name one entity, so each differing line is
+  counted; a pair that names two entities, or a line past the other side's end (`(none)`), is the
+  last difference, as the sides no longer align (`line_differences`).
 - `same`: every line matches; the count of lines compared.
 
-A set prints its units, then its totals: the units per verdict, the lines compared, the skipped
-constructs by name and the constructs not compared yet by name.
+A set prints its units, each that differs with its first differences (`--show`), then its totals:
+the units per verdict and how many of those that differ do so by named causes only, the lines
+compared, the differing lines by cause (`unnamed` for none), the skipped constructs by name and the
+constructs not compared yet by name. The run fails on a unit the parser refused or one with a
+difference no cause names.
 
 ## 6. The clang flags {#flags}
 

@@ -349,12 +349,12 @@ def private name_node(p : CParser; d : int) : int {
 //! The lines of the file-scope declaration `n`, each with the file it stands in: one per
 //! declarator, or the `_Static_assert`'s.
 [arch(at="ARCHITECTURE.md#compared")]
-def parser_lines(var p : CParser; n : int) : array<tuple<file : string; text : string>> {
-    var lines : array<tuple<file : string; text : string>>
+def parser_lines(var p : CParser; n : int) : array<FormLine> {
+    var lines : array<FormLine>
     let decl = nd(p, n)
     if (decl.kind == CNode.STATIC_ASSERT) {
         let at = token_place(p, decl.tok)
-        lines |> push((file = at.file, text = "(static_assert{place_text(at)} {parser_expression(p, decl.a)} {parser_expression(p, decl.b)})"))
+        lines |> push(FormLine(file = at.file, text = "(static_assert{place_text(at)} {parser_expression(p, decl.a)} {parser_expression(p, decl.b)})"))
         return <- lines
     }
     let specs = decl.a
@@ -367,7 +367,7 @@ def parser_lines(var p : CParser; n : int) : array<tuple<file : string; text : s
         let at = token_place(p, nd(p, name).tok)
         let head = "{symbol(p, nd(p, name).a)}{place_text(at)} \"{spell_type(p, specs, init.a, false, init.b >= 0)}\""
         if (is_typedef) {
-            lines |> push((file = at.file, text = "(typedef {head})"))
+            lines |> push(FormLine(file = at.file, text = "(typedef {head})"))
         } else {
             var params = ""
             let f = c_name_function(p.ast, init.a)
@@ -382,7 +382,7 @@ def parser_lines(var p : CParser; n : int) : array<tuple<file : string; text : s
                 params = empty(names) ? "" : " [{join(names, " ")}]"
             }
             let value = init.b >= 0 ? " = {parser_expression(p, init.b)}" : ""
-            lines |> push((file = at.file, text = "(decl {head}{flags}{params}{value})"))
+            lines |> push(FormLine(file = at.file, text = "(decl {head}{flags}{params}{value})"))
         }
         id = init.next
     }

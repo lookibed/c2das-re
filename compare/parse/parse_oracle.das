@@ -19,15 +19,23 @@ require ../../converter/dumper_a.das
 //! clang under Dumper A's flags, its file-scope declarations as clang reads them and as the parser
 //! reads them, both reduced to one line per declared entity and compared line by line.
 
-//! What a unit gave: `same`, `differs` (the first differing line of each side), `parser refused`
-//! (the parser's located error) or `clang refused` (clang's error); the lines compared, and the
-//! constructs skipped and left uncompared on the way.
+//! A line where the two sides differ: its number, both lines (`(none)` for a line one side
+//! lacks), and the cause clang's semantics give for it, "" when none is named.
+struct Difference {
+    line : int
+    ours : string
+    theirs : string
+    cause : string
+}
+
+//! What a unit gave: `same`, `differs` (its differences), `parser refused` (the parser's located
+//! error) or `clang refused` (clang's error); the lines compared, and the constructs skipped and
+//! left uncompared on the way.
 struct ParseResult {
     unit : string
     verdict : string
     message : string
-    ours : string
-    theirs : string
+    differences : array<Difference>
     lines : int
     skipped : array<string>
     not_compared : array<string>
@@ -75,21 +83,52 @@ def lines_match(ours, theirs : string) : bool {
 }
 
 // the lines of a side with a `(file <name>)` line before each run of lines in one file
-def private with_files(lines : array<tuple<file : string; text : string>>) : array<string> {
-    var out : array<string>
+def private with_files(lines : array<FormLine>) : array<FormLine> {
+    var out : array<FormLine>
     out |> reserve(length(lines) + 1)
     var file = ""
     for (l in lines) {
         if (empty(out) || l.file != file) {
             file = l.file
-            out |> push("(file {file})")
+            out |> push(FormLine(file = file, text = "(file {file})"))
         }
-        out |> push(l.text)
+        out |> push(l)
     }
     return <- out
 }
 
-//! The comparison of the preprocessed text `text`, named `name`, with clang's JSON dump `json` of
+// a line up to its first type: what names the entity, or the whole line
+def private head_of(line : string) : string {
+    let quote = find(line, "\"")
+    return quote < 0 ? line : slice(line, 0, quote)
+}
+
+//! The differences of the parser's lines `ours` and clang's `theirs`, walked together: a line pair
+//! that names one entity and differs is a difference, and the walk goes on; a pair that names two
+//! entities, or a line past the other side's end, is the last difference, as the sides no longer
+//! align. `compared` is the count of line pairs read.
+[arch(at="ARCHITECTURE.md#verdicts")]
+def line_differences(ours, theirs : array<FormLine>; var compared : int&) : array<Difference> {
+    var out : array<Difference>
+    let common = min(length(ours), length(theirs))
+    compared = common
+    for (i in range(common)) {
+        continue if (lines_match(ours[i].text, theirs[i].text))
+        out |> push(Difference(line = i + 1, ours = ours[i].text, theirs = theirs[i].text, cause = theirs[i].cause))
+        if (head_of(ours[i].text) != head_of(theirs[i].text)) {
+            compared = i
+            return <- out
+        }
+    }
+    if (length(ours) != length(theirs)) {
+        let mine = common < length(ours) ? ours[common].text : "(none)"
+        let clang = common < length(theirs) ? theirs[common].text : "(none)"
+        out |> push(Difference(line = common + 1, ours = mine, theirs = clang))
+    }
+    return <- out
+}
+
+//! The comparison of the preprocessed text `text`, named `unit`, with clang's JSON dump `json` of
 //! it: the parser reads the text declaration by declaration, the declarations it skips are left
 //! out of clang's side, and the two sides' lines are compared in order.
 [arch(at="ARCHITECTURE.md#verdicts")]
@@ -109,41 +148,23 @@ def compare_texts(unit, text, json : string) : ParseResult {
         result.message = parsed.error
         return <- result
     }
-    var ours_lines : array<tuple<file : string; text : string>>
+    var ours_lines : array<FormLine>
     for (n in parsed.items) {
         var inscope lines <- parser_lines(p, n)
         ours_lines |> push_from(lines)
     }
-    var theirs_lines : array<tuple<file : string; text : string>>
+    var theirs_lines : array<FormLine>
     for (top in clang.tops) {
         continue if (parsed.skipped_places |> key_exists(top.key))
         theirs_lines |> push_from(top.lines)
         result.not_compared |> push_from(top.not_compared)
     }
-    result.parser_lines <- with_files(ours_lines)
-    result.clang_lines <- with_files(theirs_lines)
-    let ours & = unsafe(result.parser_lines)
-    let theirs & = unsafe(result.clang_lines)
-    let common = min(length(ours), length(theirs))
-    for (i in range(common)) {
-        if (!lines_match(ours[i], theirs[i])) {
-            result.verdict = "differs"
-            result.message = "line {i + 1}"
-            result.ours = ours[i]
-            result.theirs = theirs[i]
-            result.lines = i
-            return <- result
-        }
-    }
-    result.lines = common
-    if (length(ours) != length(theirs)) {
-        result.verdict = "differs"
-        result.message = "line {common + 1}"
-        result.ours = common < length(ours) ? ours[common] : "(none)"
-        result.theirs = common < length(theirs) ? theirs[common] : "(none)"
-        return <- result
-    }
-    result.verdict = "same"
+    let ours <- with_files(ours_lines)
+    let theirs <- with_files(theirs_lines)
+    result.parser_lines <- [for (l in ours); l.text]
+    result.clang_lines <- [for (l in theirs); l.text]
+    result.differences <- line_differences(ours, theirs, result.lines)
+    result.verdict = empty(result.differences) ? "same" : "differs"
     return <- result
 }
 
@@ -192,6 +213,8 @@ def private first_line(text : string) : string {
 struct ParseTotals {
     verdicts : table<string; int>
     lines : int
+    named_only : int                    //!< the units that differ only by causes clang's semantics name
+    differences : table<string; int>    //!< the differing lines by cause, `unnamed` for none
     skipped : table<string; int>
     not_compared : table<string; int>
 }
@@ -209,14 +232,25 @@ def private merge_counts(var into : table<string; int>; counts : table<string; i
 def operator +=(var a : ParseTotals; b : ParseTotals) {
     merge_counts(a.verdicts, b.verdicts)
     a.lines += b.lines
+    a.named_only += b.named_only
+    merge_counts(a.differences, b.differences)
     merge_counts(a.skipped, b.skipped)
     merge_counts(a.not_compared, b.not_compared)
 }
+
+//! The differences of `r` that no cause of clang's semantics names.
+def unnamed_differences(r : ParseResult) : int => length([for (d in r.differences); d; where empty(d.cause)])
 
 //! `r` added to `totals`.
 def add_result(var totals : ParseTotals; r : ParseResult) {
     count_into(totals.verdicts, r.verdict)
     totals.lines += r.lines
+    for (d in r.differences) {
+        count_into(totals.differences, empty(d.cause) ? "unnamed" : d.cause)
+    }
+    if (!empty(r.differences) && unnamed_differences(r) == 0) {
+        totals.named_only++
+    }
     for (s in r.skipped) {
         count_into(totals.skipped, s)
     }
@@ -237,35 +271,42 @@ def describe_totals(name : string; totals : ParseTotals) : string {
     let verdicts <- ["same", "differs", "parser refused", "clang refused"]
     let counts = join([for (v in verdicts); "{totals.verdicts?[v] ?? 0} {v}"], ", ")
     return build_string() $(var w) {
-        w |> write("{name}: {counts}; {totals.lines} lines compared\n")
+        w |> write("{name}: {counts} ({totals.named_only} of them only by clang's named causes); {totals.lines} lines compared\n")
+        w |> write("  differing lines by cause: {counted(totals.differences)}\n")
         w |> write("  skipped (parser refusals by construct): {counted(totals.skipped)}\n")
         w |> write("  not compared yet (by construct): {counted(totals.not_compared)}\n")
     }
 }
 
-//! The line of a unit's result, and its differing lines.
-def describe_result(r : ParseResult) : string {
-    var text = "{r.unit}: {r.verdict}"
-    if (r.verdict == "same") {
-        text += " ({r.lines} lines)"
-    } elif (!empty(r.message)) {
-        text += ": {r.message}"
+//! The line of a unit's result, and its first `show` differences, each with both lines and its
+//! cause.
+def describe_result(r : ParseResult; show : int = 3) : string {
+    return build_string() $(var w) {
+        w |> write("{r.unit}: {r.verdict}")
+        if (r.verdict == "same") {
+            w |> write(" ({r.lines} lines)")
+        } elif (r.verdict == "differs") {
+            w |> write(" ({length(r.differences)} lines, {unnamed_differences(r)} with no named cause; {r.lines} lines compared)")
+        } elif (!empty(r.message)) {
+            w |> write(": {r.message}")
+        }
+        for (d, i in r.differences, count()) {
+            break if (i >= show)
+            let cause = empty(d.cause) ? "" : " [{d.cause}]"
+            w |> write("\n  line {d.line}{cause}\n    parser: {d.ours}\n    clang:  {d.theirs}")
+        }
     }
-    if (r.verdict == "differs") {
-        text += "\n    parser: {r.ours}\n    clang:  {r.theirs}"
-    }
-    return text
 }
 
 //! The totals of `units`, each unit's result printed unless it is `same` and `quiet`, then the
 //! totals headed `name`.
-def run_set(name : string; units : array<string>; work : string; flags : array<string>; quiet, dump : bool) : ParseTotals {
+def run_set(name : string; units : array<string>; work : string; flags : array<string>; quiet, dump : bool; show : int) : ParseTotals {
     var totals : ParseTotals
     for (unit in units) {
         let r <- compare_unit(unit, work, flags)
         add_result(totals, r)
         if (!quiet || r.verdict != "same") {
-            print("{describe_result(r)}\n")
+            print("{describe_result(r, show)}\n")
         }
         if (dump) {
             for (line in r.parser_lines) {
@@ -319,21 +360,27 @@ struct ParseOracleArgs {
     quiet : bool
     @clarg_doc = "print both sides' lines of every unit"
     dump : bool
+    @clarg_doc = "the differences shown per unit"
+    show : int = 3
+    @clarg_doc = "a macro definition `name` or `name=value` added to every unit's preprocessing (repeatable)"
+    define : array<string>
     @clarg_positional
     @clarg_doc = "units compared besides the corpora"
     units : array<string>
 }
 
 //! The corpora and units `args` names compared, from the repository root, each set's totals and
-//! the total printed; 0 when no unit differs and the parser refused none, 1 otherwise or when a
-//! corpus is unknown or missing or the flags cannot be made.
+//! the total printed; 0 when every unit that differs does so only by causes clang's semantics name
+//! and the parser refused none, 1 otherwise or when a corpus is unknown or missing or the flags
+//! cannot be made.
 def run_parse_oracle(args : ParseOracleArgs) : int {
     var error : string
-    let flags <- parse_flags(error)
+    var flags <- parse_flags(error)
     if (!empty(error)) {
         to_log(LOG_ERROR, "{error}\n")
         return 1
     }
+    flags |> push_from([for (d in args.define); "-D{d}"])
     mkdir_rec(args.work)
     let root = getcwd()
     var sets : array<tuple<name : string; units : array<string>>>
@@ -352,8 +399,8 @@ def run_parse_oracle(args : ParseOracleArgs) : int {
     var failed = 0
     var total : ParseTotals
     for (s in sets) {
-        let totals <- run_set(s.name, s.units, args.work, flags, args.quiet, args.dump)
-        failed += (totals.verdicts?["differs"] ?? 0) + (totals.verdicts?["parser refused"] ?? 0)
+        let totals <- run_set(s.name, s.units, args.work, flags, args.quiet, args.dump, args.show)
+        failed += (totals.verdicts?["differs"] ?? 0) - totals.named_only + (totals.verdicts?["parser refused"] ?? 0)
         total += totals
     }
     print(describe_totals("total", total))
