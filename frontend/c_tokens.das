@@ -4,6 +4,7 @@ options indenting = 4
 module c_tokens public
 
 require strings
+require math
 require pp_lexer public
 
 //! The kind of a C token (C11 6.4, translation phase 7). A punctuator keeps the value `PpTok`
@@ -169,7 +170,7 @@ struct CUnit {
     toks : array<CToken>
     name : string           //!< the name of file 0
     file_syms : array<int>  //!< per file past 0, the interned bytes of its name between the quotes
-    keyword_of : array<int> //!< per symbol interned before the first token, its keyword kind or 0
+    kind_of_sym : array<int> //!< per symbol, its C kind once known: a keyword's kind or IDENTIFIER; 0 before
     err : string            //!< the first error, `file:line:col: what`; "" when the tokens are clean
 }
 
@@ -339,6 +340,32 @@ def private marker_file(var unit : CUnit) : int {
     return length(unit.file_syms)
 }
 
+def private hex_value(b : int) : int => b <= '9' ? b - '0' : (b | 0x20) - 'a' + 10
+
+//! the identifier at `[start, start + len)` holds a universal character name C11 6.4.3p2 forbids: one
+//! naming a character below U+00A0 other than `$`, `@` and a backquote, a surrogate, or a code
+//! point past U+10FFFF; the pp-lexer takes only well-formed UCNs into an identifier
+[arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
+def private names_basic_character(unit : CUnit; start, len : int) : bool {
+    var i = start
+    let stop = start + len
+    while (i < stop) {
+        if (byte_at(unit, i) != '\\') {
+            i++
+            continue
+        }
+        let digits = byte_at(unit, i + 1) == 'u' ? 4 : 8
+        var value = 0l
+        for (d in range(digits)) {
+            value = value * 16l + int64(hex_value(byte_at(unit, i + 2 + d)))
+        }
+        let basic = value < int64(0xA0) && value != int64(0x24) && value != int64(0x40) && value != int64(0x60)
+        return true if (basic || (value >= int64(0xD800) && value <= int64(0xDFFF)) || value > int64(0x10FFFF))
+        i += 2 + digits
+    }
+    return false
+}
+
 //! Open the unit over `bytes`, the text of a preprocessed translation unit, named `name`: the
 //! keyword spellings are interned once, so a token's kind is one index by its symbol.
 def c_tokens_open(var unit : CUnit; var bytes : array<uint8>; name : string) {
@@ -348,19 +375,26 @@ def c_tokens_open(var unit : CUnit; var bytes : array<uint8>; name : string) {
     unit.file_syms |> clear()
     pp_open(unit.lx, bytes, 0, name)
     var syms <- [for (kw in KEYWORDS); c_symbol(unit, kw._0)]
-    unit.keyword_of |> resize(symbol_count(unit.lx.flex.syms))
+    unit.kind_of_sym |> clear()
+    unit.kind_of_sym |> resize(symbol_count(unit.lx.flex.syms))
     for (sym, kw in syms, KEYWORDS) {
-        unit.keyword_of[sym] = int(kw._1)
+        unit.kind_of_sym[sym] = int(kw._1)
     }
 }
 
 //! the C token kind of the pp-token in the lexer, or EOF when it is no C token
-def private c_kind_of(unit : CUnit) : int {
+def private c_kind_of(var unit : CUnit) : int {
     let k = unit.lx.tok.kind
     if (k == int(PpTok.IDENTIFIER)) {
         let sym = unit.lx.tok.sym
-        let kw = sym < length(unit.keyword_of) ? unit.keyword_of[sym] : 0
-        return kw != 0 ? kw : int(CTok.IDENTIFIER)
+        return unit.kind_of_sym[sym] if (sym < length(unit.kind_of_sym) && unit.kind_of_sym[sym] != 0)
+        let t & = unsafe(unit.lx.flex.tok)
+        return int(CTok.EOF) if (names_basic_character(unit, t.start, t.len))
+        if (sym >= length(unit.kind_of_sym)) {
+            unit.kind_of_sym |> resize(max(sym + 1, 2 * length(unit.kind_of_sym)))
+        }
+        unit.kind_of_sym[sym] = int(CTok.IDENTIFIER)
+        return int(CTok.IDENTIFIER)
     } elif (k == int(PpTok.PP_NUMBER)) {
         let t & = unsafe(unit.lx.flex.tok)
         return number_kind(unit, t.start, t.len)
@@ -393,6 +427,10 @@ def private line_marker(var unit : CUnit; var file, line_delta : int&; var more 
     var new_file = file
     more = pp_next(unit.lx)
     if (more && !unit.lx.tok.at_bol && unit.lx.tok.kind == int(PpTok.STRING_LITERAL)) {
+        if (byte_at(unit, unit.lx.flex.tok.start) != '"') {
+            token_error(unit, file, line_delta, "a line marker's file name '{pp_spelling(unit.lx)}' is not parsed")
+            return false
+        }
         new_file = marker_file(unit)
         more = pp_next(unit.lx)
     }
@@ -419,7 +457,8 @@ def c_tokens_read(var unit : CUnit) : bool {
         }
         let kind = c_kind_of(unit)
         if (kind == int(CTok.EOF)) {
-            let what = unit.lx.tok.kind == int(PpTok.PP_NUMBER) ? "invalid numeric constant" : "stray"
+            let pk = unit.lx.tok.kind
+            let what = pk == int(PpTok.PP_NUMBER) ? "invalid numeric constant" : pk == int(PpTok.IDENTIFIER) ? "invalid universal character name in" : "stray"
             token_error(unit, file, line_delta, "{what} '{pp_spelling(unit.lx)}'")
             break
         }

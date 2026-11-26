@@ -94,6 +94,16 @@ def test_keywords(t : T?) {
     }
 }
 
+[test(description = "a universal character name naming a basic character, a surrogate or a code point past U+10FFFF makes its identifier an error (C11 6.4.3p2), so no keyword is spelled through one; `$`, `@`, a backquote and any other UCN stay")]
+def test_ucn_identifiers(t : T?) {
+    t |> equal(lexed("\\u0069nt x"), "error: t.c:1:1: invalid universal character name in '\\u0069nt'")
+    t |> equal(lexed("x \\U00000041"), "error: t.c:1:3: invalid universal character name in '\\U00000041'")
+    t |> equal(lexed("\\ud800"), "error: t.c:1:1: invalid universal character name in '\\ud800'")
+    t |> equal(lexed("\\U00110000"), "error: t.c:1:1: invalid universal character name in '\\U00110000'")
+    t |> equal(lexed("\\u0024y \\u0040 \\u0060 a\\u00e9 \\U0001F600"), "I:\\u0024y I:\\u0040 I:\\u0060 I:a\\u00e9 I:\\U0001F600")
+    t |> equal(lexed("x\\u00e9 x\\u00e9 \\u0069nt"), "error: t.c:1:17: invalid universal character name in '\\u0069nt'")
+}
+
 [test(description = "a pp-number is an integer or a floating constant by C11 6.4.4, its suffix checked; one that is neither is an error naming it")]
 def test_numbers(t : T?) {
     t |> run("integer constants: decimal, octal, hexadecimal, GNU binary, every suffix") @(t : T?) {
@@ -173,6 +183,8 @@ def test_line_markers(t : T?) {
         t |> equal(lexed("x\n#\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
         t |> equal(lexed("#line x"), "error: t.c:1:7: the directive '#x' is not parsed")
         t |> equal(lexed("# 0x10 \"a.c\""), "error: t.c:1:3: the directive '#0x10' is not parsed")
+        t |> equal(lexed("# 3 L\"w.h\"\nx"), "error: t.c:1:5: a line marker's file name 'L\"w.h\"' is not parsed")
+        t |> equal(lexed("# 3 u8\"w.h\"\nx"), "error: t.c:1:5: a line marker's file name 'u8\"w.h\"' is not parsed")
         t |> equal(lexed("# 9999999999 \"a.c\""), "error: t.c:1:3: the directive '#9999999999' is not parsed")
     }
 }
