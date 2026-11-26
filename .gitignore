@@ -53,3 +53,6 @@ Thumbs.db
 
 # user-supplied game data: never committed
 /doom/wads/*.wad
+
+# fetched externals loaded as module folders (scripts/fetch_dasbison.sh)
+/fetch/
