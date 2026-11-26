@@ -15,6 +15,9 @@ sidecar reader and Dumper A read.
   The one `.das` module here a converter pass requires.
 - `predefined/linux.defs`, `predefined/msvc.defs` - the predefined-macro table of each dialect.
 - `tests/test_c_defines.das` - the parser and the reader, and that each table reads clean.
+- `tests/_own_header_names.das` - `header_names`, the headers of `include/` as a program includes
+  them, for the header tests of `include/tests/` and of `converter/tests/` (repo root); a `require`
+  path cannot spell the folder `include`, a daslang keyword, so the helper is here.
 - `REVIEW.das` - the mechanical gate of section 2, over every `.das` file under this folder.
 - `tests/test_review_gate.das` - the gate's findings on stand-in files, one per ban.
   `tests/test_frontend_gate.das` (repo root) runs the gate itself, on this tree and on a stand-in

@@ -6,6 +6,7 @@ require daslib/strings_boost
 require daslib/rtti
 require crt
 require _header_scan
+require ../../tests/_own_header_names.das
 require ../../c_defines.das
 require ../../../converter/emit.das
 
@@ -13,8 +14,6 @@ require ../../../converter/emit.das
 //! (`frontend/include/ARCHITECTURE.md` section 2): the prototypes are the C names `crt` binds and
 //! the libc names the emitter lowers, the `extern` objects the emitter's libc objects, and every
 //! `crt` constant a macro. The `crt` side is read from the loaded module, the headers as text.
-
-let private INCLUDE_DIR = "frontend/include"
 
 // what glibc's `sigsetjmp` macro calls: the emitter maps it, and no header declares it, there
 // being no `siglongjmp` to pair it with
@@ -41,23 +40,11 @@ let PREDEFINED <- [
 // the language's own names of that shape, which `<assert.h>` reads
 let private LANGUAGE_NAMES <- {"__FILE__", "__LINE__"}
 
-// the headers of the set by the names a program includes them under, sorted
-def private header_names : array<string> {
-    var names : array<string>
-    dir_rec(INCLUDE_DIR) $(name, is_dir) {
-        if (!is_dir && name |> ends_with(".h")) {
-            names |> push(clone_string(name))
-        }
-    }
-    sort(names)
-    return <- names
-}
-
 def private scan_headers : HeaderScan {
     var scan : HeaderScan
     var inscope names <- header_names()
     for (name in names) {
-        scan_header(scan, name, fread(path_join(INCLUDE_DIR, name)))
+        scan_header(scan, name, fread(path_join(own_include_dir(), name)))
     }
     finish_scan(scan)
     return <- scan
@@ -144,12 +131,12 @@ def test_headers_declare_the_runtime(t : T?) {
     t |> run("every line of every header has a form the scanner knows") @(t : T?) {
         let scan <- scan_headers()
         t |> equal(join(scan.errors, "\n"), "")
-        t |> success(!empty(scan.prototypes), "no header under {INCLUDE_DIR}: the test runs from the repository root")
+        t |> success(!empty(scan.prototypes), "no header under {own_include_dir()}")
     }
     t |> run("an #include names a header of the set") @(t : T?) {
         let scan <- scan_headers()
         for (name in scan.includes) {
-            t |> success(fexist(path_join(INCLUDE_DIR, name)), "<{name}> is no header of the set")
+            t |> success(fexist(path_join(own_include_dir(), name)), "<{name}> is no header of the set")
         }
     }
     t |> run("a function is declared once") @(t : T?) {
@@ -199,7 +186,7 @@ def test_headers_match_crt(t : T?) {
         var read : table<string>
         let names <- header_names()
         for (name in names) {
-            predefined_shaped(fread(path_join(INCLUDE_DIR, name)), read)
+            predefined_shaped(fread(path_join(own_include_dir(), name)), read)
         }
         for (name in keys(LANGUAGE_NAMES)) {
             read |> erase(name)
