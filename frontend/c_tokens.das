@@ -245,8 +245,8 @@ def private is_float_suffix(unit : CUnit; at, stop : int) : bool =>
     at == stop || (at + 1 == stop && (byte_at(unit, at) == 'f' || byte_at(unit, at) == 'F' || byte_at(unit, at) == 'l' || byte_at(unit, at) == 'L'))
 
 //! after a mantissa ending at `at`: an exponent `e`/`p` (`binary` picks), its sign and digits, then
-//! a floating suffix, up to `stop`; `needed` when a hexadecimal mantissa makes the exponent required
-def private is_float_tail(unit : CUnit; at, stop : int; binary, needed : bool) : bool {
+//! a floating suffix, up to `stop`
+def private is_float_tail(unit : CUnit; at, stop : int; binary : bool) : bool {
     var i = at
     let b = i < stop ? byte_at(unit, i) : 0
     if (binary ? (b == 'p' || b == 'P') : (b == 'e' || b == 'E')) {
@@ -257,8 +257,6 @@ def private is_float_tail(unit : CUnit; at, stop : int; binary, needed : bool) :
         let digits = digits_end(unit, i, stop, false)
         return false if (digits == i)
         i = digits
-    } elif (needed) {
-        return false
     }
     return is_float_suffix(unit, i, stop)
 }
@@ -281,7 +279,7 @@ def private number_kind(unit : CUnit; start, len : int) : int {
         }
         let has_digits = whole > start + 2 || frac > whole + 1
         if (has_digits && i < stop && (byte_at(unit, i) == 'p' || byte_at(unit, i) == 'P')) {
-            return int(is_float_tail(unit, i, stop, true, true) ? CTok.FLOAT_CONSTANT : CTok.EOF)
+            return int(is_float_tail(unit, i, stop, true) ? CTok.FLOAT_CONSTANT : CTok.EOF)
         }
         return int(whole > start + 2 && whole == i && is_int_suffix(unit, i, stop) ? CTok.INT_CONSTANT : CTok.EOF)
     }
@@ -299,8 +297,7 @@ def private number_kind(unit : CUnit; start, len : int) : int {
         if (b == '.') {
             i = digits_end(unit, i + 1, stop, false)
         }
-        let has_digits = whole > start || i > whole + 1
-        return int(has_digits && is_float_tail(unit, i, stop, false, false) ? CTok.FLOAT_CONSTANT : CTok.EOF)
+        return int(is_float_tail(unit, i, stop, false) ? CTok.FLOAT_CONSTANT : CTok.EOF)
     }
     if (lead_zero) {
         for (k in range(start, whole)) {
@@ -324,9 +321,7 @@ def private decimal_value(unit : CUnit) : int {
 
 //! the first error of the unit, at the lexer's token
 def private token_error(var unit : CUnit; file, line_delta : int; what : string) {
-    if (empty(unit.err)) {
-        unit.err = "{c_file_name(unit, file)}:{unit.lx.tok.line + line_delta}:{unit.lx.tok.col}: {what}"
-    }
+    unit.err = "{c_file_name(unit, file)}:{unit.lx.tok.line + line_delta}:{unit.lx.tok.col}: {what}"
 }
 
 //! the file id of the line marker's name in the lexer's string-literal token, added when new
