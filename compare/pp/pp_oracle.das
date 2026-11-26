@@ -3,9 +3,9 @@ options gen2
 module pp_oracle public
 
 require strings
-require math
 require daslib/strings_boost
 require daslib/fio
+require daslib/clargs
 require ../../frontend/pp_lexer.das
 require ../../converter/cir.das
 require ../../converter/dumper_a.das
@@ -51,7 +51,7 @@ let private CLANG_PUNCTS <- {
     "greaterequal" => int(PpTok.GE), "greatergreaterequal" => int(PpTok.SHR_ASSIGN), "caret" => int(PpTok.CARET),
     "caretequal" => int(PpTok.XOR_ASSIGN), "pipe" => int(PpTok.PIPE), "pipepipe" => int(PpTok.OR_OR),
     "pipeequal" => int(PpTok.OR_ASSIGN), "question" => int(PpTok.QUESTION), "colon" => int(PpTok.COLON),
-    "semi" => int(PpTok.SEMI), "equal" => int(PpTok.ASSIGN), "equalequal" => int(PpTok.EQ),
+    "semi" => int(PpTok.SEMI), "coloncolon" => int(PpTok.COLONCOLON), "equal" => int(PpTok.ASSIGN), "equalequal" => int(PpTok.EQ),
     "comma" => int(PpTok.COMMA), "hash" => int(PpTok.HASH), "hashhash" => int(PpTok.HASHHASH),
     "numeric_constant" => int(PpTok.PP_NUMBER), "unknown" => int(PpTok.OTHER)
 }
@@ -67,8 +67,9 @@ def clang_kind(kind : string) : int {
 }
 
 //! The tokens of clang's `-dump-tokens` text, each record `kind 'spelling'\t[flags]\tLoc=<file:line:col>`,
-//! more than one line when its `[UnClean='...']` flag spells a line splice; the `eof` record ends them. `has_space` is `[LeadingSpace]`, or `[StartOfLine]` past the file's
-//! first byte: clang leaves `[LeadingSpace]` off a token right after a newline.
+//! more than one line when its spelling holds a newline (a raw string) or its `[UnClean='...']` flag
+//! spells a line splice; the `eof` record ends them. `has_space` is `[LeadingSpace]`, or `[StartOfLine]` past the first line: clang leaves
+//! `[LeadingSpace]` off a token right after a newline.
 [arch(at="ARCHITECTURE.md#flags")]
 def clang_tokens(dump : string) : array<OracleToken> {
     var tokens : array<OracleToken>
@@ -77,7 +78,7 @@ def clang_tokens(dump : string) : array<OracleToken> {
         let line = empty(pending) ? part : "{pending}\n{part}"
         let loc_at = find(line, "\tLoc=<")
         if (loc_at < 0) {
-            pending = find(line, "[UnClean='") >= 0 ? line : ""
+            pending = find(line, "'") >= 0 ? line : ""
             continue
         }
         pending = ""
@@ -97,7 +98,7 @@ def clang_tokens(dump : string) : array<OracleToken> {
         let at_line = to_int(slice(loc, line_at + 1, col_at))
         let at_col = to_int(slice(loc, col_at + 1))
         tokens |> push(OracleToken(kind = clang_kind(kind), spelling = slice(line, first_quote + 1, last_quote),
-                                   line = at_line, col = at_col, at_bol = sol, has_space = ls || (sol && (at_line > 1 || at_col > 1))))
+                                   line = at_line, col = at_col, at_bol = sol, has_space = ls || (sol && at_line > 1)))
     }
     return <- tokens
 }
@@ -117,22 +118,48 @@ def lexed_tokens(var bytes : array<uint8>) : array<OracleToken> {
 def private describe(t : OracleToken) : string =>
     "{t.kind} '{t.spelling}' {t.line}:{t.col}{t.at_bol ? " bol" : ""}{t.has_space ? " space" : ""}"
 
-//! The positions where `clang` and `ours` differ in kind, spelling, line, column or a flag, plus
-//! the tokens one side has past the other's end; the first `show` of them described in `shown`.
+//! `line`, `col` of `t` ordered against those of `u`: -1 before, 0 at, 1 after
+def private place_order(t, u : OracleToken) : int {
+    return t.line < u.line ? -1 : 1 if (t.line != u.line)
+    return t.col < u.col ? -1 : t.col > u.col ? 1 : 0
+}
+
+//! The differences of `clang` and `ours`, walked together by position: a token both sides place
+//! at one line and column differs when its kind, spelling or a flag does, a token only one side
+//! places there is one difference, and so is each token one side has past the other's end; the
+//! first `show` of them described in `shown`.
+[arch(at="ARCHITECTURE.md#flags")]
 def compare_tokens(clang, ours : array<OracleToken>; show : int; var shown : array<string>) : int {
     var diffs = 0
-    let common = min(length(clang), length(ours))
-    for (i, c, o in count(), clang, ours) {
-        if (c.kind != o.kind || c.spelling != o.spelling || c.line != o.line || c.col != o.col || c.at_bol != o.at_bol || c.has_space != o.has_space) {
-            diffs++
-            if (length(shown) < show) {
-                shown |> push("#{i}: clang {describe(c)} | pp {describe(o)}")
+    var i = 0
+    var j = 0
+    while (i < length(clang) && j < length(ours)) {
+        let order = place_order(clang[i], ours[j])
+        var seen = ""
+        if (order < 0) {
+            seen = "#{i}: clang only {describe(clang[i])}"
+            i++
+        } elif (order > 0) {
+            seen = "#{j}: pp only {describe(ours[j])}"
+            j++
+        } else {
+            let c = clang[i]
+            let o = ours[j]
+            if (c.kind != o.kind || c.spelling != o.spelling || c.at_bol != o.at_bol || c.has_space != o.has_space) {
+                seen = "#{i}: clang {describe(c)} | pp {describe(o)}"
             }
+            i++
+            j++
+        }
+        continue if (empty(seen))
+        diffs++
+        if (length(shown) < show) {
+            shown |> push(seen)
         }
     }
-    let extra = max(length(clang), length(ours)) - common
+    let extra = length(clang) - i + length(ours) - j
     if (extra > 0 && length(shown) < show) {
-        shown |> push("{extra} tokens past the shorter side's end ({length(clang)} clang, {length(ours)} pp)")
+        shown |> push("{extra} tokens past the other side's end ({length(clang)} clang, {length(ours)} pp)")
     }
     return diffs + extra
 }
@@ -222,4 +249,42 @@ def corpus_units(root, corpus : string) : array<string> {
     }
     sort(units)
     return <- units
+}
+
+//! The command line of `run.das`.
+[CommandLineArgs]
+struct OracleArgs {
+    @clarg_doc = "a corpus to compare: frontend or c-testsuite (repeatable)"
+    corpus : array<string>
+    @clarg_doc = "the differences shown per unit"
+    show : int = 3
+    @clarg_doc = "the folder the preprocessed units are written to"
+    work : string = "compare/work/pp"
+    @clarg_doc = "compare the units themselves, not clang -E's output of them (units with no directive and no macro)"
+    raw : bool
+    @clarg_positional
+    @clarg_doc = "units compared besides the corpora"
+    units : array<string>
+}
+
+//! The corpora and units `args` names compared, from the repository root, each set's line and the
+//! total printed; 0 when no unit differs, 1 when one does or the flags cannot be built.
+def run_oracle(args : OracleArgs) : int {
+    var error : string
+    let flags <- preprocess_flags(error)
+    if (!empty(error)) {
+        to_log(LOG_ERROR, "{error}\n")
+        return 1
+    }
+    mkdir_rec(args.work)
+    let root = getcwd()
+    var total : int3
+    for (corpus in args.corpus) {
+        total += run_set(corpus, corpus_units(root, corpus), args.work, flags, args.show)
+    }
+    if (!empty(args.units)) {
+        total += run_set("units", args.units, args.work, flags, args.show, args.raw)
+    }
+    print("total: {total.x} tokens, {total.y} diffs, {total.z} clang failures\n")
+    return total.y == 0 ? 0 : 1
 }
