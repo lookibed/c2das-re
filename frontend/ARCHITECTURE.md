@@ -145,14 +145,16 @@ would set `has_space` and one that matched across it would need it in every patt
 splice is lexed in its own bytes: `pp_open` takes the array over (`<-`), and one byte of spare
 capacity (`pp_read_file` leaves it) holds the scanner's end zero without a reallocation. A file with
 a splice is copied once into a working buffer without them, and a table records, per removed
-splice, the buffer offset where the bytes after it start and their offset in the file.
+splice, the file offset of its backslash, the buffer offset where the bytes after it start and
+their offset in the file.
 
 A token is placed back through that table: the splices before its first byte give its file offset
 (the buffer offset plus their removed bytes) and its line (the buffer line plus their count, each
 splice removing one newline); its column is the buffer column, or, when a splice lies on the same
 buffer line before it, the distance from the byte after that splice's newline. The splices before
 its last byte give its end, so a token split by a splice (`in\` newline `t`) is one token at the
-offset of `i`, its length counting the splice. The table is walked forward with the tokens, so
+offset of `i`, its length counting the splice. A token whose first byte comes right after a splice
+starts at that splice's backslash, where clang places it. The table is walked forward with the tokens, so
 placing costs no search; a file without splices pays a field copy per token.
 
 ### The rules {#pp-tokens}

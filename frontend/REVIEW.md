@@ -17,3 +17,8 @@ table under `predefined/`, and writes
 every module dependency as a line `require <module>` or `require <module> public` - never an
 `include`, and never a `require` of another form.** `REVIEW.das` reads no other file and can name
 the module of no other line, so it reports both.
+
+**A diff to `pp_lexer.das` never makes a token allocate - `tests/test_pp_lexer.das`'s allocation
+test is never loosened - and runs the oracle (`das compare/pp/run.das -- --corpus frontend --corpus
+c-testsuite`, and `--raw compare/pp/fixtures/edge_tokens.c`) with its difference count stated.**
+A rule change that still passes the unit tests can split or merge a token clang lexes otherwise.

@@ -33,7 +33,8 @@ the continuous integration section 7.
 - `compare/` - the head-to-head with the Rust translator lookibed/c2das (ledger item P8.1): the
   module that runs its binary and its translations, and the suites, perf, output-quality and Lua
   comparisons over the same inputs, runners and oracles as this repository's own, recorded in
-  `compare/results_linux.json` (`compare/ARCHITECTURE.md`).
+  `compare/results_linux.json` (`compare/ARCHITECTURE.md`); and `compare/pp/`, the token oracle
+  of `frontend/pp_lexer.das` against clang (`compare/pp/ARCHITECTURE.md`).
 - `docs/` - the normative design, authored in its own repository and copied here whole
   (`docs/overview.md`). Never edited to match code. Beside it, the topic documents the root
   `README.md` links: `overview.md`, `performance.md` (its tables rewritten by `perf/run.das
