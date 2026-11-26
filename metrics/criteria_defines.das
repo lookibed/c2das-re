@@ -100,15 +100,15 @@ def read_preprocessed(text, main_path : string) : Preprocessed {
 
 //! `c_path` preprocessed by the pinned clang with `-D` for each of `defines`, `-I` for each of
 //! `include_dirs` and `-include` for each of `include_files`, as the dumper passes a sidecar's,
-//! under the macros the dumper gives the `linux` dialect, whose triple is this host's; `error`
-//! names a unit clang refused.
+//! under the frontend flags the dumper gives the `linux` dialect: its triple, macros and the own
+//! libc headers; `error` names a unit clang refused.
 def preprocess(c_path : string; defines, include_dirs, include_files : array<string>; var error : string&) : Preprocessed {
     var argv <- [default_clang(), "-E", "-C", "-dD"]
-    let macro_flags <- frontend_macro_flags(predefined_table(target_by_name("linux")), error)
+    let frontend <- dumper_frontend_flags(target_by_name("linux"), error)
     if (!empty(error)) {
         return <- Preprocessed()
     }
-    argv |> push_from(macro_flags, [for (d in defines); "-D{d}"], [for (d in include_dirs); "-I{d}"])
+    argv |> push_from(frontend, [for (d in defines); "-D{d}"], [for (d in include_dirs); "-I{d}"])
     for (f in include_files) {
         argv |> push_from(["-include", f])
     }

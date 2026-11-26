@@ -1148,22 +1148,12 @@ def p4_function_fixtures(t : T?) {
         has_text(t, text, "c_longjmp(addr(")
     }
     t |> run("function pointers: what the lowering refuses, each with its reason") @(t : T?) {
-        // a libc function c_runtime does not map has no value (a mapped one's is its wrapper, P7.5)
-        rejects(t, "external_function_value", "#include <string.h>\nint main(void) \{ size_t (*c)(char *, const char *, size_t) = strxfrm; return c(0, \"a\", 0) != 1; \}\n", "the value of external function `strxfrm` (a pointer to a function this file does not define) is not lowered yet")
-        rejects(t, "external_function_address", "#include <string.h>\nint main(void) \{ size_t (*c)(char *, const char *, size_t) = &strxfrm; return c(0, \"a\", 0) != 1; \}\n", "the value of external function `strxfrm`")
+        // a libc function c_runtime does not map has no value (a mapped one's is its wrapper, P7.5);
+        // the own headers declare no such function, so the program does
+        rejects(t, "external_function_value", "#include <stddef.h>\nsize_t strxfrm(char *, const char *, size_t);\nint main(void) \{ size_t (*c)(char *, const char *, size_t) = strxfrm; return c(0, \"a\", 0) != 1; \}\n", "the value of external function `strxfrm` (a pointer to a function this file does not define) is not lowered yet")
+        rejects(t, "external_function_address", "#include <stddef.h>\nsize_t strxfrm(char *, const char *, size_t);\nint main(void) \{ size_t (*c)(char *, const char *, size_t) = &strxfrm; return c(0, \"a\", 0) != 1; \}\n", "the value of external function `strxfrm`")
     }
-    t |> run("the dumper's libclang pass: a clang reporting no resource directory, and an error libclang meets") @(t : T?) {
-        var fake_out : string
-        let no_resources <- convert("{FIXTURES}/ret42.c", path_join(work_root, "no_resources"), "linux", "/bin/false")
-        t |> equal(no_resources.ok, false, no_resources.das_text)
-        t |> equal(no_resources.error |> find("-print-resource-dir` gave no resource directory") >= 0, true, no_resources.error)
-        // a clang that prints a path but fails is no resource directory either
-        let fake = path_join(work_root, "fake_clang.sh")
-        fwrite(fake, "#!/bin/sh\necho /usr\nexit 3\n")
-        let mode = run_and_capture(["chmod", "+x", fake], fake_out, 10.0)
-        t |> equal(mode, 0, fake_out)
-        let failing <- convert("{FIXTURES}/ret42.c", path_join(work_root, "fake_resources"), "linux", fake)
-        t |> equal(failing.error |> find("-print-resource-dir` gave no resource directory") >= 0, true, failing.error)
+    t |> run("the dumper's libclang pass: an error libclang meets fails the dump with its text") @(t : T?) {
         rejects(t, "libclang_error", "#include \"c2das_no_such_header.h\"\nint main(void) \{ return 0; \}\n", "libclang: ")
     }
     t |> run("a wide string literal fails closed") @(t : T?) {
@@ -2054,8 +2044,12 @@ def p5_lua_library_fixtures(t : T?) {
         let opaque = converts(t, "system_pointer", "#include <stdio.h>\nint main(void) \{ FILE *f = 0; return f != 0; \}\n")
         has_text(t, opaque, "struct _IO_FILE \{\}\n")
         t |> equal(opaque |> find("struct tm") >= 0, false, opaque)
-        // an array of an external record, and the external records one holds by value
-        let nested = converts(t, "system_nested", "#include <sys/time.h>\n#include <time.h>\nint main(void) \{ struct tm a[2]; struct itimerval v; a[1].tm_year = 5; return (int) sizeof(v) != 32 || a[1].tm_year != 5; \}\n")
+        // an array of an external record, and the external records one holds by value: a header
+        // of a folder of `include_dirs` outside the program root
+        let headers = path_join(work_root, "nested_headers")
+        mkdir(headers)
+        fwrite(path_join(headers, "interval.h"), "struct timeval \{ long tv_sec; long tv_usec; \};\nstruct itimerval \{ struct timeval it_interval; struct timeval it_value; \};\n")
+        let nested = converts(t, "system_nested", "#include <interval.h>\n#include <time.h>\nint main(void) \{ struct tm a[2]; struct itimerval v; a[1].tm_year = 5; return (int) sizeof(v) != 32 || a[1].tm_year != 5; \}\n", "\{\"include_dirs\": [\"{headers}\"]\}\n")
         has_text(t, nested, "struct timeval \{\n")
         has_text(t, nested, "struct itimerval \{\n    it_interval, it_value : timeval\n\}\n")
         var out : string
@@ -2275,9 +2269,8 @@ def p5_lua_review_fixtures(t : T?) {
         has_text(t, text, "require c_runtime/c_exit\n")
         // a label before a statement the optimizer folds stands bare
         has_text(t, text, "        label 1:  // L\n        if (DEBUG != 0) \{\n")
-        // a program record holding `struct tm`, and `mbstate_t` with its anonymous union
+        // a program record holding `struct tm`
         has_text(t, text, "struct stamped \{\n    k : int\n    t : tm\n\}\n")
-        has_text(t, text, "    var st : _c___mbstate_t\n")
         has_text(t, text, "    var after : tm? = g + 1\n")
         // errno alone is a crt use: the function takes [c_function]
         has_text(t, text, "[c_function]\ndef private p5_lua_review__errno_now : int \{\n")
@@ -2314,6 +2307,16 @@ def p5_lua_review_fixtures(t : T?) {
             var out : string
             t |> equal(run_tier(converted_path(shape._0), "interp", work_root, out, CONVERTED_MODULES), 0, "{shape._0}: {out}")
         }
+    }
+    t |> run("records of a header outside the program root (a folder of `include_dirs`): one with an anonymous union under a reserved tag, one reached by its members, laid out with the program's") @(t : T?) {
+        let headers = path_join(work_root, "external_headers")
+        mkdir(headers)
+        fwrite(path_join(headers, "ext.h"), "typedef struct \{ int __count; union \{ unsigned int __wch; char __wchb[4]; \} __value; \} __mbstate_t;\ntypedef __mbstate_t mbstate_t;\ntypedef struct \{ int quot; int rem; \} div_t;\n")
+        let text = converts(t, "external_records", "#include <ext.h>\nint printf(const char *, ...);\nint main(void) \{ mbstate_t st; st.__count = 2; st.__value.__wch = 7u; div_t dv; dv.quot = 3; dv.rem = 1; printf(\"%d %d %d %d %d\\n\", (int) sizeof st, st.__count, (int) st.__value.__wchb[0], dv.quot, dv.rem); return 0; \}\n", "\{\"include_dirs\": [\"{headers}\"]\}\n")
+        has_text(t, text, "    var st : _c___mbstate_t\n")
+        var out : string
+        t |> equal(run_tier(converted_path("external_records"), "interp", work_root, out, CONVERTED_MODULES), 0, out)
+        t |> equal(out, "8 2 7 3 1\n")
     }
     p5_lua_review_refusals(t)
     p5_lua_review_dumper(t)
@@ -2372,30 +2375,6 @@ def p5_lua_review_dumper(t : T?) {
         t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
         // C11 7.22.1.4p8 at a 32-bit `long`, ERANGE 34
         t |> equal(out |> find("2147483647 4294967295 4294967295 2147483647 -2147483648 34\n") >= 0, true, out)
-    }
-    t |> run("a main file whose directory holds the clang resource headers converts them as external") @(t : T?) {
-        // a clang whose resource directory is a copy of the builtin headers under the main file's
-        let at = path_join(work_root, "resource_inside")
-        let res_include = path_join(at, "res/include")
-        mkdir_rec(res_include)
-        let real = path_join(get_env_variable("PATH_TO_LIBCLANG"), "lib/clang/22/include")
-        dir(real) $(name) {
-            if (name |> starts_with("std") || name |> starts_with("__std")) {
-                fwrite(path_join(res_include, name), fread(path_join(real, name)))
-            }
-        }
-        let clang = path_join(at, "clang")
-        fwrite(clang, "#!/bin/sh\nif [ \"$1\" = -print-resource-dir ]; then echo {at}/res; exit 0; fi\nexec {default_clang()} -resource-dir {at}/res \"$@\"\n")
-        var chmod_out : string
-        t |> equal(run_and_capture(["chmod", "+x", clang], chmod_out, 30.0), 0, chmod_out)
-        let c_path = path_join(at, "main.c")
-        fwrite(c_path, "#include <stddef.h>\n#include <stdio.h>\nstruct s \{ char c; int m; \};\nint main(void) \{ printf(\"%d\\n\", (int) offsetof(struct s, m)); return (int) sizeof(size_t) - 8; \}\n")
-        let res <- convert(c_path, path_join(at, "out"), "linux", clang)
-        t |> equal(res.ok, true, res.error)
-        t |> equal(res.das_text |> find("max_align_t") >= 0, false, res.das_text)
-        var out : string
-        t |> equal(run_tier(res.das_path, "interp", work_root, out, CONVERTED_MODULES), 0, out)
-        rmdir_rec(at)
     }
 }
 
@@ -2805,12 +2784,14 @@ def p8_input_fixtures(t : T?) {
         has_text(t, text, "def private p8_das_type_names__half2(_c_short8 : int) : int \{")
         has_text(t, text, "let _c_fixed_array : int = ")
     }
-    t |> run("glibc's `assert` without NDEBUG: `__extension__` dropped, its statement expression a block, `__PRETTY_FUNCTION__` and `__func__` the name's literal") @(t : T?) {
+    t |> run("`assert` without NDEBUG is a test and a call of c_assert_fail with the expression's text, the file, the line and `__func__` as the name's literal; with NDEBUG nothing") @(t : T?) {
         var text : string
-        check_fixture(t, "p8_glibc_assert", text)
-        has_text(t, text, "        if (total == 14) \{\n        \} else \{\n            c_assert_fail(cstr(\"total == 14\"), ")
-        has_text(t, text, "cstr(\"int main(void)\"))")
+        check_fixture(t, "p8_assert", text)
+        has_text(t, text, "    if (!(total == 14)) \{\n        c_assert_fail(cstr(\"total == 14\"), ")
+        has_text(t, text, ", cstr(\"main\"))")
         has_text(t, text, "require c_runtime/c_exit")
+        let silent = converts(t, "assert_ndebug", "#define NDEBUG\n#include <assert.h>\nint main(void) \{ int n = 0; assert(n++ > 5); return n; \}\n")
+        t |> success(!(silent |> contains("c_assert_fail")) && !(silent |> contains("n++")), silent)
     }
     t |> run("clock_gettime binds to the crt over a timespec the program lays out: both clocks, an unknown one refused") @(t : T?) {
         var text : string
@@ -2902,7 +2883,7 @@ def p8_refusal_fixtures(t : T?) {
         has_text(t, text, "def private tmpfile__fn() : _IO_FILE? \{\n    return reinterpret<_IO_FILE?>(crt::tmpfile())\n\}\n")
         has_text(t, text, "def private fputs__fn(var a0 : uint8?; var a1 : _IO_FILE?) : int \{\n    return crt::fputs(a0, reinterpret<void?>(a1))\n\}\n")
         // a variadic libc function with no list-taking twin, and an unmapped one, have no value
-        rejects(t, "libc_value_unmapped", "#include <stdio.h>\nint main(void) \{ int (*f)(const char *, ...) = scanf; return f == 0; \}\n", "the value of external function `scanf`")
+        rejects(t, "libc_value_unmapped", "int scanf(const char *, ...);\nint main(void) \{ int (*f)(const char *, ...) = scanf; return f == 0; \}\n", "the value of external function `scanf`")
         // a callback parameter (`qsort`'s comparator) and a c_runtime lowering of its own
         rejects(t, "libc_value_callback", "#include <stdlib.h>\nint main(void) \{ void (*s)(void *, size_t, size_t, int (*)(const void *, const void *)) = qsort; return s == 0; \}\n", "the value of libc function `qsort` (a callback parameter")
     }

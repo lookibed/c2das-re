@@ -28,6 +28,12 @@ let private TABLE_DIR = "predefined"
 
 let private TABLE_EXT = ".defs"
 
+let private INCLUDE_DIR = "include"
+
+//! The table entries no clang predefines: the converter's own statement that it lowers no
+//! variable-length array (C11 6.10.8.3).
+let CONVERTER_ENTRIES <- ["__STDC_NO_VLA__=1"]
+
 let private COMMENT = "#"
 
 let private VARIADIC = "..."
@@ -80,12 +86,20 @@ def is_define(entry : string) : bool {
     return parse_define(entry, parsed)
 }
 
-//! The file of the predefined-macro table of `dialect`, beside this module: relative when the
-//! running script was named by a relative path, so it holds while the working directory does.
-def predefined_path(dialect : string) : string {
+// this module's folder: relative when the running script was named by a relative path, so it
+// holds while the working directory does
+def private module_dir : string {
     let at = get_line_info()
-    return path_join(path_join(dir_name(string(at.fileInfo.name)), TABLE_DIR), dialect + TABLE_EXT)
+    return dir_name(string(at.fileInfo.name))
 }
+
+//! The file of the predefined-macro table of `dialect`, beside this module wherever the converter
+//! runs from.
+def predefined_path(dialect : string) : string => path_join(path_join(module_dir(), TABLE_DIR), dialect + TABLE_EXT)
+
+//! The folder of the own libc headers (`include/ARCHITECTURE.md`), beside this module wherever the
+//! converter runs from.
+def own_include_dir : string => path_join(module_dir(), INCLUDE_DIR)
 
 //! The entries of the table text `text`, in its order: one entry a line as written, an empty line
 //! and a line starting with `#` skipped. `error` names `path` and the line of the first line that

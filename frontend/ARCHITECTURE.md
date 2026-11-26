@@ -2,16 +2,17 @@
 
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
 holds the part of the converter that reads C with no clang behind it. Today that is the libc
-header set under `include/`, which no converter code reads (Dumper A resolves `<...>` in clang's
-own system directories, `converter/ARCHITECTURE_DUMPER.md` section 3), and the macro definitions
-of section 3, which the sidecar reader and Dumper A do read.
+header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
+`converter/ARCHITECTURE_DUMPER.md` section 3), and the macro definitions of section 3, which the
+sidecar reader and Dumper A read.
 
 ## 1. File charters
 
 - `include/` - the own libc header set and its test (`include/ARCHITECTURE.md`). Never a `.das`
   module a converter pass requires.
 - `c_defines.das` - the parser of a macro definition entry and the reader of a predefined-macro
-  table (section 3). The one `.das` module here a converter pass requires.
+  table (section 3), and where this folder's data lies: `predefined_path` and `own_include_dir`.
+  The one `.das` module here a converter pass requires.
 - `predefined/linux.defs`, `predefined/msvc.defs` - the predefined-macro table of each dialect.
 - `tests/test_c_defines.das` - the parser and the reader, and that each table reads clean.
 - `REVIEW.das` - the mechanical gate of section 2, over every `.das` file under this folder.
@@ -61,8 +62,8 @@ sidecar reader accepts a `defines` string by it, and the table reader a line.
 A table is text, one entry a line as written, in a fixed order; an empty line and a line starting
 with `#` are skipped. `read_predefined` refuses, naming the file and the line, a line that is no
 entry (a blank at either end included) and a name a line above defines, and refuses a file that is
-missing or holds no entry. `predefined_path` names a dialect's table beside the module, so the
-converter finds it from wherever it runs.
+missing or holds no entry. `predefined_path` names a dialect's table and `own_include_dir` the
+header set, both beside the module, so the converter finds them from wherever it runs.
 
 The tables are every macro a frontend that reads them defines before the first line: Dumper A
 runs clang under `-undef` and passes the entries as `-D` (`converter/ARCHITECTURE_DUMPER_MACROS.md`),
@@ -73,7 +74,7 @@ one rule: **a table never disagrees with clang.** Every entry has the
 value the pinned clang predefines for that name under the dialect's triple with `-funsigned-char`
 and no `-std` (so the language is clang's default, gnu17: `__STDC_VERSION__` is `201710L`), and
 every name clang predefines there is an entry unless a class below excludes it. The one entry
-clang does not define is `__STDC_NO_VLA__=1` (C11 6.10.8.3), the converter's own statement that it
+clang does not define is `__STDC_NO_VLA__=1` (C11 6.10.8.3; `CONVERTER_ENTRIES`), the converter's own statement that it
 lowers no variable-length array, so a program testing it (wasm3's `M3_HAS_VLA`) takes its
 fixed-size path. The names `-undef` leaves defined (`__STDC__` under the `linux` triple only,
 `__STDC_HOSTED__`, `__STDC_VERSION__`, `__STDC_UTF_16__`, `__STDC_UTF_32__`, the three

@@ -2,18 +2,22 @@
 
 Companion to `ARCHITECTURE.md` in this folder, continuing section 3 of `ARCHITECTURE_DUMPER.md`.
 
-### The macros a unit is preprocessed under {#predefined}
+### The frontend flags a unit is read under {#predefined}
 
-Both clang runs of a unit, the libclang pass and the JSON dump, start with `frontend_macro_flags`:
-`-undef`, so that clang predefines no macro of its own (`__GNUC__`, `__clang__`, `_MSC_VER`); the
-dialect's predefined-macro table (`frontend/ARCHITECTURE.md` section 3) as `-D<entry>` each, in the
-table's order; then `CONVERTER_DEFINES`, which is `__NO_CTYPE` (else glibc's `isalpha(c)` is a macro
-indexing a locale table; with it the crt function). The sidecar's `defines` follow, and a later `-D`
-of a name wins. A table that is missing or malformed fails the dump naming the file. Clang's dump
+Both clang runs of a unit, the libclang pass and the JSON dump, start with `frontend_flags`: the
+dialect's triple; `DUMPER_FLAGS` (`-funsigned-char`, `-w`); `-undef`, so that clang predefines no
+macro of its own (`__GNUC__`, `__clang__`, `_MSC_VER`); the dialect's predefined-macro table
+(`frontend/ARCHITECTURE.md` section 3) as `-D<entry>` each, in the table's order; then `-nostdinc`
+and the own libc headers' folder, canonical, as the one `-isystem` directory (the program's files,
+`ARCHITECTURE_DUMPER.md`). The sidecar's `defines` follow, and a later `-D` of a name wins. A table
+that is missing or malformed fails the dump naming the file, and a missing header folder naming it.
+The converter passes no define of its own and the dumper reads no libc's private spelling of a
+macro: the own `<ctype.h>` declares `isalpha` as the function the crt module binds, and the own
+`<assert.h>` spells `assert` as one conditional expression. Clang's dump
 writes a table macro's token as spelled in `<built-in>`, as it writes its own (the command line is a
 part of that buffer, named only as the `presumedFile`), and libclang gives neither a file, so a
 location reads the same under both. `metrics/criteria_defines.das` preprocesses under the same
-flags; a native build (`tiers.das`, the harnesses) never gets them.
+flags; a native build (`tiers.das`, the harnesses) never gets them and reads the host's libc.
 
 ### Function-like macro expansions {#fn-macros}
 
@@ -27,7 +31,7 @@ the dump already makes:
   program file spells, keyed by the canonical file and offset of its name to the definition it
   used (`register_macro_expansion`), the macros an argument of another call spells included. The
   definition is exact under `#if` variants; a name a body calls resolves to the one definition of
-  that name the unit processed, and to none when there are two. A system header's function-like
+  that name the unit processed, and to none when there are two. An external header's function-like
   macro (`offsetof`, `va_start`, `MAX`) is none of the program's: it is never marked, only its name
   is kept, and a call of it in a body is followed no further (the macro's `uses` are -1, an end
   spelled through it unknown). A system header's object-like macro an expansion spells (`NULL`) is

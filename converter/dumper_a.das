@@ -87,9 +87,9 @@ struct Dumper {
     // the canonical program root (the sidecar's `program_root`, else the main file's directory)
     // with a trailing `/`: a declaration in a file under it belongs to the program
     program_dir : string
-    // clang's resource directory and the system include directories, canonical with a trailing
-    // `/`: a file under one is external though it lies under `program_dir`
-    system_dirs : array<string>
+    // the own libc headers' folder, canonical with a trailing `/`: a file under it is external
+    // though it lies under `program_dir`
+    own_headers_dir : string
     // each file name the dump or libclang spells, made canonical
     canonical_files : table<string; string>
     linkage_names : table<string; string>
@@ -515,22 +515,11 @@ def private canonical_file(var d : Dumper; name : string) : string {
 }
 
 // whether a declaration in file `name` belongs to the program: a file under the program root
-// outside the system directories; every other file (a system header's) is external
+// outside the own libc headers' folder; every other file (a libc header's) is external
 [arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
 def private in_program(var d : Dumper; name : string) : bool {
     let full = canonical_file(d, name)
-    return full |> starts_with(d.program_dir) && !under_system_dir(d, name)
-}
-
-// whether file `name` lies under clang's resource directory or a system include directory
-def private under_system_dir(var d : Dumper; name : string) : bool {
-    let full = canonical_file(d, name)
-    for (dir in d.system_dirs) {
-        if (full |> starts_with(dir)) {
-            return true
-        }
-    }
-    return false
+    return full |> starts_with(d.program_dir) && !(full |> starts_with(d.own_headers_dir))
 }
 
 // the file of a libclang location, as `clang_getExpansionLocation` and its siblings give it
@@ -1090,16 +1079,14 @@ def private register_macro_definition(var d : Dumper; var c : CXCursor) {
 // libclang's `CXTranslationUnit_DetailedPreprocessingRecord`, which dasClangBind exports only as a type
 let private DETAILED_PREPROCESSING_RECORD = 1u
 
-def private collect_records(var d : Dumper; triple : string; resource_dir : string; macro_flags : array<string>; inputs : array<string>) {
-    // libclang finds no resource directory of its own, so the builtin headers (`stddef.h`, whose
-    // `size_t` a libc prototype spells) come from the pinned clang's
-    var args <- ["-target", triple, "-funsigned-char", "-w", "-resource-dir", resource_dir]
-    args |> push_from(macro_flags, inputs)
+def private collect_records(var d : Dumper; frontend : array<string>; inputs : array<string>) {
+    var args : array<string>
+    args |> push_from(frontend, inputs)
     var idx = clang_createIndex(0, 0)
     // the detailed record lists each macro expansion of a file with its definition
     var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, DETAILED_PREPROCESSING_RECORD)
     if (unit != null) {
-        // an error libclang meets (a header the resource directory lacks) leaves records and
+        // an error libclang meets (a header the own set lacks) leaves records and
         // typedefs out of what the pass collects
         for (i in urange(clang_getNumDiagnostics(unit))) {
             var diag = clang_getDiagnostic(unit, i)
@@ -2290,8 +2277,7 @@ def private dump_cast(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : C
 def private dump_unary(var d : Dumper; js : JsonValue?; t : int; at : CirLoc) : CirExpr? {
     let opcode = js?["opcode"] ?? ""
     if (opcode == "__extension__" && child_count(js) == 1) {
-        // GNU `__extension__` only silences pedantic warnings: the operand is the value (glibc's
-        // `assert` without `NDEBUG`)
+        // GNU `__extension__` only silences pedantic warnings: the operand is the value
         return child_expr(d, js?["inner"], 0)
     }
     var op = ""
@@ -4326,44 +4312,6 @@ def private clang_version(clang : string) : string {
     return at < 0 ? first : split(slice(first, at + length("clang version ")), " ")[0]
 }
 
-// the pinned clang's resource directory, "" when it reports none
-def private clang_resource_dir(clang : string) : string {
-    var out : string
-    let rc = run_and_capture([clang, "-print-resource-dir"], out, 30.0)
-    return rc == 0 ? strip(out) : ""
-}
-
-// the resource directory and the directories clang searches for `<...>` under `triple`, as its
-// `-v` lists them but those `CPATH` and `C_INCLUDE_PATH` name, each canonical with a trailing `/`
-// (a main file in `/root` holds the default `/root/libclang`'s resource headers under its own
-// directory)
-[arch(at="ARCHITECTURE_DUMPER.md#file-policy")]
-def private system_dirs(clang, triple, resource_dir : string) : array<string> {
-    var dirs : array<string>
-    dirs |> push(get_full_file_name(resource_dir) + "/")
-    var out : string
-    if (run_and_capture([clang, "-target", triple, "-E", "-x", "c", "-v", "/dev/null", "-o", "/dev/null"], out, 30.0) != 0) {
-        return <- dirs
-    }
-    let user_dirs <- user_path_dirs()
-    var listing = false
-    for (text in split(out, "\n")) {
-        let entry = strip(text)
-        if (entry |> starts_with("#include <...> search starts here")) {
-            listing = true
-        } elif (entry |> starts_with("End of search list")) {
-            listing = false
-        } elif (listing && !empty(entry)) {
-            let full = get_full_file_name(entry)
-            let dir = full |> ends_with("/") ? full : full + "/"
-            if (!empty(full) && !has_value(user_dirs, dir)) {
-                dirs |> push(dir)
-            }
-        }
-    }
-    return <- dirs
-}
-
 // C allows several file-scope declarations of one object (tentative definitions); the one
 // with the initializer wins and the others add nothing
 def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
@@ -4391,29 +4339,38 @@ def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
 def default_clang : string =>
     has_env_variable("PATH_TO_LIBCLANG") ? get_env_variable("PATH_TO_LIBCLANG") + "/bin/clang" : "clang"
 
-//! The define every clang run of the dumper passes after the dialect's table and before the
-//! sidecar's: glibc's <ctype.h> spells `isalpha(c)` as a macro indexing its locale table
-//! (`__ctype_b_loc`) unless `__NO_CTYPE` is defined, with it each is the libc function the crt
-//! module binds
-let CONVERTER_DEFINES <- ["-D__NO_CTYPE"]
+//! The flags of every clang run of the dumper's frontend besides the target, the macros and the
+//! include path: plain `char` is unsigned under both dialects, and no warning is read.
+let DUMPER_FLAGS <- ["-funsigned-char", "-w"]
 
 //! The file of the predefined-macro table `target` is dumped under, its dialect's.
 def predefined_table(target : CirTarget) : string => predefined_path(is_msvc(target) ? "msvc" : "linux")
 
-//! The macro flags every clang run of the dumper's frontend starts with: `-undef`, which drops
-//! clang's own predefined macros, the entries of the predefined-macro table file `table_path` as
-//! `-D<entry>` each in the table's order, then `CONVERTER_DEFINES`. `error` names a table that is
-//! missing or malformed.
+//! The flags every clang run of the dumper's frontend starts with: `target`'s triple,
+//! `DUMPER_FLAGS`, `-undef`, which drops clang's own predefined macros, the entries of the
+//! predefined-macro table file `table_path` as `-D<entry>` each in the table's order, then
+//! `-nostdinc` and the own libc headers' folder `include_dir`, canonical, as the one `-isystem`
+//! directory. `error` names a table that is missing or malformed, or a folder that is missing.
 [arch(at="ARCHITECTURE_DUMPER_MACROS.md#predefined")]
-def frontend_macro_flags(table_path : string; var error : string&) : array<string> {
+def frontend_flags(target : CirTarget; table_path, include_dir : string; var error : string&) : array<string> {
     var flags : array<string>
     let entries <- read_predefined(table_path, error)
-    if (empty(error)) {
-        flags |> push("-undef")
-        flags |> push_from([for (entry in entries); "-D{entry}"], CONVERTER_DEFINES)
+    if (!empty(error)) {
+        return <- flags
     }
+    if (!stat(include_dir).is_dir) {
+        error = "{include_dir}: no such folder of the own libc headers"
+        return <- flags
+    }
+    let headers = get_full_file_name(include_dir)
+    flags |> push_from(["-target", target.triple], DUMPER_FLAGS, ["-undef"])
+    flags |> push_from([for (entry in entries); "-D{entry}"], ["-nostdinc", "-isystem", headers])
     return <- flags
 }
+
+//! `frontend_flags` of `target` over its dialect's table and the own libc headers' folder.
+def dumper_frontend_flags(target : CirTarget; var error : string&) : array<string> =>
+    frontend_flags(target, predefined_table(target), own_include_dir(), error)
 
 // the sidecar's `defines`, `include_dirs` and `include_files` as clang flags, `-D<entry>`, `-I<dir>`
 // and `-include <file>` each
@@ -4428,25 +4385,8 @@ def private input_flags(inputs : DumpInputs) : array<string> {
     return <- flags
 }
 
-// the folders `CPATH` and `C_INCLUDE_PATH` name, canonical with a trailing `/`: clang's `-v` lists
-// them with its own `<...>` folders, yet they hold the user's headers, never the system's
-def private user_path_dirs : array<string> {
-    var dirs : array<string>
-    for (name in ["CPATH", "C_INCLUDE_PATH"]) {
-        if (has_env_variable(name)) {
-            for (entry in split(get_env_variable(name), ":")) {
-                let full = empty(entry) ? "" : get_full_file_name(entry)
-                if (!empty(full)) {
-                    dirs |> push(full |> ends_with("/") ? full : full + "/")
-                }
-            }
-        }
-    }
-    return <- dirs
-}
-
 // the top-level declarations of the dump `js` the program owns, dumped into `d.tu.decls`; a `.c`
-// file outside the program root and the system directories fails the dump naming it
+// file outside the program root fails the dump naming it
 def private dump_top_level(var d : Dumper; js : JsonValue?) {
     let top = js?["inner"]
     // clang declares a library function implicitly where the unit first names it, a block-scope
@@ -4464,7 +4404,7 @@ def private dump_top_level(var d : Dumper; js : JsonValue?) {
             continue
         }
         if (!in_program(d, at.file)) {
-            if (at.file |> ends_with(".c") && !under_system_dir(d, at.file)) {
+            if (at.file |> ends_with(".c")) {
                 fail(d, "{at.file} is a C file outside the program root {d.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root", at)
                 break
             }
@@ -4613,28 +4553,23 @@ def dump_tu(var d : Dumper; c_path : string; target : CirTarget; clang : string;
     d.va_names |> insert(VA_BUILTIN)
     d.tu_prefix = ident_of(slice(d.tu.tu, 0, max(find(d.tu.tu, "."), 0)))
     d.tu.producer = "c2das-dumper-a 0.1 / clang {clang_version(clang)}"
-    let resource_dir = clang_resource_dir(clang)
-    if (empty(resource_dir)) {
-        d.error = "`{clang} -print-resource-dir` gave no resource directory; libclang needs it for the builtin headers"
-        return
-    }
-    d.system_dirs <- system_dirs(clang, target.triple, resource_dir)
-    if (!in_program(d, c_path)) {
-        d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under a folder clang searches for system headers"
-        return
-    }
-    let macro_flags <- frontend_macro_flags(predefined_table(target), d.error)
+    let frontend <- dumper_frontend_flags(target, d.error)
     if (!empty(d.error)) {
         return
     }
+    d.own_headers_dir = get_full_file_name(own_include_dir()) + "/"
+    if (!in_program(d, c_path)) {
+        d.error = "the main file {get_full_file_name(c_path)} is no file of the program: it lies outside the program root {d.program_dir} or under the own libc headers' folder {d.own_headers_dir}"
+        return
+    }
     let flags <- input_flags(inputs)
-    collect_records(d, target.triple, resource_dir, macro_flags, flags)
+    collect_records(d, frontend, flags)
     if (!empty(d.error)) {
         return
     }
     var out : string
-    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only", "-w", "-funsigned-char", "-target", target.triple]
-    dump_args |> push_from(macro_flags, flags, [c_path])
+    var dump_args <- [clang, "-Xclang", "-ast-dump=json", "-fsyntax-only"]
+    dump_args |> push_from(frontend, flags, [c_path])
     let rc = run_and_capture(dump_args, out, 120.0)
     if (rc != 0) {
         d.error = "clang exited {rc}:\n{out}"

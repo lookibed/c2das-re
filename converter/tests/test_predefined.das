@@ -27,12 +27,6 @@ let private EXCLUDED <- [
     (title = "atomics", names = ["__ATOMIC_*", "__GCC_ATOMIC_*", "__CLANG_ATOMIC_*", "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_*", "__MEMORY_SCOPE_*"]),
     (title = "other languages", names = ["__OBJC_*", "__OPENCL_*"])]
 
-// the entries no clang defines: the converter's own statement
-let private CONVERTER_OWN <- ["__STDC_NO_VLA__=1"]
-
-// the flags of every clang run of the dumper besides its macros
-let private DUMPER_FLAGS <- ["-funsigned-char", "-w"]
-
 // the exclusion class of `name`, "" when it has none
 def private excluded_as(name : string) : string {
     for (group in EXCLUDED) {
@@ -45,12 +39,19 @@ def private excluded_as(name : string) : string {
     return ""
 }
 
-// the macros clang reports after preprocessing an empty file under `triple` and `flags`
-// (`-E -dM`), each as a table entry `NAME=value` or `NAME(params)=value`, sorted; one line
-// `clang: ...` when it fails or prints anything else
-def private clang_macros(triple : string; flags : array<string>) : array<string> {
-    var argv <- [default_clang(), "-target", triple]
-    argv |> push_from(DUMPER_FLAGS, flags, ["-E", "-dM", "-x", "c", "/dev/null"])
+// the dumper's flags of `dialect` that are neither a macro nor a path, then `more`
+def private plain_flags(dialect : string; more : array<string> = array<string>()) : array<string> {
+    var flags <- ["-target", target_by_name(dialect).triple]
+    flags |> push_from(DUMPER_FLAGS, more)
+    return <- flags
+}
+
+// the macros clang reports after preprocessing an empty file under `flags` (`-E -dM`), each as a
+// table entry `NAME=value` or `NAME(params)=value`, sorted; one line `clang: ...` when it fails or
+// prints anything else
+def private clang_macros(flags : array<string>) : array<string> {
+    var argv <- [default_clang()]
+    argv |> push_from(flags, ["-E", "-dM", "-x", "c", "/dev/null"])
     var out : string
     let rc = run_and_capture(argv, out, 60.0)
     var entries : array<string>
@@ -110,7 +111,7 @@ def test_tables_partition_clang(t : T?) {
     for (dialect in DIALECTS) {
         t |> run("{dialect}: every macro clang predefines is an entry with clang's value or a name of one exclusion class, never both") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            let clang <- clang_macros(target_by_name(dialect).triple, array<string>())
+            let clang <- clang_macros(plain_flags(dialect))
             t |> success(length(clang) > 100, "{dialect}: {clang[0]}")
             for (entry in clang) {
                 let name = name_of(entry)
@@ -124,19 +125,19 @@ def test_tables_partition_clang(t : T?) {
         }
         t |> run("{dialect}: every entry is a macro clang predefines, or the converter's own") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            var inscope clang_names <- names_of(clang_macros(target_by_name(dialect).triple, array<string>()))
+            var inscope clang_names <- names_of(clang_macros(plain_flags(dialect)))
             var own = 0
             for (name, entry in keys(by_name), values(by_name)) {
                 if (!key_exists(clang_names, name)) {
                     own++
-                    t |> success(has_value(CONVERTER_OWN, entry), "{dialect}: `{entry}` is no macro of clang's and none of the converter's own")
+                    t |> success(has_value(CONVERTER_ENTRIES, entry), "{dialect}: `{entry}` is no macro of clang's and none of the converter's own")
                 }
             }
-            t |> equal(own, length(CONVERTER_OWN))
+            t |> equal(own, length(CONVERTER_ENTRIES))
         }
         t |> run("{dialect}: every macro `-undef` leaves is an entry with its value") @(t : T?) {
             var inscope by_name <- table_of(t, dialect)
-            let left <- clang_macros(target_by_name(dialect).triple, ["-undef"])
+            let left <- clang_macros(plain_flags(dialect, ["-undef"]))
             t |> success(length(left) >= 7 && length(left) < 20, "{dialect}: -undef leaves {length(left)}: {left[0]}")
             for (entry in left) {
                 t |> equal(by_name?[name_of(entry)] ?? "{entry}: left by -undef, no entry", canonical(entry), dialect)
@@ -146,7 +147,7 @@ def test_tables_partition_clang(t : T?) {
     t |> run("every name and prefix of an exclusion class matches a macro clang predefines under a dialect") @(t : T?) {
         var all : array<string>
         for (dialect in DIALECTS) {
-            all |> push_from(clang_macros(target_by_name(dialect).triple, array<string>()))
+            all |> push_from(clang_macros(plain_flags(dialect)))
         }
         for (group in EXCLUDED) {
             for (pattern in group.names) {
@@ -160,29 +161,25 @@ def test_tables_partition_clang(t : T?) {
     }
 }
 
-[test(description = "the dumper's macro flags leave clang with the table's macros and the converter's, and no other", timeout = 1200)]
+[test(description = "the dumper's frontend flags leave clang with the table's macros and no other", timeout = 1200)]
 def test_dumper_macro_flags(t : T?) {
     for (dialect in DIALECTS) {
-        t |> run("{dialect}: `-undef`, the table in its order as -D, then the converter's own define; clang takes them with no error") @(t : T?) {
+        t |> run("{dialect}: clang takes the flags with no error and defines the table's entries, each with its value, and nothing else") @(t : T?) {
             var error : string
-            let flags <- frontend_macro_flags(predefined_table(target_by_name(dialect)), error)
+            let flags <- dumper_frontend_flags(target_by_name(dialect), error)
             t |> equal(error, "")
             var table_error : string
             let entries <- read_predefined(predefined_path(dialect), table_error)
-            var expected <- ["-undef"]
-            expected |> push_from([for (entry in entries); "-D{entry}"], CONVERTER_DEFINES)
-            t |> equal(join(flags, "\n"), join(expected, "\n"))
             var defined <- [for (entry in entries); canonical(entry)]
-            defined |> push_from([for (flag in CONVERTER_DEFINES); canonical(slice(flag, 2))])
             sort(defined)
-            let seen <- clang_macros(target_by_name(dialect).triple, flags)
+            let seen <- clang_macros(flags)
             t |> equal(join([for (entry in seen); canonical(entry)], "\n"), join(defined, "\n"))
         }
     }
     t |> run("a table that is missing fails naming its path, and gives no flag to run clang under") @(t : T?) {
         let missing = path_join(test_temp_dir(), "no_such_dialect.defs")
         var error : string
-        let flags <- frontend_macro_flags(missing, error)
+        let flags <- frontend_flags(target_by_name("linux"), missing, own_include_dir(), error)
         t |> equal(error, "{missing}: no such predefined-macro table")
         t |> equal(length(flags), 0)
     }

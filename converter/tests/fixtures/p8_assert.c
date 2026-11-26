@@ -1,6 +1,6 @@
-/* glibc's `assert` without `NDEBUG` (P8.4 (g)): the macro spells `__extension__` over a GNU
-   statement expression after a comma, and `__PRETTY_FUNCTION__` for the failure's message; every
-   assertion here holds, so both builds print the same lines */
+/* `assert` without `NDEBUG` (P8.4 (g)): the own <assert.h> spells one conditional expression over
+   `__assert_fail`, with the expression's text, the file, the line and `__func__`; every assertion
+   here holds, so both builds print the same lines */
 #include <assert.h>
 #include <stdio.h>
 
