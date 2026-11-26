@@ -4270,6 +4270,77 @@ def private clang_version(clang : string) : string {
     return at < 0 ? first : split(slice(first, at + length("clang version ")), " ")[0]
 }
 
+// a field's place in its record's layout: its name, bit offset and, for a bitfield, width
+def private field_layout(name : string; bit_off : int64; bit_w : int; is_bitfield : bool) : string =>
+    is_bitfield ? "{name}@{bit_off}:{bit_w}" : "{name}@{bit_off}"
+
+// a record's layout as one text: clang's size and alignment in bytes, then each field
+def private record_layout(size, align : int64; fields : array<string>) : string => "size {size}, align {align}, fields {join(fields, " ")}"
+
+// the layout of every record definition in a program file under `c`, by `cursor_key`
+def private reference_layouts(var d : Dumper; var c : CXCursor; var layouts : table<string; string>) {
+    clang_visitChildren(c) $(var kid, _parent) {
+        let kind = clang_getCursorKind(kid)
+        if ((kind == CXCursorKind.StructDecl || kind == CXCursorKind.UnionDecl) && clang_isCursorDefinition(kid) != 0u && in_program(d, cursor_loc(kid).file)) {
+            var ct = clang_getCursorType(kid)
+            var inscope fields : array<string>
+            clang_visitChildren(kid) $(var fc, _fp) {
+                if (clang_getCursorKind(fc) == CXCursorKind.FieldDecl) {
+                    let is_bf = clang_Cursor_isBitField(fc) != 0u
+                    fields |> push(field_layout(string(clang_getCursorSpelling(fc)), clang_Cursor_getOffsetOfField(fc), is_bf ? clang_getFieldDeclBitWidth(fc) : 0, is_bf))
+                }
+                return CXChildVisitResult.Continue
+            }
+            layouts[cursor_key(d, kid)] = record_layout(clang_Type_getSizeOf(ct), clang_Type_getAlignOf(ct), fields)
+        }
+        return CXChildVisitResult.Recurse
+    }
+}
+
+// The layout guard: every record the unit defines in a program file is laid out by clang under
+// `frontend`, the dumper's flags, as it is under clang's own predefined macros (`frontend` less
+// `-undef` and the table's `-D` entries, the same include path and `inputs`). A record whose
+// size, alignment or a field's offset or width differs, or that the second pass does not define,
+// fails the dump: a layout attribute behind a test of a name the table does not hold would
+// otherwise be lost with no error.
+[arch(at="ARCHITECTURE_DUMPER_MACROS.md#layout-guard")]
+def private check_layouts(var d : Dumper; frontend : array<string>; inputs : array<string>) {
+    var args <- [for (flag in frontend); flag; where flag != "-undef" && !(flag |> starts_with("-D"))]
+    args |> push_from(inputs)
+    var inscope layouts : table<string; string>
+    var stopped : string
+    var idx = clang_createIndex(0, 0)
+    var unit = clang_parseTranslationUnit(idx, d.c_path, unsafe(addr(args[0])), length(args), null, 0u, 0u)
+    if (unit != null) {
+        for (i in urange(clang_getNumDiagnostics(unit))) {
+            var diag = clang_getDiagnostic(unit, i)
+            let severity = clang_getDiagnosticSeverity(diag)
+            if (empty(stopped) && (severity == CXDiagnosticSeverity.Error || severity == CXDiagnosticSeverity.Fatal)) {
+                stopped = string(clang_formatDiagnostic(diag, clang_defaultDiagnosticDisplayOptions()))
+            }
+            clang_disposeDiagnostic(diag)
+        }
+        reference_layouts(d, clang_getTranslationUnitCursor(unit), layouts)
+        clang_disposeTranslationUnit(unit)
+    }
+    clang_disposeIndex(idx)
+    let hint = "a sidecar `defines` entry selects the arm for both"
+    for (key, ridx in keys(d.record_by_loc), values(d.record_by_loc)) {
+        assume rec = d.records[ridx]
+        if (!in_program(d, rec.at.file)) {
+            continue
+        }
+        var inscope fields <- [for (f in rec.fields); field_layout(f.name, f.bit_off, f.bit_w, f.is_bitfield); where !empty(f.name) || f.is_bitfield]
+        let ours = record_layout(rec.size, rec.align, fields)
+        if (!key_exists(layouts, key)) {
+            let why = empty(stopped) ? "" : " (that pass met an error: {stopped})"
+            fail(d, "`{rec.c_spelling}` is defined under the dialect's predefined macros and not under clang's own{why}; {hint}", rec.at)
+        } elif (layouts?[key] ?? "" != ours) {
+            fail(d, "`{rec.c_spelling}` is laid out as [{ours}] under the dialect's predefined macros and as [{layouts?[key] ?? ""}] under clang's own: a layout attribute behind a compiler test; {hint}", rec.at)
+        }
+    }
+}
+
 // C allows several file-scope declarations of one object (tentative definitions); the one
 // with the initializer wins and the others add nothing
 def private merge_tentative(var d : Dumper; var cd : CirDecl?) : bool {
@@ -4541,6 +4612,10 @@ def dump_tu(var d : Dumper; c_path : string; target : CirTarget; clang : string;
     }
     let flags <- input_flags(inputs)
     collect_records(d, frontend, flags)
+    if (!empty(d.error)) {
+        return
+    }
+    check_layouts(d, frontend, flags)
     if (!empty(d.error)) {
         return
     }

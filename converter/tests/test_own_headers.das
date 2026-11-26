@@ -145,3 +145,58 @@ def test_frontend_flags(t : T?) {
     t |> equal(error, "{missing}: no such folder of the own libc headers")
     t |> equal(length(flags), 0)
 }
+
+// a record whose attribute `attr` stands behind `#ifdef <guard>`, and a `main` that uses it
+def private guarded_record(guard, attr : string) : string =>
+    "#ifdef {guard}\n#define ATTR __attribute__(({attr}))\n#else\n#define ATTR\n#endif\nstruct rec \{ char c; int v; \} ATTR;\nint main(void) \{ struct rec r; r.v = 1; return r.v - 1; \}\n"
+
+// `source` converted under `linux` as `<dir>/<name>.c`, `sidecar` beside it when given
+def private guard_convert(dir, name, source, sidecar : string) : ConvertResult {
+    let c_path = path_join(dir, "{name}.c")
+    fwrite(c_path, source)
+    if (!empty(sidecar)) {
+        fwrite(path_join(dir, "{name}.c2das"), sidecar)
+    }
+    return <- convert(c_path, path_join(dir, name), "linux")
+}
+
+[test(description = "the layout guard: a record laid out one way under the table and another under clang's own macros, or defined under the table alone, fails the dump; a sidecar define selects the arm", timeout = 1200)]
+def test_layout_guard(t : T?) {
+    var dir_error : string
+    let dir = create_temp_directory("c2das_layout_guard", dir_error)
+    t |> equal(dir_error, "")
+    t |> run("`packed` behind `__clang__` is refused, naming the record, its place and both layouts") @(t : T?) {
+        let conv <- guard_convert(dir, "clang_packed", guarded_record("__clang__", "packed"), "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("clang_packed.c:6:8: `struct rec` is laid out as [size 8, align 4, fields c@0 v@32] under the dialect's predefined macros and as [size 5, align 1, fields c@0 v@8] under clang's own"), conv.error)
+        t |> success(conv.error |> contains("a sidecar `defines` entry selects the arm for both"), conv.error)
+    }
+    t |> run("`aligned` behind `__clang__` is refused: the alignment and the size differ") @(t : T?) {
+        let conv <- guard_convert(dir, "clang_aligned", guarded_record("__clang__", "aligned(16)"), "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("as [size 16, align 16, fields c@0 v@32] under clang's own"), conv.error)
+    }
+    t |> run("`packed` behind `__GNUC__` holds under both: the dump keeps the packed record") @(t : T?) {
+        let conv <- guard_convert(dir, "gnu_packed", guarded_record("__GNUC__", "packed"), "\{\"marshal\": [\"rec\"]\}\n")
+        t |> success(!(conv.error |> contains("laid out as")), conv.error)
+        t |> success(conv.cir_text |> contains("\"size\": 5"), conv.cir_text)
+    }
+    t |> run("a sidecar define of the tested name gives both passes one arm") @(t : T?) {
+        let conv <- guard_convert(dir, "defined_packed", guarded_record("__clang__", "packed"), "\{\"defines\": [\"__clang__\"], \"marshal\": [\"rec\"]\}\n")
+        t |> success(!(conv.error |> contains("laid out as")), conv.error)
+        t |> success(conv.cir_text |> contains("\"size\": 5"), conv.cir_text)
+    }
+    t |> run("a record defined under the table and not under clang's macros is refused; one defined under clang's alone is no record of the program") @(t : T?) {
+        let table_only <- guard_convert(dir, "table_only", "#ifndef __clang__\nstruct only \{ int v; \};\n#endif\nint main(void) \{ return 0; \}\n", "")
+        t |> equal(table_only.ok, false, table_only.das_text)
+        t |> success(table_only.error |> contains("table_only.c:2:8: `struct only` is defined under the dialect's predefined macros and not under clang's own"), table_only.error)
+        let clang_only <- guard_convert(dir, "clang_only", "#ifdef __clang__\nstruct never \{ char c; int v; \} __attribute__((packed));\n#endif\nstruct both \{ int v; \};\nint main(void) \{ struct both b; b.v = 0; return b.v; \}\n", "")
+        t |> equal(clang_only.ok, true, clang_only.error)
+    }
+    t |> run("an error the second pass meets is quoted beside a record it does not define") @(t : T?) {
+        let conv <- guard_convert(dir, "stopped", "#ifdef __clang__\n#include <c2das_no_such.h>\n#else\nstruct late \{ int v; \};\n#endif\nint main(void) \{ return 0; \}\n", "")
+        t |> equal(conv.ok, false, conv.das_text)
+        t |> success(conv.error |> contains("`struct late` is defined under the dialect's predefined macros and not under clang's own (that pass met an error: ") && conv.error |> contains("'c2das_no_such.h' file not found"), conv.error)
+    }
+    rmdir_rec(dir)
+}

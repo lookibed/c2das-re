@@ -19,6 +19,23 @@ part of that buffer, named only as the `presumedFile`), and libclang gives neith
 location reads the same under both. `metrics/criteria_defines.das` preprocesses under
 the `linux` dialect's flags whatever dialect a unit is converted under (the criteria are measured on `linux` conversions); a native build (`tiers.das`, the harnesses) never gets them and reads the host's libc.
 
+### The layout guard {#layout-guard}
+
+A program can hide a layout attribute behind a test of a name the table does not hold (`#ifdef
+__clang__` around `__attribute__((packed))`); under the table it would lose the attribute and
+convert with another layout, with no error. So after the libclang pass the dumper parses the unit a
+second time (`check_layouts`) under clang's own predefined macros: the same triple, `DUMPER_FLAGS`,
+include path and sidecar flags, without `-undef` and the table's `-D` entries. The records compared
+are those the first pass registered from a program file, the records of the converted program, each
+found in the second pass by the file and offset of its definition; an own libc header's record is
+no program record. A record whose size, alignment, or a field's name, bit offset or bitfield width
+differs fails the dump naming the record, its place and both layouts, and so does one the second
+pass does not define (a definition under `#ifndef __clang__`; an error that pass met is quoted
+beside it). A record only the second pass defines is no record of the converted
+program and is not compared. The message names the way out: a sidecar `defines` entry, which both
+passes get, selects one arm for both. The second parse reads no preprocessing record and makes no
+JSON, so it is always on: probed over Lua (33 units), PureDOOM (126) and wasm3 (1), it takes under 1% of the dump (0.3 s of 53 s, 0.8 s of 84 s, 0.1 s of 25 s).
+
 ### Function-like macro expansions {#fn-macros}
 
 The dumper marks every expansion of a function-like macro of the program whose node it can name, in
