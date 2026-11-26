@@ -62,6 +62,7 @@ void calls(char c, float f, short s) {
     g_fn(1, 2);
     memset_like(&c, 0, 1);
     __builtin_memset(&c, 0, 1);
+    __builtin_memset(&c, add(c, 1), 1);
 }
 
 int conditions(int *p, double d, char c) {
@@ -116,6 +117,7 @@ char *decay_string(void) {
 struct bits {
     unsigned low : 3;
     int whole;
+    unsigned full : 32;
 };
 
 typedef __builtin_va_list va_list;
@@ -133,7 +135,7 @@ long n;
 }
 
 int kr_call(char c) {
-    return kr(0) + (int)kr_long(c);
+    return kr(0) + (int)kr_long(c) + kr(0, c);
 }
 
 int members(struct bits s, struct bits *ps) {
@@ -165,6 +167,10 @@ int loops(char c) {
     for (char i = 0; i < c; (void)(i += 1)) {
         s += i;
     }
+    for (; c;) {
+        break;
+    }
+    s -= 1;
     do {
         s--;
     } while (c);
@@ -179,4 +185,26 @@ int loops(char c) {
 int counter(void) {
     static long count = 1;
     return count;
+}
+
+int ops(char c, int *p, short s) {
+    return ~c + *p + (c & s) + (c | s) + (c ^ s) + (c != s) + (c == s) + (c > s) + (c <= s) + (c >= s);
+}
+
+long chains(int i) {
+    long e = RED;
+    long v = add(1, 2);
+    long x = (int)i;
+    long long w = (long long)x;
+    return e + v + w;
+}
+
+int nulls(int *p) {
+    return p != (void *)0;
+}
+
+long wide(struct bits s, struct bits *ps) {
+    long f = s.full;
+    int g = ps->low + 1;
+    return f + g;
 }

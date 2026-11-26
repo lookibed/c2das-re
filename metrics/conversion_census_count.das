@@ -557,6 +557,34 @@ def census_lines(c : ConversionCensus) : array<string> {
     return <- [for (k in keys_sorted); "{c.n?[k] ?? 0}\t{k}"]
 }
 
+//! A unit's counts as lines of a counts file: its `unit` line, then `census_lines`.
+def unit_lines(unit : string; c : ConversionCensus) : array<string> {
+    var lines <- ["unit\t{unit}"]
+    lines |> push_from(census_lines(c))
+    return <- lines
+}
+
+//! The counts of the counts file `text` (`unit_lines` of each unit) added into `c`, a unit whose
+//! name `seen` already holds skipped, so a unit two programs link is counted once; each unit read is
+//! added to `seen`.
+def add_counts_file(var c : ConversionCensus; var seen : table<string>; text : string) {
+    var counting = true
+    for (line in split(text, "\n")) {
+        if (line |> starts_with("unit\t")) {
+            let unit = slice(line, length("unit\t"))
+            counting = !key_exists(seen, unit)
+            seen |> insert(unit)
+            continue
+        }
+        var name : string
+        var ok : bool
+        let n = read_census_line(line, name, ok)
+        if (ok && counting) {
+            c.n[name] += n
+        }
+    }
+}
+
 //! The count and key of a line of `census_lines`; `ok` is false for a line of another shape.
 def read_census_line(line : string; var key : string&; var ok : bool&) : int {
     let tab = find(line, "\t")

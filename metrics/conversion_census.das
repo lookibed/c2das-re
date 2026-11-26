@@ -99,13 +99,6 @@ def private cir_files(folder : string) : array<string> {
     return <- found
 }
 
-// a unit's counts as lines of a counts file: its `unit` line, then `census_lines`
-def private unit_lines(unit : string; c : ConversionCensus) : array<string> {
-    var lines <- ["unit\t{unit}"]
-    lines |> push_from(census_lines(c))
-    return <- lines
-}
-
 // the program `key` converted under `folder` and every unit's C-IR counted into `lines`, each
 // file removed once read; `failures` takes the conversion's error and each file that does not read
 def private read_program(key, folder : string; var lines, failures : array<string>) {
@@ -187,22 +180,8 @@ def private run_batch(keys : array<string>; jobs : int; var failed : array<strin
 def private gather(row : Row; var failures : array<string>) : CensusRow {
     var out = CensusRow(name = row.name)
     var seen : table<string>
-    var counting = true
     for (key in row.keys) {
-        for (line in fexist(counts_path(key)) ? split(fread(counts_path(key)), "\n") : array<string>()) {
-            if (line |> starts_with("unit\t")) {
-                let unit = slice(line, length("unit\t"))
-                counting = !key_exists(seen, unit)
-                seen |> insert(unit)
-                continue
-            }
-            var name : string
-            var ok : bool
-            let n = read_census_line(line, name, ok)
-            if (ok && counting) {
-                out.c.n[name] += n
-            }
-        }
+        out.c |> add_counts_file(seen, fexist(counts_path(key)) ? fread(counts_path(key)) : "")
         for (line in fexist(failures_path(key)) ? split(fread(failures_path(key)), "\n") : array<string>()) {
             if (!empty(line)) {
                 failures |> push("{row.name}: {replace(line, "\t", ": ")}")

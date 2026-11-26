@@ -21,14 +21,16 @@ writes the raw counts.
   it), in eight workers that each take every eighth id (csmith in 48, since a seed's dump is a
   hundred times a test's and a worker's heap grows with each dump). A worker leaves only `counts.tsv` (a `unit`
   line per unit, then its counts) and `failures.tsv` under `work/conversion_census/<key>/`; the
-  driver adds a row's units, a unit two inputs share counted once. `--reuse` prints the tables from
+  driver adds a row's units through `add_counts_file`, a unit two inputs share counted once. `--reuse` prints the tables from
   the files already written; `--c <file>` prints the tables of one C file.
 - `conversion_census_count.das` - the counting (section 2) and the tables: `census_tu` counts one
   unit, `census_c_file` dumps a C file under the `linux` dialect and counts it, `census_cir_file`
-  counts a C-IR file; `census_lines` and `read_census_line` are a counts file's lines;
-  `render_set` is a row's report and `render_json` the raw counts.
+  counts a C-IR file; `census_lines` and `read_census_line` are a counts file's lines,
+  `unit_lines` a unit's block of them and `add_counts_file` the sum of a file's units, each unit
+  once; `render_set` is a row's report and `render_json` the raw counts.
 - `tests/test_conversion_census.das` over `tests/fixtures/conversion_census.c`, a C file with one
-  function per counted context.
+  function per counted context; its counts are clang's own casts of the file (`-Xclang -ast-dump`)
+  less the case label's, which the C-IR folds.
 
 ## 2. What a cast is counted under
 
