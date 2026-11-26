@@ -15,7 +15,8 @@ the plan's PP.6 grows from it.
   (`compare_tokens`), the corpora (`corpus_units`), the list of reference failures
   (`reference_failures`, `reference_failure`, section 3), a set's run (`run_set`) and the command
   line's run (`OracleArgs`, `run_oracle`); and the directive oracle of section 4
-  (`compare_unit_pp2`, `pp2_tokens`, `pragma_lines`, `pp2_class`, `run_set_pp2`, `run_pp2`). The clang it runs
+  (`compare_unit_pp2`, `pp2_tokens`, `pragma_lines`, `pp2_differences`, `pp2_difference_class`,
+  `pp2_class`, `clang_macro_names`, `run_set_pp2`, `run_pp2`). The clang it runs
   and its flags are Dumper A's (`default_clang`, `dumper_frontend_flags`, `DUMPER_FLAGS` of
   `converter/dumper_a.das`): the oracle preprocesses as the converter does.
 - `run.das` - the command line's entry, its arguments parsed into `run_oracle`; from the repository
@@ -23,16 +24,17 @@ the plan's PP.6 grows from it.
   header of `frontend/include/`), `--corpus c-testsuite` (the fetched single-exec suite), `--corpus gcc-torture` (the fetched
   `execute` folder's own units), `--corpus pp2` (the directive fixtures), units
   named after the flags, `--raw`, `--pp2` (section 4), `--show N`, `--work <folder>` (default `compare/work/pp`, under
-  the gitignored `compare/work/`). It prints each unit that differs with its first differences, a
-  line per set and the total; exit 0 when no unit differs.
+  the gitignored `compare/work/`). An unknown corpus, or one whose folder is missing - a suite not
+  fetched - is an error and exit 1, never an empty set. It prints each unit that differs with its
+  first differences, a line per set and the total; exit 0 when no unit differs.
 - `fixtures/edge_tokens.c` - the edge cases of `frontend/pp_lexer.das` as one unit with no
   directive: pp-numbers, UCNs, prefixes, every punctuator and digraph, `::`, raw strings, OTHER
   characters, splices, comments. `fixtures/bom_tokens.c` - a byte order mark and leading blanks,
   compared raw.
 - `fixtures/pp2/` - the directive oracle's units (`*.c`) and the headers they include: include
   guards in both spellings, a file that is no guard, `#pragma once`, `#line` and a line marker,
-  nested conditionals with directives in skipped groups, pragmas and the null directive. None uses
-  a macro.
+  nested conditionals with directives in skipped groups, pragmas and the null directive, `#import`,
+  `#ident` and `#sccs`. None uses a macro.
 - `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
   (section 3).
 - The tests are `compare/tests/test_pp_oracle.das`.
@@ -83,14 +85,33 @@ under the flags of section 2 and its output token-dumped as there, and PP.2 read
 through the `fio` provider with the same macros and include path (`pp2_setup`: the `linux`
 table's entries, the own headers' folder, canonical). `-P` output has lines and columns of its
 own, so a token is compared by its kind, its spelling and `at_bol` only. Clang prints each pragma
-it keeps as a `#pragma` line of its output, which its token dump takes as a pragma, not tokens;
-PP.2 keeps a pragma in its ledgers, not its stream. So the oracle counts the `#pragma` lines of
-the `-E` output (`pragma_lines`) against PP.2's pragma and pack entries.
+it keeps, and each `#ident` or `#sccs`, as a `#pragma` or `#ident` line of its output, which its
+token dump takes as a directive, not tokens; PP.2 keeps them in its ledgers, not its stream. So
+the oracle counts those lines of the `-E` output (`pragma_lines`) against PP.2's pragma and pack
+entries.
 
-PP.2 expands no macro and evaluates only the simplest `#if`, so a unit is classed (`pp2_class`):
-clean when the streams, the pragma counts and PP.2's errors all agree; needs PP.3 when the first
-difference comes at or after PP.2's first token naming a defined macro, or an `#include` or
-`#line` is left to PP.3's expansion; needs PP.4 when it comes at or after the first `#if` left to
-PP.4; and differs otherwise - a difference before either, a pragma count apart, or an error of
-PP.2's own. Only a unit that differs fails the run; a unit clang refuses is a reference failure, listed or
+A macro clang expands shifts every later token, so the two streams are aligned, not compared
+position by position: `pp2_differences` takes Myers' shortest edit script by kind, spelling and
+`at_bol`, and a difference is each run between matched tokens. Past 2000 edits the search gives
+up and the rest of the streams is one difference. Every difference is classed
+(`pp2_difference_class`), so one past a macro is still seen:
+
+- needs PP.4 when PP.2 left an `#if` or `#elif` to PP.4 at a place the difference spans - an
+  insertion or deletion counted over every place it can slide to among equal tokens - or a token
+  of PP.2's side stands in a group chosen past such an `#if` (`PpCond.undecided`), or PP.2's side
+  names a macro clang defines (`clang -E -dM`, `clang_macro_names`) that PP.2 had not defined
+  there, past such a place, as its definition sits in a group PP.4 chooses;
+- needs PP.3 when PP.2's side names a macro PP.2 defined there, or one of clang's builtin macros
+  (`__LINE__`, `__FILE__`, `_Pragma`, the `__has_*` family), or an `#include` or `#line` was
+  left to PP.3's expansion at a place it spans;
+- differs otherwise: a difference before every macro use, or whose tokens are no macro's, is
+  PP.2's own.
+
+A unit's class (`pp2_class`) is the latest its differences wait for, raised to needs PP.3 or PP.4
+by a place left to either with no difference; it differs when one difference differs, when PP.2
+has an error of its own - an error naming PP.3 or PP.4, or met while a group PP.4 chooses was
+open, is not its own - or when the pragma counts disagree with nothing left to PP.4 to explain them
+(or to PP.3, when clang has more: `_Pragma` in an expansion). Each unit not clean prints its count
+of differences of each class, every difference that differs and `--show` of each other class.
+Only a unit that differs fails the run; a unit clang refuses is a reference failure, listed or
 unlisted as section 3 counts it, in this mode too.

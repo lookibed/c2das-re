@@ -11,7 +11,8 @@ hides a lexer defect turns the oracle's zero into a claim nothing checked.
 `DUMPER_FLAGS`), never writes its own.** Two flag sets compare the lexer against a preprocessing
 the converter never runs.
 
-**A diff to the directive oracle's classes (`pp2_class`) puts a unit in a PP.3 or PP.4 class only
-when its first difference comes at or after what PP.3 or PP.4 must answer (section 3), never by a
-count.** A unit whose difference precedes every macro name and every `#if` left to PP.4 is a PP.2
-defect, and a class that took it would hide it.
+**A diff to the directive oracle's classes (`pp2_difference_class`, `pp2_class`) classes every
+difference on its own, never a unit by its first difference or by a count, and puts a difference
+in a PP.3 or PP.4 class only when a macro token or a place left to PP.3 or PP.4 lies in it (section
+4).** A difference with no macro and no `#if` left to PP.4 is a PP.2 defect, wherever it stands,
+and a class that took it would hide it.
