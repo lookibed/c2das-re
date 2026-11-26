@@ -4473,8 +4473,9 @@ def private check_layouts(var d : Dumper; frontend : array<string>; inputs : arr
         laid_out[length(d.records) + eidx] = LaidOut(loc = loc, name = d.enums[eidx].spelling, at = d.enum_ats?[loc] ?? CirLoc())
     }
     for (item in laid_out) {
-        // a record met twice has one place
-        continue if (empty(item.loc))
+        // a record met twice has one place; clang's own builtin record (`__va_list_tag`) stands in
+        // no file and is the same under any macros
+        continue if (empty(item.loc) || empty(item.at.file))
         let mine = d.layouts.by_loc?[item.loc] ?? -1
         if (mine < 0) {
             fail(d, "`{item.name}`: the layout guard found no definition at its place", item.at)

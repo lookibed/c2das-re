@@ -32,7 +32,8 @@ identity: a record a program defines under that name is a record of both passes.
 **The set.** Every record the dump lays out and every enum it defines: the records and enums of
 the program's files, and each record of an external header the program holds by value, reaches a
 member of or sizes, which the libclang pass registers with them (the program's files, section 3).
-A definition only the second pass holds is no part of the converted program and is not compared.
+A definition only the second pass holds is no part of the converted program and is not compared,
+and neither is clang's own builtin record (`struct __va_list_tag`), which stands in no file.
 
 **The key.** `collect_layouts` walks each parse alike and names every definition: a named record or
 enum, a typedef-named one included, by its tag spelling (`struct S`, `struct T`), so one

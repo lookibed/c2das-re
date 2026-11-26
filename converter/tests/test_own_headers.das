@@ -221,6 +221,10 @@ def test_layout_guard_keys(t : T?) {
         t |> equal(placed.ok, false, placed.das_text)
         t |> success(placed.error |> contains("is defined under the dialect's predefined macros and not under clang's own"), placed.error)
     }
+    t |> run("clang's builtin `__va_list_tag`, which a variadic function's `va_list` reaches, stands in no file and is not compared") @(t : T?) {
+        let conv <- guard_convert(dir, "va_builtin", "#include <stdarg.h>\nstatic int sum(int n, ...) \{ va_list ap; va_start(ap, n); int s = 0; for (int i = 0; i < n; i++) s += va_arg(ap, int); va_end(ap); return s; \}\nint main(void) \{ return sum(2, 1, 2) - 3; \}\n", "")
+        t |> equal(conv.ok, true, conv.error)
+    }
     t |> run("a tag two blocks define is found by its place: both definitions stand in both passes") @(t : T?) {
         let conv <- guard_convert(dir, "block_tags", "static int one(void) \{ struct s \{ int a; \} v; v.a = 1; return v.a; \}\nstatic int two(void) \{ struct s \{ char c; \} v; v.c = 1; return v.c; \}\nint main(void) \{ return one() - two(); \}\n", "")
         t |> equal(conv.ok, true, conv.error)
