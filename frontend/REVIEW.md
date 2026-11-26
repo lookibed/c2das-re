@@ -34,3 +34,19 @@ ledgers no token stream shows.
 and never expands a macro outside the hooks PP.3 and PP.4 fill (`ARCHITECTURE_PP.md` sections 8
 and 11).** A pragma lost there never reaches the C-IR's ledger, and an expansion here would be a
 second expander beside PP.3's.
+
+**A diff to `c_tokens.das` or `c_parser.das` never makes a token or a node allocate on its own -
+the allocation tests of `tests/test_c_tokens.das` and `tests/test_c_parse_expr.das` are never
+loosened.**
+
+**A diff that makes `c_tokens.das` or `c_parser.das` reject an input ends it with one error at a
+token's place, `file:line:col: ...`: a construct it does not take as `<construct> is not parsed`,
+malformed input as `expected <what>, got <token>` - never a tree built past the error, a guess, or
+a panic. Each new error message has a test with its exact text and place.**
+
+**A diff that adds a loop to `c_parser.das` makes each turn consume a token or end at the first
+error; one that adds a recursion a run of tokens can repeat makes it open a nesting level
+(`enter`), so the bound of `ARCHITECTURE_PARSER.md` section 19 holds; one that adds frames between
+two levels re-measures that section's bytes per level and keeps `tests/test_c_parse_expr.das`'s
+costliest form at the bound.** Malformed input must end, and deep input must end in a refusal, not
+a stack overflow.
