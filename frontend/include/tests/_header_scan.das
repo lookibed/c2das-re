@@ -267,8 +267,6 @@ def private scan_directive(var scan : HeaderScan; var state : FileState; at, lin
     state.seen_code = true
     if (!key_exists(DIRECTIVES, directive)) {
         scan_error(scan, at, line, "a directive is one of #ifndef, #ifdef, #if, #else, #endif, #undef, #define and #include")
-    } elif (line |> ends_with("\\")) {
-        scan_error(scan, at, line, "a directive is one line")
     } elif (directive == "ifndef" && is_first && rest == guard_of(state.header)) {
         state.guard = rest
         state.guard_wants_define = true

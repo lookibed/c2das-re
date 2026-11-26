@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require daslib/rtti
+require crt
 require _header_scan
 require ../../../converter/emit.das
 
@@ -30,7 +31,7 @@ let private HOST_ONLY_CONSTANT = "LONG_BITS"
 //! The macros the headers read that the compiler predefines (`ARCHITECTURE.md`, the predefined
 //! names): the list a compiler run without its own predefined macros has to be given.
 let PREDEFINED <- [
-    "__CHAR_BIT__", "__DBL_DIG__", "__DBL_EPSILON__", "__DBL_MANT_DIG__", "__DBL_MAX_10_EXP__", "__DBL_MAX_EXP__",
+    "__CHAR_BIT__", "__CHAR_UNSIGNED__", "__DBL_DIG__", "__DBL_EPSILON__", "__DBL_MANT_DIG__", "__DBL_MAX_10_EXP__", "__DBL_MAX_EXP__",
     "__DBL_MAX__", "__DBL_MIN_10_EXP__", "__DBL_MIN_EXP__", "__DBL_MIN__", "__FLT_DIG__", "__FLT_EPSILON__",
     "__FLT_MANT_DIG__", "__FLT_MAX_10_EXP__", "__FLT_MAX_EXP__", "__FLT_MAX__", "__FLT_MIN_10_EXP__", "__FLT_MIN_EXP__",
     "__FLT_MIN__", "__FLT_RADIX__", "__INT64_TYPE__", "__INT_MAX__", "__LONG_LONG_MAX__", "__LONG_MAX__",
@@ -256,6 +257,30 @@ def test_headers_match_crt(t : T?) {
     }
 }
 
+// every line that defines the macro `name`, `|` between them
+def private defined_as(scan : HeaderScan; name : string) : string =>
+    join([for (define in scan.defines); define.text; where define.name == name], " | ")
+
+[test(description = "the macro of an integer crt constant has the value the loaded crt holds")]
+def test_headers_constant_values(t : T?) {
+    t |> run("an integer crt constant's macro is defined once, as the value crt holds") @(t : T?) {
+        let scan <- scan_headers()
+        let values <- [
+            "CLOCKS_PER_SEC ((clock_t) {crt::CLOCKS_PER_SEC})", "RAND_MAX {crt::RAND_MAX}", "EDOM {crt::EDOM}",
+            "ERANGE {crt::ERANGE}", "EINVAL {crt::EINVAL}"]
+        for (value in values) {
+            t |> equal(defined_as(scan, split(value, " ")[0]), value)
+        }
+        var integers : array<string>
+        module_for_each_global(get_module("crt")) $(info) {
+            if (info.basicType != Type.tDouble) {
+                integers |> push(clone_string(info.name))
+            }
+        }
+        t |> equal(length(integers), length(values) + 1, "the integer constants of crt, {HOST_ONLY_CONSTANT} among them: {join(integers, " ")}")
+    }
+}
+
 // a header `t.h` of the lines `body` inside its include guard
 def private guarded(body : string) : string => "#ifndef _T_H\n#define _T_H\n{body}#endif\n"
 
@@ -290,13 +315,13 @@ def test_header_scanner(t : T?) {
         let malformed = fixed_array(
             "size_t strlen(const char *s);", "int f();", "int f(..., int);", "int f(...);", "int  f(void);",
             " int f(void);", "int f(void) ;", "int f(int (*)(int));",
-            "int f(void);\t", "int f(void); ", "#pragma once", "#include_next <stdio.h>", "#include \"stdio.h\"", "#define",
-            "#define M(a) \\", "/* open", "/* a */ int x;", "// c", "struct tm;", "static int x;", "int x;", "\};", "#endif",
+            "int f(void);\t", "int f(void); ", "#pragma once", "#include_next <stdio.h>", "#include stdio.h", "#include <>", "#define", "#define 1X 2",
+            "int 1f(void);", "int *(void);", "/* open", "/* a */ int x;", "// c", "struct tm;", "static int x;", "int x;", "\};", "#endif",
             "#else", "#define _T_H", "typedef int a_t;", "struct s \{")
         for (line in malformed) {
             let scan <- scan_text("int ok(void);\n{line}\n")
             t |> equal(length(scan.errors), 1, line)
-            t |> success(length(scan.errors) == 1 && (scan.errors[0] |> starts_with("t.h:2: ") || line == "struct s \{"), line)
+            t |> success(length(scan.errors) == 1 && (scan.errors[0] |> starts_with("t.h:2: ")), line)
             t |> equal(length(scan.prototypes), 1, line)
         }
     }
@@ -305,16 +330,18 @@ def test_header_scanner(t : T?) {
 [test(description = "the scanner reads a typedef as its declared type and a type through its typedefs")]
 def test_header_types(t : T?) {
     t |> run("a prototype over a type that is none is one error at its line") @(t : T?) {
-        for (line in fixed_array("int f(int x);", "int f(const int);", "int f(struct tm);", "wint_t f(void);", "int f(size_t);")) {
+        for (line in fixed_array("int f(int x);", "int f(const int);", "int f(struct tm);", "wint_t f(void);", "int f(size_t);", "extern int f(void);")) {
             let scan <- scan_text("int ok(void);\n{line}\n")
             t |> equal(length(scan.errors), 1, line)
             t |> success(length(scan.errors) == 1 && scan.errors[0] |> starts_with("t.h:2: `f`: ") && scan.errors[0] |> ends_with(" is no type the headers declare"), line)
+            t |> equal(length(scan.objects), 0, line)
         }
     }
     t |> run("a typedef is one declaration of a rigid form, declared once") @(t : T?) {
         let malformed = fixed_array(
             "typedef __SIZE_TYPE__ size_t; int unsupported(void);", "typedef int a_t, b_t;", "typedef int *p_t;", "typedef int;",
-            "typedef a_t;", "typedef int a_t[2", "typedef struct \{ int a; \} s_t;", "typedef int (*f_t)(int)(int;", "typedef int ok_t;")
+            "typedef a_t;", "typedef int a_t[2", "typedef 1 a_t[2];", "typedef struct \{\} (*f_t)(int);",
+            "typedef int x_t; typedef void (*f_t)(int);", "typedef int (*f_t)(int)(int;", "typedef int ok_t;", "struct a b \{")
         for (line in malformed) {
             let scan <- scan_text(guarded("typedef int ok_t;\n{line}\n"))
             t |> equal(length(scan.errors), 1, line)
@@ -351,6 +378,11 @@ def test_header_conditionals(t : T?) {
         t |> equal(join(both.errors, "\n"), "")
         t |> equal(join(both.macros, " "), "assert A C")
         t |> equal(join(both.defined, " "), "assert A A assert B C")
+        for (line in fixed_array("#else B", "#else\n#else")) {
+            let scan <- scan_text("#ifdef A\n#define X 1\n{line}\n#define X 1\n#endif\n")
+            t |> equal(length(scan.errors), 1, "{line}: {join(scan.errors, " | ")}")
+            t |> success(!empty(scan.errors) && find(scan.errors[0], ": an #else is the one of a conditional") > 0, line)
+        }
         for (dead in fixed_array("#if 0\n#define EDOM 33\n#endif\n", "#if 0\n#define EDOM 33\n#else\n#endif\n", "#if 0\n#else\n#define EDOM 33\n#endif\n", "#if 0\n#define EDOM 33\n#else\n#define ERANGE 34\n#endif\n")) {
             let scan <- scan_text(dead)
             t |> equal(length(scan.errors), 1, dead)
@@ -372,10 +404,12 @@ def test_header_conditionals(t : T?) {
         }
     }
     t |> run("a record member is indented and plain, and a record left open is an error") @(t : T?) {
-        for (member in fixed_array("int a;", "    int a", "    int (*f)(void);", "    struct \{")) {
+        for (member in fixed_array("int a;", "    int a", "    int (*f)(void);", "    struct \{", "    \} x;")) {
             let scan <- scan_text(guarded("struct s \{\n{member}\n\};\n"))
             t |> equal(length(scan.errors), 1, member)
         }
+        let unclosed <- scan_text("#ifdef A\n#define X 1\n")
+        t |> equal(join(unclosed.errors, "\n"), "t.h: a conditional is open at the end of the file")
         let open <- scan_text("#ifndef _T_H\n#define _T_H\nstruct s \{\n    int a;\n")
         t |> equal(join(open.errors, "\n"), "t.h: a record is open at the end of the file\nt.h: a conditional is open at the end of the file")
     }
@@ -427,7 +461,7 @@ def test_header_macros(t : T?) {
         let hiding = fixed_array(
             "#define HIDE /*", "#define END */", "#define A 1 // x", "#include <a//b.h>", "#if 0 /* x", "#undef A /* x", "int f(void); /* x",
             "int f(void); // x", "/*/", "/* a */ */", "#define S \"abc", "#define S \"a\" \"", "#include \"a.h\"", "extern char *s = \"a\";",
-            "#define C 'a'", "#define C '", "int f(void);\\", "/* c */\\", "#define A 1 ??/", "#define A `", "#define A @", "#define A $")
+            "#define C 'a'", "#define C '", "int f(void);\\", "/* c */\\", "#define M(a) \\", "#define A 1 ??/", "#define A `", "#define A @", "#define A $")
         for (line in hiding) {
             var inscope scan <- scan_text("int ok(void);\n{line}\nint also(void);\n")
             t |> equal(length(scan.errors), 1, "{line}: {join(scan.errors, " | ")}")

@@ -23,7 +23,12 @@
 #define ULONG_MAX (__LONG_MAX__ *2UL+1UL)
 #define ULLONG_MAX (__LONG_LONG_MAX__*2ULL+1ULL)
 
+#ifdef __CHAR_UNSIGNED__
 #define CHAR_MIN 0
 #define CHAR_MAX UCHAR_MAX
+#else
+#define CHAR_MIN SCHAR_MIN
+#define CHAR_MAX __SCHAR_MAX__
+#endif
 
 #endif
