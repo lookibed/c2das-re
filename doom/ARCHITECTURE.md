@@ -23,7 +23,8 @@ folder is the repository's GPL-2 subtree: the patch and the host carry PureDOOM'
 - `doom_sources.das` - the program's sources (section 2): `UNITS`, `program_sources`, the folder of
   the fetched units and the sidecar's path.
 - `doom.c2das` - the sidecar (section 5).
-- `harness.das` - the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
+- `harness.das` - `PATCHES`, the patches of `patches/` in the order they apply (a test holds it to
+  the folder and to the reference logs' headers), and the checks and formats `run.das` applies: the pins read from `VERSIONS.md`,
   `fetch_problems` (the checkout off the pin, a patch not applied, the wad missing or of another
   hash), `missing_units`, `tic_checksum` and `frame_checksum` (the patch's formulas), `tic_lines`
   and `non_tic_lines`, the one reader of a run's or a log's tic lines, `timed_gametics`,

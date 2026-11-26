@@ -55,7 +55,7 @@ def private run_stand_in(t : T?; root, hunk : string; var out : string&) : int {
     return run_tier(path_join(root, "out/stand.das"), "interp", path_join(root, "run"), out, CONVERTED_MODULES, 300.0)
 }
 
-[test]
+[test(description = "patch 0005 gives the retail IWAD path its NUL byte: the unpatched hunk writes one byte past its block, the patched one stays inside it", timeout = 1200)]
 def test_doomu_wad_path(tt : T?) {
     let file = "src/DOOM/d_main.c"
     let pre = hunk_images(PATCH_0005, false)?[file] ?? ""

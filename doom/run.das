@@ -29,7 +29,6 @@ require ../perf/perf_lanes.das
 
 let WORK = "doom/work"
 let NATIVE = "doom/work/native/doom"
-let PATCHES <- ["doom/patches/0001-per-tic-checksum.patch", "doom/patches/0002-tic-trace.patch", "doom/patches/0003-signed-ticcmd.patch", "doom/patches/0004-fine-table-overruns.patch", "doom/patches/0005-doomu-wad-path.patch"]
 // the define of the patch's trace lines, the folder of the traces --trace runs write
 let TRACE_DEFINE = "DOOM_TIC_TRACE"
 // the define of the patch's tic lines and checksums, which the speed builds leave out

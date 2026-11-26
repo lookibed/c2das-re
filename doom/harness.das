@@ -248,6 +248,11 @@ def without_define(sidecar, define : string; var error : string&) : string {
     return head |> ends_with(",") ? slice(head, 0, length(head) - 1) + after : before + after
 }
 
+//! The patches of `doom/patches/`, in the order they apply to the release: every `.patch` file of
+//! the folder, and no other (`tests/test_harness.das` holds the list to the folder). `--fetch-check`
+//! checks each is applied, and a reference log's header names each with its sha256.
+let PATCHES <- ["doom/patches/0001-per-tic-checksum.patch", "doom/patches/0002-tic-trace.patch", "doom/patches/0003-signed-ticcmd.patch", "doom/patches/0004-fine-table-overruns.patch", "doom/patches/0005-doomu-wad-path.patch"]
+
 //! The patches a reference log's header names: each path with its sha256, joined by ` + `.
 def patch_list(patches : array<string>) : string => join([for (patch in patches); "{patch} (sha256 {file_sha256(patch)})"], " + ")
 
