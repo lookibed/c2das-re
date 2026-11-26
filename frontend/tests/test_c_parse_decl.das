@@ -59,6 +59,7 @@ def test_specifiers(t : T?) {
         t |> equal(decls("_Alignas(16) int al; _Alignas(T) char c;"), "(decl 0 [(alignas_expr (int 16)) (spec int)] [(init_decl (d_name al) - -)]) (decl 0 [(alignas_type (type_name [(typedef_name T)] -)) (spec char)] [(init_decl (d_name c) - -)])")
         t |> equal(decls("__attribute__((unused)) static int u;"), "(decl 0 [(attribute __attribute__((unused))) (spec static) (spec int)] [(init_decl (d_name u) - -)])")
         t |> equal(decls("__extension__ __extension__ long long ll;"), "(decl 1 [(spec long) (spec long)] [(init_decl (d_name ll) - -)])")
+        t |> equal(decls("_Complex int ci;"), "(decl 0 [(spec _Complex) (spec int)] [(init_decl (d_name ci) - -)])")
     }
     t |> run("`_Thread_local` and `__thread` beside `static` or `extern`, a storage class repeated") @(t : T?) {
         t |> equal(decls("_Thread_local static int t; __thread extern int u; __thread int v;"),

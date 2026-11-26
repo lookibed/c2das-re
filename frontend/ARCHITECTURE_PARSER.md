@@ -95,10 +95,12 @@ The parser checks the type specifiers of a list as it reads them, by C11 6.7.2p2
 bit of a set (a second `long` its own bit; a typedef name, a tag and `typeof` one bit for all), and
 the set must stay inside one of the largest sets that combine, `SPEC_SETS`: `void`; `char` with
 `signed` or `unsigned`; `short`, `int` and either sign; `long`, `long`, `int` and either sign;
-`float` with `_Complex`; `long`, `double` and `_Complex`; `_Bool`; a typedef name, a tag or
+each integer set with GNU's `_Complex` too; `float` with `_Complex`; `long`, `double` and
+`_Complex`; `_Bool`; a typedef name, a tag or
 `typeof` alone. A specifier already in the set, or one that takes the set outside them all, is an
 error at its token, `expected a type specifier that combines with those before it` (`(int int)`,
-`(short double)`, `(T int)`, `(int struct S)`). `_Complex` alone stays, as GNU C takes it. A list
+`(short double)`, `(T int)`, `(int struct S)`, `(_Complex _Bool)`). `_Complex` alone stays, as
+clang takes it for `_Complex double`. A list
 with no type specifier at all (`(const)`, `(_Alignas(8))`, a parameter `register x`) is refused,
 `a specifier list with no type specifier is not parsed`: C99 has no implicit `int`. So no
 combination check is left for the type pass.
