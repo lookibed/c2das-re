@@ -3,6 +3,7 @@ converter/tests/fixtures/** linguist-vendored
 converter/tests/external/** linguist-vendored
 perf/kernels/** linguist-vendored
 metrics/tests/fixtures/*.c linguist-vendored
+compare/pp/fixtures/** linguist-vendored
 suites/**/fetch/** linguist-vendored
 suites/**/work/** linguist-generated
 doom/** linguist-vendored

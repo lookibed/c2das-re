@@ -18,15 +18,16 @@ named): the way a pull request runs only the suites its diff touches (`AGENTS.md
 tests` runs the lane alone), `--skip <gate>` drops one. `PREFLIGHT_BASE` names the diff base
 (default `origin/main`; the root commit when that ref is absent). The format, lint and compile
 gates cover the `.das` files under the folders `das_dirs` in the script lists, outside `fetch/`
-and `work/`; a folder of house `.das` code outside that list is a defect of the script.
+and `work/` (`PREFLIGHT_DAS_DIRS` replaces that list, the hook `tests/test_preflight.das` drives the
+lint gate with); a folder of house `.das` code outside that list is a defect of the script.
 
 | Gate | What it runs | Red means |
 |---|---|---|
-| env | `scripts/verify_daslang.sh` | the toolchain lacks a part, or `DASLANG_ROOT` is behind the `VERSIONS.md` pin |
+| env | `scripts/verify_daslang.sh`, then `scripts/fetch_dasflex.sh` (dasFlex into `fetch/dasFlex/` at its `VERSIONS.md` pin, the module folder `das` loads) | the toolchain lacks a part, `DASLANG_ROOT` is behind the `VERSIONS.md` pin, or the dasFlex checkout has local changes |
 | native | `scripts/build_crt.sh` | `dasCRuntime/` (the `crt` module) does not build against `DASLANG_ROOT` |
 | untracked | `git ls-files --others --exclude-standard` | an untracked file exists: commit it, ignore it with a reason, or delete it |
 | format | `utils/das-fmt/dasfmt.das -- --verify` per `.das` file of every `.das` folder outside `fetch/` and `work/`; the first unformatted file is named | a file is not formatted: run the formatter (MCP `format_file` or the CLI) |
-| lint | `utils/lint/main.das` over every `.das` folder outside `fetch/` and `work/`, LINT019 off | a finding: fix it; a `// nolint:CODE` needs its reason and is for a known false positive only |
+| lint | `utils/lint/main.das` over every `.das` folder outside `fetch/` and `work/`, LINT019 off, under `DAS_LOG_LEVEL=warning` (any output is read as findings, and a compile's LOG_INFO lines are none) | a finding: fix it; a `// nolint:CODE` needs its reason and is for a known false positive only |
 | compile | `daslang -compile-only` per `.das` outside `fixtures/`, `fetch/` and `work/` | a file does not compile |
 | ast-verify | `daslang -dry-run --ast-verify` per changed `.das` outside `fixtures/` | an AST verify line or a crash: a bug in what built the node |
 | md-ascii | added lines of every `REVIEW*.md`, `ARCHITECTURE*.md`, `CLAUDE.md` and `AGENTS.md` in the tree and of `skills/internal/*.md` (`docs/` is never checked) | an em-dash, arrow or ellipsis in one of them |

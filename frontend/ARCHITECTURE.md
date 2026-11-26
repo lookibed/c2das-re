@@ -3,8 +3,9 @@
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
 holds the part of the converter that reads C with no clang behind it. Today that is the libc
 header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
-`converter/ARCHITECTURE_DUMPER.md` section 3), and the macro definitions of section 3, which the
-sidecar reader and Dumper A read.
+`converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
+sidecar reader and Dumper A read, and the first stage of Dumper C's preprocessor, the pp-token
+lexer of section 4, which no converter pass calls yet.
 
 ## 1. File charters
 
@@ -14,6 +15,11 @@ sidecar reader and Dumper A read.
   table (section 3), and where this folder's data lies: `predefined_path` and `own_include_dir`.
   The one `.das` module here a converter pass requires.
 - `predefined/linux.defs`, `predefined/msvc.defs` - the predefined-macro table of each dialect.
+- `pp_lexer.das` - the preprocessing-token lexer (section 4): translation phases 1 and 2, the
+  pp-token rules, the placing of a token in its original file. Requires dasFlex's `flex/flex_macro`.
+- `tests/test_pp_lexer.das` - every token class and edge case of section 4, the placing through
+  splices, interning, and the no-allocation probe over a real header. The clang comparison lives
+  outside this folder: `compare/pp/` (section 2).
 - `tests/test_c_defines.das` - the parser and the reader, and that each table reads clean.
 - `tests/_own_header_names.das` - `header_names`, the headers of `include/` as a program includes
   them, for the header tests of `include/tests/` and of `converter/tests/` (repo root); a `require`
@@ -50,7 +56,8 @@ here that reaches it. Under the folder itself a file is a `.das` file, which is 
 or `.md` file or a `.defs` table of `predefined/`, which hold no daslang; any other file (`.inc`,
 `.das.inc`, a `.defs` elsewhere) is a finding, since daslang can load it as source and the gate
 does not read it. A module that a module folder or daslib
-resolves (`strings`, `daslib/fio`, `crt`) has no file beside the requirer and is not followed.
+resolves (`strings`, `daslib/fio`, `crt`, dasFlex's `flex/...`) has no file beside the requirer and
+is not followed; dasFlex's `flex/` modules name no spawner and require no `cbind`.
 `include/tests/test_headers.das` requires `converter/emit.das` for the emitter's libc tables, and
 the gate walks that file and the converter modules it requires.
 
@@ -107,3 +114,103 @@ Excluded, by what the name states, each class a list of names and prefixes in th
 | CPU features | `__SSE*`, `__MMX__`, `__FXSR__`, `__k8`, `__k8__`, `__tune_*`, `__SEG_*`, `__seg_*` | no intrinsic header is in the own set, and no intrinsic or segment is lowered |
 | atomics | `__ATOMIC_*`, `__GCC_ATOMIC_*`, `__CLANG_ATOMIC_*`, `__GCC_HAVE_SYNC_COMPARE_AND_SWAP_*`, `__MEMORY_SCOPE_*` | a converted program has one thread, and the own set has no `<stdatomic.h>` |
 | other languages | `__OBJC_*`, `__OPENCL_*` | the input is C |
+
+## 4. The pp-token lexer {#pp-lexer}
+
+`pp_lexer.das` turns one file's bytes into C11 preprocessing tokens (6.4), one at a time: `pp_open`
+takes the bytes and a file id, `pp_next` reads the next token into `lx.tok` and answers false at the
+end, and `pp_next_header_name` reads one token with a header name allowed, for the token after
+`#include`. Nothing is materialized past the current token, so a directive line is read as tokens
+as they come. A token is its kind (`PpTok`), the file id, its byte offset and length in the file as
+read, its line and byte column (both from 1), `has_space`, `at_bol` and, for an identifier, its
+symbol. Its bytes are read on request: `pp_spelling` builds the string, `pp_spelling_is` compares
+in place.
+
+The scanner is dasFlex's: `[flex(flags = true)]` builds the automaton when the module compiles and
+gives the two flags; dasFlex is fetched at its `VERSIONS.md` pin into `fetch/dasFlex/` and loaded
+as a module folder, never copied here. Nothing allocates per token. An identifier's rule interns
+its bytes in the lexer's interner, which builds a name's string only when `pp_symbol_text` asks;
+a token is fields of the lexer, rewritten by each `pp_next`. A name is one symbol for the whole life of
+the lexer: `pp_open` on the next file keeps the interner, so the same name in two files has the same
+symbol, and the file id is the caller's. A name spelled with a UCN and the same name in UTF-8 are
+two symbols: the interner compares bytes.
+
+### Translation phases 1 and 2 {#pp-phases}
+
+`pp_open` skips a UTF-8 byte order mark at offset 0, as clang and gcc do: the first token keeps its
+byte offset and column (4) and has no space. It replaces no trigraph, as clang does by default
+under gnu17. A lone `\r` (no `\n` after it) is a newline to clang, in the line count and wherever a
+newline ends a token, so `pp_open` turns it into `\n`, one byte for one. It removes every line
+splice - a backslash, any blanks, then `\n`, `\r\n` or a lone `\r`; the blanks are clang's and gcc's
+extension - before the scanner runs, since a scanner rule that skipped one would set `has_space`
+and one that matched across it would need it in every pattern. A file with neither is lexed in
+its own bytes: `pp_open` takes the array over (`<-`), and one byte of spare capacity
+(`pp_read_file` leaves it) holds the scanner's end zero without a reallocation. A file with either
+is copied once into a working buffer, and a table records, per removed splice, the file offset of
+its backslash, the buffer offset where the bytes after it start and their offset in the file.
+
+A token is placed back through that table: the splices before its first byte give its file offset
+(the buffer offset plus their removed bytes) and its line (the buffer line plus their count, each
+splice removing one newline); its column is the buffer column, or, when a splice lies on the same
+buffer line before it, the distance from the byte after that splice's newline. The splices before
+its last byte give its end, so a token split by a splice (`in\` newline `t`) is one token at the
+offset of `i`, its length counting the splice. A token whose first byte comes right after a splice
+starts at that splice's backslash, where clang places it. The table is walked forward with the tokens, so
+placing costs no search; a file without splices pays a field copy per token.
+
+### The rules {#pp-tokens}
+
+The rule list is C11 6.4's pp-token grammar with clang's choices where the standard leaves one:
+
+- an identifier takes ASCII letters, digits, `_`, `$`, UCNs and the UTF-8 code points of C11
+  Annex D (D.2's not first), clang's C11 table; every identifier is IDENTIFIER, keywords included;
+- a pp-number (6.4.8) is a digit or a dot and a digit, then digits, letters, `_`, dots, UCNs,
+  Annex D code points and an exponent sign after `e`, `E`, `p` or `P`: `1..2`, `.5e`, `12abc` and
+  `1é` are one token each, `1$` is `1` then `$`;
+- a character constant takes the prefixes `L`, `u`, `U` (`u8'c'` is `u8` then `'c'` before C23)
+  and one character at least, a string literal those prefixes and `u8`; a backslash escapes any
+  one character, as clang lexes an unknown escape; an unterminated literal is one OTHER token to
+  the end of its line, a backslash ending the file included, and `''` is one OTHER token, as in
+  clang;
+- a raw string literal, `R"delim(...)delim"` with the string prefixes, is one STRING_LITERAL, a
+  newline inside it included: clang 22 takes it under gnu17. Its end repeats the delimiter, which
+  no regular expression can match, so the `R"` rule's action reads the delimiter (up to 16
+  printable ASCII bytes but a blank, `(`, `)` and `\`) and scans the bytes for `)delim"`. As in
+  clang, a malformed delimiter makes the token OTHER through the next `"`, and a raw string nothing
+  closes is OTHER to the end of the file;
+- every punctuator of 6.4.6, `#` and `##` among them, and `::`, which clang 22 lexes as one token
+  under gnu17, the longest first; the six digraphs, which clang takes under gnu17, have the kind of
+  the punctuator they spell and keep their spelling;
+- a header name only in `pp_next_header_name`'s condition, which ends with its token;
+- a NUL byte is whitespace, as clang takes it;
+- any other code point is one OTHER token (6.4p3), and a byte that starts no UTF-8 character is
+  one too, with a diagnostic (`lx.diags`) at its file offset. dasFlex's `.` checks a lead byte and
+  its count of continuation bytes, which is wider than valid UTF-8: it admits a surrogate
+  (`ED A0..BF`), an overlong form (`E0 80..9F`, `F0 80..8F`) and a code point past U+10FFFF
+  (`F4 90..BF`). The `.` rule's action checks the second byte after such a lead and cuts the token
+  back to the lead, so each byte of the sequence is an OTHER token with a diagnostic, as clang
+  splits it;
+- an unterminated block comment ends the file with a diagnostic at its `/*`.
+
+Two of clang's choices stay unfollowed. The identifier rule takes any UCN whole, so a UCN naming
+a code point outside Annex D (`a\u00A0b`), or an Annex D.2 one (a combining mark) first
+(`\u0301x`), is part of an identifier here, while clang makes that UCN an OTHER token of its own.
+A line splice inside a raw string is removed here, while clang keeps the raw string's bytes as
+written: the spelling differs, the token does not.
+
+### The token flags across comments {#pp-flags}
+
+`has_space` is set when any skipped text - whitespace, a newline or a comment - lies between a
+token and the one before it: it is dasFlex's flag, the token's start against the previous token's
+end. Clang's `LeadingSpace` differs after a newline, which clang does not count: a token first on
+its line has `StartOfLine` and no `LeadingSpace` unless blanks precede it on that line. The oracle
+maps the one onto the other (`compare/pp/ARCHITECTURE.md#flags`). `at_bol` is set for the first
+token of a file and a token a newline separates from the previous one. A block comment is one space
+(phase 3), so a newline inside it does not set `at_bol`: `x /*` newline `*/ # y` holds no directive
+in clang or gcc. The `/*` rule's action skips the comment itself, scanning the bytes for `*/`, and
+moves dasFlex's `prev_end_line` by the lines the comment spans, so the next token's line is
+compared with the comment's last line. A comment opening after a newline still leaves the next
+token at the start of its line, as the space it stands for would. The action leaves the start
+condition alone, so a comment before a header name keeps `pp_next_header_name`'s condition; with no
+`*/` it moves to the end of the file and stops the scanner as failed (dasFlex's `failed` and
+`err`), its token still the `/*`, which `pp_next` places for the diagnostic.

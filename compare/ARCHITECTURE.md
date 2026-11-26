@@ -59,8 +59,11 @@ daslang; this repository never builds it inside a test and never vendors it.
   with its sidecar, an `nm` and a translator the test writes, and `--lua --lua-from` run to its end
   over them, never reading the fetched Lua release; `test_projects.das`, the real projects over a
   stand-in project and translator the test writes; `test_compare_render.das`, section 11 over
-  captures the test writes, and `--readme` and `--report` run in a scratch folder; `_common.das`,
-  what they share.
+  captures the test writes, and `--readme` and `--report` run in a scratch folder;
+  `test_pp_oracle.das`, the pp-token oracle of `pp/` over dump text it writes and over its
+  edge-case unit through the pinned clang; `_common.das`, what they share.
+- `pp/` - the pp-token oracle of Dumper C's lexer against clang (`pp/ARCHITECTURE.md`), not a part
+  of the head-to-head: it lives here because it starts clang, which nothing under `frontend/` may.
 - `work/` - gitignored scratch: translations, compilation databases, the runs' builds and each
   case's folder `work/<suite>/<id>/` (the translation `das/`, the run's `run/`, a csmith
   program generated there, the `verdict`), and each perf kernel's `work/perf/<key>/` (the composed

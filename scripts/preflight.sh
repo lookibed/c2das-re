@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
             jobs="$2"; shift ;;
         --list-gates)
             cat <<'TABLE'
-env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin
+env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin; dasFlex fetched at its pin
 native       fast   scripts/build_crt.sh builds dasCRuntime (the crt module) against DASLANG_ROOT
 untracked    fast   `git ls-files --others --exclude-standard` prints nothing
 format       fast   das-fmt --verify over every .das folder (mirrors daScript's CI format gate)
@@ -40,14 +40,18 @@ TABLE
     shift
 done
 wants() { local g="$1"; for s in "${skip[@]:-}"; do [ "$s" = "$g" ] && return 1; done; [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$g" ] && return 0; done; return 1; }
-das_dirs=(); for d in chibicc converter c_runtime compare dasCRuntime doom frontend lua metrics perf ports probes suites tests; do [ -d "$d" ] && das_dirs+=("$d"); done
+# PREFLIGHT_DAS_DIRS replaces the folder list (a space between folders), for a test of the gates
+das_dirs=(); for d in ${PREFLIGHT_DAS_DIRS-chibicc converter c_runtime compare dasCRuntime doom frontend lua metrics perf ports probes suites tests}; do [ -d "$d" ] && das_dirs+=("$d"); done
 # a suite's fetch/ and work/, lua/fetch and lua/work, perf/work and metrics/work hold inputs and converted output, never house code
 das_files() { [ ${#das_dirs[@]} -gt 0 ] && find "${das_dirs[@]}" -type d \( -name fetch -o -name work \) -prune -o -type f -name '*.das' -print | sort; }
 changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-files --others --exclude-standard -- '*.das'; }
 pass() { echo "[PASS] $1"; }
 fail() { echo "[FAIL] $1 - $2"; return 1; }
 skipped() { echo "[SKIP] $1 - $2"; }
-gate_env() { scripts/verify_daslang.sh >/dev/null && pass env || fail env "scripts/verify_daslang.sh names what is missing"; }
+gate_env() {
+    scripts/verify_daslang.sh >/dev/null || { fail env "scripts/verify_daslang.sh names what is missing"; return 1; }
+    scripts/fetch_dasflex.sh >/dev/null && pass env || fail env "scripts/fetch_dasflex.sh cannot put dasFlex at the VERSIONS.md pin"
+}
 gate_native() { local out; out=$(scripts/build_crt.sh 2>&1) && pass native || { echo "$out" | tail -20; fail native "dasCRuntime does not build"; }; }
 gate_untracked() { local u; u=$(git ls-files --others --exclude-standard); [ -z "$u" ] && pass untracked || fail untracked "$(echo "$u" | tr '\n' ' ')"; }
 gate_format() {
@@ -62,7 +66,9 @@ gate_format() {
 gate_lint() {
     [ ${#das_dirs[@]} -gt 0 ] || { skipped lint "no .das folders"; return 0; }
     local files; mapfile -t files < <(das_files)
-    local out; out=$(das "$DASLANG_ROOT/utils/lint/main.das" -- "${files[@]}" --quiet --disable LINT019 2>&1) || { echo "$out" | tail -20; fail lint "findings above"; return 1; }
+    # at env.sh's DAS_LOG_LEVEL=info a compile's own LOG_INFO lines (dasFlex's [flex] scanner shape
+    # on a cold module cache) would print, and the gate reads any output as findings
+    local out; out=$(DAS_LOG_LEVEL=warning das "$DASLANG_ROOT/utils/lint/main.das" -- "${files[@]}" --quiet --disable LINT019 2>&1) || { echo "$out" | tail -20; fail lint "findings above"; return 1; }
     # under --quiet a clean run prints nothing at all (daScript abf1d40e35), else its summary
     { [ -z "$out" ] || echo "$out" | grep -q " 0 issue(s)"; } && pass lint || { echo "$out" | tail -20; fail lint "findings above"; }
 }

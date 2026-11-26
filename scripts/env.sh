@@ -9,6 +9,12 @@ export PATH_TO_LIBCLANG="${PATH_TO_LIBCLANG:-/root/libclang}"
 export DAS_CLANG_INCLUDE="${DAS_CLANG_INCLUDE:-$PATH_TO_LIBCLANG/include}"
 # daslang filters to_log(LOG_INFO) below the default `warning` floor; the tools here report through it
 export DAS_LOG_LEVEL="${DAS_LOG_LEVEL:-info}"
-# every daslang run sees the crt and c_runtime modules: they live here, not under DASLANG_ROOT/modules
+# every daslang run sees the crt and c_runtime modules: they live here, not under DASLANG_ROOT/modules;
+# and dasFlex, the frontend's lexer generator, once scripts/fetch_dasflex.sh fetched it (a missing
+# folder given to -load_module stops daslang before the script, so it is passed only when present)
 C2DAS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-das() { "$DASLANG" -load_module "$C2DAS_ROOT/dasCRuntime" -load_module "$C2DAS_ROOT/c_runtime" "$@"; }
+das() {
+    local flex=()
+    [ -d "$C2DAS_ROOT/fetch/dasFlex" ] && flex=(-load_module "$C2DAS_ROOT/fetch/dasFlex")
+    "$DASLANG" -load_module "$C2DAS_ROOT/dasCRuntime" -load_module "$C2DAS_ROOT/c_runtime" "${flex[@]}" "$@"
+}

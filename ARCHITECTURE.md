@@ -33,7 +33,8 @@ the continuous integration section 7.
 - `compare/` - the head-to-head with the Rust translator lookibed/c2das (ledger item P8.1): the
   module that runs its binary and its translations, and the suites, perf, output-quality and Lua
   comparisons over the same inputs, runners and oracles as this repository's own, recorded in
-  `compare/results_linux.json` (`compare/ARCHITECTURE.md`).
+  `compare/results_linux.json` (`compare/ARCHITECTURE.md`); and `compare/pp/`, the token oracle
+  of `frontend/pp_lexer.das` against clang (`compare/pp/ARCHITECTURE.md`).
 - `docs/` - the normative design, authored in its own repository and copied here whole
   (`docs/overview.md`). Never edited to match code. Beside it, the topic documents the root
   `README.md` links: `overview.md`, `performance.md` (its tables rewritten by `perf/run.das
@@ -41,10 +42,15 @@ the continuous integration section 7.
 - `skills/` - agent instructions: vendored daScript skills (never edited here) and this
   repository's own under `skills/internal/`.
 - `scripts/` - `env.sh` (the toolchain variables and `das`, daslang with both module folders
-  loaded), `verify_daslang.sh`, `preflight.sh`, `sync_daslang_skills.sh` and the runners
+  loaded, and `fetch/dasFlex` once fetched), `verify_daslang.sh`, `fetch_dasflex.sh`,
+  `preflight.sh`, `sync_daslang_skills.sh` and the runners
   `run_suite.sh`, `run_perf.sh` and `run_readability.sh`; `build_c2das_rust.sh` builds the Rust
   translator `compare/` runs, at its `VERSIONS.md` pin. Shell only; anything that reads `.das` is a daslang tool from
   `DASLANG_ROOT`.
+- `fetch/` - gitignored: `fetch/dasFlex/`, the lexer generator `frontend/` builds on, cloned at its
+  `VERSIONS.md` pin by `scripts/fetch_dasflex.sh` (which the preflight `env` gate runs) and loaded
+  as a module folder by `das`; never copied into the tree. `tests/test_fetch_dasflex.das` holds the
+  pin against the checkout, the script's branches over a local origin, and `das`'s module flag.
 - `lua/`, `doom/`, `chibicc/` - the vendored programs, each fetched at a `VERSIONS.md` pin and never
   committed, with their sidecars and harnesses (`docs/implementation_order.md`, P5, P6 and P10):
   `chibicc/` converts the chibicc C compiler (`chibicc/ARCHITECTURE.md`);
