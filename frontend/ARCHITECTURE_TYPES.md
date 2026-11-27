@@ -143,3 +143,9 @@ prototypes with different parameters, arrays of different sizes, a composite ins
 parameter - is refused at the redeclaration, as its composite waits for the Aggregates phase's
 machinery.
 
+A unit's file-scope declaration of a C library function that clang knows as a builtin, with a type
+clang does not merge (`int strlen(char *);`, c-testsuite 00025), makes Dumper A intern the
+library's type (`unsigned long (char *)`) before the declaration's own (its
+`note_library_redeclaration`). The builder holds no table of clang's library builtins, so it
+interns the declaration's type alone, and `compare/types` reports such a unit as differing.
+
