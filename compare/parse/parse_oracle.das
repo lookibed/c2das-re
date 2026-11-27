@@ -16,8 +16,8 @@ require ../../converter/cir.das
 require ../../converter/dumper_a.das
 
 //! The parse oracle of Dumper C's parser (`compare/parse/ARCHITECTURE.md`): a unit preprocessed by
-//! clang under Dumper A's flags, its file-scope declarations as clang reads them and as the parser
-//! reads them, both reduced to one line per declared entity and compared line by line.
+//! clang under Dumper A's flags, its declarations, record and enum bodies and function bodies as
+//! clang reads them and as the parser reads them, both reduced to lines and compared line by line.
 
 //! A line where the two sides differ: its number, both lines (`(none)` for a line one side
 //! lacks), and the cause clang's semantics give for it, "" when none is named.
@@ -28,9 +28,10 @@ struct Difference {
     cause : string
 }
 
-//! What a unit gave: `same`, `differs` (its differences), `parser refused` (the parser's located
-//! error) or `clang refused` (clang's error); the lines compared, and the constructs skipped and
-//! left uncompared on the way.
+//! What a unit gave: `same`, `differs` (its differences), `construct refused` (the parser refused
+//! a construct it does not take, which ends the unit), `parser refused` (any other located error
+//! of the parser) or `clang refused` (clang's error); the lines compared, the construct refused,
+//! and the constructs left uncompared.
 struct ParseResult {
     unit : string
     verdict : string
@@ -129,8 +130,7 @@ def line_differences(ours, theirs : array<FormLine>; var compared : int&) : arra
 }
 
 //! The comparison of the preprocessed text `text`, named `unit`, with clang's JSON dump `json` of
-//! it: the parser reads the text declaration by declaration, the declarations it skips are left
-//! out of clang's side, and the two sides' lines are compared in order.
+//! it: the parser reads the whole unit, and the two sides' lines are compared in order.
 [arch(at="ARCHITECTURE.md#verdicts")]
 def compare_texts(unit, text, json : string) : ParseResult {
     var result = ParseResult(unit = unit)
@@ -141,11 +141,13 @@ def compare_texts(unit, text, json : string) : ParseResult {
         return <- result
     }
     var p : CParser
-    let parsed <- parse_unit(p, text, unit, clang.tops)
-    result.skipped <- [for (s in parsed.skipped); s.construct]
+    let parsed <- parse_unit(p, text, unit)
     if (!empty(parsed.error)) {
-        result.verdict = "parser refused"
+        result.verdict = empty(parsed.construct) ? "parser refused" : "construct refused"
         result.message = parsed.error
+        if (!empty(parsed.construct)) {
+            result.skipped |> push(parsed.construct)
+        }
         return <- result
     }
     var ours_lines : array<FormLine>
@@ -155,7 +157,6 @@ def compare_texts(unit, text, json : string) : ParseResult {
     }
     var theirs_lines : array<FormLine>
     for (top in clang.tops) {
-        continue if (parsed.skipped_places |> key_exists(top.key))
         theirs_lines |> push_from(top.lines)
         result.not_compared |> push_from(top.not_compared)
     }
@@ -268,12 +269,12 @@ def private counted(counts : table<string; int>) : string {
 
 //! The lines that describe `totals`, headed `name`.
 def describe_totals(name : string; totals : ParseTotals) : string {
-    let verdicts <- ["same", "differs", "parser refused", "clang refused"]
+    let verdicts <- ["same", "differs", "construct refused", "parser refused", "clang refused"]
     let counts = join([for (v in verdicts); "{totals.verdicts?[v] ?? 0} {v}"], ", ")
     return build_string() $(var w) {
         w |> write("{name}: {counts} ({totals.named_only} of them only by clang's named causes); {totals.lines} lines compared\n")
         w |> write("  differing lines by cause: {counted(totals.differences)}\n")
-        w |> write("  skipped (parser refusals by construct): {counted(totals.skipped)}\n")
+        w |> write("  units ended by a refused construct, by construct: {counted(totals.skipped)}\n")
         w |> write("  not compared yet (by construct): {counted(totals.not_compared)}\n")
     }
 }

@@ -2,9 +2,9 @@
 
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
 holds the parse oracle of Dumper C's parser (`frontend/c_parser.das`,
-`frontend/ARCHITECTURE_PARSER.md`): one unit preprocessed by clang, its file-scope declarations as
-clang's tree holds them and as the parser reads them, both reduced to one line form and compared
-line by line. It starts clang, so it lives outside `frontend/`, whose code starts no process
+`frontend/ARCHITECTURE_PARSER.md`): one unit preprocessed by clang, its declarations, record and
+enum bodies and function bodies as clang's tree holds them and as the parser reads them, both
+reduced to one line form and compared line by line. It starts clang, so it lives outside `frontend/`, whose code starts no process
 (`frontend/ARCHITECTURE.md` section 2). It compares what the AST alone fixes; what clang decides by
 the meaning of the program is left to it (section 3).
 
@@ -12,13 +12,14 @@ the meaning of the program is left to it (section 3).
 
 - `clang_side.das` - clang's side: the presumed places of a preprocessed text (`presumed_map`,
   `place_of`, section 2), clang's type spellings (`clang_type`), an expression of clang's JSON tree
-  in the form (`clang_expression`), and a unit's file-scope declarations (`clang_unit`, one
-  `ClangTop` each: its lines, the names it binds, the constructs in it not compared yet). It reads
-  no parser state.
-- `parser_side.das` - the parser's side: the stand-in for the parser's unit entry (`parse_unit`,
-  `declaration_end`, section 4), a declaration's lines (`parser_lines`), an expression in the form
-  (`parser_expression`), and the types spelled as clang spells them (`base_spelling`,
-  `spell_type`, `integer_value`). It reads the parser's public API and its public fields only.
+  in the form (`clang_expression`), a record or enum body's lines, a statement's lines
+  (`clang_statement`), and a unit's file-scope declarations (`clang_unit`, one `ClangTop` each: its
+  lines, the names it binds). It reads no parser state.
+- `parser_side.das` - the parser's side: the unit through the parser's entry (`parse_unit`,
+  section 4), a declaration's lines (`parser_lines`) with its bodies' and a definition's statements
+  (`statement_lines`), an expression in the form (`parser_expression`), and the types spelled as
+  clang spells them (`base_spelling`, `spell_type`, `integer_value`). It reads the parser's public
+  API and its public fields only.
 - `parse_oracle.das` - the comparison (`lines_match`, `compare_texts`, section 5), a unit through
   clang (`clang_dump`, `compare_unit`), the totals of a set (`ParseTotals`, `run_set`), the corpora
   (`corpus_units`) and the command line's run (`ParseOracleArgs`, `run_parse_oracle`).
@@ -35,10 +36,11 @@ the meaning of the program is left to it (section 3).
 - `fixtures/` - a unit per construct family, each with the verdict the tests expect:
   `expressions.c` (every expression form, as file-scope initializers), `types.c` (type names,
   declarators, storage classes), `typedefs.c` (the typedef table's effect), `static_assert.c`,
-  `skipped.c` (the constructs the parser refuses today, skipped), `edges.c` (precedence, postfix
-  chains, type names in odd places, GNU forms), all `same`; `semantic.c` (a clang
-  semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
-  `pragma.c` (`parser refused`); `clang_refuses.c` (`clang refused`).
+  `bodies.c` (record and enum bodies, definitions, every statement), `edges.c` (precedence,
+  postfix chains, type names in odd places, GNU forms), all `same`; `semantic.c` (a clang semantic
+  difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
+  `refused.c` (`construct refused`); `pragma.c` (`parser refused`); `clang_refuses.c` (`clang
+  refused`).
 - The tests are `compare/tests/test_parse_oracle.das`.
 
 ## 2. Places {#places}
@@ -54,13 +56,31 @@ place is compared from two readings of the markers, the parser's and the oracle'
 
 ## 3. The form and what is compared {#compared}
 
-Each entity a file-scope declaration declares is one line. A typedef is `(typedef
+Each entity a declaration declares is one line, at file scope and in a block alike. A typedef is `(typedef
 <name>@<line>:<col> "<type>")`; any other declarator is `(decl <name>@<line>:<col> "<type>"
 <flags> [<parameter names>] = <initializer>)`. A `_Static_assert` is `(static_assert@<line>:<col>
 <condition> <message>)`. The type is spelled as clang spells it. The flags are the storage class
 (`static`, `extern`), `thread_local` and `inline`. The parameter names, each `-` when unnamed, stand
 for a declarator that applies a function to its name and has parameters. A line `(file <name>)`
 opens each run of lines in one file.
+
+A record or enum body is its tag's line, `(record struct <tag>@<place>)` or `(enum <tag>@<place>)`
+(`-` for no tag, placed at the keyword), one line per member, `(field <name>@<place> "<type>")` with
+` : <width>` for a bit-field (an unnamed one `-`, placed at its declaration's first token), or per
+enumerator, `(enumerator <name>@<place> = <value>)` (`-` for none), then `(end)`. A body its members'
+specifiers hold comes before the members it types, as clang nests it. The field clang makes for an
+anonymous member, and the names it brings into the record, are clang's and not compared; the
+member's own record body is.
+
+A function definition is its declaration's line, then its body as statements: one line per
+statement in order, with its kind, place and expressions: `(compound@...)` closed by `(end)`,
+`(expr@... <e>)`, `(null)` (unplaced: clang places it at its `;`, the parser at any attribute
+before it), `(label@... <name>)`, `(case@... <value> <last>)` (`-` with no GNU range),
+`(default@...)`, `(if@... <condition> else|-)`, `(switch@... <e>)`, `(while@... <e>)`, `(do@...
+<condition>)`, `(for@... <first> <condition> <step>)` (`decl` for a declaration, whose lines follow,
+`-` for a part left out), `(goto@... <label>)`, `(continue@...)`, `(break@...)`, `(return@... <e>)`,
+`(asm@...)`; each statement under one follows it. A declaration in a block is its lines; a label at a
+block's end has a `(null)` statement, as clang gives it one.
 
 The parser spells a type from its specifiers and declarator. A builtin type takes its canonical
 name (`long int signed` is `long`, `_Complex` alone is `_Complex double`), the qualifiers go
@@ -95,6 +115,9 @@ Not compared, each for its reason:
 - `_Alignas`, `__extension__` before a declaration, `_Noreturn`: no part of the type or the flags;
 - the places of an unnamed parameter and of a declaration's first token: clang places them by its
   own rules;
+- an asm statement's qualifiers, template and operands, which clang keeps as its own fields;
+- the inside of a statement expression, `(stmt_expr@...)` on both sides;
+- the attributes of a statement or a label;
 - the implicit conversions clang inserts (`ImplicitCastExpr`, `ConstantExpr`): they are its
   semantics, and their one child stands for them; so does an anonymous member access clang adds.
 
@@ -113,25 +136,16 @@ mark: a parameter of a function or array typedef's type is adjusted to a pointer
 parameter's type (`int ([4])` is `int (*)`); a prototype merged into a later definition's type; a typedef of `void` as the only parameter; an
 attribute that changes a type (`mode`).
 
-Not compared yet, by construct: a record or enum body and a function body. Clang's side counts
-each one it holds in the compared declarations by name (`a struct body`, `an enum body`, `a
-function body`); the parser's slices that read them extend both sides.
+A tag with no name has a type clang names by its place and its owner (`struct (unnamed at ...)`,
+`union S::(anonymous at ...)`, or the typedef name that names it), which the tree does not spell:
+the parser writes `?` for it.
 
-## 4. The stand-in for the unit entry {#stand-in}
+## 4. The unit entry {#unit}
 
-The parser has an entry for one declaration (`c_declaration`), none for a unit. `parse_unit` reads
-a unit with it, declaration by declaration, and passes over a `;` alone. When the parser refuses a
-declaration as a construct it does not parse (`<place>: <construct> is not parsed`), the reading
-goes on past it: the declaration's tokens are skipped by their brackets (`declaration_end`: to its
-`;` at the outer level, or to the `}` of a function body - the first brace group after a refused
-definition or old-style identifier list, else one the outer level opens after a `)`), the scopes
-the refusal left open are closed, and the parser's failure state is reset. The names that clang's
-declarations starting in the skipped tokens bind - a typedef name, an ordinary name, an enumerator,
-in record bodies too - are bound in the parser's table, so a later declaration reads them as if the
-parser had read the skipped one. Clang's declarations that start in skipped tokens are left out of
-its side. Each skip is counted by its construct, never as a failure.
-
-Any other error - malformed input, a token error, a directive the tokens refuse - stops the unit.
+`parse_unit` reads a unit with the parser's unit entry, `c_unit`. The parser stops at its first
+error. A refusal of a construct it does not take (`<place>: <construct> is not parsed`) ends the unit
+as `construct refused`, counted by the construct, which is no failure of the run; any other error -
+malformed input, a token error, a directive the tokens refuse - is `parser refused`.
 
 ## 5. Verdicts {#verdicts}
 
@@ -139,6 +153,8 @@ A unit's verdict is the first of:
 
 - `clang refused`: `clang -E` or the JSON dump fails, or the dump is no JSON; clang's first error
   line. Nothing is compared.
+- `construct refused`: the parser refused a construct it does not take; its located message and
+  the construct. Nothing is compared.
 - `parser refused`: the parser stopped with an error that is no construct refusal; its located
   message.
 - `differs`: a line where the parser's line does not match clang's, both kept with clang's named
@@ -149,8 +165,7 @@ A unit's verdict is the first of:
 
 A set prints its units, each that differs with its first differences (`--show`), then its totals:
 the units per verdict and how many of those that differ do so by named causes only, the lines
-compared, the differing lines by cause (`unnamed` for none), the skipped constructs by name and the
-constructs not compared yet by name. The run fails on a unit the parser refused or one with a
+compared, the differing lines by cause (`unnamed` for none), and the refused constructs by name. The run fails on a unit the parser refused or one with a
 difference no cause names.
 
 ## 6. The clang flags {#flags}

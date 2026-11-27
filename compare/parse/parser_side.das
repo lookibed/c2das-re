@@ -140,6 +140,9 @@ def base_spelling(var p : CParser; specs : int) : string {
             }
         } elif (n.kind == CNode.SPEC_TYPEDEF_NAME) {
             named = symbol(p, n.a)
+        } elif ((n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) && n.a < 0) {
+            // clang names a tag with no name by its place and its owner, which the tree does not spell
+            return "?"
         } elif (n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) {
             named = "{n.kind == CNode.SPEC_ENUM ? "enum" : c_kind_name(n.op)} {symbol(p, n.a)}"
         } elif (n.kind == CNode.SPEC_TYPEOF_EXPR || n.kind == CNode.SPEC_TYPEOF_TYPE) {
@@ -276,7 +279,7 @@ def parser_expression(var p : CParser; n : int) : string {
         return "(ident{at} {symbol(p, e.a)})"
     } elif (k == CNode.INT) {
         return "(int{at} {integer_value(c_spelling(p.unit, e.a))})"
-    } elif (k == CNode.FLOAT || k == CNode.CHAR || k == CNode.STRING || k == CNode.FUNC_NAME || k == CNode.INIT_LIST || k == CNode.OFFSETOF) {
+    } elif (k == CNode.FLOAT || k == CNode.CHAR || k == CNode.STRING || k == CNode.FUNC_NAME || k == CNode.INIT_LIST || k == CNode.OFFSETOF || k == CNode.STMT_EXPR) {
         return "({NODE_FORMS[int(k)]._0}{at})"
     } elif (k == CNode.PAREN || k == CNode.EXTENSION || k == CNode.SIZEOF_EXPR) {
         return "({NODE_FORMS[int(k)]._0}{at} {parser_expression(p, e.a)})"
@@ -346,8 +349,102 @@ def private name_node(p : CParser; d : int) : int {
     return -1
 }
 
-//! The lines of the file-scope declaration `n`, each with the file it stands in: one per
-//! declarator, or the `_Static_assert`'s.
+// the line of init-declarator `id` of a declaration whose specifiers are `specs`: a typedef's, or
+// a declaration's with its flags, its parameter names and its initializer
+def private declarator_line(var p : CParser; specs, id : int; is_typedef : bool; flags : string) : FormLine {
+    let init = nd(p, id)
+    let name = name_node(p, init.a)
+    let at = token_place(p, nd(p, name).tok)
+    let head = "{symbol(p, nd(p, name).a)}{place_text(at)} \"{spell_type(p, specs, init.a, false, init.b >= 0)}\""
+    if (is_typedef) {
+        return FormLine(file = at.file, text = "(typedef {head})")
+    }
+    var params = ""
+    let f = c_name_function(p.ast, init.a)
+    if (f >= 0 && !only_void(p, nd(p, f))) {
+        var inscope names : array<string>
+        var prm = nd(p, f).b
+        while (prm >= 0) {
+            let pn = name_node(p, nd(p, prm).b)
+            names |> push(pn < 0 ? "-" : "{symbol(p, nd(p, pn).a)}{at_text(p, pn)}")
+            prm = nd(p, prm).next
+        }
+        params = empty(names) ? "" : " [{join(names, " ")}]"
+    }
+    let value = init.b >= 0 ? " = {parser_expression(p, init.b)}" : ""
+    return FormLine(file = at.file, text = "(decl {head}{flags}{params}{value})")
+}
+
+// a line at token `tok`'s place with text `text`
+def private line_at(var p : CParser; tok : int; text : string) : FormLine => FormLine(file = token_place(p, tok).file, text = text)
+
+// the token of the name of the tag whose keyword is token `keyword`, past any attributes; -1 for none
+def private tag_name_token(p : CParser; keyword : int) : int {
+    var t = keyword + 1
+    while (t < p.last && p.unit.toks[t].kind == int(CTok.ATTRIBUTE)) {
+        t++
+        var depth = 0
+        while (t < p.last) {
+            let k = p.unit.toks[t].kind
+            t++
+            depth += k == int(CTok.LPAREN) ? 1 : k == int(CTok.RPAREN) ? -1 : 0
+            break if (depth == 0)
+        }
+    }
+    return p.unit.toks[t].kind == int(CTok.IDENTIFIER) ? t : -1
+}
+
+// the lines of a record or enum body that specifier `n` holds: the tag's line, each member's or
+// enumerator's, the bodies the members' specifiers hold before them, and `(end)`
+[arch(at="ARCHITECTURE.md#compared")]
+def private body_lines(var p : CParser; n : int; var lines : array<FormLine>) {
+    let tag = nd(p, n)
+    let name_tok = tag.a >= 0 ? tag_name_token(p, tag.tok) : -1
+    let at_tok = name_tok >= 0 ? name_tok : tag.tok
+    let what = tag.kind == CNode.SPEC_ENUM ? "enum" : "record " + c_kind_name(tag.op)
+    let tag_name = tag.a >= 0 ? symbol(p, tag.a) : "-"
+    lines |> push(line_at(p, at_tok, "({what} {tag_name}{place_text(token_place(p, at_tok))})"))
+    var item = tag.c
+    while (item >= 0) {
+        let m = nd(p, item)
+        if (m.kind == CNode.ENUMERATOR) {
+            let value = m.b >= 0 ? parser_expression(p, m.b) : "-"
+            lines |> push(line_at(p, m.tok, "(enumerator {symbol(p, m.a)}{at_text(p, item)} = {value})"))
+        } elif (m.kind == CNode.STATIC_ASSERT) {
+            lines |> push_from(parser_lines(p, item))
+        } elif (m.kind == CNode.MEMBER_DECL) {
+            tag_lines(p, m.a, lines)
+            var md = m.b
+            while (md >= 0) {
+                let f = nd(p, md)
+                let name = name_node(p, f.a)
+                let place_tok = name >= 0 ? nd(p, name).tok : m.tok
+                let field_name = name >= 0 ? symbol(p, nd(p, name).a) : "-"
+                let width = f.b >= 0 ? " : {parser_expression(p, f.b)}" : ""
+                lines |> push(line_at(p, place_tok, "(field {field_name}{place_text(token_place(p, place_tok))} \"{spell_type(p, m.a, f.a, false, false)}\"{width})"))
+                md = f.next
+            }
+        }
+        item = m.next
+    }
+    lines |> push(line_at(p, at_tok, "(end)"))
+}
+
+// the body lines of every record or enum body specifier list `specs` holds
+def private tag_lines(var p : CParser; specs : int; var lines : array<FormLine>) {
+    var at = specs
+    while (at >= 0) {
+        let k = nd(p, at).kind
+        if ((k == CNode.SPEC_RECORD || k == CNode.SPEC_ENUM) && nd(p, at).b == 1) {
+            body_lines(p, at, lines)
+        }
+        at = nd(p, at).next
+    }
+}
+
+//! The lines of declaration `n`, each with the file it stands in: the bodies its specifiers hold,
+//! then one line per declarator, or the `_Static_assert`'s; a function definition's line and its
+//! body's lines.
 [arch(at="ARCHITECTURE.md#compared")]
 def parser_lines(var p : CParser; n : int) : array<FormLine> {
     var lines : array<FormLine>
@@ -358,58 +455,111 @@ def parser_lines(var p : CParser; n : int) : array<FormLine> {
         return <- lines
     }
     let specs = decl.a
-    let is_typedef = has_keyword(p, specs, CTok.TYPEDEF)
+    tag_lines(p, specs, lines)
     let flags = specifier_flags(p, specs)
+    if (decl.kind == CNode.FUNC_DEF) {
+        lines |> push(declarator_line(p, specs, decl.b, false, flags))
+        statement_lines(p, decl.d, lines)
+        return <- lines
+    }
+    let is_typedef = has_keyword(p, specs, CTok.TYPEDEF)
     var id = decl.b
     while (id >= 0) {
-        let init = nd(p, id)
-        let name = name_node(p, init.a)
-        let at = token_place(p, nd(p, name).tok)
-        let head = "{symbol(p, nd(p, name).a)}{place_text(at)} \"{spell_type(p, specs, init.a, false, init.b >= 0)}\""
-        if (is_typedef) {
-            lines |> push(FormLine(file = at.file, text = "(typedef {head})"))
-        } else {
-            var params = ""
-            let f = c_name_function(p.ast, init.a)
-            if (f >= 0 && !only_void(p, nd(p, f))) {
-                var inscope names : array<string>
-                var prm = nd(p, f).b
-                while (prm >= 0) {
-                    let pn = name_node(p, nd(p, prm).b)
-                    names |> push(pn < 0 ? "-" : "{symbol(p, nd(p, pn).a)}{at_text(p, pn)}")
-                    prm = nd(p, prm).next
-                }
-                params = empty(names) ? "" : " [{join(names, " ")}]"
-            }
-            let value = init.b >= 0 ? " = {parser_expression(p, init.b)}" : ""
-            lines |> push(FormLine(file = at.file, text = "(decl {head}{flags}{params}{value})"))
-        }
-        id = init.next
+        lines |> push(declarator_line(p, specs, id, is_typedef, flags))
+        id = nd(p, id).next
     }
     return <- lines
 }
 
-//! A file-scope declaration the parser refused as a construct it does not parse: the construct,
-//! the located message, and its tokens, which the oracle skips.
-struct Skipped {
-    construct : string
-    message : string
-    first : int
-    last : int
+// a block item's lines: a declaration's, or a statement's
+def private item_lines(var p : CParser; n : int; var lines : array<FormLine>) {
+    let k = nd(p, n).kind
+    if (k == CNode.DECL || k == CNode.STATIC_ASSERT) {
+        lines |> push_from(parser_lines(p, n))
+    } else {
+        statement_lines(p, n, lines)
+    }
 }
 
-//! A unit read declaration by declaration: the file-scope declarations parsed, the ones skipped,
-//! and the error that stopped the reading, "" when it read to the end.
+//! The lines of statement `s` and the statements under it, in order (`ARCHITECTURE.md#compared`):
+//! one line per statement with its kind, place and expressions, a block closed by `(end)`.
+[arch(at="ARCHITECTURE.md#compared")]
+def statement_lines(var p : CParser; s : int; var lines : array<FormLine>) {
+    if (s < 0) {
+        // a label at a block's end: clang gives it a null statement
+        lines |> push(FormLine(file = token_place(p, p.pos).file, text = "(null)"))
+        return
+    }
+    let n = nd(p, s)
+    let at = at_text(p, s)
+    let k = n.kind
+    if (k == CNode.COMPOUND) {
+        lines |> push(line_at(p, n.tok, "(compound{at})"))
+        var item = n.a
+        while (item >= 0) {
+            item_lines(p, item, lines)
+            item = nd(p, item).next
+        }
+        lines |> push(line_at(p, n.tok, "(end)"))
+    } elif (k == CNode.EXPR_STMT) {
+        lines |> push(line_at(p, n.tok, "(expr{at} {parser_expression(p, n.a)})"))
+    } elif (k == CNode.NULL_STMT) {
+        lines |> push(line_at(p, n.tok, "(null)"))
+    } elif (k == CNode.LABEL) {
+        lines |> push(line_at(p, n.tok, "(label{at} {symbol(p, n.a)})"))
+        if (n.b >= 0) {
+            item_lines(p, n.b, lines)
+        } else {
+            statement_lines(p, -1, lines)
+        }
+    } elif (k == CNode.CASE) {
+        lines |> push(line_at(p, n.tok, "(case{at} {parser_expression(p, n.a)} {parser_expression(p, n.b)})"))
+        item_lines(p, n.c, lines)
+    } elif (k == CNode.DEFAULT) {
+        lines |> push(line_at(p, n.tok, "(default{at})"))
+        item_lines(p, n.a, lines)
+    } elif (k == CNode.IF) {
+        lines |> push(line_at(p, n.tok, "(if{at} {parser_expression(p, n.a)} {n.c >= 0 ? "else" : "-"})"))
+        statement_lines(p, n.b, lines)
+        if (n.c >= 0) {
+            statement_lines(p, n.c, lines)
+        }
+    } elif (k == CNode.SWITCH || k == CNode.WHILE) {
+        lines |> push(line_at(p, n.tok, "({NODE_FORMS[int(k)]._0}{at} {parser_expression(p, n.a)})"))
+        statement_lines(p, n.b, lines)
+    } elif (k == CNode.DO) {
+        lines |> push(line_at(p, n.tok, "(do{at} {parser_expression(p, n.b)})"))
+        statement_lines(p, n.a, lines)
+    } elif (k == CNode.FOR) {
+        let is_decl = n.a >= 0 && nd(p, n.a).kind == CNode.DECL
+        let init = is_decl ? "decl" : parser_expression(p, n.a)
+        lines |> push(line_at(p, n.tok, "(for{at} {init} {parser_expression(p, n.b)} {parser_expression(p, n.c)})"))
+        if (is_decl) {
+            lines |> push_from(parser_lines(p, n.a))
+        }
+        statement_lines(p, n.d, lines)
+    } elif (k == CNode.GOTO) {
+        lines |> push(line_at(p, n.tok, "(goto{at} {symbol(p, n.a)})"))
+    } elif (k == CNode.CONTINUE || k == CNode.BREAK || k == CNode.ASM) {
+        lines |> push(line_at(p, n.tok, "({NODE_FORMS[int(k)]._0}{at})"))
+    } elif (k == CNode.RETURN) {
+        lines |> push(line_at(p, n.tok, "(return{at} {parser_expression(p, n.a)})"))
+    } else {
+        lines |> push(line_at(p, n.tok, "(unknown {NODE_FORMS[int(k)]._0}{at})"))
+    }
+}
+
+//! A unit read by the parser's unit entry: its external declarations, or the error that stopped
+//! it and, for a refusal, the construct it names.
 struct ParsedUnit {
     items : array<int>
-    skipped : array<Skipped>
-    skipped_places : table<string; bool>    //!< the place keys of every skipped token
     error : string
+    construct : string
 }
 
-// the construct a refusal names, "" for an error that is no refusal: `<file>:<line>:<col>: <construct>
-// is not parsed`, the construct past the first `: ` that follows a `:<digits>`
-def private refused_construct(message : string) : string {
+//! The construct a refusal names, "" for an error that is no refusal: `<file>:<line>:<col>:
+//! <construct> is not parsed`, the construct past the first `: ` that follows a `:<digits>`.
+def refused_construct(message : string) : string {
     let tail = " is not parsed"
     return "" if (!ends_with(message, tail))
     var construct = ""
@@ -430,86 +580,25 @@ def private refused_construct(message : string) : string {
     return construct
 }
 
-//! The token past the file-scope declaration that starts at token `first`, by its brackets: its
-//! `;` at the outer level, or the `}` that closes a function body - the first brace group when
-//! `body`, else a brace group the outer level opens right after a `)`.
-[arch(at="ARCHITECTURE.md#stand-in")]
-def declaration_end(p : CParser; first : int; body : bool) : int {
-    var depth = 0
-    var in_body = false
-    var at = first
-    while (at < p.last) {
-        let k = p.unit.toks[at].kind
-        if (k == int(CTok.LPAREN) || k == int(CTok.LBRACKET) || k == int(CTok.LBRACE)) {
-            if (k == int(CTok.LBRACE) && depth == 0 && (body || (at > first && p.unit.toks[at - 1].kind == int(CTok.RPAREN)))) {
-                in_body = true
-            }
-            depth++
-        } elif (k == int(CTok.RPAREN) || k == int(CTok.RBRACKET) || k == int(CTok.RBRACE)) {
-            depth--
-            return at + 1 if (k == int(CTok.RBRACE) && depth == 0 && in_body)
-        } elif (k == int(CTok.SEMI) && depth == 0 && !body) {
-            return at + 1
-        }
-        at++
-    }
-    return p.last
-}
-
-//! The unit `text`, named `name`, read declaration by declaration: the stand-in for the parser's
-//! unit entry (`ARCHITECTURE.md#stand-in`). A `;` alone is passed over. A declaration the parser
-//! refuses as a construct it does not parse is skipped to its end, and the names clang's
-//! declarations `tops` bind in the skipped tokens are bound in the parser's table, so the reading
-//! goes on as if the parser had read them. Any other error stops the reading.
-[arch(at="ARCHITECTURE.md#stand-in")]
-def parse_unit(var p : CParser; text, name : string; tops : array<ClangTop>) : ParsedUnit {
+//! The unit `text`, named `name`, through the parser's unit entry, `c_unit`
+//! (`ARCHITECTURE.md#unit`): its external declarations, or its first error.
+[arch(at="ARCHITECTURE.md#unit")]
+def parse_unit(var p : CParser; text, name : string) : ParsedUnit {
     var unit : ParsedUnit
     if (!c_parser_open_text(p, text, name)) {
         unit.error = p.err
         return <- unit
     }
-    while (p.unit.toks[p.pos].kind != int(CTok.EOF)) {
-        if (p.unit.toks[p.pos].kind == int(CTok.SEMI)) {
-            p.pos++
-            continue
-        }
-        let first = p.pos
-        let scopes = length(p.scopes.marks)
-        let n = c_declaration(p)
-        if (!p.failed) {
-            unit.items |> push(n)
-            continue
-        }
-        let construct = refused_construct(p.err)
-        if (empty(construct)) {
-            unit.error = p.err
-            break
-        }
-        let body = construct == "a function definition" || construct == "an identifier list outside a function definition"
-        let stop = declaration_end(p, first, body)
-        unit.skipped |> push(Skipped(construct = construct, message = p.err, first = first, last = stop - 1))
-        while (length(p.scopes.marks) > scopes) {
-            c_scope_close(p)
-        }
-        var inscope keys : table<string; bool>
-        for (t in range(first, stop)) {
-            let key = place_key(token_place(p, t))
-            keys.insert(key, true)
-            unit.skipped_places.insert(key, true)
-        }
-        for (top in tops) {
-            if (keys |> key_exists(top.key)) {
-                for (bound in top.names) {
-                    c_declare(p, c_symbol(p.unit, bound.name), bound.is_typedef ? CBinding.TYPEDEF : CBinding.ORDINARY)
-                }
-            }
-        }
-        p.failed = false
-        p.err = ""
-        p.depth = 0
-        p.operators |> clear()
-        p.operands |> clear()
-        p.pos = stop
+    let u = c_unit(p)
+    if (p.failed) {
+        unit.error = p.err
+        unit.construct = refused_construct(p.err)
+        return <- unit
+    }
+    var at = nd(p, u).a
+    while (at >= 0) {
+        unit.items |> push(at)
+        at = nd(p, at).next
     }
     return <- unit
 }

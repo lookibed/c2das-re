@@ -64,13 +64,13 @@ def private flags_of(t : T?) : array<string> {
     return <- flags
 }
 
-[test(description = "each fixture gives its verdict through the pinned clang: the same where both read the same, a skipped construct counted, clang's semantic difference reported, both refusals located", timeout = 1200)]
+[test(description = "each fixture gives its verdict through the pinned clang: the same where both read the same, a refused construct ending its unit, clang's semantic difference reported, both refusals located", timeout = 1200)]
 def test_fixture_verdicts(t : T?) {
     let flags <- flags_of(t)
     let work = test_temp_dir()
     let expected <- {"expressions.c" => "same", "types.c" => "same", "typedefs.c" => "same", "static_assert.c" => "same",
-                     "skipped.c" => "same", "edges.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "parser refused",
-                     "clang_refuses.c" => "clang refused"}
+                     "bodies.c" => "same", "edges.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "parser refused",
+                     "clang_refuses.c" => "clang refused", "refused.c" => "construct refused"}
     for (name, verdict in keys(expected), values(expected)) {
         let r <- compare_unit(path_join("compare/parse/fixtures", name), work, flags)
         t |> equal(r.verdict, verdict, "{name}: {describe_result(r)}")
@@ -101,16 +101,29 @@ def test_fixture_coverage(t : T?) {
     }
 }
 
-[test(description = "the skipped constructs are counted by name and the declarations after them compared, a typedef name bound in a skipped declaration included", timeout = 1200)]
-def test_skipped_constructs(t : T?) {
+[test(description = "record, enum and function bodies are compared line by line: members, bit-fields, nested and anonymous records, enumerators, and every statement kind", timeout = 1200)]
+def test_bodies_compared(t : T?) {
     let flags <- flags_of(t)
-    let r <- compare_unit("compare/parse/fixtures/skipped.c", test_temp_dir(), flags)
+    let r <- compare_unit("compare/parse/fixtures/bodies.c", test_temp_dir(), flags)
     t |> equal(r.verdict, "same", describe_result(r))
-    t |> equal(join(r.skipped, ", "), "a struct body, a struct body, an enum body, a function definition, an identifier list outside a function definition, a struct body")
     let all = join(r.parser_lines, "\n")
-    for (piece in ["(decl an@5:6 \"Anon\")", "(decl e@7:5 \"int\" = (binary@7:9 + (ident@7:9 E1) (ident@7:14 E2)))", "(decl tt@12:4 \"TT\")", "(decl last@14:4 \"TT\")"]) {
+    t |> success(find(all, "unknown") < 0, all)
+    for (piece in ["(record struct O@8:8)", "(record union -@8:35)", "(field b@8:71 \"unsigned int\" : (int@8:75 3))", "(field -@8:62 \"unsigned int\" : (int@8:80 0))",
+                   "(enumerator E2@6:14 = (int@6:19 4))", "(case@18:23 (int@18:28 1) (int@18:34 2))", "(for@19:5 decl", "(if@19:35", "(do@22:5", "(goto@23:16 lab)",
+                   "(label@18:5 lab)", "(default@18:80)", "(asm@25:5)", "(stmt_expr@26:12)", "(null)", "(while@21:5", "(switch@18:10", "(continue@19:46)",
+                   "(break@20:21)", "(return@9:19 (ident@9:26 x))", "(decl calls@17:16 \"int\" static)", "(typedef L@24:20 \"long\")", "(end)"]) {
         t |> success(find(all, piece) >= 0, piece)
     }
+}
+
+[test(description = "a refused construct ends the unit: the verdict names it, it is counted by construct, nothing is compared", timeout = 1200)]
+def test_refused_construct(t : T?) {
+    let flags <- flags_of(t)
+    let r <- compare_unit("compare/parse/fixtures/refused.c", test_temp_dir(), flags)
+    t |> equal(r.verdict, "construct refused")
+    t |> equal(join(r.skipped, ", "), "the __int128 type")
+    t |> success(ends_with(r.message, "refused.c:3:1: the __int128 type is not parsed"), r.message)
+    t |> equal(r.lines, 0)
 }
 
 [test(description = "clang's semantic adjustment shows as the first differing line of both sides, never as the same", timeout = 1200)]
@@ -226,6 +239,21 @@ def test_corpus_errors(t : T?) {
     error = ""
     let fixtures <- corpus_units(getcwd(), "fixtures", error)
     t |> equal(error, "")
-    t |> equal(length(fixtures), 10)
+    t |> equal(length(fixtures), 11)
     t |> equal(length(none) + length(missing), 0)
+}
+
+[test(description = "a clang body mutated in a statement's kind, a range, a field, a tag's keyword, a label or a bit-field width is caught as a difference", timeout = 1200)]
+def test_mutated_body_differs(t : T?) {
+    let unit = dumped(t, "bodies.c")
+    let clean <- compare_texts("bodies.c", unit.text, unit.json)
+    t |> equal(clean.verdict, "same", describe_result(clean))
+    let mutations <- [("\"isGNURange\": true", "\"isGNURange\": false"), ("\"kind\": \"ContinueStmt\"", "\"kind\": \"BreakStmt\""),
+                      ("\"name\": \"fa\"", "\"name\": \"fb\""), ("\"tagUsed\": \"union\"", "\"tagUsed\": \"struct\""),
+                      ("\"name\": \"lab\"", "\"name\": \"lap\""), ("\"value\": \"3\"", "\"value\": \"4\""), ("\"name\": \"E2\"", "\"name\": \"E3\"")]
+    for (m in mutations) {
+        t |> success(find(unit.json, m._0) >= 0, m._0)
+        let r <- compare_texts("bodies.c", unit.text, replace(unit.json, m._0, m._1))
+        t |> equal(r.verdict, "differs", m._1)
+    }
 }
