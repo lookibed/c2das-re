@@ -43,6 +43,17 @@ def private with_aligned(var rec : CLayoutRecord; n : int) : CLayoutRecord {
     return <- rec
 }
 
+def private required(m : CLayoutMember; n : int) : CLayoutMember {
+    var r = m
+    r.required_align = n
+    return r
+}
+
+def private msvc(var rec : CLayoutRecord) : CLayoutRecord {
+    rec.dialect = "msvc"
+    return <- rec
+}
+
 def private with_pack(var rec : CLayoutRecord; n : int) : CLayoutRecord {
     rec.pack = n
     return <- rec
@@ -220,15 +231,15 @@ def test_flexible(t : T?) {
 
 [test(description = "what the layout does not take is refused at its place, never laid out by guess")]
 def test_refusals(t : T?) {
-    t |> run("the msvc dialect, an unknown dialect and an ms_struct record") @(t : T?) {
+    t |> run("an unknown dialect, and an ms_struct record under either dialect") @(t : T?) {
         var rec = record([plain("a", 1l, 1)])
         rec.at = "r.c:1:8"
-        rec.dialect = "msvc"
-        t |> equal(laid(rec), "r.c:1:8: the msvc record layout is not implemented")
         rec.dialect = "win"
         t |> equal(laid(rec), "r.c:1:8: unknown dialect 'win': linux or msvc")
         rec.dialect = "linux"
         rec.ms_struct = true
+        t |> equal(laid(rec), "r.c:1:8: an `ms_struct` record is not laid out")
+        rec.dialect = "msvc"
         t |> equal(laid(rec), "r.c:1:8: an `ms_struct` record is not laid out")
     }
     t |> run("a pack or record alignment that is no power of two") @(t : T?) {
@@ -250,6 +261,7 @@ def test_refusals(t : T?) {
         t |> equal(laid(record([plain("a", 4l, 3)])), "member `a` has an alignment of 3, not a power of two")
         t |> equal(laid(record([plain("a", 4l, 0)])), "member `a` has an alignment of 0, not a power of two")
         t |> equal(laid(record([aligned(plain("a", 4l, 4), 12)])), "member `a` is `aligned(12)`, not a power of two")
+        t |> equal(laid(record([required(plain("a", 4l, 4), 6)])), "member `a` requires an alignment of 6, not a power of two")
         t |> equal(laid(record([plain("a", -1l, 4)])), "member `a` has an incomplete type")
         t |> equal(laid(record([flexible("d", 8), plain("c", 1l, 1)])), "member `d`, an array of unknown size, is not the last member")
         var flex_bits = flexible("f", 4)
@@ -266,6 +278,116 @@ def private unit_with(var fields : array<CirField>) : CirTu {
     return <- CirTu(target = CirTarget(triple = "x86_64-unknown-linux-gnu", int_w = 32, long_w = 64, llong_w = 64, ptr_w = 64),
                     types <- [CirType(k = "int", w = 32, is_signed = true), CirType(k = "int", w = 8), CirType(k = "int", w = 16, is_signed = true),
                               CirType(k = "struct", name = "S", fields <- fields)])
+}
+
+[test(description = "msvc: the rules of rules.c where msvc differs - long double 8, units by type size, zero-width and unnamed bitfields, pack on bitfields, required alignment, unions, empty records")]
+def test_msvc_rules(t : T?) {
+    t |> run("LongDouble, EnumBits, Empty, Union, UnionBits, UnionUnnamed") @(t : T?) {
+        // struct LongDouble { char c; long double x; }; (long double is 8 bytes aligned to 8)
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), plain("x", 8l, 8)]))), "size 16 align 8 at 0 64")
+        // struct EnumBits { enum E e : 2; char c; };
+        t |> equal(laid(msvc(record([bits("e", 4l, 2), plain("c", 1l, 1)]))), "size 8 align 4 at 0 32")
+        // struct Empty {};
+        t |> equal(laid(msvc(record(array<CLayoutMember>()))), "size 4 align 1 at ")
+        // union Union { char a; int b : 9; long double ld; };
+        t |> equal(laid(msvc(union_of([plain("a", 1l, 1), bits("b", 4l, 9), plain("ld", 8l, 8)]))), "size 8 align 8 at 0 0 0")
+        // union UnionBits { char a; int b : 9; }; - a bitfield's alignment counts for no union
+        t |> equal(laid(msvc(union_of([plain("a", 1l, 1), bits("b", 4l, 9)]))), "size 4 align 1 at 0 0")
+        // union UnionUnnamed { char a; int : 9; };
+        t |> equal(laid(msvc(union_of([plain("a", 1l, 1), bits("", 4l, 9)]))), "size 4 align 1 at 0 0")
+    }
+    t |> run("ZeroWidth, ZeroAfterBits, ZeroTail, Unnamed, UnnamedWide, UnnamedOnly, PackedZero, PackedCharBits") @(t : T?) {
+        // struct ZeroWidth { char a; int : 0; char b; };
+        t |> equal(laid(msvc(record([plain("a", 1l, 1), bits("", 4l, 0), plain("b", 1l, 1)]))), "size 2 align 1 at 0 8 8")
+        // struct ZeroAfterBits { char x : 3; long long : 0; char d; };
+        t |> equal(laid(msvc(record([bits("x", 1l, 3), bits("", 8l, 0), plain("d", 1l, 1)]))), "size 16 align 8 at 0 64 64")
+        // struct ZeroTail { char c; int : 0; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), bits("", 4l, 0)]))), "size 1 align 1 at 0 8")
+        // struct Unnamed { char a; int : 20; };
+        t |> equal(laid(msvc(record([plain("a", 1l, 1), bits("", 4l, 20)]))), "size 8 align 4 at 0 32")
+        // struct UnnamedWide { char c; long long : 40; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), bits("", 8l, 40)]))), "size 16 align 8 at 0 64")
+        // struct UnnamedOnly { int : 3; };
+        t |> equal(laid(msvc(record([bits("", 4l, 3)]))), "size 4 align 4 at 0")
+        // struct __attribute__((packed)) PackedZero { char a; int : 0; char b; };
+        t |> equal(laid(msvc(with_packed(record([plain("a", 1l, 1), bits("", 4l, 0), plain("b", 1l, 1)])))), "size 2 align 1 at 0 8 8")
+        // struct __attribute__((packed)) PackedCharBits { char a : 3; char b : 7; };
+        t |> equal(laid(msvc(with_packed(record([bits("a", 1l, 3), bits("b", 1l, 7)])))), "size 2 align 1 at 0 8")
+    }
+    t |> run("Pack2Bits, Pack1Aligned, Pack1Record, Pack2PackedBits, Pack2AlignedBits, TypedefLowered") @(t : T?) {
+        // #pragma pack(2) struct Pack2Bits { char a; int b : 20; int c; };
+        t |> equal(laid(msvc(with_pack(record([plain("a", 1l, 1), bits("b", 4l, 20), plain("c", 4l, 4)]), 2))), "size 10 align 2 at 0 16 48")
+        // #pragma pack(1) struct Pack1Aligned { char a; int b __attribute__((aligned(8))); };
+        t |> equal(laid(msvc(with_pack(record([plain("a", 1l, 1), aligned(plain("b", 4l, 4), 8)]), 1))), "size 16 align 8 at 0 64")
+        // #pragma pack(1) struct __attribute__((aligned(8))) Pack1Record { char a; int b; };
+        t |> equal(laid(msvc(with_aligned(with_pack(record([plain("a", 1l, 1), plain("b", 4l, 4)]), 1), 8))), "size 8 align 8 at 0 8")
+        // #pragma pack(2) struct __attribute__((packed)) Pack2PackedBits { char c; int x : 20; };
+        t |> equal(laid(msvc(with_pack(with_packed(record([plain("c", 1l, 1), bits("x", 4l, 20)])), 2))), "size 5 align 1 at 0 8")
+        // #pragma pack(2) struct Pack2AlignedBits { char c; int x : 3 __attribute__((aligned(4))); };
+        t |> equal(laid(msvc(with_pack(record([plain("c", 1l, 1), aligned(bits("x", 4l, 3), 4)]), 2))), "size 8 align 4 at 0 32")
+        // typedef int int_a1 __attribute__((aligned(1))); struct TypedefLowered { char c; int_a1 x; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), required(plain("x", 4l, 4), 1)]))), "size 8 align 4 at 0 32")
+    }
+}
+
+[test(description = "msvc: bitfields share a unit only with a run of their type's size, zero-width ones align only after a run, and an alignment the type or the member requires survives the pack")]
+def test_msvc_only(t : T?) {
+    t |> run("MixedSizes, SameSizeRun, NoFit, UnnamedAligns, PackedBits") @(t : T?) {
+        // struct MixedSizes { char a : 3; int b : 5; char c : 2; };
+        t |> equal(laid(msvc(record([bits("a", 1l, 3), bits("b", 4l, 5), bits("c", 1l, 2)]))), "size 12 align 4 at 0 32 64")
+        // struct SameSizeRun { int a : 3; unsigned b : 5; };
+        t |> equal(laid(msvc(record([bits("a", 4l, 3), bits("b", 4l, 5)]))), "size 4 align 4 at 0 3")
+        // struct NoFit { int a : 30; int b : 5; };
+        t |> equal(laid(msvc(record([bits("a", 4l, 30), bits("b", 4l, 5)]))), "size 8 align 4 at 0 32")
+        // struct UnnamedAligns { char c; int : 3; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), bits("", 4l, 3)]))), "size 8 align 4 at 0 32")
+        // struct __attribute__((packed)) PackedBits { char c; int x : 3; short y : 4; };
+        t |> equal(laid(msvc(with_packed(record([plain("c", 1l, 1), bits("x", 4l, 3), bits("y", 2l, 4)])))), "size 7 align 1 at 0 8 40")
+    }
+    t |> run("ZeroAfterPlain, ZeroTwice, OnlyZero, UnionZero") @(t : T?) {
+        // struct ZeroAfterPlain { char c; int : 0; char d; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), bits("", 4l, 0), plain("d", 1l, 1)]))), "size 2 align 1 at 0 8 8")
+        // struct ZeroTwice { char a : 3; int : 0; long long : 0; char d; };
+        t |> equal(laid(msvc(record([bits("a", 1l, 3), bits("", 4l, 0), bits("", 8l, 0), plain("d", 1l, 1)]))), "size 8 align 4 at 0 32 32 32")
+        // struct OnlyZero { int : 0; };
+        t |> equal(laid(msvc(record([bits("", 4l, 0)]))), "size 4 align 1 at 0")
+        // union UnionZero { char a : 3; long long : 0; };
+        t |> equal(laid(msvc(union_of([bits("a", 1l, 3), bits("", 8l, 0)]))), "size 8 align 1 at 0 0")
+    }
+    t |> run("Declspec, DeclspecMember, AlignedBits, PackedRequired: `__declspec(align)` and `aligned` are one attribute") @(t : T?) {
+        // struct __declspec(align(16)) Declspec { int a; };
+        let declspec <- c_record_layout(msvc(with_aligned(record([plain("a", 4l, 4)]), 16)))
+        t |> equal("{declspec.size} {declspec.align} {declspec.required_align}", "16 16 16")
+        // struct DeclspecMember { char c; __declspec(align(8)) int x; };
+        let member <- c_record_layout(msvc(record([plain("c", 1l, 1), aligned(plain("x", 4l, 4), 8)])))
+        t |> equal("{member.size} {member.align} {member.required_align} {member.offsets[1]}", "16 8 8 64")
+        // struct AlignedBits { char c; int x : 3 __attribute__((aligned(8))); };
+        let on_bits <- c_record_layout(msvc(record([plain("c", 1l, 1), aligned(bits("x", 4l, 3), 8)])))
+        t |> equal("{on_bits.size} {on_bits.align} {on_bits.required_align} {on_bits.offsets[1]}", "16 8 1 64")
+        // struct __attribute__((packed)) PackedRequired { char a; int b __attribute__((aligned(4))); };
+        t |> equal(laid(msvc(with_packed(record([plain("a", 1l, 1), aligned(plain("b", 4l, 4), 4)])))), "size 8 align 4 at 0 32")
+    }
+    t |> run("RequiredRecord, RequiredTypedef, RequiredRounding, HoldsRequired under `#pragma pack(1)`") @(t : T?) {
+        // #pragma pack(1) struct RequiredRecord { char c; struct Declspec d; };
+        t |> equal(laid(msvc(with_pack(record([plain("c", 1l, 1), required(plain("d", 16l, 16), 16)]), 1))), "size 32 align 16 at 0 128")
+        // #pragma pack(1) struct RequiredTypedef { char c; int_a8 x; };
+        t |> equal(laid(msvc(with_pack(record([plain("c", 1l, 1), required(plain("x", 4l, 4), 8)]), 1))), "size 16 align 8 at 0 64")
+        // #pragma pack(1) struct __attribute__((aligned(8))) RequiredRounding { char a; int b; };
+        t |> equal(laid(msvc(with_aligned(with_pack(record([plain("a", 1l, 1), plain("b", 4l, 4)]), 1), 8))), "size 8 align 8 at 0 8")
+        // #pragma pack(1) struct HoldsRequired { char c; struct DeclspecMember m; };
+        let holds <- c_record_layout(msvc(with_pack(record([plain("c", 1l, 1), required(plain("m", 16l, 8), 8)]), 1)))
+        t |> equal("{holds.size} {holds.align} {holds.required_align} {holds.offsets[1]}", "24 8 8 64")
+    }
+    t |> run("TypedefKeepsDouble, TypedefArray, TypedefBits, TypedefUnderPack: a member is laid out by its type below the typedef") @(t : T?) {
+        // typedef double double_a2 __attribute__((aligned(2))); struct TypedefKeepsDouble { char c; double_a2 x; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), required(plain("x", 8l, 8), 2)]))), "size 16 align 8 at 0 64")
+        // struct TypedefArray { char c; int_a1 x[2]; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), required(plain("x", 8l, 1), 1)]))), "size 9 align 1 at 0 8")
+        // struct TypedefBits { char c; int_a1 x : 3; };
+        t |> equal(laid(msvc(record([plain("c", 1l, 1), required(bits("x", 4l, 3), 1)]))), "size 8 align 4 at 0 32")
+        // typedef int int_a2 __attribute__((aligned(2))); #pragma pack(1) struct TypedefUnderPack { char c; int_a2 x; };
+        t |> equal(laid(msvc(with_pack(record([plain("c", 1l, 1), required(plain("x", 4l, 4), 2)]), 1))), "size 6 align 2 at 0 16")
+    }
 }
 
 // record 3 of `tu` laid out by `rec` and written in: `packed P size S align A at off/bit_off ...`,
@@ -295,6 +417,16 @@ def test_into_cir(t : T?) {
         let f5 = record([bits("a", 4l, 3), bits("b", 4l, 5), plain("e", 2l, 2)])
         var tu <- unit_with([CirField(name = "a", t = 0, is_bitfield = true, bit_w = 3), CirField(name = "b", t = 0, is_bitfield = true, bit_w = 5), CirField(name = "e", t = 2)])
         t |> equal(into_cir(tu, f5), "packed false size 4 align 4 at 0/0 0/3 2/16")
+    }
+    t |> run("msvc: F5's record in one `unsigned` unit is natural; under `#pragma pack(1)` an `int` at 1 is packed") @(t : T?) {
+        let f5 = msvc(record([bits("a", 4l, 3), bits("b", 4l, 5), plain("e", 2l, 2)]))
+        var tu <- unit_with([CirField(name = "a", t = 0, is_bitfield = true, bit_w = 3), CirField(name = "b", t = 0, is_bitfield = true, bit_w = 5), CirField(name = "e", t = 2)])
+        tu.target = target_llp64_msvc()
+        t |> equal(into_cir(tu, f5), "packed false size 8 align 4 at 0/0 0/3 4/32")
+        let pack1 = msvc(with_pack(record([plain("c", 1l, 1), plain("x", 4l, 4)]), 1))
+        var tu2 <- unit_with([CirField(name = "c", t = 1), CirField(name = "x", t = 0)])
+        tu2.target = target_llp64_msvc()
+        t |> equal(into_cir(tu2, pack1), "packed true size 5 align 1 at 0/0 1/8")
     }
     t |> run("a refused layout, a field count other than the layout's, a size past the bit offsets") @(t : T?) {
         var tu <- unit_with([CirField(name = "a", t = 1)])

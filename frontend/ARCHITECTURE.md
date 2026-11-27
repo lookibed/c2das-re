@@ -9,8 +9,8 @@ lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 t
 `#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
 C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums and
 function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22) - and the record layout of
-`ARCHITECTURE_LAYOUT.md` (sections 50 to 53). No converter pass calls the preprocessor, the
-parser or the layout yet.
+`ARCHITECTURE_LAYOUT.md` and `ARCHITECTURE_LAYOUT_MSVC.md` (sections 50 to 56). No converter pass
+calls the preprocessor, the parser or the layout yet.
 
 ## 1. File charters
 
@@ -42,13 +42,15 @@ parser or the layout yet.
   tree, the tag and enumerator scopes, the old-style declaration list, a body's scope, the
   refusals and malformed input, the nesting bound of the record forms, and a whole unit of headers
   and a program with its allocation probe.
-- `c_layout.das` - the record layout of a dialect (`ARCHITECTURE_LAYOUT.md`): a record's size,
-  alignment and member bit offsets from a description of its members, and the record written into
-  a C-IR type with the `packed` verdict of `converter/bit_units.das`, which it requires. It reads
-  no C text: the type builder describes the record.
-- `tests/test_c_layout.das` - every layout rule with clang's numbers for a record of
-  `compare/layout/fixtures/rules.c`, every refusal with its message, and the C-IR write with its
-  `packed` verdicts. The comparison with clang over the corpora is `compare/layout/`.
+- `c_layout.das` - the record layout of a dialect (`ARCHITECTURE_LAYOUT.md`, the `msvc` rules in
+  `ARCHITECTURE_LAYOUT_MSVC.md`): a record's size, alignment and member bit offsets from a
+  description of its members, and the record written into a C-IR type with the `packed` verdict of
+  `converter/bit_units.das`, which it requires. It reads no C text: the type builder describes the
+  record.
+- `tests/test_c_layout.das` - every layout rule of both dialects with clang's numbers for a record
+  of `compare/layout/fixtures/rules.c` or `fixtures/msvc/rules_msvc.c`, every refusal with its
+  message, and the C-IR write with its `packed` verdicts. The comparison with clang over the
+  corpora is `compare/layout/`.
 - `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, the text the
   parser tests read.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and

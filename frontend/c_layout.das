@@ -30,6 +30,7 @@ struct CLayoutMember {
     is_flexible : bool      //!< an array of unknown size, the last member
     packed : bool           //!< `__attribute__((packed))` on the member
     aligned : int           //!< the largest `aligned(N)` or `_Alignas` on the member, 0 for none
+    required_align : int    //!< msvc: the alignment its type requires (a typedef's `aligned`, a record's `required_align`), 0 for none
     type_class : CLayoutClass
     at : string             //!< `file:line:col` of the member, for a refusal
 }
@@ -39,7 +40,7 @@ struct CLayoutRecord {
     dialect : string
     is_union : bool
     packed : bool           //!< `__attribute__((packed))` on the record
-    aligned : int           //!< the largest `aligned(N)` on the record, 0 for none
+    aligned : int           //!< the largest `aligned(N)` or `__declspec(align(N))` on the record, 0 for none
     pack : int              //!< the `#pragma pack` value in force at the definition, 0 for none
     ms_struct : bool        //!< `__attribute__((ms_struct))` on the record
     members : array<CLayoutMember>
@@ -51,6 +52,7 @@ struct CLayoutRecord {
 struct CRecordLayout {
     size : int64
     align : int
+    required_align : int    //!< msvc: the alignment no `#pragma pack` lowers, for a member of this record's type
     offsets : array<int64>
     failed : bool
     err : string
@@ -87,6 +89,9 @@ def private member_refusal(rec : CLayoutRecord; m : CLayoutMember; idx : int) : 
     }
     if (m.aligned != 0 && !is_power_of_two(m.aligned)) {
         return "{name} is `aligned({m.aligned})`, not a power of two"
+    }
+    if (m.required_align != 0 && !is_power_of_two(m.required_align)) {
+        return "{name} requires an alignment of {m.required_align}, not a power of two"
     }
     if (m.is_flexible) {
         if (m.is_bitfield || idx != length(rec.members) - 1) {
@@ -169,16 +174,99 @@ def private place_bitfield(rec : CLayoutRecord; m : CLayoutMember; var b : Build
     return off
 }
 
-//! The layout of record `rec` under its dialect's rules; a refusal for the `msvc` dialect,
-//! `ms_struct`, a member type the C-IR has no type for, and a malformed description.
+// the bookkeeping of one record's msvc layout as clang's Microsoft record layout builder keeps it
+struct private MsBuilder {
+    size : int64            // bytes
+    align : int
+    required : int          // the alignment no pack lowers
+    max_field : int         // the pack in force, 0 for none
+    in_run : bool           // the last member is a bitfield of nonzero width
+    unit_size : int64       // the bytes of that bitfield's unit
+    remaining_bits : int64  // the bits its unit has left
+}
+
+// a member's alignment under msvc: its type's, at most the pack, 1 when `packed`, never below what it
+// requires (its own `aligned`, its type's); a plain member's requirement is the record's too
+[arch(at="ARCHITECTURE_LAYOUT_MSVC.md#c-layout-msvc-members")]
+def private ms_member_align(m : CLayoutMember; var b : MsBuilder) : int {
+    let field_required = max(m.aligned, m.required_align)
+    if (!m.is_bitfield) {
+        b.required = max(b.required, field_required)
+    }
+    var a = m.align
+    if (b.max_field > 0) {
+        a = min(a, b.max_field)
+    }
+    if (m.packed) {
+        a = 1
+    }
+    return max(a, field_required)
+}
+
+// a member's bit offset under msvc: a plain member at its alignment past the end; a bitfield in the
+// unit of the run before it when its type has that unit's size and its bits fit, else in a new unit
+// of its type at its alignment; a zero-width bitfield aligns only right after a run
+[arch(at="ARCHITECTURE_LAYOUT_MSVC.md#c-layout-msvc-bitfields")]
+def private ms_place(rec : CLayoutRecord; m : CLayoutMember; var b : MsBuilder) : int64 {
+    let a = ms_member_align(m, b)
+    let unit = m.is_flexible ? 0l : m.size
+    if (!m.is_bitfield) {
+        b.in_run = false
+        b.align = max(b.align, a)
+        let off = rec.is_union ? 0l : round_up_bits(b.size, int64(a))
+        b.size = max(b.size, off + unit)
+        return off * 8l
+    }
+    let width = int64(m.width)
+    if (width == 0l && !b.in_run) {
+        return rec.is_union ? 0l : b.size * 8l
+    }
+    if (width != 0l && !rec.is_union && b.in_run && b.unit_size == unit && width <= b.remaining_bits) {
+        let at = b.size * 8l - b.remaining_bits
+        b.remaining_bits -= width
+        return at
+    }
+    b.in_run = width != 0l
+    b.unit_size = unit
+    if (rec.is_union) {
+        b.size = max(b.size, unit)
+        return 0l
+    }
+    let off = round_up_bits(b.size, int64(a))
+    b.size = width == 0l ? off : off + unit
+    b.align = max(b.align, a)
+    b.remaining_bits = unit * 8l - width
+    return off * 8l
+}
+
+// the record's msvc layout: the size rounded to the members' alignment, then to the record's alignment
+// (its requirement included) capped by the pack but never below the requirement; a record of no bytes
+// is 4 bytes, or its alignment when it requires 4 or more
+[arch(at="ARCHITECTURE_LAYOUT_MSVC.md#c-layout-msvc-record")]
+def private ms_layout(rec : CLayoutRecord; var layout : CRecordLayout) {
+    var b = MsBuilder(align = 1, required = max(1, rec.aligned), max_field = rec.packed ? 1 : rec.pack)
+    layout.offsets |> reserve(length(rec.members))
+    for (m in rec.members) {
+        layout.offsets |> push(ms_place(rec, m, b))
+    }
+    var size = round_up_bits(b.size, int64(b.align))
+    let align = max(b.align, b.required)
+    let rounding = max(b.max_field > 0 ? min(align, b.max_field) : align, b.required)
+    size = round_up_bits(size, int64(rounding))
+    if (size == 0l) {
+        size = b.required >= 4 ? int64(align) : 4l
+    }
+    layout.size = size
+    layout.align = align
+    layout.required_align = b.required
+}
+
+//! The layout of record `rec` under its dialect's rules; a refusal for `ms_struct`, a member type
+//! the C-IR has no type for, and a malformed description.
 [arch(at="ARCHITECTURE_LAYOUT.md#c-layout-record")]
 def c_record_layout(rec : CLayoutRecord) : CRecordLayout {
     var layout : CRecordLayout
-    if (rec.dialect == "msvc") {
-        refuse(layout, rec.at, "the msvc record layout is not implemented")
-        return <- layout
-    }
-    if (rec.dialect != "linux") {
+    if (rec.dialect != "linux" && rec.dialect != "msvc") {
         refuse(layout, rec.at, "unknown dialect '{rec.dialect}': linux or msvc")
         return <- layout
     }
@@ -200,6 +288,10 @@ def c_record_layout(rec : CLayoutRecord) : CRecordLayout {
             refuse(layout, empty(m.at) ? rec.at : m.at, why)
             return <- layout
         }
+    }
+    if (rec.dialect == "msvc") {
+        ms_layout(rec, layout)
+        return <- layout
     }
     var b = Builder(align = max(1, rec.aligned))
     layout.offsets |> reserve(length(rec.members))

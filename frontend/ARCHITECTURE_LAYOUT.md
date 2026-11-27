@@ -5,9 +5,10 @@ way clang lays it out for the dialect's triple, from a description of the record
 type builder makes; it reads no C text and no type table of its own. The `linux` dialect is the
 System V x86-64 rule set clang follows for `x86_64-unknown-linux-gnu` (the Itanium record layout
 builder in C mode); the same rules hold for macOS and wasm64, which the `linux` dialect also
-stands for. All numbers come from clang 22: `tests/test_c_layout.das` holds every rule below on a
-record of `compare/layout/fixtures/rules.c`, and `compare/layout/` compares the rules with clang on
-every record of the suites and the projects.
+stands for. The `msvc` dialect's rules are `ARCHITECTURE_LAYOUT_MSVC.md`'s. All numbers come from
+clang 22: `tests/test_c_layout.das` holds every rule below on a record of
+`compare/layout/fixtures/rules.c`, and `compare/layout/` compares the rules with clang on every
+record of the suites and the projects.
 
 ## 50. The interface and what is refused {#c-layout-record}
 
@@ -18,25 +19,29 @@ none; a bare `aligned` is the target's largest alignment, 16, which the caller r
 `ARCHITECTURE_PP.md` section 13 holds it), `ms_struct`, and the members in declaration order. A
 `CLayoutMember` is its name (`""` for an unnamed bitfield and for an anonymous member), the size
 and alignment of its type in bytes, whether it is a bitfield and its width, whether it is a
-flexible array member, its own `packed` and largest `aligned(N)` or `_Alignas`, its type class,
-and its place. The type's size and alignment are the caller's: a scalar's by the dialect, an
-array's by its element, a nested record's by that record's own layout, a typedef's `aligned`
-included, which can lower an alignment as clang lets a typedef do. A bitfield's size and
+flexible array member, its own `packed` and largest `aligned(N)` or `_Alignas`, the alignment its
+type requires (`required_align`, read under `msvc` alone), its type class, and its place. The
+type's size and alignment are the caller's: a scalar's by the dialect, an array's by its element,
+a nested record's by that record's own layout, a typedef's `aligned` included under `linux`, which
+can lower an alignment as clang lets a typedef do (under `msvc` the type's below its typedefs,
+`ARCHITECTURE_LAYOUT_MSVC.md` section 54). A bitfield's size and
 alignment are those of its declared type, which is its storage unit; a flexible array member's
 alignment is its element's.
 
-The answer is a `CRecordLayout`: the size and alignment in bytes and each member's offset in bits
-from the record's first byte. An anonymous member gets an offset like any member; the members it
-makes visible are the nested record's own. The bitfield storage units are not part of the answer:
+The answer is a `CRecordLayout`: the size and alignment in bytes, under `msvc` the record's
+required alignment (`required_align`, what a member of its type requires), and each member's
+offset in bits from the record's first byte. An anonymous member gets an offset like any member;
+the members it makes visible are the nested record's own. The bitfield storage units are not part
+of the answer:
 the C-IR carries each bitfield's bit offset and width, and the emitter derives the units
 (`converter/bit_units.das`).
 
 The layout fails closed. `failed` and `err` (`file:line:col: what`, the member's place when it has
 one, else the record's) are set, and no number is, for:
 
-- the `msvc` dialect, whose record layout is a different algorithm and is not implemented, and a
-  dialect with no table;
-- `ms_struct`, which switches a `linux` record to that algorithm;
+- a dialect with no table;
+- `ms_struct`, which switches a `linux` record to clang's own variant of the msvc rules, under
+  either dialect;
 - a member of a vector type or a 128-bit integer type, which the C-IR has no type for;
 - a description no C record has: an alignment, `aligned` or `#pragma pack` value that is no power
   of two, a member of incomplete type, a flexible array member that is not the last member or is
