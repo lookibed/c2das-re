@@ -708,3 +708,15 @@ def test_spelling_outlives_file(t : T?) {
     t |> equal(kept[0].spelled, PpSpelled.source)
     t |> equal("{kept[0].at} {kept[0].len} {kept[0].tok.len}", "0 6 8")
 }
+
+[test(description = "a preprocessed unit read as the C tokens read it: each token's presumed file and line from the line markers, its column and its kept spelling, with no marker re-read by the reader")]
+def test_preprocessed_stream(t : T?) {
+    var pp <- started([("x.i", "# 1 \"x.c\"\n# 1 \"<built-in>\" 1\n# 1 \"x.c\" 2\nint a;\n# 5 \"h.h\" 1\nlong  b;\n# 2 \"x.c\" 2\nc\n")], "x.i")
+    var kept : array<PpOutToken>
+    while (pp_next_token(pp)) {
+        kept |> push(pp.tok)
+    }
+    let placed <- [for (k in kept); "{pp_spelling_of(pp, k)}@{pp.names[k.pname]}:{int64(k.pline)}:{k.tok.col}"]
+    t |> equal(join(placed, " "), "int@x.c:1:1 a@x.c:1:5 ;@x.c:1:6 long@h.h:5:1 b@h.h:5:7 ;@h.h:5:8 c@x.c:2:1")
+    t |> equal(diagnostics(pp), "")
+}
