@@ -953,8 +953,9 @@ def run_set_pp2(name : string; units : array<OracleUnit>; work : string; flags :
 
 //! The directive oracle, or with `args.pp3` the expansion oracle, over the corpora, the corpus lists
 //! and the units `args` names, from `root`, each set's line and the total printed; 0 when no unit
-//! differs where PP.2 (and PP.3) answer, 1 when one does, a corpus is unknown or missing, or PP.2's
-//! setup fails.
+//! differs where PP.2 (and PP.3) answer and the reference fails only on listed units, 1 when a unit
+//! differs, a unit the list does not name fails in the reference, a corpus is unknown or missing, or
+//! PP.2's setup fails.
 def run_pp2(args : OracleArgs; root : string; flags : array<string>; listed : array<ReferenceFailure>) : int {
     var error : string
     let setup <- pp2_setup(error)
@@ -983,5 +984,5 @@ def run_pp2(args : OracleArgs; root : string; flags : array<string>; listed : ar
     }
     let line = describe_pp2_totals("total ({args.pp3 ? "pp3" : "pp2"}):", total)
     print("{line}\n")
-    return total.units.w == 0 ? 0 : 1
+    return total.units.w == 0 && total.oracle.unlisted == 0 ? 0 : 1
 }

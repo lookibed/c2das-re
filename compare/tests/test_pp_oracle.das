@@ -471,7 +471,7 @@ def test_run_set_pp2_counts(t : T?) {
     t |> equal("{totals.oracle.listed} {totals.oracle.unlisted} {totals.oracle.stale}", "1 1 0")
 }
 
-[test(description = "run.das --pp2 runs the directive oracle: exit 0 over the clean fixture set and past a reference failure, 1 when a unit differs or a corpus is unknown", timeout = 1200)]
+[test(description = "run.das --pp2 runs the directive oracle: exit 0 over the clean fixture set and past a listed reference failure, 1 past an unlisted one, when a unit differs or a corpus is unknown", timeout = 1200)]
 def test_run_pp2_command_line(t : T?) {
     let work = path_join(test_temp_dir(), "pp2_cli")
     var argv <- daslang_cmd(["dasCRuntime", "c_runtime", "fetch/dasFlex"])
@@ -483,8 +483,17 @@ def test_run_pp2_command_line(t : T?) {
     var missing := argv
     missing |> push("compare/pp/fixtures/pp2/no_such_unit.c")
     let missing_rc = run_and_capture(missing, out, 600.0)
-    t |> equal(missing_rc, 0, out)
+    t |> equal(missing_rc, 1, out)
     t |> success(find(out, "0 differ, 0 reference failures (listed), 1 reference failures (unlisted)") >= 0, out)
+    let torture = path_join(test_temp_dir(), "pp2_listed/gcc.c-torture/execute")
+    mkdir_rec(torture)
+    let listed_unit = path_join(torture, "loop-2f.c")
+    fwrite(listed_unit, "#include <sys/mman.h>\nint x;\n")
+    var listed := argv
+    listed |> push(listed_unit)
+    let listed_rc = run_and_capture(listed, out, 600.0)
+    t |> equal(listed_rc, 0, out)
+    t |> success(find(out, "0 differ, 1 reference failures (listed), 0 reference failures (unlisted)") >= 0, out)
     var differs := argv
     differs |> push(unit_file("cli_differs.c", "#pragma pack(3)\nint x;\n"))
     let differs_rc = run_and_capture(differs, out, 600.0)
@@ -589,7 +598,7 @@ def test_pp3_no_needs_pp3(t : T?) {
     t |> equal(pp2_difference_class(Pp2Result(expanded = true), d, clang, ours, none), Pp2Class.differs)
 }
 
-[test(description = "run_oracle --pp3 runs the expansion oracle: exit 0 over the fixture set; a corpus list that is missing is an error and exit 1", timeout = 1200)]
+[test(description = "run_oracle --pp3 runs the expansion oracle: exit 0 over the fixture set; a corpus list that is missing, or an unlisted reference failure, is exit 1", timeout = 1200)]
 def test_run_oracle_pp3(t : T?) {
     let work = path_join(test_temp_dir(), "pp3_run")
     var fixtures = OracleArgs(work = work, pp3 = true)
@@ -598,6 +607,9 @@ def test_run_oracle_pp3(t : T?) {
     var missing = OracleArgs(work = work, pp3 = true)
     missing.list |> push(path_join(test_temp_dir(), "no_such_list.txt"))
     t |> equal(run_oracle(missing), 1)
+    var unlisted = OracleArgs(work = work, pp3 = true)
+    unlisted.units |> push("compare/pp/fixtures/pp2/no_such_unit.c")
+    t |> equal(run_oracle(unlisted), 1)
 }
 
 [test(description = "in PP.3's stream a token from a macro defined in a group PP.4 chooses is marked, through the call its name came from; a macro defined before is not")]

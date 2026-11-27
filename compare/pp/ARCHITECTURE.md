@@ -83,7 +83,10 @@ per unit: the end of its path (`gcc.c-torture/execute/loop-2f.c`), a tab, the re
 (and `run_set_pp2`, both through `reference_failure`) counts a failing unit the list names as a listed reference failure, with that reason, and any
 other failing unit as an unlisted one, with clang's error, so a new failure shows up apart from the
 known ones. A listed unit that preprocesses after all is counted and printed too, so a stale line
-is dropped. None of the three counts is a difference: the exit code follows the differences alone.
+is dropped. None of the three counts is a difference. The lexer's run exits by the differences
+alone; the directive and expansion oracles (sections 4 and 5) fail closed: an unlisted reference
+failure fails their run, a listed one does not, so the units the reference cannot read stay the
+ones the list names and a new failure is never passed over as a reference problem.
 
 ## 4. The directive oracle {#pp2}
 
@@ -120,8 +123,8 @@ has an error of its own - an error naming PP.3 or PP.4, or met while a group PP.
 open, is not its own - or when the pragma counts disagree with nothing left to PP.4 to explain them
 (or to PP.3, when clang has more: `_Pragma` in an expansion). Each unit not clean prints its count
 of differences of each class, every difference that differs and `--show` of each other class.
-Only a unit that differs fails the run; a unit clang refuses is a reference failure, listed or
-unlisted as section 3 counts it, in this mode too.
+A unit that differs fails the run; a unit clang refuses is a reference failure, listed or
+unlisted as section 3 counts it, and an unlisted one fails the run too.
 
 ## 5. The expansion oracle {#pp3}
 
