@@ -565,7 +565,6 @@ def private declaration(var b : CTypes; var p : CParser; decl : int; local : boo
         let d = p.ast.nodes[id].a
         let sym = c_declarator_name(p.ast, d)
         let f = c_name_function(p.ast, d)
-        continue if (local && f >= 0 && !typedef_decl && key_exists(b.declared, sym))
         return false if (!plain_attributes(b, p, p.ast.nodes[id].d))
         let base = c_specifier_type(b, p, n.a)
         let t = applied(b, p, base, d, false, p.ast.nodes[id].b)
