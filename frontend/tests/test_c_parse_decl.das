@@ -360,7 +360,7 @@ def test_declaration_details(t : T?) {
 
 [test(description = "a function definition is told by its declarator: a function applied to its name through parentheses, the first declarator only, never a non-function; `c_name_function` finds the function node, not a pointer around it, and none for no declarator")]
 def test_definition_identified(t : T?) {
-    t |> equal(decls("int (f)(void) \{\}"), "error: t.c:1:15: a function definition is not parsed")
+    t |> equal(decls("int (f)(void) \{\}"), "error: t.c:1:15: expected ';', got '\{'")
     t |> equal(decls("int x \{\}"), "error: t.c:1:7: expected ';', got '\{'")
     t |> equal(decls("int x, f(void) \{\}"), "error: t.c:1:16: expected ';', got '\{'")
     t |> equal(name_function_of("int *f(void);"), "(d_function 0 (d_name f) [(param [(spec void)] -)])")

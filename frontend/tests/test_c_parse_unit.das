@@ -176,6 +176,7 @@ def test_definitions(t : T?) {
                "(func_def 0 [(spec static) (spec inline) (spec void)] (init_decl (d_function 0 (d_name f) [(param [(spec int)] (d_name a))]) - - [(attribute __attribute__((noinline)))]) [] (body \{ \{ a; \} \{\} \})) (decl 0 [(spec int)] [(init_decl (d_name x) - -)])")
     t |> equal(unit("__extension__ int (*h(int a))(int) \{ return 0; \}"),
                "(func_def 1 [(spec int)] (init_decl (d_function 0 (d_paren (d_pointer (d_function 0 (d_name h) [(param [(spec int)] (d_name a))]) []) []) [(param [(spec int)] -)]) - -) [] (body \{ return 0; \}))")
+    t |> equal(unit("int (f)(void) \{\}"), "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_paren (d_name f) []) [(param [(spec void)] -)]) - -) [] (body \{\}))")
     t |> equal(unit("int f(void) \{\} int g(void) \{\}"),
                "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name f) [(param [(spec void)] -)]) - -) [] (body \{\})) (func_def 0 [(spec int)] (init_decl (d_function 0 (d_name g) [(param [(spec void)] -)]) - -) [] (body \{\}))")
 }
