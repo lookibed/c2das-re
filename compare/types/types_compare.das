@@ -155,6 +155,93 @@ def declaration_order(tu : CirTu) : array<string> {
     return <- w.names
 }
 
+// the types expression `e` and the expressions under it name, into `out`
+def private expression_types(e : CirExpr?; var out : array<int>) {
+    return if (e == null)
+    for (t in fixed_array(e.t, e.of_t, e.arg_t)) {
+        if (t >= 0) {
+            out |> push(t)
+        }
+    }
+    expression_types(e.a, out)
+    expression_types(e.b, out)
+    expression_types(e.c, out)
+    expression_types(e.fn, out)
+    expression_types(e.base, out)
+    expression_types(e.i, out)
+    expression_types(e.list, out)
+    expression_types(e.init, out)
+    for (arg in e.args) {
+        expression_types(arg, out)
+    }
+    for (item in e.init_items) {
+        expression_types(item.v, out)
+    }
+}
+
+// the types the expressions of statement `s` and the statements under it name, into `out`
+def private statement_expression_types(s : CirStmt?; var out : array<int>) {
+    return if (s == null)
+    expression_types(s.init, out)
+    expression_types(s.e, out)
+    expression_types(s.cond, out)
+    expression_types(s.inc, out)
+    for (kid in s.body) {
+        statement_expression_types(kid, out)
+    }
+    statement_expression_types(s.then_s, out)
+    statement_expression_types(s.else_s, out)
+    statement_expression_types(s.body_s, out)
+    statement_expression_types(s.init_s, out)
+}
+
+//! The names of the entries of Dumper A's table that only expressions reach: the types its
+//! expression nodes name, with their parts, less those its declarations reach (`declared`).
+def expression_only(tu : CirTu; declared : array<string>) : table<string; bool> {
+    var roots : array<int>
+    for (d in tu.decls) {
+        expression_types(d.init, roots)
+        statement_expression_types(d.body, roots)
+    }
+    var w : OrderWalk
+    for (t in roots) {
+        reach(w, tu.types, t)
+    }
+    let on_decl <- {for (name in declared); name => true}
+    var only <- {for (name in w.names); name => true; where !key_exists(on_decl, name)}
+    return <- only
+}
+
+//! The difference of the builder's table `ours` from Dumper A's declaration types, "" for none
+//! (`ARCHITECTURE.md#declaration-order`): `order` is Dumper A's declaration order rebuilt, `theirs`
+//! its whole table, `expression_only` the entries only its expressions reach. Every other entry of
+//! Dumper A's table is a declaration's - the rebuilt order's, and the ones a declaration interned
+//! that no rebuilt declaration names (a block typedef's type under a name that already has an entry,
+//! an array type a redeclaration's composite replaced) - and the builder has exactly those: the
+//! rebuilt ones in the rebuilt order, the others in Dumper A's order.
+[arch(at="ARCHITECTURE.md#declaration-order")]
+def declaration_difference(ours, order, theirs : array<string>; expression_only : table<string; bool>) : string {
+    let in_order <- {for (name in order); name => true}
+    let extras <- [for (name in theirs); name; where !key_exists(in_order, name) && !key_exists(expression_only, name)]
+    let is_extra <- {for (name in extras); name => true}
+    let ours_set <- {for (name in ours); name => true}
+    for (name in ours) {
+        return "builder {name}, which Dumper A's declarations do not intern" if (!key_exists(in_order, name) && !key_exists(is_extra, name))
+    }
+    for (name in order) {
+        return "Dumper A {name}, which the builder lacks" if (!key_exists(ours_set, name))
+    }
+    for (name in extras) {
+        return "Dumper A {name} (interned by a declaration no rebuilt declaration names), which the builder lacks" if (!key_exists(ours_set, name))
+    }
+    let rebuilt <- [for (name in ours); name; where key_exists(in_order, name)]
+    let in_rebuilt = first_difference(rebuilt, order)
+    return "in the rebuilt order, {in_rebuilt}" if (!empty(in_rebuilt))
+    let others <- [for (name in ours); name; where key_exists(is_extra, name)]
+    let in_others = first_difference(others, extras)
+    return empty(in_others) ? "" : "among the entries no rebuilt declaration names, {in_others}"
+}
+
 //! One unit under one dialect: what each side gave and how they compare.
 struct TypesResult {
     unit : string
@@ -235,6 +322,7 @@ def compare_types(unit, work : string; target : CirTarget) : TypesResult {
     let failed = !empty(r.dumper_error)
     let theirs <- failed ? array<string>() : table_names(d.tu.types)
     let order <- failed ? array<string>() : declaration_order(d.tu)
+    let only <- expression_only(d.tu, order)
     r.aggregate = !failed && has_aggregate(d.tu.types)
     delete_tu(d.tu)
     unsafe {
@@ -249,7 +337,7 @@ def compare_types(unit, work : string; target : CirTarget) : TypesResult {
     r.builder_count = length(ours)
     r.dumper_count = length(theirs)
     r.whole = empty(first_difference(ours, theirs))
-    r.difference = first_difference(ours, order)
+    r.difference = declaration_difference(ours, order, theirs, only)
     r.declarations = empty(r.difference)
     return <- r
 }

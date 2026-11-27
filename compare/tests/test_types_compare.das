@@ -94,6 +94,30 @@ def test_fixtures(t : T?) {
             t |> equal(compared("expr_first.c", dialect), "false/true/false")
             t |> equal(compared("aggregate.c", dialect), "false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
             t |> equal(compared("refused.c", dialect), "false/false/false builder: {FIXTURES}/refused.c:2:11: an array size other than an integer literal is not typed yet")
+            t |> equal(compared("redeclared.c", dialect), "true/true/false")
         }
     }
 }
+
+[test(description = "the declaration comparison holds the builder to every entry a declaration interned: those no rebuilt declaration names, in Dumper A's order; never to an entry only expressions reach; never past an entry Dumper A lacks")]
+def test_declaration_difference(t : T?) {
+    let order <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)"]
+    let theirs <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "long/64s", "ptr(char/8u)"]
+    var expression_only : table<string; bool>
+    expression_only["ptr(char/8u)"] = true
+    let agree <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "long/64s"]
+    t |> equal(declaration_difference(agree, order, theirs, expression_only), "")
+    let dropped <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)"]
+    t |> equal(declaration_difference(dropped, order, theirs, expression_only), "Dumper A long/64s (interned by a declaration no rebuilt declaration names), which the builder lacks")
+    let extra <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "long/64s", "int/32s"]
+    t |> equal(declaration_difference(extra, order, theirs, expression_only), "builder int/32s, which Dumper A's declarations do not intern")
+    let missing <- ["short/16s", "typedef(T=short/16s)", "func(void;)", "long/64s"]
+    t |> equal(declaration_difference(missing, order, theirs, expression_only), "Dumper A void, which the builder lacks")
+    let swapped <- ["typedef(T=short/16s)", "short/16s", "void", "func(void;)", "long/64s"]
+    t |> equal(declaration_difference(swapped, order, theirs, expression_only), "in the rebuilt order, entry 0: builder typedef(T=short/16s), Dumper A short/16s")
+    let theirs2 <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "long/64s", "int/32s"]
+    let extras_swapped <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "int/32s", "long/64s"]
+    let none : table<string; bool>
+    t |> equal(declaration_difference(extras_swapped, order, theirs2, none), "among the entries no rebuilt declaration names, entry 0: builder int/32s, Dumper A long/64s")
+}
+

@@ -10,7 +10,7 @@ lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 t
 C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
 statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and
 `ARCHITECTURE_STATEMENTS.md`, section 23), and the type table built from the parser's tree
-(`ARCHITECTURE_TYPES.md`, sections 24 to 28). No converter pass calls the preprocessor, the
+(`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60). No converter pass calls the preprocessor, the
 parser or the type table yet.
 
 ## 1. File charters

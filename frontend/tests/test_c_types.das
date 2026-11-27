@@ -85,9 +85,13 @@ def test_definition(t : T?) {
         t |> equal(types_of(BODY),
                    "int:16:true:short int:64:true:long int:8:false:char ptr:2 func:0:1,3:false int:32:false:unsigned int float:64:double typedef:D:6 float:32 int:64:true:long long int:8:true:signed char int:16:false:unsigned short int:32:true:int func:12::false int:8:false:unsigned char int:8:false:_Bool float:64:long double int:64:false:unsigned long ptr:12")
     }
-    t |> run("an old-style definition: R (), then each parameter in the identifier list's order") @(t : T?) {
+    t |> run("an old-style definition: its type with the parameters promoted, then each parameter's declared type in the identifier list's order") @(t : T?) {
         t |> equal(types_of("int k(a, b, c) char b; double a; int c[2]; \{ return 0; \}"),
-                   "int:32:true:int func:0::false float:64:double int:8:false:char ptr:0")
+                   "int:32:true:int float:64:double ptr:0 func:0:1,0,2:false int:8:false:char")
+        t |> equal(types_of("int k(a, b, c) float a; unsigned short b; _Bool c; \{ return 0; \}"),
+                   "int:32:true:int float:64:double func:0:1,0,0:false float:32 int:16:false:unsigned short int:8:false:_Bool")
+        t |> equal(types_of("int f(x) int x __attribute__((mode(DI))); \{ return 0; \}"),
+                   "error: t.c:1:31: the attribute 'mode', which changes a type, is not typed yet")
     }
     t |> run("a block declaration of a function no declaration named yet adds its type and parameters") @(t : T?) {
         t |> equal(types_of("void f(void) \{ int g(char *); \}"), "void func:0::false int:32:true:int int:8:false:char ptr:3 func:2:4:false")
@@ -138,3 +142,56 @@ def test_refusals(t : T?) {
     t |> equal(types_of("char s[] = L\"x\";"), "error: t.c:1:12: a prefixed string literal is not typed yet")
     t |> equal(types_of("int s[] = (\{ 1; \});"), "error: t.c:1:11: an unsized array initialized by this expression is not typed yet")
 }
+
+[test(description = "a declaration's specifiers name one type for all its declarators: a typedef one of them binds does not change the next")]
+def test_specifiers_once(t : T?) {
+    t |> equal(types_of("typedef int T; void f(void) \{ typedef T T2, *T, T3; T3 x; \}"),
+               "int:32:true:int typedef:T:0 void func:2::false typedef:T2:0 ptr:0 typedef:T3:0")
+}
+
+[test(description = "a redeclaration takes the composite of the earlier type: a prototype kept by a declaration with none, an array size kept by one with none, a header's prototype; any other different type refused")]
+def test_redeclarations(t : T?) {
+    t |> equal(types_of("int f(int); int f();"), "int:32:true:int func:0:0:false")
+    t |> equal(types_of("int f(); int f(int x) \{ return x; \}"), "int:32:true:int func:0::false func:0:0:false")
+    t |> equal(types_of("extern int a[3]; int a[];"), "int:32:true:int array:0:3")
+    t |> equal(types_of("extern int a[]; int a[2];"), "int:32:true:int array:0:-1 array:0:2")
+    t |> equal(types_of("int g(int); void h(void) \{ extern int g(); \}"), "int:32:true:int func:0:0:false void func:2::false")
+    t |> equal(types_of(LIBRARY + "int puts();\n", false, "/lib/"),
+               "int:64:false:unsigned long int:32:true:int func:1::false int:8:false:char ptr:3 func:1:4:false")
+    t |> equal(types_of("int f(int); int f(char);"),
+               "error: t.c:1:17: a redeclaration of 'f' whose type differs from the earlier one's is not typed yet (its composite type waits for the Aggregates phase)")
+    t |> equal(types_of("int a[2]; int a[3];"),
+               "error: t.c:1:15: a redeclaration of 'a' whose type differs from the earlier one's is not typed yet (its composite type waits for the Aggregates phase)")
+}
+
+[test(description = "arrays of unknown size: one a typedef names sized by the initializer, a tentative definition completed to one element unless a later definition sizes it")]
+def test_array_completion(t : T?) {
+    t |> equal(types_of("typedef char A[]; A a = \"hello\";"), "int:8:false:char array:0:-1 typedef:A:1 array:0:6")
+    t |> equal(types_of("typedef int V[]; V v = \{1, 2\};"), "int:32:true:int array:0:-1 typedef:V:1 array:0:2")
+    t |> equal(types_of("int a[];"), "int:32:true:int array:0:1")
+    t |> equal(types_of("int a[]; int a[5];"), "int:32:true:int array:0:-1 array:0:5")
+    t |> equal(types_of("int a[]; int a[];"), "int:32:true:int array:0:-1 array:0:1")
+    t |> equal(types_of("int b[]; extern int b[];"), "int:32:true:int array:0:1 array:0:-1")
+    t |> equal(types_of("extern int e[];"), "int:32:true:int array:0:-1")
+    t |> equal(types_of("int a[]; extern int a[5];"),
+               "error: t.c:1:5: an array of unknown size defined tentatively and sized by a later extern declaration is not typed yet (its completion waits for the Aggregates phase)")
+}
+
+[test(description = "a typedef of void alone in a parameter list is (void), no parameter")]
+def test_void_typedef(t : T?) {
+    t |> equal(types_of("typedef void V; int f(V);"), "void typedef:V:0 int:32:true:int func:2::false")
+    t |> equal(types_of("typedef void V; int f(const V);"), "void typedef:V:0 int:32:true:int func:2::false")
+}
+
+[test(description = "type-changing constructs are refused wherever they stand: _Atomic on a pointer or an array parameter, the __ext_vector_type__ spelling, a header typedef's trailing attribute, a designator past the largest count")]
+def test_refusals_everywhere(t : T?) {
+    t |> equal(types_of("int * _Atomic p;"), "error: t.c:1:7: an _Atomic type is not typed yet")
+    t |> equal(types_of("void f(int a[_Atomic 2]);"), "error: t.c:1:14: an _Atomic type is not typed yet")
+    t |> equal(types_of("typedef int V __attribute__((__ext_vector_type__(4))); V a;"),
+               "error: t.c:1:30: the attribute '__ext_vector_type__', which changes a type, is not typed yet")
+    t |> equal(types_of("# 1 \"/lib/h.h\" 1\ntypedef int V __attribute__((vector_size(16)));\n# 2 \"t.c\" 2\nV a;\n", false, "/lib/"),
+               "error: t.c:2:1: the typedef name 'V' is not typed yet: /lib/h.h:1:30: the attribute 'vector_size', which changes a type, is not typed yet")
+    t |> equal(types_of("int a[] = \{[2147483647] = 1\};"), "error: t.c:1:12: an array sized past 2^31 - 1 is not typed yet")
+    t |> equal(types_of("int a[] = \{[2147483646] = 1\};"), "int:32:true:int array:0:2147483647")
+}
+
