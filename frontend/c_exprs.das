@@ -362,9 +362,13 @@ def private pointee_composite(var r : CIr; a, b : int) : int {
 }
 
 // whether a pointer of pool type `from` assigns to one of type `to` (C11 6.5.16.1p1): pointers to
-// compatible types, qualifiers aside, or one to `void`
+// compatible types, qualifiers aside, or one to `void`; and, as clang takes it with a warning
+// (`pointer-sign`), pointers to integer types of one width that differ in sign
 def private pointers_assign(var r : CIr; from, to : int) : bool {
     return true if (points_at_void(r, from) || points_at_void(r, to))
+    let a = c_bare(r, r.pool[from].to)
+    let b = c_bare(r, r.pool[to].to)
+    return true if (is_int(r, a) && is_int(r, b) && r.pool[a].w == r.pool[b].w)
     return pointee_composite(r, from, to) >= 0
 }
 

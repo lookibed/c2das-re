@@ -120,7 +120,9 @@ pointer whose type differs only in qualifiers (`char *` to `const char *`), `Bit
 to a compatible type or from or to a pointer to `void`; a pointer to `_Bool` `PointerToBoolean`.
 Every other pair is invalid C clang rejects (section 29): an integer other than a null pointer
 constant to a pointer and a pointer to an integer other than `_Bool` (clang's `int-conversion`, an
-error by default), a pointer to an incompatible type (`incompatible-pointer-types`), a floating
+error by default), a pointer to an incompatible type (`incompatible-pointer-types`; a pointer to an
+integer type of one width but the other sign is no such type: clang warns, `pointer-sign`, and
+`BitCast`s it), a floating
 value to a pointer, a value of no scalar type to a scalar. Compatibility is the pool's
 (`c_composite`), in which a function with no parameter is compatible with any function of its
 result, `()` and `(void)` being one type there. A literal is converted, never retyped (`char c = 1`
