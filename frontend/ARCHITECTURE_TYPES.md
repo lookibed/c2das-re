@@ -61,9 +61,9 @@ storage classes and function specifiers give no type. A typedef name gives the p
 bound to, and `typeof` of a type name that type name's type. Under the msvc dialect `size_t`,
 which clang declares there before the unit, is `unsigned long long`.
 
-Records, unions and enums are the Aggregates phase: the builder refuses them where they stand,
-and its keys (by structure, a typedef by name) take them as further kinds. It refuses, with the
-place of the construct, `file:line:col: <construct> is not typed yet`: a struct, union or enum type,
+A struct, union or enum specifier gives the type `c_records.das` builds for its tag
+(`ARCHITECTURE_RECORDS.md`), keyed by its identity. The builder refuses, with the place of the
+construct, `file:line:col: <construct> is not typed yet`:
 `_Complex`, `_Atomic`, `typeof` of an expression, `_Alignas`, an attribute naming `mode`,
 `vector_size` or `ext_vector_type` (in the specifiers, on a pointer, around a parenthesised
 declarator, after a declarator or a parameter), and a typedef name it has no type for - one clang

@@ -12,7 +12,8 @@ statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22
 `ARCHITECTURE_STATEMENTS.md`, section 23), the type
 table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the
 expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29
-to 36), with the names and places it gives (`ARCHITECTURE_NAMES.md`, sections 37 to 39), and
+to 36), with the names and places it gives (`ARCHITECTURE_NAMES.md`, sections 37 to 39), its
+records, unions and enums (`ARCHITECTURE_RECORDS.md`, sections 41 to 47), and
 the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 40), and the record layout of
 `ARCHITECTURE_LAYOUT.md` and `ARCHITECTURE_LAYOUT_MSVC.md` (sections 50 to 56). No converter pass
 calls the preprocessor, the parser, the C-IR builder or the layout yet.
@@ -42,8 +43,13 @@ calls the preprocessor, the parser, the C-IR builder or the layout yet.
   One module, since the grammar's parts call each other.
 - `c_types.das` - the C-IR type table of a unit (`ARCHITECTURE_TYPES.md`): the pool of types met,
   qualified ones apart, each use interning a type into `CirTu.types`, the specifiers, declarators
-  and initializer-sized arrays, the typedef scopes. It writes `converter/cir.das`'s structures and
-  requires no other converter module.
+  and initializer-sized arrays, the typedef and tag scopes, a record's and an enum's entry with its
+  layout. It writes `converter/cir.das`'s structures and requires no other converter module than
+  `bit_units.das`, through `c_layout.das`.
+- `c_records.das` - struct, union and enum definitions built into types, a tag's use bound to its
+  definition, the walk that interns and anchors them, `dims` (`ARCHITECTURE_RECORDS.md`).
+  `tests/test_c_records.das` - the table order, anchors, tag uses, library records, enums under
+  both dialects, promotions, member access, `dims`, layout attributes, every refusal with its place.
 - `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
   constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 29 to 35).
 - `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding

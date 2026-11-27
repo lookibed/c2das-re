@@ -111,21 +111,18 @@ def test_unsized_arrays(t : T?) {
                "int:8:false:char array:0:9 int:32:true:int array:2:3 array:0:3 array:2:2 array:5:3 array:2:-1 array:4:2 array:2:4 ptr:0 array:10:1 array:0:2")
 }
 
-let LIBRARY = "# 1 \"/lib/h.h\" 1\ntypedef unsigned long size_t;\ntypedef struct F FILE;\nint puts(const char *);\nstatic int lib_def(void) \{ return 0; \}\n# 2 \"t.c\" 2\nsize_t n; int f(void) \{ int puts(const char *); int lib_def(void); return 0; \}\n"
+let LIBRARY = "# 1 \"/lib/h.h\" 1\ntypedef unsigned long size_t;\ntypedef _Complex double cplx;\nint puts(const char *);\nstatic int lib_def(void) \{ return 0; \}\n# 2 \"t.c\" 2\nsize_t n; int f(void) \{ int puts(const char *); int lib_def(void); return 0; \}\n"
 
 [test(description = "the own headers' declarations add no type: their typedef names resolve, their function names count as declared, an untyped one refused where the unit uses it")]
 def test_library(t : T?) {
     t |> equal(types_of(LIBRARY, false, "/lib/"), "int:64:false:unsigned long int:32:true:int func:1::false")
-    t |> equal(types_of(LIBRARY + "FILE *fp;\n", false, "/lib/"),
-               "error: t.c:3:1: the typedef name 'FILE' is not typed yet: /lib/h.h:2:9: a struct type is not typed yet")
-    t |> equal(types_of(LIBRARY), "error: /lib/h.h:2:9: a struct type is not typed yet")
+    t |> equal(types_of(LIBRARY + "cplx c;\n", false, "/lib/"),
+               "error: t.c:3:1: the typedef name 'cplx' is not typed yet: /lib/h.h:2:9: a complex type is not typed yet")
+    t |> equal(types_of(LIBRARY), "error: /lib/h.h:2:9: a complex type is not typed yet")
 }
 
 [test(description = "every construct the builder does not type yet is refused at its place")]
 def test_refusals(t : T?) {
-    t |> equal(types_of("struct S \{ int a; \} s;"), "error: t.c:1:1: a struct type is not typed yet")
-    t |> equal(types_of("int x; union U u;"), "error: t.c:1:8: a union type is not typed yet")
-    t |> equal(types_of("enum E \{ A \};"), "error: t.c:1:1: an enum type is not typed yet")
     t |> equal(types_of("_Complex double c;"), "error: t.c:1:1: a complex type is not typed yet")
     t |> equal(types_of("_Atomic int a;"), "error: t.c:1:1: an _Atomic type is not typed yet")
     t |> equal(types_of("__builtin_va_list ap;"), "error: t.c:1:1: the typedef name '__builtin_va_list' is not typed yet")

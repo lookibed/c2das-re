@@ -7,6 +7,7 @@ require strings
 require daslib/strings_boost
 require c_floats public
 require c_types public
+require c_records public
 
 //! The expressions of a unit as Dumper A writes them (`ARCHITECTURE_EXPRS.md`): each parser
 //! expression a C-IR expression node whose `t` is its pool type, with every conversion clang makes
@@ -20,13 +21,6 @@ let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["l
 //! The state of a unit's expressions is the type builder's (`CTypes`): its types, the identifiers
 //! in scope and the return type of the function being read.
 typedef CIr = CTypes
-
-//! Bind identifier `sym` to `id` in the innermost scope.
-def c_ir_bind(var r : CIr; sym : int; id : CId) {
-    let had = key_exists(r.ids, sym)
-    r.id_undo |> push((sym = sym, had = had, was = had ? r.ids?[sym] ?? id : id))
-    r.ids[sym] = id
-}
 
 //! Open a scope of identifiers.
 def c_ir_open(var r : CIr) {
@@ -53,7 +47,7 @@ def c_ir_close(var r : CIr) {
 // the kind of pool type `t`
 def private kind_of(r : CIr; t : int) : string => r.pool[t].k
 
-def private is_int(r : CIr; t : int) : bool => r.pool[t].k == "int"
+def private is_int(r : CIr; t : int) : bool => r.pool[t].k == "int" || r.pool[t].k == "enum"
 
 def private is_float(r : CIr; t : int) : bool => r.pool[t].k == "float"
 
@@ -114,6 +108,8 @@ def c_implicit(var x : CirExpr?; t : int; kind : string) : CirExpr? {
 def private is_lvalue(r : CIr; x : CirExpr?) : bool {
     if (x.e == "ref" || x.e == "index" || x.e == "str_lit") {
         return kind_of(r, x.t) != "func"
+    } elif (x.e == "member") {
+        return x.arrow || is_lvalue(r, x.base)
     }
     return x.e == "un" && x.op == "deref" && kind_of(r, x.t) != "func"
 }
@@ -136,12 +132,32 @@ def c_rvalue(var r : CIr; var x : CirExpr?) : CirExpr? {
 // the pool type `int`
 def private int_t(var r : CIr) : int => c_builtin(r, "int")
 
+// the width of the bit-field value `v` reads (a read of a member that is one), -1 for any other
+// value
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
+def private bitfield_width(r : CIr; v : CirExpr?) : int {
+    return -1 if (v.e != "cast" || v.cast_kind != "LValueToRValue" || v.a == null || v.a.e != "member")
+    let m = v.a
+    let base_t = m.arrow ? r.pool[unq(r, m.base.t)].to : m.base.t
+    let rec = unq(r, base_t)
+    return -1 if (m.field >= length(r.pool[rec].fields))
+    return r.pool[rec].fields[m.field].is_bitfield ? r.pool[rec].fields[m.field].bit_w : -1
+}
+
 //! `x` as a value under the integer promotions (C11 6.3.1.1p2): an integer narrower than `int`
 //! is `int` (clang's usual unary conversions).
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
 def c_promote(var r : CIr; var x : CirExpr?) : CirExpr? {
     var v = c_rvalue(r, x)
-    if (is_int(r, v.t) && r.pool[v.t].w < r.tu.target.int_w) {
+    let width = bitfield_width(r, v)
+    let underlying = r.pool[v.t].k == "enum" ? c_builtin(r, r.pool[v.t].is_signed ? "int" : "unsigned int") : v.t
+    if (width >= 0 && r.pool[underlying].w <= r.tu.target.int_w && (width < r.tu.target.int_w || r.pool[underlying].is_signed)) {
+        return c_implicit(v, int_t(r), "IntegralCast")
+    } elif (width >= 0 && r.pool[underlying].w <= r.tu.target.int_w) {
+        return c_implicit(v, c_builtin(r, "unsigned int"), "IntegralCast")
+    } elif (underlying != v.t) {
+        return c_implicit(v, underlying, "IntegralCast")
+    } elif (is_int(r, v.t) && r.pool[v.t].w < r.tu.target.int_w) {
         return c_implicit(v, int_t(r), "IntegralCast")
     }
     return v
@@ -205,7 +221,7 @@ def c_arith(var r : CIr; var a, b : CirExpr?&) : int {
 // the value `v` held in integer pool type `t`: wrapped to its width, sign-extended when signed
 def private held_in(r : CIr; t : int; v : int64) : int64 {
     let w = r.pool[t].w
-    return v if (r.pool[t].k != "int" || w >= 64)
+    return v if (!is_int(r, t) || w >= 64)
     let low = v & ((1l << int64(w)) - 1l)
     return r.pool[t].is_signed && (low >> int64(w - 1)) != 0l ? low - (1l << int64(w)) : low
 }
@@ -224,6 +240,9 @@ def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
         return true
     } elif (x.e == "sizeof_v") {
         v = int64(x.trait_v)
+        return true
+    } elif (x.e == "enum_ref") {
+        v = held_in(r, x.t, int64(x.trait_v))
         return true
     } elif (x.e == "cast") {
         var inner = 0l
@@ -669,24 +688,13 @@ def private float_literal(var r : CIr; p : CParser; tok : int) : CirExpr? {
     return new CirExpr(e = "float_lit", t = c_builtin(r, kind), v = c_float_literal(digits, kind))
 }
 
-//! The size in bytes Dumper A gives pool type `t`: a scalar's width, a pointer's and a function's
-//! the pointer width, an array its count of elements; -1 for one it has none for.
-def c_size_of(r : CIr; t : int) : int64 {
-    let k = r.pool[t].k
-    if (k == "int" || k == "float") {
-        return int64(r.pool[t].w / 8)
-    } elif (k == "ptr" || k == "func") {
-        return int64(r.tu.target.ptr_w / 8)
-    } elif (k == "array" && r.pool[t].count >= 0) {
-        let elem = c_size_of(r, r.pool[t].elem)
-        return elem < 0l ? -1l : int64(r.pool[t].count) * elem
-    }
-    return -1l
-}
+//! The size in bytes Dumper A gives pool type `t` (`c_type_size`); -1 for one it has none for.
+def c_size_of(r : CIr; t : int) : int64 => c_type_size(r, t)
 
 // a `sizeof` node of pool type `of_t` at token `tok`, its operand expression (or null) kept in
 // `a` until `c_exprs_use` has interned its types
 def private sizeof_node(var r : CIr; var p : CParser; of_t : int; var operand : CirExpr?; tok : int) : CirExpr? {
+    return null if (!c_tag_complete(r, p))
     let size = c_size_of(r, of_t)
     if (size < 0l) {
         c_refuse(r, p, tok, "sizeof of a type without a size")
@@ -849,6 +857,8 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
     if (id.builtin && !callee) {
         c_refuse(r, p, tok, "the builtin '{name}' other than as a callee")
         return null
+    } elif (id.enum_t >= 0) {
+        return new CirExpr(e = "enum_ref", t = id.t, enum_t = id.enum_t, item = name, trait_v = uint64(id.enum_v))
     }
     var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r) : id.t, name = empty(id.name) ? name : id.name)
     x.vol = (r.quals[id.t] & C_VOLATILE) != 0
@@ -882,6 +892,70 @@ def private operator_expr(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
     a = c_rvalue(r, a)
     b = c_rvalue(r, b)
     return new CirExpr(e = "comma", t = b.t, a = a, b = b)
+}
+
+// the path of field indices to member `name` of pool record `rec`: its own field, or one an
+// anonymous member makes visible, through that member's record; empty for none
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
+def private member_path(r : CIr; rec : int; name : string) : array<int> {
+    var path : array<int>
+    for (f, idx in r.pool[rec].fields, count()) {
+        if (f.name == name) {
+            path |> push(idx)
+            return <- path
+        }
+    }
+    for (f, idx in r.pool[rec].fields, count()) {
+        let u = unq(r, f.t)
+        if (empty(f.name) && !f.is_bitfield && (r.pool[u].k == "struct" || r.pool[u].k == "union")) {
+            var inscope inner <- member_path(r, u, name)
+            if (!empty(inner)) {
+                path |> push(idx)
+                path |> push_from(inner)
+                return <- path
+            }
+        }
+    }
+    return <- path
+}
+
+// a member access node `node` (`.` or `->`) typed: the record's field, through the anonymous
+// members that make it visible, each a `member` node, `arrow` on the first; its type the field's
+// with the record's qualifiers
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
+def private member_access(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    var base = c_expr(r, p, node.a)
+    return null if (base == null || !c_tag_complete(r, p))
+    let arrow = node.op == int(CTok.ARROW)
+    var rec_t = base.t
+    if (arrow) {
+        base = c_rvalue(r, base)
+        rec_t = is_ptr(r, base.t) ? r.pool[base.t].to : -1
+    }
+    let rec = rec_t < 0 ? -1 : unq(r, rec_t)
+    if (rec < 0 || (r.pool[rec].k != "struct" && r.pool[rec].k != "union") || !key_exists(r.layouts, rec)) {
+        delete_expr(base)
+        c_refuse(r, p, node.tok, "a member access of other than a complete struct or union")
+        return null
+    }
+    let name = pp_symbol_text(p.unit.lx, node.b)
+    let path <- member_path(r, rec, name)
+    if (empty(path)) {
+        delete_expr(base)
+        c_refuse(r, p, node.tok, "a member '{name}' its record does not have, which")
+        return null
+    }
+    var x = base
+    var cur = rec
+    var quals = r.quals[rec_t]
+    for (idx, i in path, count()) {
+        let ft = c_qualified(r, r.pool[cur].fields[idx].t, quals)
+        x = new CirExpr(e = "member", t = ft, base = x, field = idx, arrow = arrow && i == 0)
+        x.vol = (r.quals[ft] & C_VOLATILE) != 0
+        quals = r.quals[ft]
+        cur = unq(r, ft)
+    }
+    return x
 }
 
 // a subscript node `node` typed: both operands values, the pointer one's target its type
@@ -945,6 +1019,8 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
         return fn == null ? null : call(r, p, fn, node.b, node.tok, callee.kind == CNode.IDENT ? callee.a : -1)
     } elif (kind == CNode.INDEX) {
         return subscript(r, p, node)
+    } elif (kind == CNode.MEMBER) {
+        return member_access(r, p, node)
     } elif (kind == CNode.CAST) {
         return explicit_cast(r, p, node)
     } elif (kind == CNode.SIZEOF_TYPE) {
@@ -981,6 +1057,10 @@ def c_exprs_use(var r : CIr; var x : CirExpr?) {
         for (arg in x.args) {
             c_exprs_use(r, arg)
         }
+        return
+    }
+    if (x.e == "enum_ref") {
+        x.enum_t = c_types_use(r, x.enum_t)
         return
     }
     if (x.e == "init_list") {

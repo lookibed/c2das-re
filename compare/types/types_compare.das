@@ -246,40 +246,48 @@ def compare_types(unit : string; target : CirTarget) : TypesResult {
     return <- r
 }
 
-//! The counts of a run: per class of `TypesResult`.
+//! The counts of a run: per class of `TypesResult`. A unit Dumper A dumps is compared whatever its
+//! types; its class is with aggregates (a record, union or enum in Dumper A's table), core (no
+//! array either) or else scalar-only.
 struct TypesTotals {
     units : int
     dumper_failed : int
-    aggregate : int             //!< units with records, unions or enums (the builder refuses them)
-    scalar : int                //!< the others: the scalar-only units
-    refused : int               //!< scalar-only units the parser or the builder refused
-    whole : int                 //!< scalar-only units whose whole table agrees
-    cir : int                   //!< scalar-only units whose declarations, statements and expressions agree
-    census : int                //!< scalar-only units whose conversion census agrees
-    bytes : int                 //!< scalar-only units whose C-IR text is byte-identical
+    refused : int               //!< units the parser or the builder refused
+    whole : int                 //!< units whose whole table agrees
+    cir : int                   //!< units whose declarations, statements and expressions agree
+    census : int                //!< units whose conversion census agrees
+    bytes : int                 //!< units whose C-IR text is byte-identical
+    differ : int                //!< units where the table, the C-IR, the census or the bytes differ
+    aggregate : int             //!< units with records, unions or enums
+    aggregate_bytes : int       //!< of them, byte-identical
+    scalar : int                //!< the units with none: scalar-only
+    scalar_bytes : int          //!< of them, byte-identical
     core : int                  //!< the scalar-only units with no array type: the Core acceptance set
-    core_bytes : int            //!< the core units whose C-IR text is byte-identical
-    differ : int                //!< scalar-only units where the table, the C-IR or the census differs
+    core_bytes : int            //!< of them, byte-identical
 }
 
 //! The line of a run's counts.
 def describe_types_totals(name : string; t : TypesTotals) : string =>
-    "{name}: {t.units} units, {t.dumper_failed} Dumper A failed, {t.aggregate} with aggregates, {t.scalar} scalar-only: {t.whole} whole table, {t.cir} C-IR, {t.census} census, {t.bytes} bytes agree; {t.differ} differ, {t.refused} refused; core (no array) {t.core_bytes}/{t.core} byte-identical"
+    "{name}: {t.units} units, {t.dumper_failed} Dumper A failed, {t.refused} refused, {t.whole} whole table, {t.cir} C-IR, {t.census} census, {t.bytes} bytes agree, {t.differ} differ; byte-identical: aggregates {t.aggregate_bytes}/{t.aggregate}, scalar-only {t.scalar_bytes}/{t.scalar}, core (no array) {t.core_bytes}/{t.core}"
 
-//! `r` counted into `t`; the line printed for it, "" for a unit that agrees and one with aggregates
-//! the builder refused.
+//! `r` counted into `t`; the line printed for it, "" for a unit that agrees.
 def count_types(var t : TypesTotals; r : TypesResult) : string {
     t.units++
-    let head = "{r.unit} [{r.dialect}{r.core ? ", core" : ""}]"
+    let head = "{r.unit} [{r.dialect}{r.aggregate ? ", aggregate" : r.core ? ", core" : ""}]"
     if (!empty(r.dumper_error)) {
         t.dumper_failed++
         return "{head}: Dumper A failed: {slice(r.dumper_error, 0, 200)}"
-    } elif (r.aggregate) {
-        t.aggregate++
-        return empty(r.builder_error) ? "{head}: aggregates in Dumper A's table, but the builder typed the unit" : ""
     }
-    t.scalar++
-    t.core += r.core ? 1 : 0
+    let identical = empty(r.builder_error) && r.bytes
+    if (r.aggregate) {
+        t.aggregate++
+        t.aggregate_bytes += identical ? 1 : 0
+    } else {
+        t.scalar++
+        t.scalar_bytes += identical ? 1 : 0
+        t.core += r.core ? 1 : 0
+        t.core_bytes += r.core && identical ? 1 : 0
+    }
     if (!empty(r.builder_error)) {
         t.refused++
         return "{head}: refused: {r.builder_error}"
@@ -288,7 +296,6 @@ def count_types(var t : TypesTotals; r : TypesResult) : string {
     t.cir += r.cir ? 1 : 0
     t.census += r.census ? 1 : 0
     t.bytes += r.bytes ? 1 : 0
-    t.core_bytes += r.core && r.bytes ? 1 : 0
     return "" if (r.whole && r.cir && r.census && r.bytes)
     t.differ++
     return "{head}: differs: {r.difference}"
@@ -414,16 +421,18 @@ def run_types(args : TypesArgs) : int {
         print("{describe_types_totals(dialect, t)}\n")
         total.units += t.units
         total.dumper_failed += t.dumper_failed
-        total.aggregate += t.aggregate
-        total.scalar += t.scalar
         total.refused += t.refused
         total.whole += t.whole
         total.cir += t.cir
         total.census += t.census
         total.bytes += t.bytes
+        total.differ += t.differ
+        total.aggregate += t.aggregate
+        total.aggregate_bytes += t.aggregate_bytes
+        total.scalar += t.scalar
+        total.scalar_bytes += t.scalar_bytes
         total.core += t.core
         total.core_bytes += t.core_bytes
-        total.differ += t.differ
     }
     print("{describe_types_totals("total", total)}\n")
     if (args.update_ratchet && !empty(args.ratchet) && regressed == 0) {

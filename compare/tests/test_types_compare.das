@@ -115,17 +115,17 @@ def test_ratchet_text(t : T?) {
     t |> equal(text, "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux 00002\nlinux 00009\nmsvc 00001\n")
 }
 
-[test(description = "a run's counts: Dumper A failed, aggregates refused or typed, scalar-only refused, agreeing, differing in the table, the C-IR or the census")]
+[test(description = "a run's counts: Dumper A failed, a unit with aggregates refused or byte-identical, a scalar-only one refused, agreeing, differing in the table, the C-IR or the census")]
 def test_count(t : T?) {
     var n : TypesTotals
     t |> equal(count_types(n, TypesResult(unit = "a.c", dialect = "linux", dumper_error = "boom")), "a.c [linux]: Dumper A failed: boom")
-    t |> equal(count_types(n, TypesResult(unit = "b.c", dialect = "msvc", aggregate = true, builder_error = "builder: x")), "")
-    t |> equal(count_types(n, TypesResult(unit = "c.c", dialect = "msvc", aggregate = true)), "c.c [msvc]: aggregates in Dumper A's table, but the builder typed the unit")
+    t |> equal(count_types(n, TypesResult(unit = "b.c", dialect = "msvc", aggregate = true, builder_error = "builder: x")), "b.c [msvc, aggregate]: refused: builder: x")
+    t |> equal(count_types(n, TypesResult(unit = "c.c", dialect = "msvc", aggregate = true, whole = true, cir = true, census = true, bytes = true)), "")
     t |> equal(count_types(n, TypesResult(unit = "d.c", dialect = "linux", builder_error = "parser: y")), "d.c [linux]: refused: parser: y")
     t |> equal(count_types(n, TypesResult(unit = "e.c", dialect = "linux", whole = true, cir = true, census = true, bytes = true, core = true)), "")
     t |> equal(count_types(n, TypesResult(unit = "f.c", dialect = "linux", whole = true, cir = true, bytes = true, difference = "census z")), "f.c [linux]: differs: census z")
     t |> equal(count_types(n, TypesResult(unit = "g.c", dialect = "linux", census = true, core = true, difference = "table entry 0: z")), "g.c [linux, core]: differs: table entry 0: z")
-    t |> equal(describe_types_totals("all", n), "all: 7 units, 1 Dumper A failed, 2 with aggregates, 4 scalar-only: 2 whole table, 2 C-IR, 2 census, 2 bytes agree; 2 differ, 1 refused; core (no array) 1/2 byte-identical")
+    t |> equal(describe_types_totals("all", n), "all: 7 units, 1 Dumper A failed, 2 refused, 3 whole table, 3 C-IR, 3 census, 3 bytes agree, 2 differ; byte-identical: aggregates 1/2, scalar-only 2/4, core (no array) 1/2")
 }
 
 // the fixture `name` compared under `dialect` as `whole/cir/census/bytes/aggregate`, the builder's error
@@ -137,12 +137,12 @@ def private compared(name, dialect : string) : string {
     return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate and a constant array size refused", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate's initializer and a constant array size refused", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
             t |> equal(compared("conversions.c", dialect), "true/true/true/true/false")
-            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
+            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:8:22: a braced scalar initializer of other than one value is not typed yet")
             t |> equal(compared("refused.c", dialect), "false/false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")
         }
     }

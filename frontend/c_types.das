@@ -7,7 +7,9 @@ require math
 require strings
 require daslib/strings_boost
 require c_parser public
+require c_layout public
 require ../converter/cir.das public
+require ../converter/bit_units.das
 
 //! What an identifier names where the walk stands: a variable or a function, its declared pool
 //! type, the parameter types an old-style definition's calls convert to, and whether its
@@ -19,6 +21,8 @@ struct CId {
     old_style : int     //!< the pool function type an old-style definition's calls convert by, -1 for none
     builtin : bool      //!< a builtin function of `BUILTIN_FUNCTIONS`, referenced only as a callee
     name : string       //!< the name a reference to it spells in the C-IR (`ARCHITECTURE_NAMES.md`)
+    enum_t : int = -1   //!< an enumerator: the pool enum type it belongs to; -1 for any other identifier
+    enum_v : int64      //!< an enumerator's value
 }
 
 //! The C-IR type table of one unit as Dumper A builds it (`ARCHITECTURE_TYPES.md`): every type a
@@ -56,6 +60,21 @@ struct CTypes {
     fn_extern_names : table<string>         //!< the names its block-scope `extern` declarations and prototypes declare
     fn_name : string                        //!< the C name of the function being read
     fold : function<(var b : CTypes; var p : CParser; n : int; var v : int64&) : bool> //!< an integer constant expression's value; null for none
+    tag_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< a struct, union or enum specifier's pool type (`c_records.das`); null for none
+    tags : table<int; int>                  //!< a tag's symbol to its pool record or enum type
+    tag_undo : array<tuple<sym : int; was : int>>   //!< the tag bindings a block's end restores
+    tag_marks : array<int>
+    untyped_tags : table<int; string>       //!< a tag an own header defines that the builder does not type, and why
+    tag_defs : table<int; int>              //!< a tag's symbol to its one file-scope definition, built at the tag's first use
+    tag_built : table<int; int>             //!< a record or enum specifier with a body to the pool type it defines
+    tag_pending : array<int2>               //!< (definition, pool record) a use reached before the definition, not built yet
+    layouts : table<int; CRecordLayout>     //!< a complete pool record to its layout
+    library_tags : table<int; bool>         //!< the pool records and enums an own header defines, anchored where the unit first uses them
+    anchored : table<int; bool>             //!< the pool records and enums a `record` or `enumdef` anchor names
+    memo : LayoutMemo                       //!< the `packed` verdicts of the table's records
+    anchor_at : CirLoc                      //!< the place of the declaration being read: a library record's anchor
+    defining : int                          //!< above 0 while a definition is walked or built: where a specifier may define a tag
+    next_tag : int                          //!< the identity the next record or enum takes
     err : string
 }
 
@@ -77,7 +96,28 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.undo |> clear()
     b.marks |> clear()
     b.declared |> clear()
+    b.tags |> clear()
+    b.tag_undo |> clear()
+    b.tag_marks |> clear()
+    b.untyped_tags |> clear()
+    b.tag_defs |> clear()
+    b.tag_built |> clear()
+    b.tag_pending |> clear()
+    b.layouts |> clear()
+    b.library_tags |> clear()
+    b.anchored |> clear()
+    b.memo = LayoutMemo()
+    b.anchor_at = CirLoc()
+    b.defining = 0
+    b.next_tag = 0
     b.err = ""
+}
+
+//! Bind identifier `sym` to `id` in the innermost scope.
+def c_ir_bind(var b : CTypes; sym : int; id : CId) {
+    let had = key_exists(b.ids, sym)
+    b.id_undo |> push((sym = sym, had = had, was = had ? b.ids?[sym] ?? id : id))
+    b.ids[sym] = id
 }
 
 //! The first error, at token `tok`: a construct the builder does not type yet, and `why` after it.
@@ -92,11 +132,17 @@ def private refuse(var b : CTypes; var p : CParser; tok : int; what : string; wh
     }
 }
 
+//! Whether `t` is a struct, a union or an enum: a type of its own identity, which its `count`
+//! holds (a record's and an enum's C-IR entry writes no `count`).
+def c_is_tag_kind(t : CirType) : bool => t.k == "struct" || t.k == "union" || t.k == "enum"
+
 //! The key a type is interned by, in the table or in the pool, as Dumper A keys it: an integer by
 //! its width, sign and spelling; `double` and `long double` apart; a pointer, an array and a
-//! function by the indices of their parts.
+//! function by the indices of their parts; a record and an enum by their identity.
 def c_type_key(t : CirType) : string {
-    if (t.k == "int") {
+    if (c_is_tag_kind(t)) {
+        return "tag:{t.count}"
+    } elif (t.k == "int") {
         return "int:{t.w}:{t.is_signed}:{t.spell}"
     } elif (t.k == "float") {
         return t.w == 32 ? "float:32" : "float:64:{t.spell}"
@@ -126,6 +172,9 @@ def private pooled(var b : CTypes; var t : CirType) : int {
     b.unqualified |> push(idx)
     return idx
 }
+
+//! Pool type `t`: the index it has by its key, or the next one.
+def c_pool_type(var b : CTypes; var t : CirType) : int => pooled(b, t)
 
 //! The name that marks a pool function type as the type clang gives a reference to a builtin
 //! function, `<builtin fn type>`: in the table `void (...)`, keyed apart from that type.
@@ -197,6 +246,11 @@ def private intern(var b : CTypes; key : string; var t : CirType) : int {
 def c_types_use(var b : CTypes; pt : int) : int {
     return -1 if (pt < 0)
     return b.used[pt] if (b.used[pt] >= 0)
+    if (c_is_tag_kind(b.pool[pt])) {
+        let idx = tag_use(b, b.unqualified[pt])
+        b.used[pt] = idx
+        return idx
+    }
     var t := b.pool[pt]
     if (t.k == "ptr") {
         t.to = c_types_use(b, t.to)
@@ -215,6 +269,40 @@ def c_types_use(var b : CTypes; pt : int) : int {
     return idx
 }
 
+// the table index of unqualified pool record or enum `pt`: its own slot first, so a pointer to it
+// among its fields resolves, then each field's type in order and the field's `dims` enums, then
+// its layout with the `packed` verdict; a record no definition completes is size and alignment -1.
+// One an own header defines is anchored here, at the declaration being read
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-order")]
+def private tag_use(var b : CTypes; pt : int) : int {
+    return b.used[pt] if (b.used[pt] >= 0)
+    var slot := b.pool[pt]
+    slot.fields |> clear()
+    let idx = intern(b, c_type_key(slot), slot)
+    b.used[pt] = idx
+    if (b.pool[pt].k != "enum") {
+        var fields := b.pool[pt].fields
+        for (f in fields) {
+            f.t = c_types_use(b, f.t)
+            for (dim in f.dims) {
+                dim.enum_t = empty(dim.item) ? 0 : c_types_use(b, dim.enum_t)
+            }
+        }
+        b.tu.types[idx].fields <- fields
+        if (key_exists(b.layouts, pt)) {
+            var err : string
+            if (!c_layout_into_cir(b.tu, b.memo, idx, b.layouts[pt], err) && empty(b.err)) {
+                b.err = err
+            }
+        }
+    }
+    if (key_exists(b.library_tags, pt) && !key_exists(b.anchored, pt) && (b.pool[pt].k == "enum" || key_exists(b.layouts, pt))) {
+        b.anchored[pt] = true
+        b.tu.decls |> push(new CirDecl(k = b.pool[pt].k == "enum" ? "enumdef" : "record", t = idx, loc = b.anchor_at))
+    }
+    return idx
+}
+
 def private int_type(var b : CTypes; w : int; is_signed : bool; spell : string) : int {
     var t = CirType(k = "int", w = w, is_signed = is_signed, spell = spell)
     return pooled(b, t)
@@ -228,6 +316,51 @@ def private pointer(var b : CTypes; to : int) : int {
 def private array_of(var b : CTypes; elem, count : int) : int {
     var t = CirType(k = "array", elem = elem, count = count)
     return pooled(b, t)
+}
+
+//! The size in bytes pool type `t` has as clang lays it out: a scalar's width, a pointer's and a
+//! function's the pointer width, an enum's 4, an array its count of elements, a complete record its
+//! layout's; -1 for a type without one.
+def c_type_size(b : CTypes; t : int) : int64 {
+    let u = b.unqualified[t]
+    let k = b.pool[u].k
+    if (k == "int" || k == "float") {
+        return int64(b.pool[u].w / 8)
+    } elif (k == "ptr" || k == "func") {
+        return int64(b.tu.target.ptr_w / 8)
+    } elif (k == "enum") {
+        return 4l
+    } elif (k == "array" && b.pool[u].count >= 0) {
+        let elem = c_type_size(b, b.pool[u].elem)
+        return elem < 0l ? -1l : int64(b.pool[u].count) * elem
+    }
+    var size = -1l
+    if (k == "struct" || k == "union") {
+        get(b.layouts, u) $(l) {
+            size = l.size
+        }
+    }
+    return size
+}
+
+//! The alignment in bytes pool type `t` has as clang lays it out: a scalar's size, an array's
+//! element's, a complete record's layout's; -1 for a type without one.
+def c_type_align(b : CTypes; t : int) : int {
+    let u = b.unqualified[t]
+    let k = b.pool[u].k
+    if (k == "array") {
+        return c_type_align(b, b.pool[u].elem)
+    } elif (k == "void") {
+        return -1
+    }
+    var align = int(c_type_size(b, u))
+    if (k == "struct" || k == "union") {
+        align = -1
+        get(b.layouts, u) $(l) {
+            align = l.align
+        }
+    }
+    return align
 }
 
 //! The pool type of a pointer to pool type `to`.
@@ -330,6 +463,28 @@ def c_plain_attributes(var b : CTypes; var p : CParser; at : int) : bool {
     return true
 }
 
+// the pool type specifier `at` names, a typedef name's, a `typeof` type name's, a struct's, union's
+// or enum's; -1 with the error set for one the builder does not type
+def private named_type(var b : CTypes; var p : CParser; at : int) : int {
+    let n = p.ast.nodes[at]
+    if (n.kind == CNode.SPEC_TYPEOF_TYPE) {
+        return c_type_name_type(b, p, n.a)
+    } elif (n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) {
+        let tagged = b.tag_type != null ? invoke(b.tag_type, b, p, at) : -1
+        if (tagged < 0) {
+            refuse(b, p, n.tok, n.kind == CNode.SPEC_ENUM ? "an enum type" : "a {c_kind_name(n.op)} type")
+        }
+        return tagged
+    }
+    let named = b.typedefs?[n.a] ?? -1
+    if (named < 0) {
+        let why = b.untyped?[n.a] ?? ""
+        let name = pp_symbol_text(p.unit.lx, n.a)
+        refuse(b, p, n.tok, "the typedef name '{name}'", empty(why) ? "" : ": {why}")
+    }
+    return named
+}
+
 //! The pool type a list of declaration specifiers names; -1 with the error set for one the builder
 //! does not type yet. Qualifiers, storage classes and function specifiers give no C-IR type.
 [arch(at="ARCHITECTURE_TYPES.md#c-types-specifiers")]
@@ -350,23 +505,9 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
                 refuse(b, p, n.tok, "an _Atomic type")
                 return -1
             }
-        } elif (n.kind == CNode.SPEC_TYPEDEF_NAME) {
-            named = b.typedefs?[n.a] ?? -1
-            if (named < 0) {
-                let why = b.untyped?[n.a] ?? ""
-                let name = pp_symbol_text(p.unit.lx, n.a)
-                refuse(b, p, n.tok, "the typedef name '{name}'", empty(why) ? "" : ": {why}")
-                return -1
-            }
-        } elif (n.kind == CNode.SPEC_TYPEOF_TYPE) {
-            named = c_type_name_type(b, p, n.a)
+        } elif (n.kind == CNode.SPEC_TYPEDEF_NAME || n.kind == CNode.SPEC_TYPEOF_TYPE || n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) {
+            named = named_type(b, p, at)
             return -1 if (named < 0)
-        } elif (n.kind == CNode.SPEC_RECORD) {
-            refuse(b, p, n.tok, "a {c_kind_name(n.op)} type")
-            return -1
-        } elif (n.kind == CNode.SPEC_ENUM) {
-            refuse(b, p, n.tok, "an enum type")
-            return -1
         } elif (n.kind == CNode.SPEC_TYPEOF_EXPR) {
             refuse(b, p, n.tok, "typeof of an expression")
             return -1
@@ -635,6 +776,13 @@ def c_types_bind(var b : CTypes; sym, t : int) {
 //! Open a scope of typedef names.
 def c_types_scope_open(var b : CTypes) {
     b.marks |> push(length(b.undo))
+    b.tag_marks |> push(length(b.tag_undo))
+}
+
+//! Bind tag `sym` to pool record or enum `t` in the innermost scope.
+def c_types_bind_tag(var b : CTypes; sym, t : int) {
+    b.tag_undo |> push((sym = sym, was = b.tags?[sym] ?? -1))
+    b.tags[sym] = t
 }
 
 //! Close the innermost scope of typedef names: its bindings are undone.
@@ -652,6 +800,19 @@ def c_types_scope_close(var b : CTypes) {
         at--
     }
     b.undo |> resize(mark)
+    let tag_mark = b.tag_marks[length(b.tag_marks) - 1]
+    b.tag_marks |> pop()
+    var tat = length(b.tag_undo) - 1
+    while (tat >= tag_mark) {
+        let entry = b.tag_undo[tat]
+        if (entry.was < 0) {
+            b.tags |> erase(entry.sym)
+        } else {
+            b.tags[entry.sym] = entry.was
+        }
+        tat--
+    }
+    b.tag_undo |> resize(tag_mark)
 }
 
 //! Whether specifier list `specs` holds `typedef`.
