@@ -77,19 +77,31 @@ def test_describe_record(t : T?) {
     dump.pack = 2
     dump.members[1].aligned = 8
     var desc : CLayoutRecord
-    t |> equal(describe_record(rec, dump, desc), "")
-    t |> equal("{desc.pack} {desc.at} {length(desc.members)} {desc.members[1].aligned}", "2 a.c:1:8 2 8")
+    var required : table<string; int>
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "")
+    t |> equal("{desc.dialect} {desc.pack} {desc.at} {length(desc.members)} {desc.members[1].aligned}", "linux 2 a.c:1:8 2 8")
+    rec.members[0].typedef_required = true
+    rec.members[0].desugared_align = 8
+    rec.members[1].record_key = "k"
+    required["k"] = 16
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "")
+    t |> equal("{desc.members[0].align} {desc.members[0].required_align} {desc.members[1].required_align}", "4 4 16")
+    t |> equal(describe_record(rec, dump, "msvc", required, desc), "")
+    t |> equal("{desc.dialect} {desc.members[0].align} {desc.members[0].required_align}", "msvc 8 4")
+    rec.members[1].record_key = "missing"
+    t |> equal(describe_record(rec, dump, "msvc", required, desc), "a member's record has no layout of ours")
+    rec.members[1].record_key = ""
     rec.size = -2l
-    t |> equal(describe_record(rec, dump, desc), "clang gives the record no layout")
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "clang gives the record no layout")
     rec.size = 4l
     dump.alignas_type = true
-    t |> equal(describe_record(rec, dump, desc), "an `_Alignas(type)` on the record")
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on the record")
     dump.alignas_type = false
     dump.members[0].alignas_type = true
-    t |> equal(describe_record(rec, dump, desc), "an `_Alignas(type)` on a member")
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on a member")
     dump.members[0].alignas_type = false
     rec.members[1].off = -1l
-    t |> equal(describe_record(rec, dump, desc), "an anonymous member that makes no name visible")
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "an anonymous member that makes no name visible")
 }
 
 [test(description = "a difference in size, alignment or any member's offset is one line each")]
@@ -112,11 +124,19 @@ def test_units(t : T?) {
     t |> equal(error, "")
     var rules = LayoutTotals()
     var seen : table<string; bool>
-    let corpus <- layout_corpus(".", "rules", error)
+    let corpus <- layout_corpus(".", "rules", "linux", error)
     for (unit in corpus.units) {
-        compare_layout_unit(unit, flags, seen, rules)
+        compare_layout_unit(unit, "linux", flags, seen, rules)
     }
     t |> equal(describe_layout_totals("rules", rules), "rules: 2 units (0 clang failures), 69 records: 69 agree, 0 differ, 0 refused, 0 undescribed []")
+    let msvc_flags <- dumper_frontend_flags(target_llp64_msvc(), error)
+    var msvc_rules = LayoutTotals()
+    var msvc_seen : table<string; bool>
+    let msvc_corpus <- layout_corpus(".", "rules", "msvc", error)
+    for (unit in msvc_corpus.units) {
+        compare_layout_unit(unit, "msvc", msvc_flags, msvc_seen, msvc_rules)
+    }
+    t |> equal(describe_layout_totals("rules", msvc_rules), "rules: 3 units (0 clang failures), 95 records: 95 agree, 0 differ, 0 refused, 0 undescribed []")
     let dir = test_temp_dir()
     let header = path_join(dir, "shared.h")
     fwrite(header, "struct H \{ char c; int i; \};\n")
@@ -131,7 +151,7 @@ def test_units(t : T?) {
     var with_dir <- clone_to_move(flags)
     with_dir |> push("-I{dir}")
     for (unit in fixed_array(first, second, broken)) {
-        compare_layout_unit(unit, with_dir, seen_here, totals)
+        compare_layout_unit(unit, "linux", with_dir, seen_here, totals)
     }
     t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 6 records: 3 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]")
     t |> success(length(totals.lines) == 1 && find(totals.lines[0], "broken.c: clang: ") >= 0, join(totals.lines, "\n"))
@@ -140,11 +160,11 @@ def test_units(t : T?) {
 [test(description = "a corpus is known by name and found under the root, never empty by absence; a run over an unknown one fails")]
 def test_corpora(t : T?) {
     var error : string
-    let unknown <- layout_corpus(".", "nothing", error)
+    let unknown <- layout_corpus(".", "nothing", "linux", error)
     t |> equal(error, "unknown corpus 'nothing': rules, c-testsuite, gcc-torture, lua or doom")
     for (name in fixed_array("c-testsuite", "gcc-torture", "lua", "doom")) {
         error = ""
-        let missing <- layout_corpus("/no/such/root", name, error)
+        let missing <- layout_corpus("/no/such/root", name, "linux", error)
         t |> success(error |> starts_with("corpus {name}: /no/such/root/") && error |> ends_with(" is missing"), error)
     }
     let root = test_temp_dir()
@@ -154,12 +174,13 @@ def test_corpora(t : T?) {
     mkdir_rec(path_join(root, "doom/fetch/PureDOOM/src/DOOM"))
     fwrite(path_join(root, "suites/gcc_torture/expected_pass.txt"), "# head\n\nb-1\na-2\n")
     error = ""
-    let listed <- layout_corpus(root, "gcc-torture", error)
+    let listed <- layout_corpus(root, "gcc-torture", "linux", error)
     t |> equal(error, "")
     t |> equal(join([for (u in listed.units); base_name(u)], " "), "b-1.c a-2.c")
-    let lua <- layout_corpus(root, "lua", error)
+    let lua <- layout_corpus(root, "lua", "linux", error)
     t |> equal(join(lua.extra, " "), "-DLUA_USE_JUMPTABLE=0")
-    let doom <- layout_corpus(root, "doom", error)
+    let doom <- layout_corpus(root, "doom", "linux", error)
     t |> success(doom.extra[0] |> starts_with("-I") && length(doom.extra) == 7)
     t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["nothing"])), 1)
+    t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"], dialect = "win")), 1)
 }

@@ -13,15 +13,19 @@ so it lives outside `frontend/`, whose code does neither (`frontend/ARCHITECTURE
   record described (`describe_record`) and compared (`layout_differences`), a unit's run
   (`compare_layout_unit`), the corpora (`layout_corpus`) and the command line's run (`LayoutArgs`,
   `run_layout_oracle`). The clang it runs and its flags are Dumper A's (`default_clang`,
-  `dumper_frontend_flags` of `converter/dumper_a.das`) for the `linux` dialect.
-- `run.das` - the command line's entry, from the repository root with `das`: `--corpus rules`
-  (the fixtures), `--corpus c-testsuite`, `--corpus gcc-torture`, `--corpus lua`, `--corpus doom`,
-  repeatable, and `--root <folder>`, the folder holding the fetch trees (`suites/`, `lua/`, `doom/`;
-  default the working directory). An unknown corpus, or one whose folder is missing, is an error
-  and exit 1, never an empty set. It prints each differing record with its differences, each unit
-  clang rejects, a line per corpus, and exits 0 when no record differs.
+  `dumper_frontend_flags` of `converter/dumper_a.das`) for the dialect the run names.
+- `run.das` - the command line's entry, from the repository root with `das`: `--corpus rules` (the
+  fixtures), `--corpus c-testsuite`, `--corpus gcc-torture`, `--corpus lua`, `--corpus doom`,
+  repeatable, `--root <folder>`, the folder holding the fetch trees (`suites/`, `lua/`, `doom/`;
+  default the working directory), and `--dialect linux` (the default) or `--dialect msvc`, whose
+  triple, predefined-macro table and own headers every unit is then read under. An unknown corpus,
+  or one whose folder is missing, is an error and exit 1, never an empty set. It prints each
+  differing record with its differences, each unit clang rejects, a line per corpus, and exits 0
+  when no record differs.
 - `fixtures/rules.c` - one record per rule of `frontend/ARCHITECTURE_LAYOUT.md`, the records
-  `frontend/tests/test_c_layout.das` quotes. `fixtures/probe_shapes.c` - the records
+  `frontend/tests/test_c_layout.das` quotes, read under both dialects. `fixtures/msvc/rules_msvc.c`
+  - the msvc rules `rules.c` does not show (`frontend/ARCHITECTURE_LAYOUT_MSVC.md`), read under
+  `msvc` alone, since `__declspec` needs its triple. `fixtures/probe_shapes.c` - the records
   `probes/test_layout.das` lays out through clang.
 - The tests are `compare/tests/test_layout_oracle.das`.
 
@@ -35,9 +39,14 @@ attributes libclang does not expose from `clang -Xclang -ast-dump` under the sam
 record's `PackedAttr`, `AlignedAttr` (its value, 16 for a bare `aligned`), `MSStructAttr` and the
 `MaxFieldAlignmentAttr` that `#pragma pack` leaves on it (in bits), and each member's `PackedAttr`
 and `AlignedAttr`. clang's answer is libclang's: the record's size and alignment and each field's
-bit offset (`clang_Cursor_getOffsetOfField`). An anonymous member is the anonymous record libclang
-visits; its offset is that of a name it makes visible less that name's offset inside it, as Dumper
-A finds it (`converter/ARCHITECTURE_DUMPER.md`).
+bit offset (`clang_Cursor_getOffsetOfField`). Under `msvc` a member's type requirement is described
+too: a typedef with an `aligned` attribute (an `AlignedAttr` child of a typedef's declaration on the
+way to the type, through arrays) requires the type's alignment, and the member then gets the
+alignment of the canonical type below the typedefs (its own for an array); a member of a record
+type, through arrays, requires that record's `required_align` as the module computes it, so the
+records of a unit are laid out after every record their members' types are. An anonymous member is
+the anonymous record libclang visits; its offset is that of a name it makes visible less that name's
+offset inside it, as Dumper A finds it (`converter/ARCHITECTURE_DUMPER.md`).
 
 libclang visits a record definition again under a declaration of its type, so the records are
 taken once by their place, in libclang's order; the dump lists the definitions in the same order,
@@ -47,7 +56,7 @@ unit of the corpus (a header's) is counted once.
 
 Each record is one of: agreeing (size, alignment and every member's offset equal), differing (each
 difference printed), refused by the module (its reason counted: a vector or 128-bit member,
-`ms_struct`), or undescribed, with its reason: clang gives it no layout, an `_Alignas(type)`
-whose value the dump does not state, an anonymous member that makes no name visible, or no dump
-record matching it. A unit libclang or clang rejects is a clang failure, counted apart. Only a
-difference fails the run.
+`ms_struct`), or undescribed, with its reason: clang gives it no layout, an `_Alignas(type)` whose
+value the dump does not state, an anonymous member that makes no name visible, a member whose record
+has no layout of the module's, or no dump record matching it. A unit libclang or clang rejects is a
+clang failure, counted apart. Only a difference fails the run.
