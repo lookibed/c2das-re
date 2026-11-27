@@ -24,7 +24,8 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   agreement, a line per dialect and the total; exit 0 when no scalar-only unit differs or is
   refused and Dumper A failed on none, 1 otherwise and when no unit is named.
 - `fixtures/` - `conversions.c`, every conversion group of the scalar world (all three comparisons
-  agree); `aggregate.c`, a record the builder refuses; `refused.c`, a scalar-only unit the builder
+  agree); `redeclared.c`, types a declaration interns that no other declaration names (a block
+  typedef's type under a name with an entry, a redeclaration's array; all three agree); `aggregate.c`, a record the builder refuses; `refused.c`, a scalar-only unit the builder
   refuses.
 - The tests are `compare/tests/test_types_compare.das`.
 
