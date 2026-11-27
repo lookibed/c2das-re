@@ -94,10 +94,10 @@ def test_definition(t : T?) {
     }
 }
 
-[test(description = "an unsized array takes its count from its initializer: a string literal run's bytes, escapes and universal character names counted, a list's items, a braced string, braced rows")]
+[test(description = "an unsized array takes its count from its initializer: a string literal run's bytes, escapes and universal character names counted, a list's items with index designators, a braced string, braced rows, a pointer array's string item")]
 def test_unsized_arrays(t : T?) {
-    t |> equal(types_of("char s[] = \"ab\\n\\x41\\101\\u00e9\" \"c\"; int v[] = \{1, 2, 3\}; char u[] = \{\"xy\"\}; int m[][2] = \{\{1, 2\}, \{3, 4\}, \{5\}\}; extern int e[]; char w[][3] = \{\"a\", \"b\"\};"),
-               "int:8:false:char array:0:9 int:32:true:int array:2:3 array:0:3 array:2:2 array:5:3 array:2:-1 array:4:2")
+    t |> equal(types_of("char s[] = \"ab\\n\\x41\\101\\u00e9\" \"c\"; int v[] = \{1, 2, 3\}; char u[] = \{\"xy\"\}; int m[][2] = \{\{1, 2\}, \{3, 4\}, \{5\}\}; extern int e[]; char w[][3] = \{\"a\", \"b\"\}; int d[] = \{5, [2] = 2, 3\}; char *q[] = \{\"z\"\};"),
+               "int:8:false:char array:0:9 int:32:true:int array:2:3 array:0:3 array:2:2 array:5:3 array:2:-1 array:4:2 array:2:4 ptr:0 array:10:1")
 }
 
 let LIBRARY = "# 1 \"/lib/h.h\" 1\ntypedef unsigned long size_t;\ntypedef struct F FILE;\nint puts(const char *);\nstatic int lib_def(void) \{ return 0; \}\n# 2 \"t.c\" 2\nsize_t n; int f(void) \{ int puts(const char *); int lib_def(void); return 0; \}\n"
@@ -130,7 +130,10 @@ def test_refusals(t : T?) {
     t |> equal(types_of("int a[0b11];"), "error: t.c:1:7: the array size '0b11' is not typed yet")
     t |> equal(types_of("int a[4294967296];"), "error: t.c:1:7: an array size past 2^31 - 1 is not typed yet")
     t |> equal(types_of("void f(int n, int (*a)[*]);"), "error: t.c:1:19: a variable-length array is not typed yet")
-    t |> equal(types_of("int a[] = \{[2] = 1\};"), "error: t.c:1:12: an array sized by a designated initializer is not typed yet")
+    t |> equal(types_of("int a[] = \{[2 + 1] = 1\};"), "error: t.c:1:13: an array index other than an integer literal is not typed yet")
+    t |> equal(types_of("int a[] = \{[1 ... 2] = 1\};"), "error: t.c:1:12: an array sized by this designated initializer is not typed yet")
+    t |> equal(types_of("int a[][2] = \{[1][0] = 1\};"), "error: t.c:1:15: an array sized by this designated initializer is not typed yet")
+    t |> equal(types_of("int s[] = L\"x\";"), "error: t.c:1:11: a prefixed string literal is not typed yet")
     t |> equal(types_of("int m[][2] = \{1, 2, 3\};"), "error: t.c:1:15: an unsized array of arrays initialized with elided braces is not typed yet")
     t |> equal(types_of("char s[] = L\"x\";"), "error: t.c:1:12: a prefixed string literal is not typed yet")
     t |> equal(types_of("int s[] = (\{ 1; \});"), "error: t.c:1:11: an unsized array initialized by this expression is not typed yet")

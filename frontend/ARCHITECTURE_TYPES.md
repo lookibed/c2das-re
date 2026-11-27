@@ -77,11 +77,13 @@ a declarator. An array with no size is count -1 unless its initializer sizes it 
 
 ## 27. Initializers and expression types {#c-types-arrays}
 
-An unsized array that has an initializer takes its count from it: a run of string literals, braced
-or not, gives a character array its bytes - each escape one byte, a universal character name its
-UTF-8 bytes, the NUL included; an initializer list gives its items, when none is designated and,
-for an array of arrays, each item is braced or a string literal. A prefixed string literal, a
-designated item, an elided brace in an array of arrays and any other initializer of an unsized
+An unsized array that has an initializer takes its count from it: a run of string literals gives
+its bytes - each escape one byte, a universal character name its UTF-8 bytes, the NUL included -
+and so does one braced alone for a character array; an initializer list gives one past the last
+position its items fill, each item the position after the one before, an index designator `[k]`
+(an integer literal) moving it to `k`; for an array of arrays each item is braced or a string
+literal. A prefixed (wide or UTF) string literal, any other designator (a range, a nested one, a
+non-literal index), an elided brace in an array of arrays and any other initializer of an unsized
 array are refused.
 
 Expression types are not built yet (C.3). In Dumper A's table they interleave with the

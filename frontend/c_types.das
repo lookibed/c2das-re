@@ -3,6 +3,7 @@ options indenting = 4
 
 module c_types public
 
+require math
 require strings
 require daslib/strings_boost
 require c_parser public
@@ -276,16 +277,16 @@ def private is_end(p : CParser; d : int) : bool {
     return at < 0 || p.ast.nodes[at].kind == CNode.D_NAME
 }
 
-// the count of an array whose size is node `size`, an integer literal in parentheses or not; -2
-// with the error set for any other size (an integer constant expression waits for constant
-// folding, a variable-length array is out of scope)
-def private array_count(var b : CTypes; var p : CParser; size : int) : int {
-    var at = size
+// the value of node `n`, an integer literal in parentheses or not, as an array size or index (`what`);
+// -2 with the error set for any other node (an integer constant expression waits for constant
+// folding, a variable-length array is out of scope) and for a value past 2^31 - 1
+def private literal_value(var b : CTypes; var p : CParser; n : int; what : string) : int {
+    var at = n
     while (p.ast.nodes[at].kind == CNode.PAREN) {
         at = p.ast.nodes[at].a
     }
     if (p.ast.nodes[at].kind != CNode.INT) {
-        refuse(b, p, p.ast.nodes[size].tok, "an array size other than an integer literal")
+        refuse(b, p, p.ast.nodes[n].tok, "an {what} other than an integer literal")
         return -2
     }
     let spelled = to_lower(c_spelling(p.unit, p.ast.nodes[at].a))
@@ -302,12 +303,12 @@ def private array_count(var b : CTypes; var p : CParser; size : int) : int {
     for (ch in hex ? slice(digits, 2) : digits) {
         let v = is_number(ch) ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : 99
         if (v >= base) {
-            refuse(b, p, p.ast.nodes[size].tok, "the array size '{c_spelling(p.unit, p.ast.nodes[at].a)}'")
+            refuse(b, p, p.ast.nodes[n].tok, "the {what} '{c_spelling(p.unit, p.ast.nodes[at].a)}'")
             return -2
         }
         value = value * int64(base) + int64(v)
         if (value > 2147483647l) {
-            refuse(b, p, p.ast.nodes[size].tok, "an array size past 2^31 - 1")
+            refuse(b, p, p.ast.nodes[n].tok, "an {what} past 2^31 - 1")
             return -2
         }
     }
@@ -365,40 +366,43 @@ def private string_bytes(var b : CTypes; var p : CParser; first, count : int) : 
     return bytes
 }
 
-// whether pool type `t` is a character type, which a string literal initializes
-def private is_char_type(b : CTypes; t : int) : bool => b.pool[t].k == "int" && b.pool[t].w == 8
-
 // the count an unsized array of pool type `elem` takes from initializer `init`, the node after the
-// declarator's `=`: a string literal's bytes for a character array, braced or not; a list's items
-// when none is designated and, for an array of arrays, each item is braced or a string; -1 for no
-// initializer; -2 with the error set for any other
+// declarator's `=`: a string literal's bytes, braced or not for a character array; a list's items, a designator `[k]`
+// (an integer literal) moving the next item to `k`, and, for an array of arrays, each item braced
+// or a string; -1 for no initializer; -2 with the error set for any other
 [arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
 def private initializer_count(var b : CTypes; var p : CParser; init, elem : int) : int {
     return -1 if (init < 0)
     let n = p.ast.nodes[init]
-    if (n.kind == CNode.STRING && is_char_type(b, elem)) {
+    if (n.kind == CNode.STRING) {
         return string_bytes(b, p, n.a, n.b)
     } elif (n.kind != CNode.INIT_LIST) {
         refuse(b, p, n.tok, "an unsized array initialized by this expression")
         return -2
     }
     var count = 0
+    var next = 0
     var item = n.a
     while (item >= 0) {
         let it = p.ast.nodes[item]
-        if (it.a >= 0) {
-            refuse(b, p, it.tok, "an array sized by a designated initializer")
-            return -2
-        }
         let value = p.ast.nodes[it.b].kind
-        if (count == 0 && it.next < 0 && value == CNode.STRING && is_char_type(b, elem)) {
+        if (it.a >= 0) {
+            let desig = p.ast.nodes[it.a]
+            if (desig.kind != CNode.DESIG_INDEX || desig.b >= 0 || desig.next >= 0) {
+                refuse(b, p, it.tok, "an array sized by this designated initializer")
+                return -2
+            }
+            next = literal_value(b, p, desig.a, "array index")
+            return -2 if (next < 0)
+        } elif (count == 0 && it.next < 0 && value == CNode.STRING && b.pool[elem].k == "int" && b.pool[elem].w == 8) {
             return string_bytes(b, p, p.ast.nodes[it.b].a, p.ast.nodes[it.b].b)
         }
         if (b.pool[elem].k == "array" && value != CNode.INIT_LIST && value != CNode.STRING) {
             refuse(b, p, it.tok, "an unsized array of arrays initialized with elided braces")
             return -2
         }
-        count++
+        next++
+        count = max(count, next)
         item = it.next
     }
     return count
@@ -428,7 +432,7 @@ def private applied(var b : CTypes; var p : CParser; base, d : int; adjust : boo
             refuse(b, p, n.tok, "a variable-length array")
             return -1
         }
-        let count = n.b >= 0 ? array_count(b, p, n.b) : last ? initializer_count(b, p, init, base) : -1
+        let count = n.b >= 0 ? literal_value(b, p, n.b, "array size") : last ? initializer_count(b, p, init, base) : -1
         return -1 if (count == -2)
         return applied(b, p, array_of(b, base, count), n.a, adjust, init)
     }
