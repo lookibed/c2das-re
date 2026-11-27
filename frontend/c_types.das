@@ -668,6 +668,9 @@ def private initializer_count(var b : CTypes; var p : CParser; init, elem : int)
         if (b.pool[elem].k == "array" && value != CNode.INIT_LIST && value != CNode.STRING) {
             refuse(b, p, it.tok, "an unsized array of arrays initialized with elided braces")
             return -2
+        } elif ((b.pool[b.unqualified[elem]].k == "struct" || b.pool[b.unqualified[elem]].k == "union") && value != CNode.INIT_LIST) {
+            refuse(b, p, it.tok, "an unsized array of records initialized with elided braces")
+            return -2
         }
         next++
         count = max(count, next)
@@ -788,6 +791,15 @@ def c_types_scope_open(var b : CTypes) {
 def c_types_bind_tag(var b : CTypes; sym, t : int) {
     b.tag_undo |> push((sym = sym, was = b.tags?[sym] ?? -1))
     b.tags[sym] = t
+}
+
+//! Whether tag `sym` is bound in the innermost scope, not an outer one.
+def c_tag_in_scope(b : CTypes; sym : int) : bool {
+    return key_exists(b.tags, sym) if (empty(b.tag_marks))
+    for (at in range(b.tag_marks[length(b.tag_marks) - 1], length(b.tag_undo))) {
+        return true if (b.tag_undo[at].sym == sym)
+    }
+    return false
 }
 
 //! Close the innermost scope of typedef names: its bindings are undone.

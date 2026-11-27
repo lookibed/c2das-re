@@ -29,7 +29,7 @@ def private shown(x : CirExpr?) : string {
     if (x.e == "member") {
         return "{shown(x.base)}{x.arrow ? "->" : "."}{x.field}<{x.t}>{x.vol ? "~" : ""}"
     } elif (x.e == "enum_ref") {
-        return "{x.enum_t}.{x.item}<{x.t}>"
+        return "{x.enum_t}.{x.item}<{x.t}>{x.trait_v != 0ul ? "!" : ""}"
     } elif (x.e == "cast") {
         return "{x.cast_kind}{x.explicit_cast ? "!" : ""}<{x.t}>({shown(x.a)})"
     } elif (x.e == "ref") {
@@ -171,6 +171,11 @@ def test_tag_renamed(t : T?) {
     t |> equal(cir_of("int f(void) \{ union D \{ double d; \} a; return 0; \} int g(void) \{ union D \{ long u; \} b; return 0; \}"), "int:32:true:int; func:0::false; union D 8/8 \{d:3@0\}; float:64:double; union D1 8/8 \{u:5@0\}; int:64:true:long | record 2 1:21 | a:2 | 0<0> | record 4 1:72 | b:4 | 0<0>")
 }
 
+[test(description = "a block's definition of a tag an outer scope binds shadows it with a record of its own, named as a later definition; a forward declaration's tag completed in its own scope keeps the tag")]
+def test_tag_shadowed(t : T?) {
+    t |> equal(cir_of("struct T; struct T \{ int x; \}; int main(void) \{ struct T v; \{ struct T \{ int z; \}; \} v.x = 2; return 0; \}"), "struct T 4/4 \{x:1@0\}; int:32:true:int; func:1::false; struct T1 4/4 \{z:1@0\} | record 0 1:18 | record 3 1:70 | v:0 | assign<1>(v.0<1>, 2<1>) | 0<1>")
+}
+
 [test(description = "an enum named before its one file-scope definition takes it there; its enumerators bound at the definition")]
 def test_enum_before_definition(t : T?) {
     t |> equal(cir_of("typedef enum foo E; enum foo \{ e0, e1 \}; E x = e1;"), "enum foo 'enum foo' unsigned \{e0=0,e1=1\}; typedef:E:0; int:32:true:int | enumdef 0 1:26 | x:0")
@@ -190,6 +195,7 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("void f(struct S \{ int a; \} s);"), "error: t.c:1:8: a struct defined in this place is not typed yet")
     t |> equal(cir_of("struct S \{ int; \};"), "error: t.c:1:12: a member declaration that declares no member is not typed yet")
     t |> equal(cir_of("struct S \{ float f : 3; \};"), "error: t.c:1:18: a bit-field of other than an integer type is not typed yet")
+    t |> equal(cir_of("struct S \{ int a; \}; struct S a[] = \{ 1, 2 \};"), "error: t.c:1:39: an unsized array of records initialized with elided braces is not typed yet")
     t |> equal(cir_of("int n; struct S \{ int f : n; \};"), "error: t.c:1:27: a bit-field width other than an integer constant from 0 to 64 is not typed yet")
     t |> equal(cir_of("struct S \{ int a; \} __attribute__((aligned(sizeof(int))));"), "error: t.c:1:36: an `aligned` attribute of other than an integer literal is not typed yet")
     t |> equal(cir_of("enum E \{ A \} __attribute__((packed));"), "error: t.c:1:1: a packed or aligned enum is not typed yet")

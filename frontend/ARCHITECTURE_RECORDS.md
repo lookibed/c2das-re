@@ -21,7 +21,8 @@ defined is incomplete: its entry has size and alignment -1 and no field.
 
 An enum named before its one file-scope definition (`typedef enum foo E;` first) takes it the same
 way; any other enum named before its definition is refused. A tag defined again in another scope
-(two blocks' `union D`) names a record of its own, which Dumper A names by the first `<tag><n>` from
+(two blocks' `union D`, or a block's definition shadowing a file-scope one) names a record of its
+own, which Dumper A names by the first `<tag><n>` from
 1 that no record, enum, typedef, file-scope name or identifier in scope spells; an enum defined
 again is refused, as Dumper A binds its constants by place. A definition is built where a
 declaration, a member or the walk stands; one in a parameter list or a type name is refused, and
@@ -37,7 +38,8 @@ there is refused where the unit names the tag.
 
 A record's table entry is interned before its fields' types, so a pointer to it among them
 resolves; then each field's type in order, then the layout with its `packed` verdict
-(`c_layout_into_cir`). The walk (`c_tag_definitions`) reaches a definition among a declaration's
+(`c_layout_into_cir`). An enum constant's value rides on its node while it is folded and is
+cleared when the node is interned. The walk (`c_tag_definitions`) reaches a definition among a declaration's
 specifiers: the definitions among its members first, each interned and anchored, then its own
 entry and its `record` or `enumdef` declaration at its tag, its keyword when it has none. A
 block's definition is anchored where the block stands, before its function's declaration. An own

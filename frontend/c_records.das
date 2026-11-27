@@ -248,6 +248,10 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
 def private build_record(var b : CTypes; var p : CParser; n, pt : int) : bool {
     b.tag_built[n] = pt
     let node = p.ast.nodes[n]
+    if (node.a >= 0) {
+        b.defined_tags[node.a] = true
+    }
+    b.tag_names[b.pool[pt].name] = true
     if (node.a >= 0 && pp_symbol_text(p.unit.lx, node.a) == "__jmp_buf_tag") {
         c_refuse(b, p, node.tok, "glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`,")
         return false
@@ -299,6 +303,10 @@ def private as_int(v : int64) : int64 {
 def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
     b.tag_built[n] = pt
     let node = p.ast.nodes[n]
+    if (node.a >= 0) {
+        b.defined_tags[node.a] = true
+    }
+    b.tag_names[b.pool[pt].name] = true
     if (in_library_file(b, p, node.tok)) {
         b.library_tags[pt] = true
     }
@@ -372,7 +380,7 @@ def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) 
     let kind = tag_kind(p, n)
     var tag = node.a >= 0 ? pp_symbol_text(p.unit.lx, node.a) : hint
     var pt = -1
-    if (node.a >= 0 && key_exists(b.tags, node.a)) {
+    if (node.a >= 0 && c_tag_in_scope(b, node.a)) {
         pt = b.tags?[node.a] ?? -1
         if (b.pool[pt].k != kind || kind == "enum" || key_exists(b.layouts, pt) || b.used[pt] >= 0) {
             c_refuse(b, p, node.tok, "{kind_name(p, n)} tag defined again")
@@ -394,10 +402,6 @@ def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) 
             c_types_bind_tag(b, node.a, pt)
         }
     }
-    if (node.a >= 0) {
-        b.defined_tags[node.a] = true
-    }
-    b.tag_names[b.pool[pt].name] = true
     let ok = kind == "enum" ? build_enum(b, p, n, pt) : build_record(b, p, n, pt)
     if (!ok) {
         b.tag_built |> erase(n)

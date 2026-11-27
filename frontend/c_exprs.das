@@ -1074,6 +1074,7 @@ def c_exprs_use(var r : CIr; var x : CirExpr?) {
     }
     if (x.e == "enum_ref") {
         x.enum_t = c_types_use(r, x.enum_t)
+        x.trait_v = 0ul
         return
     }
     if (x.e == "init_list") {

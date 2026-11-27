@@ -93,8 +93,8 @@ and so does one braced alone for a character array; an initializer list gives on
 position its items fill, each item the position after the one before, an index designator `[k]`
 (an integer constant expression) moving it to `k`; for an array of arrays each item is braced or a string
 literal. A prefixed (wide or UTF) string literal, any other designator (a range, a nested one, a
-non-constant index), an elided brace in an array of arrays and any other initializer of an unsized
-array are refused.
+non-constant index), an elided brace in an array of arrays or of records and any other initializer
+of an unsized array are refused.
 
 
 ## 28. The own libc headers {#c-types-library}
