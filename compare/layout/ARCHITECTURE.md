@@ -20,7 +20,8 @@ so it lives outside `frontend/`, whose code does neither (`frontend/ARCHITECTURE
   default the working directory), and `--dialect linux` (the default) or `--dialect msvc`, whose
   triple, predefined-macro table and own headers every unit is then read under. An unknown corpus,
   or one whose folder is missing, is an error and exit 1, never an empty set. It prints each
-  differing record with its differences, each unit clang rejects, a line per corpus, and exits 0
+  differing record with its differences, each unit clang rejects, each record no dump record
+  matches or whose member's record has no layout of the module's, a line per corpus, and exits 0
   when no record differs.
 - `fixtures/rules.c` - one record per rule of `frontend/ARCHITECTURE_LAYOUT.md`, the records
   `frontend/tests/test_c_layout.das` quotes, read under both dialects. `fixtures/msvc/rules_msvc.c`
@@ -44,7 +45,8 @@ too: a typedef with an `aligned` attribute (an `AlignedAttr` child of a typedef'
 way to the type, through arrays) requires the type's alignment, and the member then gets the
 alignment of the canonical type below the typedefs (its own for an array); a member of a record
 type, through arrays, requires that record's `required_align` as the module computes it, so the
-records of a unit are laid out after every record their members' types are. An anonymous member is
+records of a unit are laid out after every record their members' types are, a record found by its
+definition, never by a forward declaration of its tag. An anonymous member is
 the anonymous record libclang visits; its offset is that of a name it makes visible less that name's
 offset inside it, as Dumper A finds it (`converter/ARCHITECTURE_DUMPER.md`).
 

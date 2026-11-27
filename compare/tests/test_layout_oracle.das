@@ -141,7 +141,7 @@ def test_units(t : T?) {
     let header = path_join(dir, "shared.h")
     fwrite(header, "struct H \{ char c; int i; \};\n")
     let first = path_join(dir, "first.c")
-    fwrite(first, "#include \"shared.h\"\ntypedef int v4 __attribute__((vector_size(16)));\nstruct V \{ v4 v; \};\nstruct __attribute__((ms_struct)) W \{ int a; \};\nstruct B \{ int x : 3; \} __attribute__((aligned));\n")
+    fwrite(first, "#include \"shared.h\"\ntypedef int v4 __attribute__((vector_size(16)));\nstruct V \{ v4 v; \};\nstruct __attribute__((ms_struct)) W \{ int a; \};\nstruct B \{ int x : 3; \} __attribute__((aligned));\ntypedef struct Fwd Fwd;\nstruct Fwd \{ int a; \};\nstruct UsesFwd \{ Fwd f; \};\n")
     let second = path_join(dir, "second.c")
     fwrite(second, "#include \"shared.h\"\nstruct Anon \{ struct \{ int : 3; \}; int b; \};\n")
     let broken = path_join(dir, "broken.c")
@@ -153,7 +153,7 @@ def test_units(t : T?) {
     for (unit in fixed_array(first, second, broken)) {
         compare_layout_unit(unit, "linux", with_dir, seen_here, totals)
     }
-    t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 6 records: 3 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]")
+    t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 8 records: 5 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]")
     t |> success(length(totals.lines) == 1 && find(totals.lines[0], "broken.c: clang: ") >= 0, join(totals.lines, "\n"))
 }
 

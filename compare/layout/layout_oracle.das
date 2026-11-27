@@ -263,7 +263,8 @@ def private record_key_of(var t : CXType) : string {
     if (at.kind != CXTypeKind.Record) {
         return ""
     }
-    var decl = clang_getTypeDeclaration(at)
+    // the type's declaration can be a forward one; the key is the definition's
+    var decl = clang_getCursorDefinition(clang_getTypeDeclaration(at))
     var key : string
     cursor_place(decl, key)
     return key
@@ -534,8 +535,8 @@ def compare_layout_unit(unit, dialect : string; flags : array<string>; var seen 
                 totals.undescribed++
             }
             totals.reasons[outcome.why]++
-            if (outcome.why == "no dump record matches it") {
-                totals.lines |> push("{rec.at}: `{rec.spelling}`: no dump record matches it")
+            if (outcome.why == "no dump record matches it" || outcome.why == "a member's record has no layout of ours") {
+                totals.lines |> push("{rec.at}: `{rec.spelling}`: {outcome.why}")
             }
             continue
         }
