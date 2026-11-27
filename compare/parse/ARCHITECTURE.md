@@ -14,7 +14,7 @@ the meaning of the program is left to it (section 3).
   `place_of`, section 2), clang's type spellings (`clang_type`), an expression of clang's JSON tree
   in the form (`clang_expression`), a record or enum body's lines, a statement's lines
   (`clang_statement`), and a unit's file-scope declarations (`clang_unit`, one `ClangTop` each: its
-  lines, the names it binds). It reads no parser state.
+  lines). It reads no parser state.
 - `parser_side.das` - the parser's side: the unit through the parser's entry (`parse_unit`,
   section 4), a declaration's lines (`parser_lines`) with its bodies' and a definition's statements
   (`statement_lines`), an expression in the form (`parser_expression`), and the types spelled as

@@ -96,12 +96,12 @@ def lines_match(ours, theirs : string) : bool {
     return matched
 }
 
-// a line's parts: up to its first type, the type, and the rest; `ok` false for a line with no type
-def private type_parts(line : string) : tuple<head : string; spelled : string; rest : string; ok : bool> {
+// a line's parts: up to its first type, the type, and the rest; a line with no type is its head
+def private type_parts(line : string) : tuple<head : string; spelled : string; rest : string> {
     let open = find(line, "\"")
     let close = open < 0 ? -1 : find(line, "\"", open + 1)
-    return (head = line, spelled = "", rest = "", ok = false) if (close < 0)
-    return (head = slice(line, 0, open), spelled = slice(line, open + 1, close), rest = slice(line, close + 1), ok = true)
+    return (head = line, spelled = "", rest = "") if (close < 0)
+    return (head = slice(line, 0, open), spelled = slice(line, open + 1, close), rest = slice(line, close + 1))
 }
 
 //! A library builtin's type as written, from clang's own (`ARCHITECTURE.md#causes`): `restrict`
@@ -125,10 +125,9 @@ def builtin_as_written(spelled : string) : string {
 //! to the earlier declaration's (`prior`).
 [arch(at="ARCHITECTURE.md#causes")]
 def explained_by(ours : string; theirs : FormLine) : string {
-    return "" if (empty(theirs.cause))
     let mine = type_parts(ours)
     let clang = type_parts(theirs.text)
-    return "" if (!mine.ok || !clang.ok || mine.head != clang.head || !lines_match(mine.rest, clang.rest))
+    return "" if (mine.head != clang.head || !lines_match(mine.rest, clang.rest))
     if (theirs.cause == LIBRARY_BUILTIN && lines_match(builtin_as_written(mine.spelled), builtin_as_written(clang.spelled))) {
         return LIBRARY_BUILTIN
     }

@@ -303,7 +303,6 @@ def private promoted(var p : CParser; ip : int) : string {
 // the parameter types of function declarator `f` as clang spells them; for an old-style
 // identifier list, each parameter's promoted type
 def private parameter_types(var p : CParser; f : CNodeRec) : string {
-    return "void" if (only_void(p, f))
     var parts : array<string>
     var at = f.b
     while (at >= 0) {
@@ -368,10 +367,8 @@ def parser_expression(var p : CParser; n : int) : string {
         return "(compound_literal{at} {type_name_text(p, e.a, true)} {parser_expression(p, e.b)})"
     } elif (k == CNode.VA_ARG) {
         return "(va_arg{at} {parser_expression(p, e.a)} {type_name_text(p, e.b, false)})"
-    } elif (k == CNode.TYPES_COMPATIBLE) {
-        return "(types_compatible{at} {type_name_text(p, e.a, false)} {type_name_text(p, e.b, false)})"
     }
-    return "(unknown {NODE_FORMS[int(k)]._0}{at})"
+    return "(types_compatible{at} {type_name_text(p, e.a, false)} {type_name_text(p, e.b, false)})"
 }
 
 // the specifier list `specs` holds keyword `k`
@@ -566,9 +563,9 @@ def private collect_bodies(var p : CParser; n, own : int; var printed, owned : a
     }
 }
 
-// the body lines of tag bodies `bodies`, in the order of their tokens: the order clang declares them
-def private bodies_in_order(var p : CParser; var bodies : array<int>; var lines : array<FormLine>) {
-    sort(bodies) <| cmp_by(nd(p, _).tok)
+// the body lines of tag bodies `bodies`, in the order `collect_bodies` found them, which is their
+// tokens' order: the order clang declares them
+def private bodies_in_order(var p : CParser; bodies : array<int>; var lines : array<FormLine>) {
     for (b in bodies) {
         body_lines(p, b, lines)
     }
@@ -782,10 +779,8 @@ def private leaf_text(var p : CParser; s : int) : string {
         return "(goto{at} {symbol(p, n.a)})"
     } elif (k == CNode.CONTINUE || k == CNode.BREAK || k == CNode.ASM) {
         return "({NODE_FORMS[int(k)]._0}{at})"
-    } elif (k == CNode.RETURN) {
-        return "(return{at} {parser_expression(p, n.a)})"
     }
-    return "(unknown {NODE_FORMS[int(k)]._0}{at})"
+    return "(return{at} {parser_expression(p, n.a)})"
 }
 
 //! A unit read by the parser's unit entry: its external declarations, or the error that stopped

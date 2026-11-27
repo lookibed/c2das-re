@@ -133,19 +133,10 @@ let LIBRARY_BUILTIN = "a library builtin: clang's own type"
 //! redeclaration the type merged with the earlier one's, which may spell it another way.
 let MERGED_REDECLARATION = "a redeclaration: clang's merged type"
 
-//! A name an entity of a file-scope declaration binds in the ordinary name space, and whether as a
-//! typedef name.
-struct BoundName {
-    name : string
-    is_typedef : bool
-}
-
-//! One file-scope declaration of clang's tree: the place of its first token, its lines (one per
-//! entity it declares and per line of a body it holds), and the names it binds.
+//! One file-scope declaration of clang's tree: its lines, one per entity it declares and per line
+//! of a body it holds.
 struct ClangTop {
-    key : string
     lines : array<FormLine>
-    names : array<BoundName>
 }
 
 //! A unit's file-scope declarations as clang reads them, or the error that stopped the reading.
@@ -349,18 +340,6 @@ def private decl_flags(js : JsonValue?) : string {
     return flags
 }
 
-// the names an enum's body binds, in the record bodies too
-def private enumerators(js : JsonValue?; var names : array<BoundName>) {
-    each_child(js) $(c) {
-        let k = kind_of(c)
-        if (k == "EnumConstantDecl") {
-            names |> push(BoundName(name = c?["name"] ?? ""))
-        } elif (k == "EnumDecl" || k == "RecordDecl") {
-            enumerators(c, names)
-        }
-    }
-}
-
 // whether record or enum `js` has a body: a definition's members, or enumerators
 def private has_body(js : JsonValue?) : bool {
     return js?["completeDefinition"] ?? false if (kind_of(js) == "RecordDecl")
@@ -397,11 +376,11 @@ def tag_of_neighbour(kids : array<JsonValue?>; idx : int) : bool {
     return false
 }
 
-// the children of `js` that are declarations or statements, attributes and implicit ones left out
+// the children of `js` that are declarations or statements, implicit ones left out
 def private declared_children(js : JsonValue?) : array<JsonValue?> {
     var kids : array<JsonValue?>
     each_child(js) $(c) {
-        if (!(c?["isImplicit"] ?? false) && !ends_with(kind_of(c), "Attr")) {
+        if (!(c?["isImplicit"] ?? false)) {
             kids |> push(unsafe(reinterpret<JsonValue?>(c)))
         }
     }
@@ -418,26 +397,24 @@ def private function_types(js : JsonValue?; var types : table<string; string>) {
     }
 }
 
-// the lines and names of the file-scope declaration `js`, a body it holds included
+// the lines of the file-scope declaration `js`, a body it holds included
 def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
-    var top = ClangTop(key = place_key(begin_of(map, js)))
+    var top : ClangTop
     let k = kind_of(js)
     let name = js?["name"] ?? ""
     let loc = loc_of(map, js)
     if (k == "TypedefDecl") {
         top.lines |> push(FormLine(file = loc.file, text = "(typedef {name}{place_text(loc)} {type_text(js?["type"])})"))
-        top.names |> push(BoundName(name = name, is_typedef = true))
     } elif (k == "VarDecl") {
         let init <- expression_children(map, js)
         let value = empty(init) ? "" : " = {init[0]}"
         top.lines |> push(FormLine(file = loc.file, text = "(decl {name}{place_text(loc)} {type_text(js?["type"])}{decl_flags(js)}{value})"))
-        top.names |> push(BoundName(name = name))
     } elif (k == "FunctionDecl") {
         var params : array<string>
         var builtin = false
         each_child(js) $(c) {
             let ck = kind_of(c)
-            if (ck == "ParmVarDecl" && !(c?["isImplicit"] ?? false)) {
+            if (ck == "ParmVarDecl") {
                 let pname = c?["name"] ?? ""
                 params |> push(empty(pname) ? "-" : "{pname}{place_text(loc_of(map, c))}")
             } elif (ck == "BuiltinAttr") {
@@ -450,7 +427,6 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
         let prior = empty(earlier) ? "" : map.function_types?[earlier] ?? ""
         let cause = builtin ? LIBRARY_BUILTIN : !empty(prior) ? MERGED_REDECLARATION : ""
         top.lines |> push(FormLine(file = loc.file, text = line, cause = cause, prior = prior))
-        top.names |> push(BoundName(name = name))
         var defines = false
         each_child(js) $(c) {
             defines = defines || kind_of(c) == "CompoundStmt"
@@ -458,7 +434,7 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
         if (defines) {
             // a definition's parameters, each with the type it is declared with
             each_child(js) $(c) {
-                if (kind_of(c) == "ParmVarDecl" && !(c?["isImplicit"] ?? false)) {
+                if (kind_of(c) == "ParmVarDecl") {
                     let pname = c?["name"] ?? ""
                     let pat = loc_of(map, c)
                     let head = empty(pname) ? "-" : "{pname}{place_text(pat)}"
@@ -483,7 +459,6 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
     } elif (k == "RecordDecl" || k == "EnumDecl") {
         if (has_body(js)) {
             body_lines(map, js, top.lines)
-            enumerators(js, top.names)
         } else {
             top.lines |> push(FormLine(file = loc.file, text = tag_line(js, loc)))
         }
