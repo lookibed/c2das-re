@@ -9,6 +9,7 @@ require daslib/fio
 require daslib/clargs
 require ../../frontend/pp_lexer.das
 require ../../frontend/pp_directives.das
+require ../../frontend/pp_expand.das
 require ../../frontend/c_defines.das
 require ../../converter/cir.das
 require ../../converter/dumper_a.das
@@ -312,12 +313,12 @@ def compare_unit(unit, work : string; flags : array<string>; show : int; raw : b
 //! corpus folder that is missing, a suite not fetched among them: no corpus is ever empty by absence.
 def corpus_units(root, corpus : string; var error : string&) : array<string> {
     var units : array<string>
-    let folders <- {"frontend" => "frontend/include", "pp2" => "compare/pp/fixtures/pp2",
+    let folders <- {"frontend" => "frontend/include", "pp2" => "compare/pp/fixtures/pp2", "pp3" => "compare/pp/fixtures/pp3",
                     "c-testsuite" => "suites/c_testsuite/fetch/c-testsuite/tests/single-exec",
                     "gcc-torture" => "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute"}
     let relative = folders?[corpus] ?? ""
     if (empty(relative)) {
-        error = "unknown corpus '{corpus}': frontend, c-testsuite, gcc-torture or pp2"
+        error = "unknown corpus '{corpus}': frontend, c-testsuite, gcc-torture, pp2 or pp3"
         return <- units
     }
     let folder = path_join(root, relative)
@@ -348,7 +349,7 @@ def corpus_units(root, corpus : string; var error : string&) : array<string> {
 //! The command line of `run.das`.
 [CommandLineArgs]
 struct OracleArgs {
-    @clarg_doc = "a corpus to compare: frontend, c-testsuite, gcc-torture or pp2 (repeatable)"
+    @clarg_doc = "a corpus to compare: frontend, c-testsuite, gcc-torture, pp2 or pp3 (repeatable)"
     corpus : array<string>
     @clarg_doc = "the differences shown per unit"
     show : int = 3
@@ -358,6 +359,10 @@ struct OracleArgs {
     raw : bool
     @clarg_doc = "compare the directive layer, frontend/pp_directives.das, not the lexer: units with directives and no macro use (corpus pp2 is the fixture set)"
     pp2 : bool
+    @clarg_doc = "compare the macro expansion, frontend/pp_expand.das, over the directive layer (corpus pp3 is the fixture set)"
+    pp3 : bool
+    @clarg_doc = "a corpus list for --pp2 and --pp3: a unit a line, its path then its -I, -D and -x flags (repeatable)"
+    list : array<string>
     @clarg_positional
     @clarg_doc = "units compared besides the corpora"
     units : array<string>
@@ -366,7 +371,7 @@ struct OracleArgs {
 //! The corpora and units `args` names compared, from the repository root, each set's line and the
 //! total printed; 0 when no unit differs, 1 when one does, a corpus is unknown or missing, or the
 //! flags or the list cannot be read.
-//! With `pp2` the directive oracle runs them (`run_pp2`).
+//! With `pp2` the directive oracle runs them, with `pp3` the expansion oracle (`run_pp2`).
 def run_oracle(args : OracleArgs) : int {
     var error : string
     let flags <- preprocess_flags(error)
@@ -381,7 +386,7 @@ def run_oracle(args : OracleArgs) : int {
     }
     mkdir_rec(args.work)
     let root = getcwd()
-    return run_pp2(args, root, flags, listed) if (args.pp2)
+    return run_pp2(args, root, flags, listed) if (args.pp2 || args.pp3)
     var total : OracleTotals
     for (corpus in args.corpus) {
         var inscope units <- corpus_units(root, corpus, error)
@@ -412,12 +417,25 @@ enum Pp2Class {
 
 //! A token PP.2 handed out, with what a difference is classed by: whether it names a macro PP.2 has
 //! defined where it stands, whether it stands in the parenthesized arguments of a function-like
-//! macro PP.2 has defined, and whether it stands in a group chosen past an `#if` left to PP.4.
+//! macro PP.2 has defined, whether it stands in a group chosen past an `#if` left to PP.4, and in
+//! PP.3's stream whether a macro of the calls it came from was defined there (`late_macro`).
 struct Pp2Token {
     tok : OracleToken
     macro : bool
     in_call : bool
     undecided : bool
+    late_macro : bool
+}
+
+// whether call `c` of PP.3's record, or a call its name came from, expands a macro in `late`
+def private from_late_macro(pp : Preprocessor; late : array<bool>; c : int) : bool {
+    var at = c
+    while (at >= 0) {
+        let call & = unsafe(pp.expansion.calls[at])
+        return true if (call.macro < length(late) && late[call.macro])
+        at = call.parent
+    }
+    return false
 }
 
 //! One difference: `clang_count` clang tokens from `clang_at` stand where PP.2 has `pp_count`
@@ -434,6 +452,7 @@ struct Pp2Difference {
 //! items. A place in PP.2's stream is the count of tokens it handed out before it.
 struct Pp2Result {
     unit : string
+    expanded : bool         //!< PP.3's expanded stream, not PP.2's: no difference waits for PP.3
     clang_tokens : int
     pp_tokens : int
     differences : array<Pp2Difference>
@@ -498,12 +517,16 @@ def private any_undecided(pp : Preprocessor) : bool {
 
 //! The tokens PP.2 hands out for `unit` read through `fio`, and what it left to PP.3 and PP.4,
 //! into `result`. A diagnostic is placed at the tokens handed out before it; an error counts as
-//! PP.2's own unless it names PP.3 or PP.4, or a group PP.4 chooses was open around it.
+//! PP.2's own unless it names PP.3 or PP.4, or a group PP.4 chooses was open around it. With
+//! `result.expanded`, PP.3's expanded tokens, the time builtins at `ORACLE_EPOCH`, none marked as
+//! a macro's.
 [arch(at="ARCHITECTURE.md#pp2")]
 def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2Result) : array<Pp2Token> {
     var tokens : array<Pp2Token>
     var pp : Preprocessor
-    if (!pp_start(pp, new PpFioProvider(), unit, entries, search)) {
+    let started = (result.expanded ? pp_expand_start(pp, new PpFioProvider(), unit, entries, search, ORACLE_EPOCH)
+                                   : pp_start(pp, new PpFioProvider(), unit, entries, search))
+    if (!started) {
         result.errors |> push("cannot read {unit}")
         return <- tokens
     }
@@ -512,7 +535,9 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
     var more = true
     var called = false
     var depth = 0
+    var late_macros : array<bool>
     while (more) {
+        let defined = length(pp.macros)
         more = pp_next_token(pp)
         let undecided = any_undecided(pp)
         var late = was_undecided || undecided
@@ -531,9 +556,13 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
         }
         seen = length(pp.diags)
         was_undecided = undecided
+        late_macros |> resize(length(pp.macros))
+        for (m in range(defined, length(pp.macros))) {
+            late_macros[m] = late
+        }
         if (more) {
             let kind = pp.tok.tok.kind
-            let macro = kind == int(PpTok.IDENTIFIER) && pp_defined(pp, pp.tok.tok.sym)
+            let macro = !result.expanded && kind == int(PpTok.IDENTIFIER) && pp_defined(pp, pp.tok.tok.sym)
             var in_call = false
             if (depth > 0) {
                 in_call = true
@@ -544,7 +573,8 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
             }
             called = macro && pp.macros[pp.macro_of?[pp.tok.tok.sym] ?? -1].function_like
             tokens |> push(Pp2Token(tok = OracleToken(kind = kind, spelling = pp_token_spelling(pp), at_bol = pp.tok.tok.at_bol),
-                                    macro = macro, in_call = in_call, undecided = undecided))
+                                    macro = macro, in_call = in_call, undecided = undecided,
+                                    late_macro = result.expanded && from_late_macro(pp, late_macros, pp.tok.call)))
         }
     }
     result.pp_pragmas = length(pp.pragmas) + length(pp.packs)
@@ -685,10 +715,10 @@ def private pp2_span(d : Pp2Difference; clang : array<OracleToken>; ours : array
 }
 
 //! The class of difference `d`: needs PP.4 when a place left to PP.4 lies in its span, a token of
-//! PP.2's side stands in a group PP.4 chooses, or that side names a macro clang has and PP.2 had not
+//! PP.2's side stands in a group PP.4 chooses or comes from a macro defined in one, or that side names a macro clang has and PP.2 had not
 //! defined there past such a place; needs PP.3 when PP.2's side, or the token either side of it,
 //! names a macro PP.2 defined or one of clang's builtin macros or stands in a function-like macro's
-//! call, or a place left to PP.3 lies in its span; else it differs.
+//! call, or a place left to PP.3 lies in its span - never in PP.3's expanded stream; else it differs.
 [arch(at="ARCHITECTURE.md#pp2")]
 def pp2_difference_class(r : Pp2Result; d : Pp2Difference; clang : array<OracleToken>; ours : array<Pp2Token>;
                          clang_macros : table<string; bool>) : Pp2Class {
@@ -698,10 +728,11 @@ def pp2_difference_class(r : Pp2Result; d : Pp2Difference; clang : array<OracleT
     }
     let past_pp4 = !empty(r.pp4_at) && r.pp4_at[0] <= span.y
     for (j in range(d.pp_at, d.pp_at + d.pp_count)) {
-        return Pp2Class.needs_pp4 if (ours[j].undecided)
+        return Pp2Class.needs_pp4 if (ours[j].undecided || ours[j].late_macro)
         let unknown_macro = !ours[j].macro && ours[j].tok.kind == int(PpTok.IDENTIFIER) && key_exists(clang_macros, ours[j].tok.spelling)
         return Pp2Class.needs_pp4 if (unknown_macro && past_pp4)
     }
+    return Pp2Class.differs if (r.expanded)
     let near = int2(max(span.x - 1, 0), min(span.y + 1, length(ours)))
     for (j in range(near.x, near.y)) {
         return Pp2Class.needs_pp3 if (ours[j].macro || ours[j].in_call || key_exists(CLANG_BUILTIN_MACROS, ours[j].tok.spelling))
@@ -763,18 +794,74 @@ def private pp2_spellings(toks : array<OracleToken>; at, count : int) : string {
     return "{join(parts, " ")}{count > 6 ? " ..." : ""}"
 }
 
+//! The time the expansion oracle's units are preprocessed at, seconds since 1970: clang reads it
+//! from `SOURCE_DATE_EPOCH`, PP.3 from `pp_expand_start`, so `__DATE__`, `__TIME__` and
+//! `__TIMESTAMP__` agree.
+let ORACLE_EPOCH = 1000000000l
+
+//! A unit of a corpus and the flags of its own: `-I<dir>`, `-D<entry>` and `-x <language>`.
+struct OracleUnit {
+    path : string
+    flags : array<string>
+}
+
+//! The units at `paths`, with no flags of their own.
+def oracle_units(paths : array<string>) : array<OracleUnit> =>
+    <- [for (path in paths); OracleUnit(path = path)]
+
+//! The units of the corpus list `list`: a line each, the unit's path then its flags, blank-separated.
+[arch(at="ARCHITECTURE.md#pp3")]
+def list_units(list : string) : array<OracleUnit> {
+    var units : array<OracleUnit>
+    for (line in split(fread(list), "\n")) {
+        var inscope words <- [for (w in split(strip(line), " ")); w; where !empty(w)]
+        continue if (empty(words))
+        var unit = OracleUnit(path = words[0])
+        unit.flags |> reserve(length(words) - 1)
+        for (i in range(1, length(words))) {
+            unit.flags |> push(words[i])
+        }
+        units |> emplace(unit)
+    }
+    return <- units
+}
+
 //! One unit through clang (`-E -P`, then `-dump-tokens` of its output, the `#pragma` and `#ident`
 //! lines counted apart) and through PP.2 with the same macros and include path; aligned by kind,
 //! spelling and `at_bol`, and every difference classed. Every difference that differs is shown,
-//! and `show` of each other class.
+//! and `show` of each other class. With `expand`, through PP.3 at `ORACLE_EPOCH`, and the unit's
+//! own flags (`OracleUnit`) given to both sides: `-I` before `search`, `-D` after `entries`.
 [arch(at="ARCHITECTURE.md#pp2")]
-def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search : array<string>; show : int) : Pp2Result {
-    var result = Pp2Result(unit = unit)
-    let preprocessed = path_join(work, "{base_name(unit)}.pp2.i")
+def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search : array<string>; show : int; expand : bool = false;
+                     unit_flags : array<string> = array<string>()) : Pp2Result {
+    var result = Pp2Result(unit = unit, expanded = expand)
+    var our_search : array<string>
+    var our_entries := entries
+    var clang_flags := flags
+    var i = 0
+    while (i < length(unit_flags)) {
+        let f = unit_flags[i]
+        if (starts_with(f, "-I")) {
+            our_search |> push(slice(f, 2))
+        } elif (starts_with(f, "-D")) {
+            our_entries |> push(slice(f, 2))
+        } elif (f == "-x" && i + 1 < length(unit_flags)) {
+            clang_flags |> push(f)
+            i++
+        } else {
+            result.error = "unsupported unit flag {f}"
+            return <- result
+        }
+        clang_flags |> push(unit_flags[i])
+        i++
+    }
+    our_search |> push_from(search)
+    let preprocessed = path_join(work, "{base_name(unit)}.{expand ? "pp3" : "pp2"}.i")
     var argv <- [default_clang(), "-E", "-P"]
-    argv |> push_from(flags, [unit, "-o", preprocessed])
+    argv |> push_from(clang_flags, [unit, "-o", preprocessed])
     var out : string
-    if (run_and_capture(argv, out, 300.0) != 0) {
+    let env <- ["SOURCE_DATE_EPOCH={ORACLE_EPOCH}"]
+    if (run_and_capture(argv, "", env, out, 300.0) != 0) {
         result.error = "clang -E: {out}"
         return <- result
     }
@@ -787,12 +874,12 @@ def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search
     }
     let clang <- clang_tokens(dump)
     result.clang_pragmas = pragma_lines(fread(preprocessed))
-    let ours <- pp2_tokens(unit, entries, search, result)
+    let ours <- pp2_tokens(unit, our_entries, our_search, result)
     result.clang_tokens = length(clang)
     result.pp_tokens = length(ours)
     result.differences <- pp2_differences(clang, ours, PP2_ALIGN_LIMIT, result.gave_up)
     if (!empty(result.differences)) {
-        let clang_macros <- clang_macro_names(unit, flags)
+        let clang_macros <- clang_macro_names(unit, clang_flags)
         let pp_side <- [for (o in ours); o.tok]
         let classes <- [for (d in result.differences); pp2_difference_class(result, d, clang, ours, clang_macros)]
         var shown_of <- [0, 0, 0, 0]
@@ -833,14 +920,16 @@ def describe_pp2_totals(name : string; t : Pp2Totals) : string {
     return "{name} {u.x} clean, {u.y} need PP.3, {u.z} need PP.4, {u.w} differ, {o.listed} reference failures (listed), {o.unlisted} reference failures (unlisted), {o.stale} listed units preprocessed; {o.tokens} tokens, differences {d.w} differ, {d.y} need PP.3, {d.z} need PP.4"
 }
 
-//! The directive oracle over `units`: each unit not clean printed with its class, the count of its
-//! differences of each class, the differences shown and PP.2's errors, each reference failure as
-//! `run_set` prints it, then a line of the totals headed `name`.
-def run_set_pp2(name : string; units : array<string>; work : string; flags : array<string>; listed : array<ReferenceFailure>;
-                entries, search : array<string>; show : int) : Pp2Totals {
+//! The directive oracle over `units`, or with `expand` the expansion oracle: each unit not clean
+//! printed with its class, the count of its differences of each class, the differences shown and
+//! PP.2's errors, each reference failure as `run_set` prints it, then a line of the totals headed
+//! `name`.
+def run_set_pp2(name : string; units : array<OracleUnit>; work : string; flags : array<string>; listed : array<ReferenceFailure>;
+                entries, search : array<string>; show : int; expand : bool = false) : Pp2Totals {
     var totals : Pp2Totals
-    for (unit in units) {
-        let r <- compare_unit_pp2(unit, work, flags, entries, search, show)
+    for (u in units) {
+        let unit = u.path
+        let r <- compare_unit_pp2(unit, work, flags, entries, search, show, expand, u.flags)
         continue if (reference_failure(listed, unit, r.error, totals.oracle))
         totals.units[int(r.cls)]++
         totals.oracle.tokens += r.clang_tokens
@@ -856,15 +945,16 @@ def run_set_pp2(name : string; units : array<string>; work : string; flags : arr
             print("    pp: {line}\n")
         }
     }
-    let head = "{name} (pp2): {length(units)} units,"
+    let head = "{name} ({expand ? "pp3" : "pp2"}): {length(units)} units,"
     let line = describe_pp2_totals(head, totals)
     print("{line}\n")
     return totals
 }
 
-//! The directive oracle over the corpora and units `args` names, from `root`, each set's line and
-//! the total printed; 0 when no unit differs where PP.2 answers, 1 when one does, a corpus is unknown
-//! or missing, or PP.2's setup fails.
+//! The directive oracle, or with `args.pp3` the expansion oracle, over the corpora, the corpus lists
+//! and the units `args` names, from `root`, each set's line and the total printed; 0 when no unit
+//! differs where PP.2 (and PP.3) answer, 1 when one does, a corpus is unknown or missing, or PP.2's
+//! setup fails.
 def run_pp2(args : OracleArgs; root : string; flags : array<string>; listed : array<ReferenceFailure>) : int {
     var error : string
     let setup <- pp2_setup(error)
@@ -879,12 +969,19 @@ def run_pp2(args : OracleArgs; root : string; flags : array<string>; listed : ar
             to_log(LOG_ERROR, "{error}\n")
             return 1
         }
-        total += run_set_pp2(corpus, units, args.work, flags, listed, setup.entries, setup.search, args.show)
+        total += run_set_pp2(corpus, oracle_units(units), args.work, flags, listed, setup.entries, setup.search, args.show, args.pp3)
+    }
+    for (list in args.list) {
+        if (!stat(list).is_reg) {
+            to_log(LOG_ERROR, "corpus list {list} is missing\n")
+            return 1
+        }
+        total += run_set_pp2(base_name(list), list_units(list), args.work, flags, listed, setup.entries, setup.search, args.show, args.pp3)
     }
     if (!empty(args.units)) {
-        total += run_set_pp2("units", args.units, args.work, flags, listed, setup.entries, setup.search, args.show)
+        total += run_set_pp2("units", oracle_units(args.units), args.work, flags, listed, setup.entries, setup.search, args.show, args.pp3)
     }
-    let line = describe_pp2_totals("total (pp2):", total)
+    let line = describe_pp2_totals("total ({args.pp3 ? "pp3" : "pp2"}):", total)
     print("{line}\n")
     return total.units.w == 0 ? 0 : 1
 }

@@ -1,4 +1,5 @@
 options gen2
+options stack = 1048576
 require dastest/testing_boost public
 require strings
 require daslib/fio
@@ -422,7 +423,7 @@ def test_corpus_units_errors(t : T?) {
     t |> success(starts_with(error, "corpus frontend: ") && ends_with(error, " is missing"), error)
     error = ""
     let unknown <- corpus_units(getcwd(), "nosuch", error)
-    t |> equal(error, "unknown corpus 'nosuch': frontend, c-testsuite, gcc-torture or pp2")
+    t |> equal(error, "unknown corpus 'nosuch': frontend, c-testsuite, gcc-torture, pp2 or pp3")
     error = ""
     let fixtures <- corpus_units(getcwd(), "pp2", error)
     t |> equal(error, "")
@@ -465,7 +466,7 @@ def test_run_set_pp2_counts(t : T?) {
     units |> push(unit_file("rejected.c", "#bogus\nint x;\n"))
     units |> push("compare/pp/fixtures/pp2/no_such_unit.c")
     let listed <- reference_failures("pp2_units/rejected.c\tby decision\n")
-    let totals = run_set_pp2("t", units, work, flags, listed, setup.entries, setup.search, 0)
+    let totals = run_set_pp2("t", oracle_units(units), work, flags, listed, setup.entries, setup.search, 0)
     t |> equal("{totals.units}", "5,1,1,1")
     t |> equal("{totals.oracle.listed} {totals.oracle.unlisted} {totals.oracle.stale}", "1 1 0")
 }
@@ -525,4 +526,93 @@ def test_pp2_symlinked_folder(t : T?) {
     let clang_rc = run_and_capture([default_clang(), "-E", "-P", "-nostdinc", "-I", path_join(root, "inc"), main], clang_out, 300.0)
     t |> equal(clang_rc, 0, clang_out)
     t |> success(find(clang_out, "real_y") >= 0 && find(clang_out, "inc_y") < 0, clang_out)
+}
+
+[test(description = "a corpus list reads a unit a line, its path then its flags; blank lines are skipped")]
+def test_list_units(t : T?) {
+    let list = path_join(test_temp_dir(), "corpus.txt")
+    fwrite(list, "/a/x.c -I/a -DN=1\n\n/b/y.t -x c\n")
+    let units <- list_units(list)
+    t |> equal(length(units), 2)
+    t |> equal("{units[0].path} {join(units[0].flags, " ")}", "/a/x.c -I/a -DN=1")
+    t |> equal("{units[1].path} {join(units[1].flags, " ")}", "/b/y.t -x c")
+}
+
+[test(description = "a unit's own flags reach both sides: -I before the include path, -D after the table, -x to clang; any other flag fails the unit", timeout = 1200)]
+def test_pp3_unit_flags(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp3_flags")
+    mkdir_rec(work)
+    let inc = path_join(test_temp_dir(), "pp3_inc")
+    mkdir_rec(inc)
+    fwrite(path_join(inc, "own_header.h"), "int from_header = N;\n")
+    let unit = unit_file("flags.c", "#include <own_header.h>\nint x = N + 1;\n")
+    let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5, true, ["-I{inc}", "-DN=7", "-x", "c"])
+    t |> equal(r.error, "")
+    t |> equal(r.cls, Pp2Class.clean, "{r.shown} {r.errors}")
+    t |> equal(r.clang_tokens, 12)
+    let bad <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5, true, ["-O2"])
+    t |> equal(bad.error, "unsupported unit flag -O2")
+}
+
+[test(description = "the expansion fixtures give clang's -E token stream through PP.3: the C11 examples, rescanning, GNU variadics, # and ##, the builtins, directive lines and _Pragma", timeout = 1200)]
+def test_pp3_fixtures_against_clang(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp3_oracle")
+    mkdir_rec(work)
+    let units <- corpus_units(getcwd(), "pp3", error)
+    t |> equal(error, "")
+    t |> equal(length(units), 6)
+    for (unit in units) {
+        let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5, true)
+        t |> equal(r.error, "", unit)
+        t |> equal(r.cls, Pp2Class.clean, "{unit}: {r.shown} {r.errors}")
+        t |> success(r.clang_tokens > 10, unit)
+    }
+}
+
+[test(description = "in PP.3's expanded stream no difference waits for PP.3: a name left as it is differs, where PP.2's stream would need PP.3")]
+def test_pp3_no_needs_pp3(t : T?) {
+    let clang <- [OracleToken(kind = int(PpTok.IDENTIFIER), spelling = "one"), OracleToken(kind = int(PpTok.SEMI), spelling = ";")]
+    let ours <- [Pp2Token(tok = OracleToken(kind = int(PpTok.IDENTIFIER), spelling = "__LINE__")), Pp2Token(tok = OracleToken(kind = int(PpTok.SEMI), spelling = ";"))]
+    let none : table<string; bool>
+    let d = Pp2Difference(clang_at = 0, clang_count = 1, pp_at = 0, pp_count = 1)
+    t |> equal(pp2_difference_class(Pp2Result(), d, clang, ours, none), Pp2Class.needs_pp3)
+    t |> equal(pp2_difference_class(Pp2Result(expanded = true), d, clang, ours, none), Pp2Class.differs)
+}
+
+[test(description = "run_oracle --pp3 runs the expansion oracle: exit 0 over the fixture set; a corpus list that is missing is an error and exit 1", timeout = 1200)]
+def test_run_oracle_pp3(t : T?) {
+    let work = path_join(test_temp_dir(), "pp3_run")
+    var fixtures = OracleArgs(work = work, pp3 = true)
+    fixtures.corpus |> push("pp3")
+    t |> equal(run_oracle(fixtures), 0)
+    var missing = OracleArgs(work = work, pp3 = true)
+    missing.list |> push(path_join(test_temp_dir(), "no_such_list.txt"))
+    t |> equal(run_oracle(missing), 1)
+}
+
+[test(description = "in PP.3's stream a token from a macro defined in a group PP.4 chooses is marked, through the call its name came from; a macro defined before is not")]
+def test_pp3_late_macro(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let unit = unit_file("late.c", "#define U int\nU a;\n#if 2 > 1\n#define T long\n#else\n#define T short\n#endif\n#define W T\nT x; W y; U z;\n")
+    var r = Pp2Result(unit = unit, expanded = true)
+    let toks <- pp2_tokens(unit, setup.entries, setup.search, r)
+    t |> equal(join([for (o in toks); "{o.tok.spelling}{o.late_macro ? "!" : ""}"], " "), "int a ; short! x ; short! y ; int z ;")
+    let clang <- [OracleToken(kind = int(PpTok.IDENTIFIER), spelling = "long")]
+    let none : table<string; bool>
+    let d = Pp2Difference(clang_at = 0, clang_count = 1, pp_at = 6, pp_count = 1)
+    t |> equal(pp2_difference_class(r, d, clang, toks, none), Pp2Class.needs_pp4)
+    let early = Pp2Difference(clang_at = 0, clang_count = 1, pp_at = 0, pp_count = 1)
+    t |> equal(pp2_difference_class(r, early, clang, toks, none), Pp2Class.differs)
 }
