@@ -75,6 +75,8 @@ def test_records(t : T?) {
         t |> equal(unit("struct C \{ int (*cb)(T, int); \};"),
                    "(decl 0 [(record struct C 1 [(member_decl 0 [(spec int)] [(member (d_function 0 (d_paren (d_pointer (d_name cb) []) []) [(param [(typedef_name T)] -) (param [(spec int)] -)]) -)])])] [])")
         t |> equal(unit("struct E \{\};"), "(decl 0 [(record struct E 1 [])] [])")
+    t |> equal(unit("struct P \{ __attribute__((packed)); int x; \};"),
+               "(decl 0 [(record struct P 1 [(member_decl 0 [(attribute __attribute__((packed)))] []) (member_decl 0 [(spec int)] [(member (d_name x) -)])])] [])")
     }
     t |> run("`;` alone and `_Static_assert` among the members") @(t : T?) {
         t |> equal(unit("struct A \{ ; int a; _Static_assert(1, \"x\"); \};"),
@@ -167,6 +169,8 @@ def test_malformed_records(t : T?) {
         t |> equal(unit(c._0), "error: {c._1}", c._0)
     }
     t |> equal(unit("struct S \{ const; \};"), "error: t.c:1:12: a specifier list with no type specifier is not parsed")
+    t |> equal(unit("struct S \{ int (*fp)(a); \};"), "error: t.c:1:22: an identifier list outside a function definition is not parsed")
+    t |> equal(unit("struct S \{ __attribute__((packed)) x; \};"), "error: t.c:1:12: a specifier list with no type specifier is not parsed")
 }
 
 [test(description = "function definitions: a prototype's, with specifiers, attributes after the declarator and `__extension__`, one returning a function pointer; the body kept as its tokens to the brace that balances its first")]
@@ -199,7 +203,7 @@ def test_old_style(t : T?) {
     }
 }
 
-[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, f16's its old-style names, and after the definition the typedef is a type again")]
+[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, f16's its old-style names, an enumerator a parameter's type declares is in it too, and after the definition the typedef is a type again")]
 def test_body_scope(t : T?) {
     var p : CParser
     opened(p, "void f6(T T) \{ T = 2; \} void f9(int T) \{ T = 4; \} int f16(a, b) T a; int b; \{ return a + b; \} T after;")
@@ -212,6 +216,13 @@ def test_body_scope(t : T?) {
     t |> equal(body_expr(p, f9, 1), "(assign = (ident T) (int 4))")
     t |> equal(body_expr(p, f16, 2), "(binary + (ident a) (ident b))")
     t |> equal(c_dump(p.ast, p.unit, p.ast.nodes[f16].next), "(decl 0 [(typedef_name T)] [(init_decl (d_name after) - -)])")
+    var q : CParser
+    opened(q, "int g(enum \{ T = 1 \} x, int y) \{ return sizeof(T) + y; \} T later;")
+    let v = c_unit(q)
+    t |> success(!q.failed, q.err)
+    let g = q.ast.nodes[v].a
+    t |> equal(body_expr(q, g, 2), "(binary + (sizeof_expr (paren (ident T))) (ident y))")
+    t |> equal(c_dump(q.ast, q.unit, q.ast.nodes[g].next), "(decl 0 [(typedef_name T)] [(init_decl (d_name later) - -)])")
     t |> equal(unit("int T(void) \{ return 0; \} int y = T;"),
                "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name T) [(param [(spec void)] -)]) - -) [] (body \{ return 0; \})) (decl 0 [(spec int)] [(init_decl (d_name y) (ident T) -)])")
 }
@@ -234,7 +245,11 @@ def test_malformed_definitions(t : T?) {
         ("int f(a) int a, a; \{\}", "t.c:1:17: expected a parameter declared once, got 'a'"),
         ("int f(a) _Static_assert(1, \"\"); int a; \{\}", "t.c:1:10: expected a declaration, got '_Static_assert'"),
         ("int f(a) int a;", "t.c:1:16: expected a declaration, got end of input"),
-        ("int f(a) x; \{\}", "t.c:1:10: expected a declaration, got 'x'"))
+        ("int f(a) x; \{\}", "t.c:1:10: expected a declaration, got 'x'"),
+        ("int f(a) int a __asm__(\"x\"); \{\}", "t.c:1:16: expected ';', got '__asm__'"),
+        ("int f(a) int; int a; \{\}", "t.c:1:10: expected a declaration of a parameter, got 'int'"),
+        ("int f(a) struct S \{ int z; \}; int a; \{\}", "t.c:1:10: expected a declaration of a parameter, got 'struct'"),
+        ("int f(a) enum \{ Q \}; int a; \{\}", "t.c:1:10: expected a declaration of a parameter, got 'enum'"))
     for (c in cases) {
         t |> equal(unit(c._0), "error: {c._1}", c._0)
     }

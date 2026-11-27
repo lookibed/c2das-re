@@ -219,7 +219,9 @@ the `{` are an error, as in clang. A body opens a nesting level (section 19).
 A record body holds member declarations: `__extension__`s, specifiers and qualifiers with no
 storage class, then member declarators, each a declarator, a bit-field width or both, with the
 attributes written before a later one and after each. A member declaration with no declarator is
-an anonymous member, `struct { int a; };` or the `int;` clang warns on alike. A `;` alone and
+an anonymous member, `struct { int a; };` or the `int;` clang warns on alike; a member declaration
+of attributes alone, `__attribute__((packed));`, is one too, as clang takes it. A member declarator
+holds no old-style identifier list. A `;` alone and
 `_Static_assert` stand among the members. A flexible array member is an array declarator with no
 size, and a member's array takes no qualifier, `static` or `[*]` (section 17); the parser checks no rule on members beyond the grammar (C11 6.7.2.1: a flexible array
 last, a width's value, a bit-field's type), which the checker owns.
@@ -252,16 +254,22 @@ clang requires a bound there; a prototype inside one may.
 
 The function's name is bound as an ordinary identifier around the definition. Then a scope opens
 for the parameters. After an identifier list, the old-style declaration list follows: each
-declaration takes `register` alone as its storage class and no initializer, an array in it a
-qualifier or `static` as a parameter's but no `[*]`, and declares names of
+declaration takes `register` alone as its storage class, no initializer and no asm label, an array
+in it a qualifier or `static` as a parameter's but no `[*]`; it declares at least one name
+(`expected a declaration of a parameter`, a tag or enum body alone included), and names of
 the identifier list, each once (`expected a name of the identifier list`, `expected a parameter
 declared once`); a typedef name in it is a type as anywhere. A name the list leaves untyped is an
 error at the body's `{`, since clang under gnu17 refuses the implicit `int`. Each identifier
-names its declarator (the `ident_param` node's `b`), and `c_parameters_declare` binds the
-parameter names of a function declarator in the innermost scope.
+names its declarator (the `ident_param` node's `b`).
+
+A prototype's scope is kept as it closes: the function declarator's node holds the run of
+bindings the scope made (`c` and `d` into `prototype_bindings`), the parameters and every
+enumerator a parameter's type declared. `c_parameters_declare` makes them again in the innermost
+scope, so a body reads `typedef char T; int f(enum { T = 1 } x) { return sizeof(T); }` with `T` the
+enumerator, as clang does. An identifier list opens no prototype scope: its names are bound by the declaration
+list, in the definition's scope.
 
 The body is kept unparsed: a `body` node spans its tokens from the `{` to the `}` that balances it,
 and a missing `}` is `expected '}' closing the function body` at the end of input. It is read in
-the scope `c_parameters_declare` opens, the parameters of the definition's own function
-declarator, which the statement parser will hold open while it parses the body in place of the
-range.
+the scope `c_parameters_declare` fills, the definition's own prototype scope, which the statement
+parser will hold open while it parses the body in place of the range.
