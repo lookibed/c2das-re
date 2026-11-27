@@ -25,7 +25,7 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   refused and Dumper A failed on none, 1 otherwise and when no unit is named.
 - `fixtures/` - `conversions.c`, every conversion group of the scalar world (all three comparisons
   agree); `aggregate.c`, a record the builder refuses; `refused.c`, a scalar-only unit the builder
-  refuses.
+  refuses (a wide string literal).
 - The tests are `compare/tests/test_types_compare.das`.
 
 ## 2. What is compared {#compared}
@@ -48,9 +48,9 @@ difference:
 - the C-IR, declaration by declaration in order: each declaration's kind, C name, type, linkage,
   hoisting function and parameter types, its initializer and its body; each statement's kind, type,
   value, label and expressions and the statements under it; each expression's every field the spec
-  lists, a cast's kind and explicitness among them, types by structural name. Set aside: a
-  declaration's and a reference's linkage name and a local's renamed name (C.4's renames), the
-  places, and what the preprocessor alone knows - the macro fields and whether parentheses are the
+  lists, a cast's kind and explicitness among them, every name (a declaration's, a parameter's, a
+  local's, a reference's), types by structural name. Set aside: the places, and what the
+  preprocessor alone knows - the macro fields and whether parentheses are the
   source's own or a macro body's (Dumper A keeps a macro body's only around a shift or a bitwise
   operator; `clang -E` text keeps no trace of a macro);
 - the conversion census of `metrics/conversion_census_count.das` (`census_tu`) over both units,

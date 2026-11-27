@@ -18,6 +18,7 @@ struct CId {
     proto : bool
     old_style : int     //!< the pool function type an old-style definition's calls convert by, -1 for none
     builtin : bool      //!< a builtin function of `BUILTIN_FUNCTIONS`, referenced only as a callee
+    name : string       //!< the name a reference to it spells in the C-IR (`ARCHITECTURE_NAMES.md`)
 }
 
 //! The C-IR type table of one unit as Dumper A builds it (`ARCHITECTURE_TYPES.md`): every type a
@@ -47,6 +48,13 @@ struct CTypes {
     id_undo : array<tuple<sym : int; had : bool; was : CId>>
     id_marks : array<int>
     ret : int                       //!< the pool result type of the function being read
+    tu_prefix : string              //!< the unit's file stem as an identifier, a file static's prefix
+    linkage_names : table<string; string>   //!< a name with internal linkage to its C-IR name
+    file_scope_names : table<string>        //!< every name declared at file scope or by a block-scope `extern` or prototype
+    hoisted_names : table<string>           //!< the names of the statics hoisted so far
+    fn_all_locals : table<string>           //!< the parameter and variable names of the function being read, renames included
+    fn_extern_names : table<string>         //!< the names its block-scope `extern` declarations and prototypes declare
+    fn_name : string                        //!< the C name of the function being read
     fold : function<(var b : CTypes; var p : CParser; n : int; var v : int64&) : bool> //!< an integer constant expression's value; null for none
     err : string
 }

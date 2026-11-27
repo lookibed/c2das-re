@@ -149,8 +149,8 @@ the function, an `extern` a `null`, a block function declaration nothing), `case
 label as markers followed by the statement under them, a `for`'s declaration as a compound
 statement in `init_s`, an expression statement (and a `for`'s initializer and step, an `if`, `while`,
 `do` or `for` condition) made a value, a GNU statement expression used as a statement - through
-parentheses, `__extension__` and a cast to `void` - as its compound statement. Names are C.4's:
-the C-IR here keeps each declaration's own name, and the comparison sets names aside.
+parentheses, `__extension__` and a cast to `void` - as its compound statement. The names are
+`ARCHITECTURE_NAMES.md`'s.
 
 ## 36. Floating constants {#c-exprs-floats}
 

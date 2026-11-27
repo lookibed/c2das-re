@@ -55,12 +55,14 @@ def private unit_returning(var e : CirExpr?) : CirTu {
 // `short` read from the reference `s`, then converted to `int`: an implicit cast pair
 def private read_short() : CirExpr? => new CirExpr(e = "cast", t = 0, cast_kind = "IntegralCast", a = new CirExpr(e = "cast", t = 1, cast_kind = "LValueToRValue", a = new CirExpr(e = "ref", t = 1, name = "s")))
 
-[test(description = "the C-IR comparison: equal units, then the first differing field of a declaration, a statement and an expression, a cast's kind and explicitness, a missing operand; a reference's name and the parentheses never differ")]
+[test(description = "the C-IR comparison: equal units, then the first differing field of a declaration, a statement and an expression, a cast's kind and explicitness, a missing operand; a reference's name, but not the parentheses")]
 def test_cir_difference(t : T?) {
     var a <- unit_returning(read_short())
     var b <- unit_returning(read_short())
     t |> equal(cir_difference(a, b), "")
     b.decls[0].body.body[0].e.a.a.name = "main__s"
+    t |> equal(cir_difference(a, b), "decl 0 (main).body.0.e.a.a.name: builder s, Dumper A main__s")
+    b.decls[0].body.body[0].e.a.a.name = "s"
     b.decls[0].body.body[0].e.paren = true
     t |> equal(cir_difference(a, b), "")
     b.decls[0].body.body[0].e.cast_kind = "NoOp"
@@ -124,7 +126,7 @@ def test_fixtures(t : T?) {
         t |> run(dialect) @(t : T?) {
             t |> equal(compared("conversions.c", dialect), "true/true/true/false")
             t |> equal(compared("aggregate.c", dialect), "false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
-            t |> equal(compared("refused.c", dialect), "false/false/false/false builder: {FIXTURES}/refused.c:2:11: an array size other than an integer literal is not typed yet")
+            t |> equal(compared("refused.c", dialect), "false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")
         }
     }
 }

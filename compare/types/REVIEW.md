@@ -12,6 +12,5 @@ and fails the run.** A forgiving rule turns the oracle's zero into a claim nothi
 converter never makes.
 
 **A diff to the C-IR comparison (`cir_difference`, `stmt_difference`, `expr_difference`) sets
-aside only the fields section 2 names - linkage names, places, the macro fields and the source
-parentheses - never a type, a cast or a value.** Each field set aside is a difference the C-IR
+aside only the fields section 2 names - places, the macro fields and the source parentheses - never a type, a cast or a value.** Each field set aside is a difference the C-IR
 byte diff of C.6 will still see, and only those have an owner outside this item.

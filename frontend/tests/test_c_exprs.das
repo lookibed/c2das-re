@@ -79,11 +79,12 @@ def private statements(types : array<CirType>; st : CirStmt?; var out : array<st
     statements(types, st.body_s, out)
 }
 
-// the C-IR of unit `text` (named `t.c`) as lines joined by ` ; `: each global's initializer and
-// each function's statements; `error: ` and the builder's error, or `parse error: `
-def private ir_of(text : string; msvc : bool = false) : string {
+// the C-IR of unit `text` (named `unit`) as lines joined by ` ; `: each global's initializer and
+// each function's statements, with `names` every global's and function's name and a function's
+// parameters' too; `error: ` and the builder's error, or `parse error: `
+def private ir_of(text : string; msvc : bool = false; unit : string = "t.c"; names : bool = false) : string {
     var p : CParser
-    c_parser_open_text(p, text, "t.c", msvc)
+    c_parser_open_text(p, text, unit, msvc)
     let u = c_unit(p)
     return "parse error: {p.err}" if (p.failed)
     var r = new CIr
@@ -91,9 +92,14 @@ def private ir_of(text : string; msvc : bool = false) : string {
     var out : array<string>
     if (c_ir_unit(*r, p, u)) {
         for (d in r.tu.decls) {
-            if (d.k == "global" && d.init != null) {
+            if (names && d.k == "global") {
+                out |> push(d.init != null ? "{d.name}={shown(r.tu.types, d.init)}" : "{d.name}")
+            } elif (d.k == "global" && d.init != null) {
                 out |> push("{d.name}={shown(r.tu.types, d.init)}")
             } elif (d.k == "func") {
+                if (names) {
+                    out |> push("{d.name}(" + join([for (q in d.params); q.name], ",") + ")")
+                }
                 statements(r.tu.types, d.body, out)
             }
         }
@@ -236,4 +242,20 @@ def test_refusals(t : T?) {
     t |> equal(ir_of("int n = \{1, 2\};"), "error: t.c:1:9: a braced scalar initializer of other than one value is not typed yet")
     t |> equal(ir_of("void g(void) \{ __func__; \}"), "error: t.c:1:16: this expression is not typed yet")
     t |> equal(ir_of("void g(void) \{ asm(\"nop\"); \}"), "error: t.c:1:16: this statement is not typed yet")
+}
+
+[test(description = "names as Dumper A gives them: a file static's <stem>__<name>, a digit stem led by _, a later declaration without static keeping it; a hoisted static's <fn>_<name>, numbered past a file-scope name, a local and an earlier hoisted static; a parameter and a local renamed past a block-scope extern or prototype of their name; every reference bound to its declaration's name")]
+def test_names(t : T?) {
+    t |> run("file statics") @(t : T?) {
+        t |> equal(ir_of("static int n; extern int n; static int f(void); int f(void) \{ return n; \}", false, "dir/9lives.c", true),
+                   "_9lives__n ; _9lives__f() ; _9lives__f() ; return LValueToRValue<int>(_9lives__n)")
+    }
+    t |> run("hoisted statics") @(t : T?) {
+        t |> equal(ir_of("int g_a; int g(int g_b) \{ static int a = 1; static int b; \{ static int a; \} int g_c; static int c; return a + b; \}", false, "t.c", true),
+                   "g_a ; g_a1=1<int> ; g_b1 ; g_a2 ; g_c1 ; g(g_b) ; null - - ; null - - ; null - - ; g_c:int=- ; null - - ; return add<int>(LValueToRValue<int>(g_a1), LValueToRValue<int>(g_b1))")
+    }
+    t |> run("locals and parameters past a block-scope extern or prototype") @(t : T?) {
+        t |> equal(ir_of("int x; int y(void); int f(int x) \{ int y = x; \{ extern int x; int y(void); return x + y(); \} \}", false, "t.c", true),
+                   "x ; y() ; f(x1) ; y1:int=LValueToRValue<int>(x1) ; null - - ; return add<int>(LValueToRValue<int>(x), call<int>(FunctionToPointerDecay<func*>(y); ))")
+    }
 }

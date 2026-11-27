@@ -663,16 +663,16 @@ def private sizeof_node(var r : CIr; var p : CParser; of_t : int; var operand : 
     return new CirExpr(e = "sizeof_v", t = c_size_t(r), trait_v = uint64(size), of_t = of_t, a = operand)
 }
 
-// a call of `fn` with the argument nodes `n_args` (a list) at token `tok`: the callee read, each
+// a call of `fn`, by name the identifier `sym` (-1 for another callee), with the argument nodes
+// `n_args` (a list) at token `tok`: the callee read, each
 // argument converted to its parameter's type, or, past the parameters or with no prototype, by the
 // default argument promotions; an old-style definition's call to its promoted parameter types
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-slots")]
-def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : int) : CirExpr? {
+def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok, sym : int) : CirExpr? {
     var old_style = -1
     var proto = true
     var builtin = -1
-    if (fn.e == "ref" && fn.name != "") {
-        let sym = c_symbol(p.unit, fn.name)
+    if (sym >= 0) {
         let id = r.ids?[sym] ?? CId(t = -1, old_style = -1)
         old_style = id.old_style
         proto = id.proto
@@ -818,7 +818,7 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
         c_refuse(r, p, tok, "the builtin '{name}' other than as a callee")
         return null
     }
-    var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r) : id.t, name = name)
+    var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r) : id.t, name = empty(id.name) ? name : id.name)
     x.vol = (r.quals[id.t] & C_VOLATILE) != 0
     return x
 }
@@ -910,7 +910,7 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.CALL) {
         let callee = p.ast.nodes[node.a]
         var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
-        return fn == null ? null : call(r, p, fn, node.b, node.tok)
+        return fn == null ? null : call(r, p, fn, node.b, node.tok, callee.kind == CNode.IDENT ? callee.a : -1)
     } elif (kind == CNode.INDEX) {
         return subscript(r, p, node)
     } elif (kind == CNode.CAST) {

@@ -11,7 +11,7 @@ C tokens of a preprocessed unit, its expressions, type names, declarations, reco
 statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23), the type
 table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the
 expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29
-to 36). No converter pass calls the preprocessor, the parser or the C-IR builder yet.
+to 36), with the names it gives (`ARCHITECTURE_NAMES.md`, sections 37 and 38). No converter pass calls the preprocessor, the parser or the C-IR builder yet.
 
 ## 1. File charters
 
@@ -45,8 +45,9 @@ to 36). No converter pass calls the preprocessor, the parser or the C-IR builder
 - `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
   and the `%a` print (section 36).
 - `c_ir.das` - the unit's C-IR: the walk over declarations, definitions and bodies in Dumper A's
-  order, initializers, statements, the own headers' declarations (`ARCHITECTURE_TYPES.md` sections
-  24 and 28, `ARCHITECTURE_EXPRS.md` sections 33 and 35).
+  order, initializers, statements, the own headers' declarations, the names
+  (`ARCHITECTURE_TYPES.md` sections 24 and 28, `ARCHITECTURE_EXPRS.md` sections 33 and 35,
+  `ARCHITECTURE_NAMES.md`).
 - `tests/test_c_exprs.das` - per conversion group its exact cast stream, the literals under both
   dialects, `sizeof`, initializers, every statement form, the table order, every refusal with its
   place. `tests/test_c_floats.das` - the hard floating constants against clang and the C library.

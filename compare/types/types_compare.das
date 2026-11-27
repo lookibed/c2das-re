@@ -102,7 +102,7 @@ def expr_difference(ot : array<CirType>; ours : CirExpr const?; tt : array<CirTy
         return ours == null && theirs == null ? "" : "{at}: builder {ours == null ? "none" : ours.e}, Dumper A {theirs == null ? "none" : theirs.e}"
     }
     let own = first_of([field(at, "e", ours.e, theirs.e), field(at, "t", type_name(ot, ours.t), type_name(tt, theirs.t)),
-        field(at, "v", ours.v, theirs.v), field(at, "bytes", "{ours.bytes}", "{theirs.bytes}"), field(at, "op", ours.op, theirs.op),
+        field(at, "v", ours.v, theirs.v), field(at, "bytes", "{ours.bytes}", "{theirs.bytes}"), field(at, "op", ours.op, theirs.op), field(at, "name", ours.name, theirs.name),
         field(at, "cast", "{ours.cast_kind}{ours.explicit_cast ? "!" : ""}", "{theirs.cast_kind}{theirs.explicit_cast ? "!" : ""}"),
         field(at, "char", "{ours.is_char}", "{theirs.is_char}"), field(at, "vol", "{ours.vol}", "{theirs.vol}"),
         field(at, "trait_v", "{ours.trait_v}", "{theirs.trait_v}"), field(at, "of_t", type_name(ot, ours.of_t), type_name(tt, theirs.of_t)),
@@ -132,7 +132,7 @@ def stmt_difference(ot : array<CirType>; ours : CirStmt const?; tt : array<CirTy
     }
     let own = first_of([field(at, "s", ours.s, theirs.s), field(at, "t", type_name(ot, ours.t), type_name(tt, theirs.t)),
         field(at, "v", "{ours.v}", "{theirs.v}"), field(at, "char", "{ours.is_char}", "{theirs.is_char}"),
-        field(at, "label", ours.label_name, theirs.label_name), field(at, "body", "{length(ours.body)}", "{length(theirs.body)}")])
+        field(at, "label", ours.label_name, theirs.label_name), field(at, "name", ours.name, theirs.name), field(at, "body", "{length(ours.body)}", "{length(theirs.body)}")])
     return own if (!empty(own))
     let exprs = first_of([expr_difference(ot, ours.init, tt, theirs.init, "{at}.init"), expr_difference(ot, ours.e, tt, theirs.e, "{at}.e"),
         expr_difference(ot, ours.cond, tt, theirs.cond, "{at}.cond"), expr_difference(ot, ours.inc, tt, theirs.inc, "{at}.inc")])
@@ -154,10 +154,10 @@ def cir_difference(ours, theirs : CirTu) : string {
         let o = ours.decls[i]
         let t = theirs.decls[i]
         let at = "decl {i} ({t.c_name})"
-        var own = first_of([field(at, "k", o.k, t.k), field(at, "c_name", o.c_name, t.c_name),
+        var own = first_of([field(at, "k", o.k, t.k), field(at, "c_name", o.c_name, t.c_name), field(at, "name", o.name, t.name),
             field(at, "t", type_name(ours.types, o.t), type_name(theirs.types, t.t)), field(at, "static", "{o.is_static}", "{t.is_static}"),
             field(at, "extern", "{o.is_extern}", "{t.is_extern}"), field(at, "from_func", o.from_func, t.from_func),
-            field(at, "params", join([for (q in o.params); type_name(ours.types, q.t)], ","), join([for (q in t.params); type_name(theirs.types, q.t)], ","))])
+            field(at, "params", join([for (q in o.params); "{q.name}:{type_name(ours.types, q.t)}"], ","), join([for (q in t.params); "{q.name}:{type_name(theirs.types, q.t)}"], ","))])
         if (empty(own)) {
             own = first_of([expr_difference(ours.types, o.init, theirs.types, t.init, "{at}.init"), stmt_difference(ours.types, o.body, theirs.types, t.body, "{at}.body")])
         }
@@ -208,8 +208,7 @@ def builder_tu(unit, work : string; target : CirTarget; var tu : CirTu; var erro
         if (!c_ir_unit(*r, *p, u)) {
             error = "builder: {r.err}"
         }
-        delete_tu(tu)
-        tu <- r.tu
+        swap(tu, r.tu)
         unsafe {
             delete r
         }
