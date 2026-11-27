@@ -33,7 +33,9 @@ def private shown(x : CirExpr?) : string {
     } elif (x.e == "cast") {
         return "{x.cast_kind}{x.explicit_cast ? "!" : ""}<{x.t}>({shown(x.a)})"
     } elif (x.e == "ref") {
-        return x.name
+        return x.vol ? "{x.name}~" : x.name
+    } elif (x.e == "index") {
+        return "index<{x.t}>({shown(x.base)}, {shown(x.i)}){x.vol ? "~" : ""}"
     } elif (x.e == "int_lit") {
         return "{x.v}<{x.t}>"
     } elif (x.e == "sizeof_v") {
@@ -149,7 +151,7 @@ def test_promotions(t : T?) {
 [test(description = "a member through the anonymous members that make it visible, `->` on the first access alone; a member's type takes its record's qualifiers, `volatile` marking the lvalue")]
 def test_member_access(t : T?) {
     t |> equal(cir_of("struct A \{ int k; struct \{ int u; \}; \}; void g(struct A *p, volatile struct A v) \{ p->u = 2; v.k; \}"),
-               "struct  4/4 \{u:1@0\}; int:32:true:int; struct A 8/4 \{k:1@0 :0@4\}; void; ptr:2; func:3:4,2:false | record 0 1:19 | record 2 1:8 | assign<1>(LValueToRValue<4>(p)->1<0>.0<1>, 2<1>) | LValueToRValue<1>(v.0<1>~)")
+               "struct  4/4 \{u:1@0\}; int:32:true:int; struct A 8/4 \{k:1@0 :0@4\}; void; ptr:2; func:3:4,2:false | record 0 1:19 | record 2 1:8 | assign<1>(LValueToRValue<4>(p)->1<0>.0<1>, 2<1>) | LValueToRValue<1>(v~.0<1>~)")
 }
 
 [test(description = "`dims`: per array level from the outermost, the enumerator a size names alone when its value is the level's count, else 0 and no item; none when no size names one; a field's too")]
@@ -162,6 +164,21 @@ def test_dims(t : T?) {
 def test_attributes(t : T?) {
     t |> equal(cir_of("struct P1 \{ char c; int i; \} __attribute__((packed)); struct P2 \{ char c; int i __attribute__((aligned(16))); \}; struct P4 \{ char c; \} __attribute__((aligned)); struct F \{ int n; int d[]; \};"),
                "struct P1 5/1 packed \{c:1@0 i:2@1\}; int:8:false:char; int:32:true:int; struct P2 32/16 packed \{c:1@0 i:2@16\}; struct P4 16/16 packed \{c:1@0\}; struct F 4/4 \{n:2@0 d:6@4\}; array:2:-1 | record 0 1:8 | record 3 1:62 | record 4 1:121 | record 5 1:169")
+}
+
+[test(description = "a tag defined again in another scope takes the first free numbered name, the first definition keeping the tag")]
+def test_tag_renamed(t : T?) {
+    t |> equal(cir_of("int f(void) \{ union D \{ double d; \} a; return 0; \} int g(void) \{ union D \{ long u; \} b; return 0; \}"), "int:32:true:int; func:0::false; union D 8/8 \{d:3@0\}; float:64:double; union D1 8/8 \{u:5@0\}; int:64:true:long | record 2 1:21 | a:2 | 0<0> | record 4 1:72 | b:4 | 0<0>")
+}
+
+[test(description = "an enum named before its one file-scope definition takes it there; its enumerators bound at the definition")]
+def test_enum_before_definition(t : T?) {
+    t |> equal(cir_of("typedef enum foo E; enum foo \{ e0, e1 \}; E x = e1;"), "enum foo 'enum foo' unsigned \{e0=0,e1=1\}; typedef:E:0; int:32:true:int | enumdef 0 1:26 | x:0")
+}
+
+[test(description = "a volatile array's object is volatile, through a member too; a compound assignment to a bit-field computes in its promoted type")]
+def test_volatile_and_bitfield_assignment(t : T?) {
+    t |> equal(cir_of("struct S \{ volatile long u[2]; unsigned i : 6; \}; void g(struct S s) \{ s.u[0]; s.i += 3; \}"), "struct S 24/8 \{u:2@0 i:3@16/128:6\}; int:64:true:long; array:1:2; int:32:false:unsigned int; void; func:4:0:false; ptr:1; int:32:true:int | record 0 1:8 | LValueToRValue<1>(index<1>(ArrayToPointerDecay<6>(s.0<2>~), 0<7>)~) | assignadd<3>(s.1<3>, 3<7>)")
 }
 
 [test(description = "every record and enum construct the builder does not type is refused at its place")]
@@ -184,4 +201,7 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("struct S; int n = sizeof(struct S);"), "error: t.c:1:19: sizeof of a type without a size is not typed yet")
     t |> equal(cir_of("struct S \{ struct T t; \};"), "error: t.c:1:21: member `t` has an incomplete type")
     t |> equal(cir_of("struct S \{ int a; \} __attribute__((ms_struct));"), "error: t.c:1:1: an `ms_struct` record is not laid out")
+    t |> equal(cir_of("int f(void) \{ enum E \{ A \} a; return 0; \} enum E \{ B \};"), "error: t.c:1:43: an enum tag defined again in another scope is not typed yet")
+    t |> equal(cir_of("struct S \{ int a; \} s = \{ 1 \};"), "error: t.c:1:25: an initializer list of a struct or union is not typed yet")
+    t |> equal(cir_of("struct __jmp_buf_tag \{ int a; \};"), "error: t.c:1:1: glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`, is not typed yet")
 }

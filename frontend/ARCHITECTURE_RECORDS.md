@@ -19,9 +19,15 @@ included): the use marks it, and it is built once the declaration of the use is 
 (`c_tag_complete`), before a type is interned, a member read or a size taken. A record never
 defined is incomplete: its entry has size and alignment -1 and no field.
 
-A definition is built where a declaration, a member or the walk stands; one in a parameter list or
-a type name is refused, and so are a tag defined again, an enum named before its definition and a
-tag of another kind. A record or enum with no tag that a typedef declares by its name alone
+An enum named before its one file-scope definition (`typedef enum foo E;` first) takes it the same
+way; any other enum named before its definition is refused. A tag defined again in another scope
+(two blocks' `union D`) names a record of its own, which Dumper A names by the first `<tag><n>` from
+1 that no record, enum, typedef, file-scope name or identifier in scope spells; an enum defined
+again is refused, as Dumper A binds its constants by place. A definition is built where a
+declaration, a member or the walk stands; one in a parameter list or a type name is refused, and
+so are a tag defined again in its own scope and a tag of another kind. glibc's `struct
+__jmp_buf_tag`, which Dumper A holds as the opaque `jmp_buf`, is refused, and with it `jmp_buf`. An
+initializer list of a struct or union is refused: initializers of aggregates are A.3's. A record or enum with no tag that a typedef declares by its name alone
 (`typedef struct { ... } Q;`) is named by it; any other with no tag is named "", and an enum with
 no name is spelled `enum (unnamed at <file>:<line>:<col>)`, the place of its keyword, as clang
 spells it. A definition in an own header is built where the header stands; one the builder refuses
@@ -71,10 +77,11 @@ integer by an `IntegralCast`, and converts as an integer of that type.
 
 `.` and `->` name a field of a complete struct or union: its own, or one an anonymous member makes
 visible, each anonymous member on the way a `member` node of its own, `arrow` on the first access
-alone. A member's type is its field's with the record's qualifiers; a `volatile` one marks the
-lvalue. A member of an lvalue, and every `->`, is an lvalue. A read of a bit-field narrower than
-`int` promotes to `int`, an unsigned one as wide as `int` to `unsigned int`, as clang promotes
-bit-fields.
+alone. A member's type is its field's with the record's qualifiers; a `volatile` one, or an
+array of volatile elements, marks the lvalue, a variable's and a subscript's alike. A member of an
+lvalue, and every `->`, is an lvalue. A read of a bit-field narrower than `int` promotes to `int`,
+an unsigned one as wide as `int` to `unsigned int`, as clang promotes bit-fields; a compound
+assignment to one computes in that promoted type.
 
 ## 47. Dims {#c-records-dims}
 

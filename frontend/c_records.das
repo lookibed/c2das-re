@@ -248,6 +248,10 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
 def private build_record(var b : CTypes; var p : CParser; n, pt : int) : bool {
     b.tag_built[n] = pt
     let node = p.ast.nodes[n]
+    if (node.a >= 0 && pp_symbol_text(p.unit.lx, node.a) == "__jmp_buf_tag") {
+        c_refuse(b, p, node.tok, "glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`,")
+        return false
+    }
     if (in_library_file(b, p, node.tok)) {
         b.library_tags[pt] = true
     }
@@ -308,7 +312,6 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
     let msvc = is_msvc(b.tu.target)
     let int_t = c_builtin(b, "int")
     var items : array<CirEnumItem>
-    var syms : array<int>
     var next = 0l
     var lowest = 0l
     var highest = 0l
@@ -325,7 +328,6 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
         }
         let name = pp_symbol_text(p.unit.lx, en.a)
         items |> push(CirEnumItem(name = name, v = v))
-        syms |> push(en.a)
         c_ir_bind(b, en.a, CId(t = int_t, old_style = -1, enum_t = pt, enum_v = v, name = name))
         lowest = min(lowest, v)
         highest = max(highest, v)
@@ -337,15 +339,27 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
         c_refuse(b, p, node.tok, "an enum whose values no 32-bit type holds")
         return false
     }
-    if (!is_signed && highest > 2147483647l) {
-        let unsigned_t = c_builtin(b, "unsigned int")
-        for (sym, item in syms, items) {
-            c_ir_bind(b, sym, CId(t = unsigned_t, old_style = -1, enum_t = pt, enum_v = item.v, name = item.name))
-        }
-    }
     b.pool[pt].is_signed = is_signed
     b.pool[pt].items <- items
+    bind_enumerators(b, p, n, pt)
     return true
+}
+
+// the enumerators of enum specifier `n`, built into pool enum `pt`, bound in the innermost scope:
+// each an `int`, or under linux the enum's `unsigned int` when one of its values is past INT_MAX
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-enums")]
+def private bind_enumerators(var b : CTypes; p : CParser; n, pt : int) {
+    var wide = false
+    for (item in b.pool[pt].items) {
+        wide ||= item.v > 2147483647l
+    }
+    let t = c_builtin(b, wide && !b.pool[pt].is_signed ? "unsigned int" : "int")
+    var e = p.ast.nodes[n].c
+    for (item in b.pool[pt].items) {
+        break if (e < 0)
+        c_ir_bind(b, p.ast.nodes[e].a, CId(t = t, old_style = -1, enum_t = pt, enum_v = item.v, name = item.name))
+        e = p.ast.nodes[e].next
+    }
 }
 
 // specifier `n` with a body defined: its pool type, the tag's earlier incomplete one where a use
@@ -356,7 +370,7 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
 def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) : int {
     let node = p.ast.nodes[n]
     let kind = tag_kind(p, n)
-    let tag = node.a >= 0 ? pp_symbol_text(p.unit.lx, node.a) : hint
+    var tag = node.a >= 0 ? pp_symbol_text(p.unit.lx, node.a) : hint
     var pt = -1
     if (node.a >= 0 && key_exists(b.tags, node.a)) {
         pt = b.tags?[node.a] ?? -1
@@ -365,6 +379,13 @@ def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) 
             return -1
         }
     } else {
+        if (node.a >= 0 && key_exists(b.defined_tags, node.a)) {
+            if (kind == "enum") {
+                c_refuse(b, p, node.tok, "an enum tag defined again in another scope")
+                return -1
+            }
+            tag = free_tag_name(b, p, tag)
+        }
         pt = new_tag(b, kind, tag)
         if (kind == "enum") {
             b.pool[pt].spell = !empty(tag) ? "enum {tag}" : "enum (unnamed at {c_where(p.unit, node.tok)})"
@@ -373,8 +394,31 @@ def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) 
             c_types_bind_tag(b, node.a, pt)
         }
     }
+    if (node.a >= 0) {
+        b.defined_tags[node.a] = true
+    }
+    b.tag_names[b.pool[pt].name] = true
     let ok = kind == "enum" ? build_enum(b, p, n, pt) : build_record(b, p, n, pt)
+    if (!ok) {
+        b.tag_built |> erase(n)
+    }
     return ok ? pt : -1
+}
+
+// the name a later definition of tag `tag` takes, as Dumper A names it: the first `<tag><n>` from 1
+// that no record, enum, typedef, file-scope name or identifier in scope spells
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-definitions")]
+def private free_tag_name(b : CTypes; var p : CParser; tag : string) : string {
+    var n = 1
+    while (true) {
+        let name = "{tag}{n}"
+        let sym = c_symbol(p.unit, name)
+        if (!key_exists(b.tag_names, name) && !key_exists(b.file_scope_names, name) && !key_exists(b.typedefs, sym) && !key_exists(b.ids, sym) && !key_exists(b.tags, sym)) {
+            return name
+        }
+        n++
+    }
+    return tag
 }
 
 //! The pool type of struct, union or enum specifier `n` (`CTypes.tag_type`): a definition's, built
@@ -407,17 +451,21 @@ def c_tag_type(var b : CTypes; var p : CParser; n : int) : int {
             return -1
         }
         return known
-    } elif (kind == "enum") {
+    }
+    let defined = b.tag_defs?[node.a] ?? -1
+    if (kind == "enum" && (defined < 0 || p.ast.nodes[defined].kind != CNode.SPEC_ENUM)) {
         c_refuse(b, p, node.tok, "an enum used before its definition")
         return -1
     }
-    let defined = b.tag_defs?[node.a] ?? -1
     let built = defined >= 0 ? b.tag_built?[defined] ?? -1 : -1
     if (built >= 0) {
         c_types_bind_tag(b, node.a, built)
         return built
     }
     let pt = new_tag(b, kind, pp_symbol_text(p.unit.lx, node.a))
+    if (kind == "enum") {
+        b.pool[pt].spell = "enum {b.pool[pt].name}"
+    }
     c_types_bind_tag(b, node.a, pt)
     if (defined >= 0) {
         b.tag_built[defined] = pt
@@ -435,7 +483,7 @@ def c_tag_complete(var b : CTypes; var p : CParser) : bool {
         let next = b.tag_pending[0]
         b.tag_pending |> erase(0)
         b.defining++
-        let ok = build_record(b, p, next.x, next.y)
+        let ok = p.ast.nodes[next.x].kind == CNode.SPEC_ENUM ? build_enum(b, p, next.x, next.y) : build_record(b, p, next.x, next.y)
         b.defining--
         return false if (!ok)
     }
@@ -448,11 +496,11 @@ def private look_ahead(var b : CTypes; var p : CParser; specs : int) {
     var at = specs
     while (at >= 0) {
         let n = p.ast.nodes[at]
-        if (n.kind == CNode.SPEC_RECORD && n.b == 1) {
+        if ((n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) && n.b == 1) {
             if (n.a >= 0) {
                 b.tag_defs[n.a] = key_exists(b.tag_defs, n.a) ? -1 : at
             }
-            var m = n.c
+            var m = n.kind == CNode.SPEC_RECORD ? n.c : -1
             while (m >= 0) {
                 if (p.ast.nodes[m].kind == CNode.MEMBER_DECL) {
                     look_ahead(b, p, p.ast.nodes[m].a)
@@ -498,6 +546,9 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; hint : strin
                 return false if (pt < 0)
             }
             return false if (!c_tag_complete(b, p))
+            if (n.kind == CNode.SPEC_ENUM) {
+                bind_enumerators(b, p, at, pt)
+            }
             if (!library) {
                 if (n.kind == CNode.SPEC_RECORD) {
                     var m = n.c
@@ -514,7 +565,8 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; hint : strin
                     b.anchored[pt] = true
                     let tok = tag_tok(p, at)
                     let place = p.unit.toks[tok]
-                    b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", t = idx, loc = CirLoc(file = c_file_name(p.unit, place.file), line = place.line, col = place.col)))
+                    let name = b.pool[pt].name
+                    b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = CirLoc(file = c_file_name(p.unit, place.file), line = place.line, col = place.col)))
                 }
             }
         }

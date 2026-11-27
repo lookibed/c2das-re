@@ -65,6 +65,8 @@ struct CTypes {
     tag_undo : array<tuple<sym : int; was : int>>   //!< the tag bindings a block's end restores
     tag_marks : array<int>
     untyped_tags : table<int; string>       //!< a tag an own header defines that the builder does not type, and why
+    defined_tags : table<int; bool>         //!< every tag a definition has named so far, in any scope
+    tag_names : table<string; bool>         //!< the names records and enums have taken
     tag_defs : table<int; int>              //!< a tag's symbol to its one file-scope definition, built at the tag's first use
     tag_built : table<int; int>             //!< a record or enum specifier with a body to the pool type it defines
     tag_pending : array<int2>               //!< (definition, pool record) a use reached before the definition, not built yet
@@ -100,6 +102,8 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.tag_undo |> clear()
     b.tag_marks |> clear()
     b.untyped_tags |> clear()
+    b.defined_tags |> clear()
+    b.tag_names |> clear()
     b.tag_defs |> clear()
     b.tag_built |> clear()
     b.tag_pending |> clear()
@@ -298,7 +302,8 @@ def private tag_use(var b : CTypes; pt : int) : int {
     }
     if (key_exists(b.library_tags, pt) && !key_exists(b.anchored, pt) && (b.pool[pt].k == "enum" || key_exists(b.layouts, pt))) {
         b.anchored[pt] = true
-        b.tu.decls |> push(new CirDecl(k = b.pool[pt].k == "enum" ? "enumdef" : "record", t = idx, loc = b.anchor_at))
+        let name = b.pool[pt].name
+        b.tu.decls |> push(new CirDecl(k = b.pool[pt].k == "enum" ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = b.anchor_at))
     }
     return idx
 }

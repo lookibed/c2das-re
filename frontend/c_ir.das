@@ -80,6 +80,9 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
     } elif (n.kind != CNode.INIT_LIST) {
         var x = c_expr(r, p, init)
         return x == null ? null : c_assigned(r, x, t)
+    } elif (k == "struct" || k == "union") {
+        c_refuse(r, p, n.tok, "an initializer list of a struct or union")
+        return null
     } elif (k != "array") {
         let item = n.a
         if (item < 0 || p.ast.nodes[item].next >= 0 || p.ast.nodes[item].a >= 0) {

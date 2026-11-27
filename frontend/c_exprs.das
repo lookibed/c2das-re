@@ -59,6 +59,14 @@ def private is_bool(r : CIr; t : int) : bool => r.pool[t].k == "int" && r.pool[t
 
 def private unq(r : CIr; t : int) : int => r.unqualified[t]
 
+// whether an object of pool type `t` is volatile-qualified, as clang's type says: its own
+// qualifiers, or an array's element's
+def private is_volatile(r : CIr; t : int) : bool {
+    return true if ((r.quals[t] & C_VOLATILE) != 0)
+    let u = r.unqualified[t]
+    return r.pool[u].k == "array" && is_volatile(r, r.pool[u].elem)
+}
+
 // whether pool type `t` is a pointer to unqualified `void`
 def private is_void_ptr(r : CIr; t : int) : bool => is_ptr(r, t) && r.pool[r.pool[t].to].k == "void" && r.quals[r.pool[t].to] == 0
 
@@ -132,12 +140,12 @@ def c_rvalue(var r : CIr; var x : CirExpr?) : CirExpr? {
 // the pool type `int`
 def private int_t(var r : CIr) : int => c_builtin(r, "int")
 
-// the width of the bit-field value `v` reads (a read of a member that is one), -1 for any other
-// value
+// the width of the bit-field `v` designates or reads (a member that is one, or its read), -1 for
+// any other value
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
 def private bitfield_width(r : CIr; v : CirExpr?) : int {
-    return -1 if (v.e != "cast" || v.cast_kind != "LValueToRValue" || v.a == null || v.a.e != "member")
-    let m = v.a
+    let m = v.e == "cast" && v.cast_kind == "LValueToRValue" ? v.a : v
+    return -1 if (m == null || m.e != "member")
     let base_t = m.arrow ? r.pool[unq(r, m.base.t)].to : m.base.t
     let rec = unq(r, base_t)
     return -1 if (m.field >= length(r.pool[rec].fields))
@@ -149,18 +157,23 @@ def private bitfield_width(r : CIr; v : CirExpr?) : int {
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
 def c_promote(var r : CIr; var x : CirExpr?) : CirExpr? {
     var v = c_rvalue(r, x)
-    let width = bitfield_width(r, v)
-    let underlying = r.pool[v.t].k == "enum" ? c_builtin(r, r.pool[v.t].is_signed ? "int" : "unsigned int") : v.t
-    if (width >= 0 && r.pool[underlying].w <= r.tu.target.int_w && (width < r.tu.target.int_w || r.pool[underlying].is_signed)) {
-        return c_implicit(v, int_t(r), "IntegralCast")
-    } elif (width >= 0 && r.pool[underlying].w <= r.tu.target.int_w) {
-        return c_implicit(v, c_builtin(r, "unsigned int"), "IntegralCast")
-    } elif (underlying != v.t) {
-        return c_implicit(v, underlying, "IntegralCast")
-    } elif (is_int(r, v.t) && r.pool[v.t].w < r.tu.target.int_w) {
-        return c_implicit(v, int_t(r), "IntegralCast")
+    let to = promoted(r, v, unq(r, v.t))
+    return to == v.t ? v : c_implicit(v, to, "IntegralCast")
+}
+
+// the type value or lvalue `x` of unqualified pool type `t` takes under the integer promotions: a
+// bit-field narrower than `int` is `int`, an unsigned one as wide as `int` is `unsigned int`, an
+// enum is its integer type, an integer narrower than `int` is `int`; any other type its own
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
+def private promoted(var r : CIr; x : CirExpr?; t : int) : int {
+    let width = bitfield_width(r, x)
+    let underlying = r.pool[t].k == "enum" ? c_builtin(r, r.pool[t].is_signed ? "int" : "unsigned int") : t
+    if (width >= 0 && r.pool[underlying].w <= r.tu.target.int_w) {
+        return width < r.tu.target.int_w || r.pool[underlying].is_signed ? int_t(r) : c_builtin(r, "unsigned int")
+    } elif (is_int(r, underlying) && r.pool[underlying].w < r.tu.target.int_w) {
+        return int_t(r)
     }
-    return v
+    return underlying
 }
 
 // the rank of integer pool type `t` (C11 6.3.1.1p1) by its spelling
@@ -808,7 +821,7 @@ def private unary(var r : CIr; var p : CParser; k : int; var a : CirExpr?; post 
             return null
         }
         var x = new CirExpr(e = "un", t = r.pool[a.t].to, op = "deref", a = a)
-        x.vol = (r.quals[x.t] & C_VOLATILE) != 0
+        x.vol = is_volatile(r, x.t)
         return x
     } elif (k == '!') {
         a = c_rvalue(r, a)
@@ -831,7 +844,7 @@ def private assignment(var r : CIr; k : int; var a, b : CirExpr?) : CirExpr? {
         b = c_promote(r, b)
     } else {
         b = c_promote(r, b)
-        let lhs = is_int(r, t) && r.pool[t].w < r.tu.target.int_w ? int_t(r) : t
+        let lhs = is_int(r, t) ? promoted(r, a, t) : t
         let common = common_type(r, lhs, b.t)
         b = c_implicit(b, common, arith_kind(r, b.t, common))
     }
@@ -861,7 +874,7 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
         return new CirExpr(e = "enum_ref", t = id.t, enum_t = id.enum_t, item = name, trait_v = uint64(id.enum_v))
     }
     var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r) : id.t, name = empty(id.name) ? name : id.name)
-    x.vol = (r.quals[id.t] & C_VOLATILE) != 0
+    x.vol = is_volatile(r, id.t)
     return x
 }
 
@@ -951,7 +964,7 @@ def private member_access(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
     for (idx, i in path, count()) {
         let ft = c_qualified(r, r.pool[cur].fields[idx].t, quals)
         x = new CirExpr(e = "member", t = ft, base = x, field = idx, arrow = arrow && i == 0)
-        x.vol = (r.quals[ft] & C_VOLATILE) != 0
+        x.vol = is_volatile(r, ft)
         quals = r.quals[ft]
         cur = unq(r, ft)
     }
@@ -971,7 +984,7 @@ def private subscript(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? 
         return null
     }
     var x = new CirExpr(e = "index", t = r.pool[ptr].to, base = base, i = i)
-    x.vol = (r.quals[x.t] & C_VOLATILE) != 0
+    x.vol = is_volatile(r, x.t)
     return x
 }
 
