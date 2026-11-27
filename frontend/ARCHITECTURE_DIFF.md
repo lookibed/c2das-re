@@ -17,7 +17,6 @@ both lines, and a text the reader refuses by which side it is. The module reads 
 nothing else: it opens no file and starts no process, so a driver outside this folder runs the
 dumpers (`compare/types/`).
 
-The `producer` cleared is a deviation from the spec, which names the macro fields as the one
-normalization the byte diff makes (`docs/c-ir-spec.md` section 6.2): the producer names the dumper
-and its version (`c2das-dumper-a 0.1 / clang <version>` against `c2das-dumper-c 0.1`), so two
-conforming dumpers never agree on it, and the spec does not yet set it aside.
+The `producer` names the dumper and its version (`c2das-dumper-a 0.1 / clang <version>` against
+`c2das-dumper-c 0.1`), so two conforming dumpers never agree on it; the plan's byte diff sets it
+aside beside the macro fields (C-To-DAS part 2, C.6 and acceptance row F3).
