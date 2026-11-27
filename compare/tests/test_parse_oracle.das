@@ -425,3 +425,213 @@ def test_stray_semicolon(t : T?) {
     t |> success(find(join(r.clang_lines, " "), "unknown") < 0, join(r.clang_lines, " "))
 }
 
+
+// whether line `piece` is one of `lines`
+def private has_line(lines : array<string>; piece : string) : bool => has_value(lines, piece)
+
+[test(description = "a line marker's file name keeps an escaped quote as its bytes, and a unit whose name holds a quote compares the same", timeout = 600)]
+def test_escaped_file_name(t : T?) {
+    let text = "# 1 \"a\\\"b.c\"\nint x;\n"
+    let map <- presumed_map(text, "u.i")
+    t |> equal(place_of(map, find(text, "x;")).file, "a\\\"b.c")
+    let r <- unit_result(t, "esc\"q.c", "int x;\n")
+    t |> equal(r.verdict, "same", describe_result(r))
+}
+
+[test(description = "expression forms each unit reaches: __func__, clang's inserted anonymous-member access standing for its child, a bare return, and a clang kind the form does not name written as unknown", timeout = 600)]
+def test_expression_forms_units(t : T?) {
+    let fn <- unit_result(t, "func_name.c", "void f(void) \{ const char *s = __func__; (void)s; \}\n")
+    t |> equal(fn.verdict, "same", describe_result(fn))
+    t |> success(has_line(fn.parser_lines, "(decl s@1:28 \"const char *\" = (func_name@1:32))"), join(fn.parser_lines, "\n"))
+    let anon <- unit_result(t, "anon_member.c", "struct O \{ union \{ int u; float f; \}; \} o;\nint z = sizeof(o.u);\n")
+    t |> equal(anon.verdict, "same", describe_result(anon))
+    t |> success(find(join(anon.clang_lines, "\n"), "(member@2:16 . (ident@2:16 o) u)") >= 0, join(anon.clang_lines, "\n"))
+    let ret <- unit_result(t, "return_void.c", "void r(void) \{ return; \}\n")
+    t |> equal(ret.verdict, "same", describe_result(ret))
+    t |> success(has_line(ret.clang_lines, "(return@1:16 -)"), join(ret.clang_lines, "\n"))
+    let unknown <- unit_result(t, "unknown_expr.c", "int z = sizeof(__builtin_FILE());\n")
+    t |> equal(unknown.verdict, "differs", describe_result(unknown))
+    t |> success(find(join(unknown.clang_lines, "\n"), "(unknown SourceLocExpr@1:16)") >= 0, join(unknown.clang_lines, "\n"))
+}
+
+[test(description = "declaration forms each unit reaches: an unnamed parameter, a _Static_assert among members and among block items, [*] below a parameter's outermost array, a tag placed past its attributes, a label at a block's end", timeout = 600)]
+def test_declaration_forms_units(t : T?) {
+    let up <- unit_result(t, "unnamed_param.c", "int up(int, int b) \{ return b; \}\n")
+    t |> equal(up.verdict, "same", describe_result(up))
+    t |> success(has_line(up.parser_lines, "(param - \"int\")"), join(up.parser_lines, "\n"))
+    let sa <- unit_result(t, "record_assert.c", "struct SA \{ int a; _Static_assert(1, \"x\"); int b; \};\nvoid f(void) \{ _Static_assert(1, \"x\"); \}\n")
+    t |> equal(sa.verdict, "same", describe_result(sa))
+    t |> success(has_line(sa.parser_lines, "(static_assert@1:20 (int@1:35 1) (string@1:38))"), join(sa.parser_lines, "\n"))
+    t |> success(has_line(sa.parser_lines, "(static_assert@2:16 (int@2:31 1) (string@2:34))"), join(sa.parser_lines, "\n"))
+    let star <- unit_result(t, "array_star.c", "void star(int n, int (*e)[*]);\n")
+    t |> equal(star.verdict, "same", describe_result(star))
+    t |> success(find(join(star.parser_lines, "\n"), "\"void (int, int (*)[*])\"") >= 0, join(star.parser_lines, "\n"))
+    let attr <- unit_result(t, "attr_tag.c", "struct __attribute__((packed)) P \{ char c; int i; \};\n")
+    t |> equal(attr.verdict, "same", describe_result(attr))
+    t |> success(has_line(attr.parser_lines, "(record struct P@1:32)"), join(attr.parser_lines, "\n"))
+    let marker <- unit_result(t, "label_end.c", "void f(void) \{ goto l; l: \}\n")
+    t |> equal(marker.verdict, "same", describe_result(marker))
+    t |> success(find(join(marker.parser_lines, "\n"), "(label@1:24 l)\n(null)") >= 0, join(marker.parser_lines, "\n"))
+}
+
+[test(description = "an old-style parameter keeps a pointer type unpromoted, promotes a typedef or enum to ?, and drops its own qualifier before promotion", timeout = 600)]
+def test_old_style_units(t : T?) {
+    let kp <- unit_result(t, "kr_pointer.c", "int kp(p) const char *p; \{ return 0; \}\n")
+    t |> equal(kp.verdict, "same", describe_result(kp))
+    t |> success(has_line(kp.parser_lines, "(decl kp@1:5 \"int (const char *)\" [p@1:23])"), join(kp.parser_lines, "\n"))
+    let kt <- unit_result(t, "kr_typedef.c", "typedef short S;\nint kt(s) S s; \{ return s; \}\nenum EE \{ X \};\nint ke(e) enum EE e; \{ return 0; \}\n")
+    t |> equal(kt.verdict, "same", describe_result(kt))
+    t |> success(find(join(kt.parser_lines, "\n"), "(decl kt@2:5 \"int (?)\"") >= 0, join(kt.parser_lines, "\n"))
+    let kq <- unit_result(t, "kr_qualifier.c", "int kq(a) const char a; \{ return a; \}\n")
+    t |> equal(kq.verdict, "same", describe_result(kq))
+    t |> success(has_line(kq.parser_lines, "(decl kq@1:5 \"int (int)\" [a@1:22])"), join(kq.parser_lines, "\n"))
+    t |> success(has_line(kq.parser_lines, "(param a@1:22 \"const char\")"), join(kq.parser_lines, "\n"))
+}
+
+[test(description = "tag bodies by place: none counted in a statement expression, one in a function's own parameter's declarator printed, one under an expression statement and one in a block declarator counted", timeout = 600)]
+def test_tag_body_places_units(t : T?) {
+    let se <- unit_result(t, "stmt_expr_body.c", "void v(void) \{ int y = (\{ struct T \{ int a; \} t = \{1\}; t.a; \}); (void)y; \}\n")
+    t |> equal(se.verdict, "same", describe_result(se))
+    t |> equal(length(se.not_compared), 0)
+    let own <- unit_result(t, "own_param_body.c", "int f(int (*cb)(struct X \{ int x; \} x));\n")
+    t |> equal(own.verdict, "same", describe_result(own))
+    t |> success(find(join(own.parser_lines, "\n"), "(record struct X@1:24)") >= 0, join(own.parser_lines, "\n"))
+    let ex <- unit_result(t, "expr_body.c", "void v(void) \{ (void)sizeof(struct Q4 \{ int c; \}); \}\n")
+    t |> equal(ex.verdict, "same", describe_result(ex))
+    t |> equal(length([for (n in ex.not_compared); n; where n == NOT_IN_BLOCK]), 1)
+    let bd <- unit_result(t, "block_decl_body.c", "void v(void) \{ int (*fp)(struct X \{ int x; \} a); (void)fp; \}\n")
+    t |> equal(bd.verdict, "same", describe_result(bd))
+    t |> equal(length([for (n in bd.not_compared); n; where n == NOT_IN_BLOCK]), 1)
+}
+
+[test(description = "a unit's runs through clang: a (file) line opens each file's run, `clang -E`'s own refusal, and the first line of clang's message that holds `error:`", timeout = 600)]
+def test_clang_runs_units(t : T?) {
+    let dir = path_join(test_temp_dir(), "units")
+    mkdir_rec(dir)
+    t |> success(fwrite(path_join(dir, "inc.h"), "int inc;\n"))
+    let two <- unit_result(t, "two_files.c", "#include \"inc.h\"\nint after;\n")
+    t |> equal(two.verdict, "same", describe_result(two))
+    t |> equal(length(two.parser_lines), 4)
+    t |> success(starts_with(two.parser_lines[0], "(file ") && ends_with(two.parser_lines[0], "inc.h)"), two.parser_lines[0])
+    t |> success(starts_with(two.parser_lines[2], "(file ") && ends_with(two.parser_lines[2], "two_files.c)"), two.parser_lines[2])
+    let pre <- unit_result(t, "pp_error.c", "int before;\n#error stop\n")
+    t |> equal(pre.verdict, "clang refused")
+    t |> success(starts_with(pre.message, "clang -E: ") && find(pre.message, "error: stop") >= 0, pre.message)
+    t |> success(fwrite(path_join(dir, "bad.h"), "int bad = undeclared2;\n"))
+    let first <- unit_result(t, "first.c", "#include \"bad.h\"\nint after;\n")
+    t |> equal(first.verdict, "clang refused")
+    t |> success(find(first.message, "bad.h:1:11: error: use of undeclared identifier") >= 0, first.message)
+}
+
+[test(description = "a refused construct is read after the place's `:<line>:<col>: `, a folder holding `<digits>: ` aside")]
+def test_refused_construct_split(t : T?) {
+    t |> equal(refused_construct("v2: d/r.c:2:1: the __int128 type is not parsed"), "the __int128 type")
+}
+
+[test(description = "the line form's pieces on their edges: no digits, a size wildcard stopping at its ], a wildcard ending only at depth 0, a match taking all of clang's line, a builtin's restrict both ways, a cause held to its own shape, and a walk stopping at two typeless lines")]
+def test_form_edges(t : T?) {
+    t |> equal(integer_value(""), "?")
+    t |> equal(integer_value("ul"), "?")
+    t |> success(!lines_match("(decl a \"int[?]\")", "(decl a \"int[3][2]\")"))
+    t |> success(!lines_match("(d \"int (?))\")", "(d \"int (f(a))\")"))
+    t |> success(!lines_match("(decl a \"int\")", "(decl a \"int\") static"))
+    t |> equal(explained_by("(decl f@1:5 \"int (char **)\")", FormLine(text = "(decl f@1:5 \"int (char *restrict *)\")", cause = LIBRARY_BUILTIN)), LIBRARY_BUILTIN)
+    t |> equal(explained_by("(decl f@1:5 \"int (int *const)\")", FormLine(text = "(decl f@1:5 \"int (int *const restrict)\")", cause = LIBRARY_BUILTIN)), LIBRARY_BUILTIN)
+    t |> equal(explained_by("(decl f@1:5 \"int (char *)\")", FormLine(text = "(decl f@1:5 \"int (char *restrict)\")", cause = MERGED_REDECLARATION, prior = "int (char *)")), "")
+    var compared = 0
+    let found <- line_differences([FormLine(text = "(break@2:5)"), FormLine(text = "(null)")], [FormLine(text = "(continue@2:5)"), FormLine(text = "(end)")], compared)
+    t |> equal(length(found), 1)
+    t |> equal(compared, 0)
+}
+
+[test(description = "a set's totals: verdicts, lines, differences by cause, units differing by named causes alone, refused constructs; their sum; and the lines that describe a result and the totals", timeout = 1200)]
+def test_totals(t : T?) {
+    let flags <- flags_of(t)
+    let work = test_temp_dir()
+    var totals : ParseTotals
+    let causes <- compare_unit("compare/parse/fixtures/causes.c", work, flags)
+    let semantic <- compare_unit("compare/parse/fixtures/semantic.c", work, flags)
+    let refused <- compare_unit("compare/parse/fixtures/refused.c", work, flags)
+    add_result(totals, causes)
+    add_result(totals, semantic)
+    add_result(totals, refused)
+    t |> equal(totals.verdicts?["differs"] ?? 0, 2)
+    t |> equal(totals.verdicts?["construct refused"] ?? 0, 1)
+    t |> equal(totals.lines, causes.lines + semantic.lines)
+    t |> equal(totals.differences?[LIBRARY_BUILTIN] ?? 0, 1)
+    t |> equal(totals.differences?[MERGED_REDECLARATION] ?? 0, 2)
+    t |> equal(totals.differences?["unnamed"] ?? 0, 1)
+    t |> equal(totals.named_only, 1)
+    t |> equal(totals.skipped?["the __int128 type"] ?? 0, 1)
+    var twice : ParseTotals
+    twice += totals
+    twice += totals
+    t |> equal(twice.verdicts?["differs"] ?? 0, 4)
+    t |> equal(twice.lines, 2 * totals.lines)
+    t |> equal(twice.differences?[MERGED_REDECLARATION] ?? 0, 4)
+    t |> equal(twice.named_only, 2)
+    t |> equal(twice.skipped?["the __int128 type"] ?? 0, 2)
+    t |> success(find(describe_result(semantic), "(2 lines, 1 with no named cause; {semantic.lines} lines compared)") >= 0, describe_result(semantic))
+    t |> success(find(describe_result(refused), ": ") >= 0 && ends_with(describe_result(refused), "refused.c:3:1: the __int128 type is not parsed"), describe_result(refused))
+    t |> equal(length(split(describe_result(semantic, 1), "\n  line ")), 2)
+    t |> success(find(describe_totals("set", totals), "differing lines by cause: ") >= 0 && find(describe_totals("set", totals), "unnamed 1") >= 0, describe_totals("set", totals))
+}
+
+// the command of `compare/parse/run.das` with `args`, through this checkout's daslang and modules
+def private run_das(args : array<string>) : array<string> {
+    var argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/parse/run.das", "--"]
+    argv |> push_from(args)
+    return <- argv
+}
+
+[test(description = "run.das: --quiet prints no unit that is the same, --dump prints both sides' lines, and a clang that fails with no `error:` line is reported by its first line", timeout = 1200)]
+def test_run_das(t : T?) {
+    var out : string
+    let work = path_join(test_temp_dir(), "work")
+    t |> equal(run_and_capture(run_das(["--work", work, "--quiet", "compare/parse/fixtures/expressions.c"]), out, 600.0), 0)
+    t |> success(find(out, "expressions.c: same") < 0 && find(out, "units (1 units): 1 same") >= 0, out)
+    t |> equal(run_and_capture(run_das(["--work", work, "--dump", "compare/parse/fixtures/expressions.c"]), out, 600.0), 0)
+    t |> success(find(out, "  parser (file") >= 0 && find(out, "  clang  (file") >= 0, out)
+    let fake = path_join(test_temp_dir(), "fake")
+    mkdir_rec(path_join(fake, "bin"))
+    t |> success(fwrite(path_join(fake, "bin/clang"), "#!/bin/sh\nprintf 'a\\nb\\n'\nexit 1\n"))
+    t |> equal(run_and_capture(["chmod", "+x", path_join(fake, "bin/clang")], out, 30.0), 0)
+    var argv <- ["env", "PATH_TO_LIBCLANG={fake}"]
+    argv |> push_from(run_das(["--work", work, "compare/parse/fixtures/expressions.c"]))
+    run_and_capture(argv, out, 600.0)
+    t |> success(find(out, "clang refused: clang -E: a") >= 0, out)
+}
+
+[test(description = "run_parse_oracle: a unit the parser refuses fails the run and a same one passes it, an unknown corpus fails it, a --define reaches the preprocessing; the frontend corpus is the own headers", timeout = 1200)]
+def test_run_parse_oracle(t : T?) {
+    let work = path_join(test_temp_dir(), "work")
+    t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, units <- ["compare/parse/fixtures/pragma.c"])), 1)
+    t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, units <- ["compare/parse/fixtures/expressions.c"])), 0)
+    t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, corpus <- ["nope"])), 1)
+    let unit = path_join(test_temp_dir(), "defined.c")
+    t |> success(fwrite(unit, "#ifndef X\n#pragma pack(1)\n#endif\nint a;\n"))
+    t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, units <- [unit])), 1)
+    t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, define <- ["X"], units <- [unit])), 0)
+    var error : string
+    let headers <- corpus_units(getcwd(), "frontend", error)
+    t |> equal(error, "")
+    t |> success(!empty(headers) && empty([for (h in headers); h; where !ends_with(h, ".h")]), "{length(headers)} headers")
+}
+
+[test(description = "the defensive arms over shapes the pinned clang does not write, through hand-written dumps: a missing offset unplaced, a transparent node of two children, a statement and a file-scope node of no form, each written as unknown")]
+def test_hand_written_dumps(t : T?) {
+    let text = "# 1 \"u.c\"\nint x = 1;\n"
+    let lit = "\{\"kind\": \"TranslationUnitDecl\", \"inner\": [\{\"kind\": \"VarDecl\", \"loc\": \{\"offset\": 14\}, \"range\": \{\"begin\": \{\"offset\": 10\}\}, \"name\": \"x\", \"type\": \{\"qualType\": \"int\"\}, \"inner\": [EXPR]\}]\}"
+    let unplaced <- compare_texts("u.i", text, replace(lit, "EXPR", "\{\"kind\": \"IntegerLiteral\", \"range\": \{\"begin\": \{\}\}, \"value\": \"1\", \"type\": \{\"qualType\": \"int\"\}\}"))
+    t |> success(has_line(unplaced.clang_lines, "(decl x@1:5 \"int\" = (int@? 1))"), join(unplaced.clang_lines, "\n"))
+    let one = "\{\"kind\": \"IntegerLiteral\", \"range\": \{\"begin\": \{\"offset\": 18\}\}, \"value\": \"1\", \"type\": \{\"qualType\": \"int\"\}\}"
+    let two <- compare_texts("u.i", text, replace(lit, "EXPR", "\{\"kind\": \"ImplicitCastExpr\", \"inner\": [{one}, {one}]\}"))
+    t |> success(has_line(two.clang_lines, "(decl x@1:5 \"int\" = (unknown ImplicitCastExpr))"), join(two.clang_lines, "\n"))
+    let ftext = "# 1 \"u.c\"\nvoid f(void) \{ \}\n"
+    let fjson = "\{\"kind\": \"TranslationUnitDecl\", \"inner\": [\{\"kind\": \"FunctionDecl\", \"loc\": \{\"offset\": 15\}, \"range\": \{\"begin\": \{\"offset\": 10\}\}, \"name\": \"f\", \"type\": \{\"qualType\": \"void (void)\"\}, \"inner\": [\{\"kind\": \"CompoundStmt\", \"range\": \{\"begin\": \{\"offset\": 23\}\}, \"inner\": [\{\"kind\": \"IndirectGotoStmt\", \"range\": \{\"begin\": \{\"offset\": 25\}\}\}]\}]\}]\}"
+    let stmt <- compare_texts("u.i", ftext, fjson)
+    t |> success(find(join(stmt.clang_lines, "\n"), "(unknown IndirectGotoStmt@1:16)") >= 0, join(stmt.clang_lines, "\n"))
+    let top <- compare_texts("u.i", text, "\{\"kind\": \"TranslationUnitDecl\", \"inner\": [\{\"kind\": \"FileScopeAsmDecl\", \"loc\": \{\"offset\": 10\}, \"range\": \{\"begin\": \{\"offset\": 10\}\}\}]\}")
+    t |> success(has_line(top.clang_lines, "(unknown FileScopeAsmDecl@1:1)"), join(top.clang_lines, "\n"))
+    t |> equal(top.verdict, "differs")
+}

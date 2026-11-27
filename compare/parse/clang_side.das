@@ -149,11 +149,9 @@ def private present(v : JsonValue?) : bool => v != null && !(v is _null)
 
 def private kind_of(js : JsonValue?) : string => js?["kind"] ?? ""
 
-// the offset of a location object: a macro's location by its expansion, none (-1) when clang gives none
-def private offset_of(at : JsonValue?) : int {
-    let spot = present(at?["expansionLoc"]) ? at?["expansionLoc"] : at
-    return present(spot?["offset"]) ? int(spot?["offset"] ?? 0l) : -1
-}
+// the offset of a location object, none (-1) when clang gives none: the dump reads expanded text
+// under `-undef`, so no location of it is a macro's
+def private offset_of(at : JsonValue?) : int => present(at?["offset"]) ? int(at?["offset"] ?? 0l) : -1
 
 def private begin_of(map : PresumedMap; js : JsonValue?) : Place => place_of(map, offset_of(js?["range"]?["begin"]))
 
@@ -638,7 +636,7 @@ def clang_unit(json, text, name : string) : ClangUnit {
     function_types(js, map.function_types)
     var kids : array<JsonValue?>
     each_child(js) $(c) {
-        if (!(c?["isImplicit"] ?? false) && offset_of(c?["loc"]) >= 0 && kind_of(c) != "EmptyDecl") {
+        if (!(c?["isImplicit"] ?? false) && kind_of(c) != "EmptyDecl") {
             kids |> push(unsafe(reinterpret<JsonValue?>(c)))
         }
     }

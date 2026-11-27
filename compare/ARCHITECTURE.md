@@ -62,7 +62,8 @@ daslang; this repository never builds it inside a test and never vendors it.
   captures the test writes, and `--readme` and `--report` run in a scratch folder;
   `test_pp_oracle.das`, the pp-token oracle of `pp/` over dump text it writes and over its
   edge-case unit through the pinned clang; `test_parse_oracle.das`, the parse oracle of `parse/`
-  over its fixtures through the pinned clang and over dumps it writes or mutates; `_common.das`,
+  over its fixtures and the units it writes through the pinned clang, over dumps it writes or
+  mutates, and over `run.das` run as a child; `_common.das`,
   what they share.
 - `pp/` - the pp-token oracle of Dumper C's lexer against clang (`pp/ARCHITECTURE.md`), not a part
   of the head-to-head: it lives here because it starts clang, which nothing under `frontend/` may.

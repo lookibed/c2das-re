@@ -262,10 +262,9 @@ def old_style_specifiers(p : CParser; d : int) : int {
 }
 
 //! The declared type of old-style parameter `ip` (an identifier list's name) as its declaration
-//! list types it, adjusted as a parameter; `int` when no declaration names it.
+//! list types it, adjusted as a parameter; the parser refuses a name no declaration types.
 def old_style_type(var p : CParser; ip : int) : string {
     let d = nd(p, ip).b
-    return "int" if (d < 0)
     return spell_type(p, old_style_specifiers(p, d), d, true, false)
 }
 
@@ -275,7 +274,6 @@ def old_style_type(var p : CParser; ip : int) : string {
 // itself is dropped; a typedef name or an enum promotes by a type the tree does not hold, `?`
 def private promoted(var p : CParser; ip : int) : string {
     let d = nd(p, ip).b
-    return "int" if (d < 0)
     let specs = old_style_specifiers(p, d)
     var declared = spell_type(p, specs, d, true, false)
     var plain = true
@@ -610,9 +608,7 @@ def private parameter_lines(var p : CParser; f : int; var lines : array<FormLine
     while (prm >= 0) {
         let n = nd(p, prm)
         if (n.kind == CNode.IDENT_PARAM) {
-            let named = n.b >= 0 ? name_node(p, n.b) : -1
-            let at = named >= 0 ? at_text(p, named) : at_text(p, prm)
-            lines |> push(line_at(p, n.tok, "(param {symbol(p, n.a)}{at} \"{old_style_type(p, prm)}\")"))
+            lines |> push(line_at(p, n.tok, "(param {symbol(p, n.a)}{at_text(p, name_node(p, n.b))} \"{old_style_type(p, prm)}\")"))
         } else {
             let pn = name_node(p, n.b)
             let head = pn < 0 ? "-" : "{symbol(p, nd(p, pn).a)}{at_text(p, pn)}"
