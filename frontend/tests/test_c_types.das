@@ -85,9 +85,9 @@ def test_definition(t : T?) {
         t |> equal(types_of(BODY),
                    "int:16:true:short int:64:true:long int:8:false:char ptr:2 func:0:1,3:false int:32:false:unsigned int float:64:double typedef:D:6 float:32 int:64:true:long long int:8:true:signed char int:16:false:unsigned short int:32:true:int func:12::false int:8:false:unsigned char int:8:false:_Bool float:64:long double int:64:false:unsigned long ptr:12")
     }
-    t |> run("an old-style definition: R (), then each parameter in the identifier list's order") @(t : T?) {
+    t |> run("an old-style definition: R (P...) with its parameters promoted, then each parameter in the identifier list's order") @(t : T?) {
         t |> equal(types_of("int k(a, b, c) char b; double a; int c[2]; \{ return 0; \}"),
-                   "int:32:true:int func:0::false float:64:double int:8:false:char ptr:0")
+                   "int:32:true:int float:64:double ptr:0 func:0:1,0,2:false int:8:false:char")
     }
     t |> run("a block declaration of a function no declaration named yet adds its type and parameters") @(t : T?) {
         t |> equal(types_of("void f(void) \{ int g(char *); \}"), "void func:0::false int:32:true:int int:8:false:char ptr:3 func:2:4:false")

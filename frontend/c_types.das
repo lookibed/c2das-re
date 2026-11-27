@@ -11,21 +11,24 @@ require ../converter/cir.das public
 
 //! The C-IR type table of one unit as Dumper A builds it (`ARCHITECTURE_TYPES.md`): every type a
 //! declaration reaches, once, in the order Dumper A's walk first uses it, each `spell` as clang
-//! spells it under the dialect. `pool` holds the types the builder has met, qualifiers dropped and
-//! typedefs resolved, by the same structural key; `c_types_use` interns a pool type into the table,
-//! its parts first.
+//! spells it under the dialect. `pool` holds the types the builder has met, typedefs resolved, by
+//! the same structural key, a qualified type apart from its unqualified one; `c_types_use` interns
+//! a pool type into the table, qualifiers dropped, its parts first.
 struct CTypes {
     tu : CirTu
     index : table<string; int>      //!< a table entry's key to its index
     pool : array<CirType>           //!< every type met, referring to other pool types
     pool_index : table<string; int> //!< a pool type's key to its index
     used : array<int>               //!< per pool type, its table index; -1 while no use reached it
+    quals : array<int>              //!< per pool type, its own qualifiers (`C_CONST`, `C_VOLATILE`, `C_RESTRICT`)
+    unqualified : array<int>        //!< per pool type, the pool type without its own qualifiers
     typedefs : table<int; int>      //!< a typedef name's symbol to the pool type it names
     untyped : table<int; string>    //!< a library typedef name the builder does not type, and why
     undo : array<tuple<sym : int; was : int>>   //!< the bindings a block's end restores
     marks : array<int>
     declared : table<int; bool>     //!< the function names declared so far
     library_dir : string            //!< the own libc headers' folder, whose declarations add no type
+    old_style : array<int>          //!< the promoted parameter types an old-style definition's type takes
     err : string
 }
 
@@ -40,6 +43,8 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.pool |> clear()
     b.pool_index |> clear()
     b.used |> clear()
+    b.quals |> clear()
+    b.unqualified |> clear()
     b.typedefs |> clear()
     b.untyped |> clear()
     b.undo |> clear()
@@ -83,7 +88,50 @@ def private pooled(var b : CTypes; var t : CirType) : int {
     b.pool |> emplace(t)
     b.pool_index[key] = idx
     b.used |> push(-1)
+    b.quals |> push(0)
+    b.unqualified |> push(idx)
     return idx
+}
+
+//! The qualifier bits of a pool type.
+let C_CONST = 1
+let C_VOLATILE = 2
+let C_RESTRICT = 4
+
+//! Pool type `t` with qualifiers `q` added: an array's element takes them (C11 6.7.3p9), a function
+//! type none.
+def c_qualified(var b : CTypes; t, q : int) : int {
+    return t if (t < 0 || q == 0 || (b.quals[t] | q) == b.quals[t] || b.pool[t].k == "func")
+    if (b.pool[t].k == "array") {
+        return array_of(b, c_qualified(b, b.pool[t].elem, q), b.pool[t].count)
+    }
+    let base = b.unqualified[t]
+    let all = b.quals[t] | q
+    let key = "q{all}:{base}"
+    let known = b.pool_index?[key] ?? -1
+    return known if (known >= 0)
+    let idx = length(b.pool)
+    var copy := b.pool[base]
+    b.pool |> emplace(copy)
+    b.pool_index[key] = idx
+    b.used |> push(-1)
+    b.quals |> push(all)
+    b.unqualified |> push(base)
+    return idx
+}
+
+// the qualifier bits of the qualifier keywords in list `at`
+def private qualifiers_of(p : CParser; at : int) : int {
+    var q = 0
+    var n = at
+    while (n >= 0) {
+        let k = p.ast.nodes[n].op
+        if (p.ast.nodes[n].kind == CNode.SPEC_KEYWORD) {
+            q |= k == int(CTok.CONST) ? C_CONST : k == int(CTok.VOLATILE) ? C_VOLATILE : k == int(CTok.RESTRICT) ? C_RESTRICT : 0
+        }
+        n = p.ast.nodes[n].next
+    }
+    return q
 }
 
 // table entry `t` under `key`: the index it has, or the next one
@@ -136,7 +184,7 @@ def private array_of(var b : CTypes; elem, count : int) : int {
 
 def private function_of(var b : CTypes; ret : int; var params : array<int>; variadic : bool) : int {
     var t = CirType(k = "func", ret = ret, variadic = variadic)
-    t.params <- params
+    t.params <- [for (x in params); b.unqualified[x]]
     return pooled(b, t)
 }
 
@@ -260,12 +308,38 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
         at = n.next
     }
     return -1 if (!plain_attributes(b, p, specs))
-    return named if (named >= 0)
-    let t = builtin_type(b, set)
+    let t = named >= 0 ? named : builtin_type(b, set)
     if (t < 0) {
         refuse(b, p, p.ast.nodes[specs].tok, "this specifier list")
     }
-    return t
+    return c_qualified(b, t, qualifiers_of(p, specs))
+}
+
+// false with the error set when list `at` holds `_Atomic`
+def private no_atomic(var b : CTypes; var p : CParser; at : int) : bool {
+    var n = at
+    while (n >= 0) {
+        if (p.ast.nodes[n].kind == CNode.SPEC_KEYWORD && p.ast.nodes[n].op == int(CTok.ATOMIC)) {
+            refuse(b, p, p.ast.nodes[n].tok, "an _Atomic type")
+            return false
+        }
+        n = p.ast.nodes[n].next
+    }
+    return true
+}
+
+//! The type a value of pool type `t` takes under the default argument promotions (C11 6.5.2.2p6):
+//! an integer narrower than `int` is `int`, `float` is `double`, any other type its own,
+//! unqualified.
+def c_promoted(var b : CTypes; t : int) : int {
+    let u = b.unqualified[t]
+    assume ty = b.pool[u]
+    if (ty.k == "int" && ty.w < b.tu.target.int_w) {
+        return builtin_type(b, bit(CTok.INT))
+    } elif (ty.k == "float" && ty.w == 32) {
+        return builtin_type(b, bit(CTok.DOUBLE))
+    }
+    return u
 }
 
 // whether declarator `d` is at its end: none, its name, or parentheses around one
@@ -421,12 +495,13 @@ def private applied(var b : CTypes; var p : CParser; base, d : int; adjust : boo
         return -1 if (!plain_attributes(b, p, n.b))
         return applied(b, p, base, n.a, adjust, init)
     } elif (n.kind == CNode.D_POINTER) {
-        return -1 if (!plain_attributes(b, p, n.b))
-        return applied(b, p, pointer(b, base), n.a, adjust, init)
+        return -1 if (!plain_attributes(b, p, n.b) || !no_atomic(b, p, n.b))
+        return applied(b, p, c_qualified(b, pointer(b, base), qualifiers_of(p, n.b)), n.a, adjust, init)
     } elif (n.kind == CNode.D_ARRAY) {
         let last = is_end(p, n.a)
         if (last && adjust) {
-            return pointer(b, base)
+            return -1 if (!no_atomic(b, p, n.c))
+            return c_qualified(b, pointer(b, base), qualifiers_of(p, n.c))
         }
         if (n.op == 2) {
             refuse(b, p, n.tok, "a variable-length array")
@@ -437,6 +512,9 @@ def private applied(var b : CTypes; var p : CParser; base, d : int; adjust : boo
         return applied(b, p, array_of(b, base, count), n.a, adjust, init)
     }
     var params : array<int>
+    if (n.op == 2) {
+        params := b.old_style
+    }
     var param = n.op == 2 || is_void_list(p, n.b) ? -1 : n.b
     while (param >= 0) {
         let pt = c_param_type(b, p, param)
@@ -635,27 +713,37 @@ def private declaration_of(p : CParser; old, d : int) : int {
     return -1
 }
 
-// function definition `def_node`'s types: its type (an old-style one, `R ()`, has no parameter
-// in it), then each parameter's in the order the declarator lists them, then its body's
-// declarations
+// function definition `def_node`'s types: its type (an old-style one's parameters are its
+// declared ones under the default argument promotions, as clang types it), then each parameter's
+// in the order the declarator lists them, then its body's declarations
 [arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
 def private definition(var b : CTypes; var p : CParser; def_node : int) : bool {
     let n = p.ast.nodes[def_node]
     let d = p.ast.nodes[n.b].a
-    if (c_types_use(b, applied(b, p, c_specifier_type(b, p, n.a), d, false)) < 0) {
-        return false
-    }
-    b.declared[c_declarator_name(p.ast, d)] = true
     let f = c_name_function(p.ast, d)
+    var typed : array<int>
+    if (p.ast.nodes[f].op == 2) {
+        var param = p.ast.nodes[f].b
+        while (param >= 0) {
+            let typing = p.ast.nodes[param].b
+            let old = declaration_of(p, n.c, typing)
+            let pt = parameter_type(b, p, p.ast.nodes[old].a, typing)
+            return false if (pt < 0)
+            typed |> push(pt)
+            b.old_style |> push(c_promoted(b, pt))
+            param = p.ast.nodes[param].next
+        }
+    }
+    let base = c_specifier_type(b, p, n.a)
+    let t = applied(b, p, base, d, false)
+    b.old_style |> clear()
+    return false if (c_types_use(b, t) < 0)
+    b.declared[c_declarator_name(p.ast, d)] = true
     if (p.ast.nodes[f].op != 2) {
         return parameters(b, p, f) && statement(b, p, n.d)
     }
-    var param = p.ast.nodes[f].b
-    while (param >= 0) {
-        let typing = p.ast.nodes[param].b
-        let old = declaration_of(p, n.c, typing)
-        return false if (c_types_use(b, parameter_type(b, p, p.ast.nodes[old].a, typing)) < 0)
-        param = p.ast.nodes[param].next
+    for (pt in typed) {
+        c_types_use(b, pt)
     }
     return statement(b, p, n.d)
 }

@@ -33,8 +33,10 @@ only; the table grows by uses, in the order Dumper A's walk reaches the same dec
   `static` and `extern` locals alike - except that a block declaration of a function whose name a
   declaration before it declared (the unit's, or the own headers') adds nothing, as clang links it
   to that declaration;
-- an old-style definition: its type `R ()`, with no parameter, then each parameter's adjusted type
-  from its declaration in the list, in the identifier list's order.
+- an old-style definition: its type as clang gives it, `R (P...)` with each parameter's adjusted
+  type from its declaration in the list under the default argument promotions (`char` and `short`
+  are `int`, `float` is `double`), then each parameter's adjusted type itself, in the identifier
+  list's order.
 
 `(void)` and `()` are one type, `R` with no parameter and not variadic. A typedef name keeps the
 pool type it names for its scope: a block's bindings end with the block (`for` opens one too).
