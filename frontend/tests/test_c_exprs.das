@@ -218,9 +218,11 @@ def private places_of(text : string) : string {
     c_ir_open(*r, target_lp64_linux(), "")
     var out : array<string>
     if (c_ir_unit(*r, p, u)) {
+        out |> reserve(length(r.tu.decls))
         for (d in r.tu.decls) {
             out |> push("{d.name}@{d.loc.file}:{d.loc.line}:{d.loc.col}")
             if (d.body != null) {
+                out |> reserve(length(out) + length(d.body.body))
                 for (st in d.body.body) {
                     out |> push("{st.s}@{st.loc.line}:{st.loc.col}")
                 }
