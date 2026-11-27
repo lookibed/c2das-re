@@ -15,6 +15,7 @@ def private findings_of(t : T?; files : array<tuple<name : string; text : string
     let folder = path_join(test_temp_dir(), "gate_{length(test_temp_dir())}_{entry}")
     mkdir_rec(folder)
     for (file in files) {
+        mkdir_rec(dir_name(path_join(folder, file.name)))
         fwrite(path_join(folder, file.name), file.text)
     }
     gate_reset()
@@ -50,6 +51,16 @@ def test_frontend_gate(t : T?) {
         }
         let other = findings_of(t, [(name = "a.das", text = "require {CLANG_MODULE}_like\n")], "a.das")
         t |> equal(other, "")
+    }
+    t |> run("a require of the C runtime, the c_runtime library or one of its modules is a finding at its line, outside the own headers' tests") @(t : T?) {
+        for (target in ["crt", "c_runtime", "c_runtime/stdio", "../c_runtime/stdio.das"]) {
+            let found = findings_of(t, [(name = "a.das", text = "options gen2\nrequire {target}\n")], "a.das")
+            t |> equal(found, "a.das:2: requires `{target}`: nothing under frontend/ needs a native module")
+        }
+        let other = findings_of(t, [(name = "a.das", text = "require crt_like\nrequire my_c_runtime\n")], "a.das")
+        t |> equal(other, "")
+        let headers = findings_of(t, [(name = "include/tests/h.das", text = "require crt\n")], "include/tests/h.das")
+        t |> equal(headers, "")
     }
     t |> run("the functions that start a process are fio's and crt's") @(t : T?) {
         for (name in fixed_array("popen", "popen_binary", "popen_timeout", "popen_argv", "popen_argv_pipe", "spawn_process", "spawn_argv", "with_process", "run_and_capture", "executable_on_path", "system")) {

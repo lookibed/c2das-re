@@ -79,6 +79,11 @@ that start a process: `popen`, `popen_binary`, `popen_timeout`, `popen_argv`, `p
 `spawn_process`, `spawn_argv`, `with_process`, `run_and_capture`, `executable_on_path` (all of
 `fio`; the last probes `PATH` through a shell) and `system` (of `fio` and of `crt`).
 
+Nor does it require a native module: `crt`, the C runtime, or `c_runtime` and its modules, which
+need it. Dumper C computes in das what the C library would (`ARCHITECTURE_EXPRS.md`'s floating
+constants). The own headers' tests under `include/tests/` are the one exception: they compile
+converted programs against the C runtime and are no part of Dumper C.
+
 The ban holds for what a file pulls in as well. `REVIEW.das` reads each `.das` file under the
 folder with its comments and the characters of its string and character literals blanked (the code
 inside a string's `{...}` stays: it runs), and reports, each with the file and line:
@@ -89,6 +94,7 @@ inside a string's `{...}` stays: it runs), and reports, each with the file and l
 - a line that holds the word `require` and the word `cbind` anywhere; and a line that holds
   `require` and is not `require <module>` or `require <module> public`, `<module>` spelled in
   letters, digits, `_`, `.`, `/` and `-`, since the gate cannot name the module of any other form;
+- a `require` of `crt`, of `c_runtime` or of one of its modules, outside `include/tests/`;
 - the word `include`: the gate follows no text include, so a file here has none.
 
 It follows every `require` that names a file, a path ending in `.das` or a module whose

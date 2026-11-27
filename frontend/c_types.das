@@ -53,6 +53,11 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.err = ""
 }
 
+//! The first error, at token `tok`: a construct the builder does not type yet, and `why` after it.
+def c_refuse(var b : CTypes; var p : CParser; tok : int; what : string; why : string = "") {
+    refuse(b, p, tok, what, why)
+}
+
 // the first error, at token `tok`: a construct the builder does not type yet, and `why` after it
 def private refuse(var b : CTypes; var p : CParser; tok : int; what : string; why : string = "") {
     if (empty(b.err)) {
@@ -72,6 +77,8 @@ def c_type_key(t : CirType) : string {
         return "ptr:{t.to}"
     } elif (t.k == "array") {
         return "array:{t.elem}:{t.count}"
+    } elif (t.k == "func" && t.name == BUILTIN_FN) {
+        return "func:builtin"
     } elif (t.k == "func") {
         let listed = join([for (x in t.params); string(x)], ",")
         return "func:{t.ret}:{listed}:{t.variadic}"
@@ -91,6 +98,16 @@ def private pooled(var b : CTypes; var t : CirType) : int {
     b.quals |> push(0)
     b.unqualified |> push(idx)
     return idx
+}
+
+//! The name that marks a pool function type as the type clang gives a reference to a builtin
+//! function, `<builtin fn type>`: in the table `void (...)`, keyed apart from that type.
+let BUILTIN_FN = "<builtin fn type>"
+
+//! The pool type of a reference to a builtin function.
+def c_builtin_fn_type(var b : CTypes) : int {
+    var t = CirType(k = "func", ret = builtin_type(b, bit(CTok.VOID)), variadic = true, name = BUILTIN_FN)
+    return pooled(b, t)
 }
 
 //! The qualifier bits of a pool type.
@@ -162,7 +179,9 @@ def c_types_use(var b : CTypes; pt : int) : int {
             t.params[i] = c_types_use(b, t.params[i])
         }
     }
-    let idx = intern(b, c_type_key(t), t)
+    let key = c_type_key(t)
+    t.name = ""
+    let idx = intern(b, key, t)
     b.used[pt] = idx
     return idx
 }
@@ -180,6 +199,27 @@ def private pointer(var b : CTypes; to : int) : int {
 def private array_of(var b : CTypes; elem, count : int) : int {
     var t = CirType(k = "array", elem = elem, count = count)
     return pooled(b, t)
+}
+
+//! The pool type of a pointer to pool type `to`.
+def c_pointer(var b : CTypes; to : int) : int => pointer(b, to)
+
+//! The pool type of an array of `count` pool types `elem`, -1 for an unknown count.
+def c_array(var b : CTypes; elem, count : int) : int => array_of(b, elem, count)
+
+//! The pool type of the function returning `ret` with the parameter types `params`.
+def c_function(var b : CTypes; ret : int; var params : array<int>; variadic : bool) : int => function_of(b, ret, params, variadic)
+
+//! The pool type of builtin type spelling `spell` as clang spells it (`int`, `unsigned long`,
+//! `double`, ...); -1 for any other spelling.
+def c_builtin(var b : CTypes; spell : string) : int {
+    let plain = starts_with(spell, "unsigned ") && spell != "unsigned char" ? slice(spell, length("unsigned ")) : spell
+    for (entry in BUILTINS) {
+        if (entry.spell == plain) {
+            return builtin_type(b, plain == spell ? entry.set : entry.set | bit(CTok.UNSIGNED))
+        }
+    }
+    return -1
 }
 
 def private function_of(var b : CTypes; ret : int; var params : array<int>; variadic : bool) : int {
@@ -244,8 +284,8 @@ def private builtin_type(var b : CTypes; set : int) : int {
 // the attribute words that change the type they stand on
 let private TYPE_ATTRIBUTES <- ["mode", "__mode__", "vector_size", "__vector_size__", "ext_vector_type"]
 
-// false with the error set when list `at` holds an attribute naming one of `TYPE_ATTRIBUTES`
-def private plain_attributes(var b : CTypes; var p : CParser; at : int) : bool {
+//! False with the error set when list `at` holds an attribute naming one of `TYPE_ATTRIBUTES`.
+def c_plain_attributes(var b : CTypes; var p : CParser; at : int) : bool {
     var n = at
     while (n >= 0) {
         if (p.ast.nodes[n].kind == CNode.ATTRIBUTE) {
@@ -307,7 +347,7 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
         }
         at = n.next
     }
-    return -1 if (!plain_attributes(b, p, specs))
+    return -1 if (!c_plain_attributes(b, p, specs))
     let t = named >= 0 ? named : builtin_type(b, set)
     if (t < 0) {
         refuse(b, p, p.ast.nodes[specs].tok, "this specifier list")
@@ -482,21 +522,22 @@ def private initializer_count(var b : CTypes; var p : CParser; init, elem : int)
     return count
 }
 
-// the pool type declarator `d` gives `base`, C's inside-out reading; `adjust` makes an array or a
-// function at the end a pointer (a parameter, C11 6.7.6.3p7-8), the array never met; `init` is
-// the initializer that sizes an unsized array at the end
+//! The pool type declarator `d` gives `base`, C's inside-out reading; `adjust` makes an array or a
+//! function at the end a pointer (a parameter, C11 6.7.6.3p7-8), the array never met; `init` is
+//! the initializer that sizes an unsized array at the end. `old_style` holds the promoted
+//! parameter types an identifier list's function type takes.
 [arch(at="ARCHITECTURE_TYPES.md#c-types-declarators")]
-def private applied(var b : CTypes; var p : CParser; base, d : int; adjust : bool; init : int = -1) : int {
+def c_declarator_type(var b : CTypes; var p : CParser; base, d : int; adjust : bool; init : int = -1) : int {
     return base if (base < 0 || d < 0)
     let n = p.ast.nodes[d]
     if (n.kind == CNode.D_NAME) {
         return base
     } elif (n.kind == CNode.D_PAREN) {
-        return -1 if (!plain_attributes(b, p, n.b))
-        return applied(b, p, base, n.a, adjust, init)
+        return -1 if (!c_plain_attributes(b, p, n.b))
+        return c_declarator_type(b, p, base, n.a, adjust, init)
     } elif (n.kind == CNode.D_POINTER) {
-        return -1 if (!plain_attributes(b, p, n.b) || !no_atomic(b, p, n.b))
-        return applied(b, p, c_qualified(b, pointer(b, base), qualifiers_of(p, n.b)), n.a, adjust, init)
+        return -1 if (!c_plain_attributes(b, p, n.b) || !no_atomic(b, p, n.b))
+        return c_declarator_type(b, p, c_qualified(b, pointer(b, base), qualifiers_of(p, n.b)), n.a, adjust, init)
     } elif (n.kind == CNode.D_ARRAY) {
         let last = is_end(p, n.a)
         if (last && adjust) {
@@ -509,13 +550,13 @@ def private applied(var b : CTypes; var p : CParser; base, d : int; adjust : boo
         }
         let count = n.b >= 0 ? literal_value(b, p, n.b, "array size") : last ? initializer_count(b, p, init, base) : -1
         return -1 if (count == -2)
-        return applied(b, p, array_of(b, base, count), n.a, adjust, init)
+        return c_declarator_type(b, p, array_of(b, base, count), n.a, adjust, init)
     }
     var params : array<int>
     if (n.op == 2) {
         params := b.old_style
     }
-    var param = n.op == 2 || is_void_list(p, n.b) ? -1 : n.b
+    var param = n.op == 2 || c_is_void_list(p, n.b) ? -1 : n.b
     while (param >= 0) {
         let pt = c_param_type(b, p, param)
         return -1 if (pt < 0)
@@ -526,12 +567,12 @@ def private applied(var b : CTypes; var p : CParser; base, d : int; adjust : boo
     if (is_end(p, n.a) && adjust) {
         return pointer(b, f)
     }
-    return applied(b, p, f, n.a, adjust, init)
+    return c_declarator_type(b, p, f, n.a, adjust, init)
 }
 
-// whether parameter list `param` is `(void)`: one parameter, no declarator, `void` alone with
-// qualifiers aside
-def private is_void_list(p : CParser; param : int) : bool {
+//! Whether parameter list `param` is `(void)`: one parameter, no declarator, `void` alone with
+//! qualifiers aside.
+def c_is_void_list(p : CParser; param : int) : bool {
     return false if (param < 0 || p.ast.nodes[param].next >= 0 || p.ast.nodes[param].b >= 0)
     var found = false
     var at = p.ast.nodes[param].a
@@ -558,36 +599,38 @@ def private adjusted_base(var b : CTypes; base : int) : int {
     return k == "func" ? pointer(b, base) : base
 }
 
-// the adjusted pool type that specifiers `specs` and declarator `d` give a parameter
-def private parameter_type(var b : CTypes; var p : CParser; specs, d : int) : int {
+//! The adjusted pool type that specifiers `specs` and declarator `d` give a parameter.
+def c_parameter_type(var b : CTypes; var p : CParser; specs, d : int) : int {
     let base = c_specifier_type(b, p, specs)
-    return applied(b, p, is_end(p, d) ? adjusted_base(b, base) : base, d, true)
+    return c_declarator_type(b, p, is_end(p, d) ? adjusted_base(b, base) : base, d, true)
 }
 
 //! The adjusted pool type of parameter node `param`: an array or a function is a pointer.
 def c_param_type(var b : CTypes; var p : CParser; param : int) : int {
     let n = p.ast.nodes[param]
-    return -1 if (!plain_attributes(b, p, n.c))
-    return parameter_type(b, p, n.a, n.b)
+    return -1 if (!c_plain_attributes(b, p, n.c))
+    return c_parameter_type(b, p, n.a, n.b)
 }
 
 //! The pool type of type-name node `t` (C11 6.7.7).
 def c_type_name_type(var b : CTypes; var p : CParser; t : int) : int {
     let base = c_specifier_type(b, p, p.ast.nodes[t].a)
-    return applied(b, p, base, p.ast.nodes[t].b, false)
+    return c_declarator_type(b, p, base, p.ast.nodes[t].b, false)
 }
 
-// bind typedef name `sym` to pool type `t` in the innermost scope
-def private bind(var b : CTypes; sym, t : int) {
+//! Bind typedef name `sym` to pool type `t` in the innermost scope.
+def c_types_bind(var b : CTypes; sym, t : int) {
     b.undo |> push((sym = sym, was = b.typedefs?[sym] ?? -1))
     b.typedefs[sym] = t
 }
 
-def private scope_open(var b : CTypes) {
+//! Open a scope of typedef names.
+def c_types_scope_open(var b : CTypes) {
     b.marks |> push(length(b.undo))
 }
 
-def private scope_close(var b : CTypes) {
+//! Close the innermost scope of typedef names: its bindings are undone.
+def c_types_scope_close(var b : CTypes) {
     let mark = b.marks[length(b.marks) - 1]
     b.marks |> pop()
     var at = length(b.undo) - 1
@@ -603,20 +646,8 @@ def private scope_close(var b : CTypes) {
     b.undo |> resize(mark)
 }
 
-// each parameter type of function declarator `f` used again, as Dumper A reads each parameter's
-// declaration after the function's type
-def private parameters(var b : CTypes; var p : CParser; f : int) : bool {
-    return true if (p.ast.nodes[f].op == 2 || is_void_list(p, p.ast.nodes[f].b))
-    var param = p.ast.nodes[f].b
-    while (param >= 0) {
-        return false if (c_types_use(b, c_param_type(b, p, param)) < 0)
-        param = p.ast.nodes[param].next
-    }
-    return true
-}
-
-// whether specifier list `specs` holds `typedef`
-def private declares_typedef(p : CParser; specs : int) : bool {
+//! Whether specifier list `specs` holds `typedef`.
+def c_declares_typedef(p : CParser; specs : int) : bool {
     var at = specs
     while (at >= 0) {
         return true if (p.ast.nodes[at].kind == CNode.SPEC_KEYWORD && p.ast.nodes[at].op == int(CTok.TYPEDEF))
@@ -625,187 +656,6 @@ def private declares_typedef(p : CParser; specs : int) : bool {
     return false
 }
 
-// declaration node `decl`'s types in Dumper A's order: per init-declarator its type, a typedef's
-// entry after the type it names, a function's parameters after its type; `local` in a block,
-// where a function declaration of a name declared before adds nothing
-[arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
-def private declaration(var b : CTypes; var p : CParser; decl : int; local : bool) : bool {
-    let n = p.ast.nodes[decl]
-    return true if (n.kind != CNode.DECL)
-    let typedef_decl = declares_typedef(p, n.a)
-    if (n.b < 0) {
-        return c_specifier_type(b, p, n.a) >= 0
-    }
-    var next = n.b
-    while (next >= 0) {
-        let id = next
-        next = p.ast.nodes[id].next
-        let d = p.ast.nodes[id].a
-        let sym = c_declarator_name(p.ast, d)
-        let f = c_name_function(p.ast, d)
-        return false if (!plain_attributes(b, p, p.ast.nodes[id].d))
-        let base = c_specifier_type(b, p, n.a)
-        let t = applied(b, p, base, d, false, p.ast.nodes[id].b)
-        return false if (t < 0)
-        if (typedef_decl) {
-            var td = CirType(k = "typedef", name = pp_symbol_text(p.unit.lx, sym), to = c_types_use(b, t))
-            intern(b, "typedef:{td.name}", td)
-            bind(b, sym, t)
-            continue
-        }
-        let is_function = b.pool[t].k == "func"
-        continue if (local && is_function && key_exists(b.declared, sym))
-        c_types_use(b, t)
-        if (is_function) {
-            b.declared[sym] = true
-        }
-        return false if (f >= 0 && !parameters(b, p, f))
-    }
-    return true
-}
-
-// the declarations of statement `s` and the statements under it, in source order; no expression's
-// own types (C.3), and no declaration inside an expression
-[arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
-def private statement(var b : CTypes; var p : CParser; s : int) : bool {
-    return true if (s < 0)
-    let n = p.ast.nodes[s]
-    if (n.kind == CNode.DECL) {
-        return declaration(b, p, s, true)
-    } elif (n.kind == CNode.COMPOUND) {
-        scope_open(b)
-        var item = n.a
-        var ok = true
-        while (ok && item >= 0) {
-            ok = statement(b, p, item)
-            item = p.ast.nodes[item].next
-        }
-        scope_close(b)
-        return ok
-    } elif (n.kind == CNode.IF) {
-        return statement(b, p, n.b) && statement(b, p, n.c)
-    } elif (n.kind == CNode.SWITCH || n.kind == CNode.WHILE || n.kind == CNode.LABEL) {
-        return statement(b, p, n.b)
-    } elif (n.kind == CNode.DO || n.kind == CNode.DEFAULT) {
-        return statement(b, p, n.a)
-    } elif (n.kind == CNode.CASE) {
-        return statement(b, p, n.c)
-    } elif (n.kind == CNode.FOR) {
-        scope_open(b)
-        let ok = statement(b, p, n.a) && statement(b, p, n.d)
-        scope_close(b)
-        return ok
-    }
-    return true
-}
-
-// the declaration in list `old` that has declarator `d`
-def private declaration_of(p : CParser; old, d : int) : int {
-    var at = old
-    while (at >= 0) {
-        var id = p.ast.nodes[at].b
-        while (id >= 0) {
-            return at if (p.ast.nodes[id].a == d)
-            id = p.ast.nodes[id].next
-        }
-        at = p.ast.nodes[at].next
-    }
-    return -1
-}
-
-// function definition `def_node`'s types: its type (an old-style one's parameters are its
-// declared ones under the default argument promotions, as clang types it), then each parameter's
-// in the order the declarator lists them, then its body's declarations
-[arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
-def private definition(var b : CTypes; var p : CParser; def_node : int) : bool {
-    let n = p.ast.nodes[def_node]
-    let d = p.ast.nodes[n.b].a
-    let f = c_name_function(p.ast, d)
-    var typed : array<int>
-    if (p.ast.nodes[f].op == 2) {
-        var param = p.ast.nodes[f].b
-        while (param >= 0) {
-            let typing = p.ast.nodes[param].b
-            let old = declaration_of(p, n.c, typing)
-            let pt = parameter_type(b, p, p.ast.nodes[old].a, typing)
-            return false if (pt < 0)
-            typed |> push(pt)
-            b.old_style |> push(c_promoted(b, pt))
-            param = p.ast.nodes[param].next
-        }
-    }
-    let base = c_specifier_type(b, p, n.a)
-    let t = applied(b, p, base, d, false)
-    b.old_style |> clear()
-    return false if (c_types_use(b, t) < 0)
-    b.declared[c_declarator_name(p.ast, d)] = true
-    if (p.ast.nodes[f].op != 2) {
-        return parameters(b, p, f) && statement(b, p, n.d)
-    }
-    for (pt in typed) {
-        c_types_use(b, pt)
-    }
-    return statement(b, p, n.d)
-}
-
-// whether external declaration `decl` stands in a file under the own libc headers' folder
-def private in_library(b : CTypes; var p : CParser; decl : int) : bool {
-    return false if (empty(b.library_dir))
-    let file = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
-    return starts_with(file, b.library_dir)
-}
-
-// a library declaration, which adds no type: its typedef names bound to their pool types (or,
-// for one the builder does not type, to why), its function names declared
-[arch(at="ARCHITECTURE_TYPES.md#c-types-library")]
-def private library_declaration(var b : CTypes; var p : CParser; decl : int) {
-    let n = p.ast.nodes[decl]
-    if (n.kind == CNode.FUNC_DEF) {
-        b.declared[c_declarator_name(p.ast, p.ast.nodes[n.b].a)] = true
-        return
-    }
-    return if (n.kind != CNode.DECL)
-    let typedef_decl = declares_typedef(p, n.a)
-    var id = n.b
-    while (id >= 0) {
-        let d = p.ast.nodes[id].a
-        let sym = c_declarator_name(p.ast, d)
-        if (!typedef_decl) {
-            b.declared[sym] = true
-        } else {
-            let t = applied(b, p, c_specifier_type(b, p, n.a), d, false)
-            if (t >= 0) {
-                bind(b, sym, t)
-                b.untyped |> erase(sym)
-            } else {
-                b.typedefs |> erase(sym)
-                b.untyped[sym] = b.err
-                b.err = ""
-            }
-        }
-        id = p.ast.nodes[id].next
-    }
-}
-
-//! The type table of unit node `u`, which `c_unit` built: every declaration's types, in the order
-//! Dumper A's walk first uses them (`ARCHITECTURE_TYPES.md`); false with `err` set at the first
-//! construct the builder does not type yet. Under the msvc dialect `size_t`, which clang declares
-//! there before the unit, is `unsigned long long`.
-[arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
-def c_types_unit(var b : CTypes; var p : CParser; u : int) : bool {
-    if (is_msvc(b.tu.target)) {
-        bind(b, c_symbol(p.unit, "size_t"), int_type(b, b.tu.target.llong_w, false, "unsigned long long"))
-    }
-    var at = p.ast.nodes[u].a
-    while (empty(b.err) && at >= 0) {
-        if (in_library(b, p, at)) {
-            library_declaration(b, p, at)
-        } elif (p.ast.nodes[at].kind == CNode.FUNC_DEF) {
-            definition(b, p, at)
-        } else {
-            declaration(b, p, at, false)
-        }
-        at = p.ast.nodes[at].next
-    }
-    return empty(b.err)
-}
+//! The `typedef` entry `t` interned by its name: one entry per name, whatever type a later
+//! typedef of the name gives it.
+def c_types_intern_typedef(var b : CTypes; var t : CirType) : int => intern(b, "typedef:{t.name}", t)

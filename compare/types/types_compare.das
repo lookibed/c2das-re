@@ -8,10 +8,11 @@ require daslib/strings_boost
 require daslib/fio
 require daslib/clargs
 require math
-require ../../frontend/c_types.das
+require ../../frontend/c_ir.das
 require ../../frontend/c_defines.das
 require ../../converter/cir.das
 require ../../converter/dumper_a.das
+require ../../metrics/conversion_census_count.das
 
 //! The type-table comparison of Dumper C's builder, `frontend/c_types.das`, with Dumper A
 //! (`compare/types/ARCHITECTURE.md`): one unit dumped by Dumper A and preprocessed by clang for the
@@ -54,107 +55,6 @@ def has_aggregate(types : array<CirType>) : bool {
     return false
 }
 
-// the walk that orders Dumper A's declaration types: the names reached, each once
-struct private OrderWalk {
-    names : array<string>
-    seen : table<string; bool>
-}
-
-// type `idx` of `types` reached: its parts first, as a spelling is read, then itself
-def private reach(var w : OrderWalk; types : array<CirType>; idx : int) {
-    return if (idx < 0 || idx >= length(types))
-    let name = type_name(types, idx)
-    return if (key_exists(w.seen, name))
-    assume t = types[idx]
-    if (t.k == "ptr" || t.k == "typedef") {
-        reach(w, types, t.to)
-    } elif (t.k == "array") {
-        reach(w, types, t.elem)
-    } elif (t.k == "func") {
-        reach(w, types, t.ret)
-        for (x in t.params) {
-            reach(w, types, x)
-        }
-    }
-    return if (key_exists(w.seen, name))
-    w.seen[name] = true
-    w.names |> push(name)
-}
-
-// whether place `a` comes before place `b` of the same file
-def private before(a, b : CirLoc) : bool => a.line < b.line || (a.line == b.line && a.col < b.col)
-
-// declaration `j` of `tu.decls`: its type, its parameters', then its body's; `inner` the indices
-// of the declarations Dumper A put before it from its body - the statics it hoisted and the block
-// declarations of functions - each reached where its place falls among the body's statements
-def private reach_decl(var w : OrderWalk; tu : CirTu; j : int; inner : array<int>) {
-    let d = tu.decls[j]
-    reach(w, tu.types, d.t)
-    for (param in d.params) {
-        reach(w, tu.types, param.t)
-    }
-    return if (d.body == null)
-    var next = 0
-    reach_stmt(w, tu, d.body, inner, next)
-    let none : array<int>
-    for (i in range(next, length(inner))) {
-        reach_decl(w, tu, inner[i], none)
-    }
-}
-
-// statement `s` walked in source order: each declaration of `inner` that stands at or before it
-// first, a `decl` statement's type, then the statements under it
-def private reach_stmt(var w : OrderWalk; tu : CirTu; s : CirStmt?; inner : array<int>; var next : int&) {
-    return if (s == null)
-    let none : array<int>
-    while (next < length(inner) && !before(s.loc, tu.decls[inner[next]].loc)) {
-        next++
-        reach_decl(w, tu, inner[next - 1], none)
-    }
-    if (s.s == "decl") {
-        reach(w, tu.types, s.t)
-    }
-    reach_stmt(w, tu, s.init_s, inner, next)
-    for (kid in s.body) {
-        reach_stmt(w, tu, kid, inner, next)
-    }
-    reach_stmt(w, tu, s.then_s, inner, next)
-    reach_stmt(w, tu, s.else_s, inner, next)
-    reach_stmt(w, tu, s.body_s, inner, next)
-}
-
-//! The names of Dumper A's declaration-derived types in the order its walk reached them, rebuilt
-//! from `tu.decls` (`ARCHITECTURE.md#declaration-order`): each declaration's type, a function's
-//! parameters, then its body's `decl` statements and the hoisted statics and block function
-//! declarations Dumper A put in `decls` before the function, each where its place falls among
-//! the body's statements; every type's parts before it. Expression types are not reached.
-[arch(at="ARCHITECTURE.md#declaration-order")]
-def declaration_order(tu : CirTu) : array<string> {
-    var w : OrderWalk
-    let n = length(tu.decls)
-    var taken : array<bool>
-    taken |> resize(n)
-    for (j in range(n)) {
-        let f = tu.decls[j]
-        continue if (f.k != "func" || f.body == null)
-        var i = j - 1
-        while (i >= 0 && !taken[i] && tu.decls[i].loc.file == f.loc.file && before(f.loc, tu.decls[i].loc)) {
-            taken[i] = true
-            i--
-        }
-    }
-    var inner : array<int>
-    for (j in range(n)) {
-        if (taken[j]) {
-            inner |> push(j)
-            continue
-        }
-        reach_decl(w, tu, j, inner)
-        inner |> clear()
-    }
-    return <- w.names
-}
-
 //! One unit under one dialect: what each side gave and how they compare.
 struct TypesResult {
     unit : string
@@ -163,10 +63,9 @@ struct TypesResult {
     builder_error : string      //!< clang -E, the parser or the builder failed
     aggregate : bool            //!< Dumper A's table holds a record, union or enum
     whole : bool                //!< the builder's table is Dumper A's
-    declarations : bool         //!< the builder's table is Dumper A's declaration order
-    difference : string         //!< the first difference from the declaration order
-    builder_count : int
-    dumper_count : int
+    cir : bool                  //!< the builder's declarations, statements and expressions are Dumper A's
+    census : bool               //!< the conversion census of the builder's C-IR is Dumper A's
+    difference : string         //!< the first difference of each kind that differs, `; `-joined
 }
 
 //! The first difference of two name lists, "" for equal ones: the place and each side's name there.
@@ -183,13 +82,121 @@ def first_difference(ours, theirs : array<string>) : string {
     return length(ours) > n ? "entry {n}: builder {ours[n]}, Dumper A has {n} entries" : "entry {n}: Dumper A {theirs[n]}, builder has {n} entries"
 }
 
-//! The builder's table of `unit` under `target`: `clang -E` under Dumper A's flags into `work`,
-//! line markers kept, then the parser and the builder over that text, the own headers' folder
-//! as the library; `error` names the step that failed.
-def builder_table(unit, work : string; target : CirTarget; var error : string&) : array<CirType> {
-    var types : array<CirType>
+// one field of a node pair: "" when equal, else `<where>.<what>: builder <ours>, Dumper A <theirs>`
+def private field(at, what, ours, theirs : string) : string => ours == theirs ? "" : "{at}.{what}: builder {ours}, Dumper A {theirs}"
+
+// the first of a list of field differences, "" for none
+def private first_of(diffs : array<string>) : string {
+    for (d in diffs) {
+        return d if (!empty(d))
+    }
+    return ""
+}
+
+//! The first difference of expressions `ours` (in table `ot`) and `theirs` (in `tt`) at path `at`,
+//! "" for equal ones: every field the C-IR spec lists but a reference's name (C.4's), the macro
+//! fields and the source parentheses (the preprocessor's, which `clang -E` text does not carry).
+[arch(at="ARCHITECTURE.md#compared")]
+def expr_difference(ot : array<CirType>; ours : CirExpr const?; tt : array<CirType>; theirs : CirExpr const?; at : string) : string {
+    if (ours == null || theirs == null) {
+        return ours == null && theirs == null ? "" : "{at}: builder {ours == null ? "none" : ours.e}, Dumper A {theirs == null ? "none" : theirs.e}"
+    }
+    let own = first_of([field(at, "e", ours.e, theirs.e), field(at, "t", type_name(ot, ours.t), type_name(tt, theirs.t)),
+        field(at, "v", ours.v, theirs.v), field(at, "bytes", "{ours.bytes}", "{theirs.bytes}"), field(at, "op", ours.op, theirs.op),
+        field(at, "cast", "{ours.cast_kind}{ours.explicit_cast ? "!" : ""}", "{theirs.cast_kind}{theirs.explicit_cast ? "!" : ""}"),
+        field(at, "char", "{ours.is_char}", "{theirs.is_char}"), field(at, "vol", "{ours.vol}", "{theirs.vol}"),
+        field(at, "trait_v", "{ours.trait_v}", "{theirs.trait_v}"), field(at, "of_t", type_name(ot, ours.of_t), type_name(tt, theirs.of_t)),
+        field(at, "args", "{length(ours.args)}", "{length(theirs.args)}"), field(at, "items", "{length(ours.init_items)}", "{length(theirs.init_items)}")])
+    return own if (!empty(own))
+    for (i in range(length(ours.init_items))) {
+        let pos = field("{at}.item{i}", "pos", "{ours.init_items[i].pos}", "{theirs.init_items[i].pos}")
+        return pos if (!empty(pos))
+        let item = expr_difference(ot, ours.init_items[i].v, tt, theirs.init_items[i].v, "{at}.item{i}")
+        return item if (!empty(item))
+    }
+    for (i in range(length(ours.args))) {
+        let arg = expr_difference(ot, ours.args[i], tt, theirs.args[i], "{at}.arg{i}")
+        return arg if (!empty(arg))
+    }
+    return first_of([expr_difference(ot, ours.a, tt, theirs.a, "{at}.a"), expr_difference(ot, ours.b, tt, theirs.b, "{at}.b"),
+        expr_difference(ot, ours.c, tt, theirs.c, "{at}.c"), expr_difference(ot, ours.fn, tt, theirs.fn, "{at}.fn"),
+        expr_difference(ot, ours.base, tt, theirs.base, "{at}.base"), expr_difference(ot, ours.i, tt, theirs.i, "{at}.i"),
+        expr_difference(ot, ours.init, tt, theirs.init, "{at}.init")])
+}
+
+//! The first difference of statements `ours` and `theirs` at path `at`, "" for equal ones: kind,
+//! type, value, label, expressions and the statements under them; names (C.4's) and places aside.
+def stmt_difference(ot : array<CirType>; ours : CirStmt const?; tt : array<CirType>; theirs : CirStmt const?; at : string) : string {
+    if (ours == null || theirs == null) {
+        return ours == null && theirs == null ? "" : "{at}: builder {ours == null ? "none" : ours.s}, Dumper A {theirs == null ? "none" : theirs.s}"
+    }
+    let own = first_of([field(at, "s", ours.s, theirs.s), field(at, "t", type_name(ot, ours.t), type_name(tt, theirs.t)),
+        field(at, "v", "{ours.v}", "{theirs.v}"), field(at, "char", "{ours.is_char}", "{theirs.is_char}"),
+        field(at, "label", ours.label_name, theirs.label_name), field(at, "body", "{length(ours.body)}", "{length(theirs.body)}")])
+    return own if (!empty(own))
+    let exprs = first_of([expr_difference(ot, ours.init, tt, theirs.init, "{at}.init"), expr_difference(ot, ours.e, tt, theirs.e, "{at}.e"),
+        expr_difference(ot, ours.cond, tt, theirs.cond, "{at}.cond"), expr_difference(ot, ours.inc, tt, theirs.inc, "{at}.inc")])
+    return exprs if (!empty(exprs))
+    for (i in range(length(ours.body))) {
+        let kid = stmt_difference(ot, ours.body[i], tt, theirs.body[i], "{at}.{i}")
+        return kid if (!empty(kid))
+    }
+    return first_of([stmt_difference(ot, ours.init_s, tt, theirs.init_s, "{at}.init_s"), stmt_difference(ot, ours.then_s, tt, theirs.then_s, "{at}.then"),
+        stmt_difference(ot, ours.else_s, tt, theirs.else_s, "{at}.else"), stmt_difference(ot, ours.body_s, tt, theirs.body_s, "{at}.body_s")])
+}
+
+//! The first difference of units `ours` and `theirs` by their declarations in order, "" for equal
+//! ones: each declaration's kind, C name, type, linkage, parameters' types, initializer and body.
+[arch(at="ARCHITECTURE.md#compared")]
+def cir_difference(ours, theirs : CirTu) : string {
+    let n = min(length(ours.decls), length(theirs.decls))
+    for (i in range(n)) {
+        let o = ours.decls[i]
+        let t = theirs.decls[i]
+        let at = "decl {i} ({t.c_name})"
+        var own = first_of([field(at, "k", o.k, t.k), field(at, "c_name", o.c_name, t.c_name),
+            field(at, "t", type_name(ours.types, o.t), type_name(theirs.types, t.t)), field(at, "static", "{o.is_static}", "{t.is_static}"),
+            field(at, "extern", "{o.is_extern}", "{t.is_extern}"), field(at, "from_func", o.from_func, t.from_func),
+            field(at, "params", join([for (q in o.params); type_name(ours.types, q.t)], ","), join([for (q in t.params); type_name(theirs.types, q.t)], ","))])
+        if (empty(own)) {
+            own = first_of([expr_difference(ours.types, o.init, theirs.types, t.init, "{at}.init"), stmt_difference(ours.types, o.body, theirs.types, t.body, "{at}.body")])
+        }
+        return own if (!empty(own))
+    }
+    return length(ours.decls) == length(theirs.decls) ? "" : "decls: builder {length(ours.decls)}, Dumper A {length(theirs.decls)}"
+}
+
+//! The first lines of two units' conversion censuses (`metrics/conversion_census_count.das`) that
+//! differ, "" for equal censuses: each key with both counts.
+[arch(at="ARCHITECTURE.md#compared")]
+def census_difference(ours, theirs : CirTu) : string {
+    var oc, tc : ConversionCensus
+    census_tu(ours, oc)
+    census_tu(theirs, tc)
+    var keys : table<string; bool>
+    for (k in keys(oc.n)) {
+        keys[k] = true
+    }
+    for (k in keys(tc.n)) {
+        keys[k] = true
+    }
+    var listed <- [for (k in keys(keys)); k]
+    sort(listed)
+    var diffs : array<string>
+    for (k in listed) {
+        if (count_of(oc, k) != count_of(tc, k) && length(diffs) < 3) {
+            diffs |> push("{k} builder {count_of(oc, k)}, Dumper A {count_of(tc, k)}")
+        }
+    }
+    return join(diffs, " | ")
+}
+
+//! The builder's C-IR of `unit` under `target` into `tu`: `clang -E` under Dumper A's flags into
+//! `work`, line markers kept, then the parser and the builder over that text, the own headers'
+//! folder as the library; `error` names the step that failed.
+def builder_tu(unit, work : string; target : CirTarget; var tu : CirTu; var error : string&) {
     let flags <- dumper_frontend_flags(target, error)
-    return <- types if (!empty(error))
+    return if (!empty(error))
     mkdir_rec(work)
     let dialect = is_msvc(target) ? "msvc" : "linux"
     let preprocessed = path_join(work, "{base_name(unit)}.{dialect}.i")
@@ -198,7 +205,7 @@ def builder_table(unit, work : string; target : CirTarget; var error : string&) 
     var out : string
     if (run_and_capture(argv, out, 300.0) != 0) {
         error = "clang -E: {slice(out, 0, 400)}"
-        return <- types
+        return
     }
     let text = fread(preprocessed)
     var p = new CParser
@@ -207,50 +214,62 @@ def builder_table(unit, work : string; target : CirTarget; var error : string&) 
     if (p.failed) {
         error = "parser: {p.err}"
     } else {
-        var b = new CTypes
-        c_types_open(*b, target, get_full_file_name(own_include_dir()) + "/")
-        if (c_types_unit(*b, *p, u)) {
-            types <- b.tu.types
-        } else {
-            error = "builder: {b.err}"
+        var r = new CIr
+        c_ir_open(*r, target, get_full_file_name(own_include_dir()) + "/")
+        if (!c_ir_unit(*r, *p, u)) {
+            error = "builder: {r.b.err}"
         }
+        tu <- r.b.tu
         unsafe {
-            delete b
+            delete r
         }
     }
     unsafe {
         delete p
     }
-    return <- types
 }
 
-//! `unit` compared under `target`: Dumper A's dump and the builder's table, by the names of their
-//! entries, whole and against Dumper A's declaration order.
+//! `unit` compared under `target`: Dumper A's dump and the builder's C-IR, the type tables by the
+//! names of their entries, the declarations with their statements and expressions, and the
+//! conversion census.
 [arch(at="ARCHITECTURE.md#compared")]
 def compare_types(unit, work : string; target : CirTarget) : TypesResult {
     var r = TypesResult(unit = unit, dialect = is_msvc(target) ? "msvc" : "linux")
     var d = new Dumper
     dump_tu(*d, unit, target, default_clang(), DumpInputs())
     r.dumper_error = d.error
-    let failed = !empty(r.dumper_error)
-    let theirs <- failed ? array<string>() : table_names(d.tu.types)
-    let order <- failed ? array<string>() : declaration_order(d.tu)
-    r.aggregate = !failed && has_aggregate(d.tu.types)
+    if (empty(r.dumper_error)) {
+        r.aggregate = has_aggregate(d.tu.types)
+        var error : string
+        var tu : CirTu
+        builder_tu(unit, work, target, tu, error)
+        r.builder_error = error
+        if (empty(error)) {
+            let ours <- table_names(tu.types)
+            let whole = first_difference(ours, table_names(d.tu.types))
+            let cir = cir_difference(tu, d.tu)
+            let census = census_difference(tu, d.tu)
+            r.whole = empty(whole)
+            r.cir = empty(cir)
+            r.census = empty(census)
+            var diffs : array<string>
+            if (!r.whole) {
+                diffs |> push("table {whole}")
+            }
+            if (!r.cir) {
+                diffs |> push("C-IR {cir}")
+            }
+            if (!r.census) {
+                diffs |> push("census {census}")
+            }
+            r.difference = join(diffs, "; ")
+        }
+        delete_tu(tu)
+    }
     delete_tu(d.tu)
     unsafe {
         delete d
     }
-    return <- r if (!empty(r.dumper_error))
-    var error : string
-    let types <- builder_table(unit, work, target, error)
-    r.builder_error = error
-    return <- r if (!empty(error))
-    let ours <- table_names(types)
-    r.builder_count = length(ours)
-    r.dumper_count = length(theirs)
-    r.whole = empty(first_difference(ours, theirs))
-    r.difference = first_difference(ours, order)
-    r.declarations = empty(r.difference)
     return <- r
 }
 
@@ -262,16 +281,17 @@ struct TypesTotals {
     scalar : int                //!< the others: the scalar-only units
     refused : int               //!< scalar-only units the parser or the builder refused
     whole : int                 //!< scalar-only units whose whole table agrees
-    declarations : int          //!< scalar-only units whose declaration order agrees
-    differ : int                //!< scalar-only units whose declaration order differs
+    cir : int                   //!< scalar-only units whose declarations, statements and expressions agree
+    census : int                //!< scalar-only units whose conversion census agrees
+    differ : int                //!< scalar-only units where the table, the C-IR or the census differs
 }
 
 //! The line of a run's counts.
 def describe_types_totals(name : string; t : TypesTotals) : string =>
-    "{name}: {t.units} units, {t.dumper_failed} Dumper A failed, {t.aggregate} with aggregates, {t.scalar} scalar-only: {t.declarations} declaration order agrees ({t.whole} whole table), {t.differ} differ, {t.refused} refused"
+    "{name}: {t.units} units, {t.dumper_failed} Dumper A failed, {t.aggregate} with aggregates, {t.scalar} scalar-only: {t.whole} whole table, {t.cir} C-IR, {t.census} census agree; {t.differ} differ, {t.refused} refused"
 
-//! `r` counted into `t`; the line printed for it, "" for a unit whose order agrees and one with
-//! aggregates the builder refused.
+//! `r` counted into `t`; the line printed for it, "" for a unit that agrees and one with aggregates
+//! the builder refused.
 def count_types(var t : TypesTotals; r : TypesResult) : string {
     t.units++
     let head = "{r.unit} [{r.dialect}]"
@@ -286,13 +306,11 @@ def count_types(var t : TypesTotals; r : TypesResult) : string {
     if (!empty(r.builder_error)) {
         t.refused++
         return "{head}: refused: {r.builder_error}"
-    } elif (r.declarations) {
-        t.declarations++
-        if (r.whole) {
-            t.whole++
-        }
-        return ""
     }
+    t.whole += r.whole ? 1 : 0
+    t.cir += r.cir ? 1 : 0
+    t.census += r.census ? 1 : 0
+    return "" if (r.whole && r.cir && r.census)
     t.differ++
     return "{head}: differs: {r.difference}"
 }
@@ -361,7 +379,8 @@ def run_types(args : TypesArgs) : int {
         total.scalar += t.scalar
         total.refused += t.refused
         total.whole += t.whole
-        total.declarations += t.declarations
+        total.cir += t.cir
+        total.census += t.census
         total.differ += t.differ
     }
     print("{describe_types_totals("total", total)}\n")

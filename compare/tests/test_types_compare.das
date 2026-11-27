@@ -6,8 +6,8 @@ require daslib/strings_boost
 require ../types/types_compare.das
 require ../../converter/cir.das
 
-//! `compare/types/types_compare.das`: the structural names, the first difference, Dumper A's
-//! declaration order rebuilt with its hoisted declarations, a run's counts, and the fixtures of
+//! `compare/types/types_compare.das`: the structural names, the first difference of two tables, of
+//! two units' C-IR and of their conversion censuses, a run's counts, and the fixtures of
 //! `compare/types/fixtures/` through Dumper A and the builder under both dialects.
 
 let FIXTURES = "compare/types/fixtures"
@@ -42,58 +42,89 @@ def test_first_difference(t : T?) {
     t |> equal(first_difference(["a"], ["a"]), "")
 }
 
-// a statement of kind `s` at line `line` of `t.c`, of type `ty` for a `decl`
-def private stmt(s : string; line : int; ty : int = -1) : CirStmt? => new CirStmt(s = s, t = ty, loc = CirLoc(file = "t.c", line = line, col = 1))
-
-[test(description = "Dumper A's declaration order rebuilt: a typedef's target before it, a function's type and parameters before its body, and the static it hoisted and the block function it declared placed by their lines among the body's statements, nested statements included")]
-def test_declaration_order(t : T?) {
+// a unit of the sample types and one function `main` of type 5 whose body returns `e`
+def private unit_returning(var e : CirExpr?) : CirTu {
     var tu : CirTu
     tu.types <- sample_types()
-    var inner = stmt("compound", 5)
-    inner.body <- [stmt("null", 5), stmt("decl", 6, 2)]
-    var body = stmt("compound", 3)
-    body.body <- [stmt("decl", 4, 3), inner]
-    var main = new CirDecl(k = "func", t = 4, loc = CirLoc(file = "t.c", line = 3, col = 1), body = body)
-    main.params |> push(CirParam(name = "s", t = 3))
-    // a typedef; a static hoisted from main's body, line 5, and a block declaration of a function
-    // there, line 7, both ahead of main
-    tu.decls <- [new CirDecl(k = "typedefdecl", t = 6, loc = CirLoc(file = "t.c", line = 1, col = 1)),
-                 new CirDecl(k = "global", t = 7, from_func = "main", loc = CirLoc(file = "t.c", line = 5, col = 5)),
-                 new CirDecl(k = "func", t = 5, loc = CirLoc(file = "t.c", line = 7, col = 5)), main]
-    t |> equal(join(declaration_order(tu), " "), "short/16s typedef(T=short/16s) int/32s char/8u ptr(char/8u) func(int/32s;ptr(char/8u);...) array(char/8u,-1) func(short/16s;)")
-    delete_tu(tu)
+    var body = new CirStmt(s = "compound")
+    body.body |> push(new CirStmt(s = "return", e = e))
+    tu.decls |> push(new CirDecl(k = "func", c_name = "main", t = 5, body = body))
+    return <- tu
 }
 
-[test(description = "a run's counts: Dumper A failed, aggregates refused or typed, scalar-only refused, agreeing whole or by declarations, differing")]
+// `short` read from the reference `s`, then converted to `int`: an implicit cast pair
+def private read_short() : CirExpr? => new CirExpr(e = "cast", t = 0, cast_kind = "IntegralCast", a = new CirExpr(e = "cast", t = 1, cast_kind = "LValueToRValue", a = new CirExpr(e = "ref", t = 1, name = "s")))
+
+[test(description = "the C-IR comparison: equal units, then the first differing field of a declaration, a statement and an expression, a cast's kind and explicitness, a missing operand; a reference's name and the parentheses never differ")]
+def test_cir_difference(t : T?) {
+    var a <- unit_returning(read_short())
+    var b <- unit_returning(read_short())
+    t |> equal(cir_difference(a, b), "")
+    b.decls[0].body.body[0].e.a.a.name = "main__s"
+    b.decls[0].body.body[0].e.paren = true
+    t |> equal(cir_difference(a, b), "")
+    b.decls[0].body.body[0].e.cast_kind = "NoOp"
+    t |> equal(cir_difference(a, b), "decl 0 (main).body.0.e.cast: builder IntegralCast, Dumper A NoOp")
+    b.decls[0].body.body[0].e.cast_kind = "IntegralCast"
+    b.decls[0].body.body[0].e.explicit_cast = true
+    t |> equal(cir_difference(a, b), "decl 0 (main).body.0.e.cast: builder IntegralCast, Dumper A IntegralCast!")
+    b.decls[0].body.body[0].e.explicit_cast = false
+    b.decls[0].body.body[0].e.a.t = 0
+    t |> equal(cir_difference(a, b), "decl 0 (main).body.0.e.a.t: builder short/16s, Dumper A int/32s")
+    b.decls[0].body.body[0].e.a.t = 1
+    b.decls[0].body.body[0].s = "expr"
+    t |> equal(cir_difference(a, b), "decl 0 (main).body.0.s: builder return, Dumper A expr")
+    b.decls[0].body.body[0].s = "return"
+    b.decls[0].t = 4
+    t |> equal(cir_difference(a, b), "decl 0 (main).t: builder func(short/16s;), Dumper A func(int/32s;ptr(char/8u);...)")
+    b.decls[0].t = 5
+    b.decls |> push(new CirDecl(k = "global", c_name = "g", t = 0))
+    t |> equal(cir_difference(a, b), "decls: builder 1, Dumper A 2")
+    t |> equal(expr_difference(a.types, null, b.types, b.decls[0].body.body[0].e, "x"), "x: builder none, Dumper A cast")
+    delete_tu(a)
+    delete_tu(b)
+}
+
+[test(description = "the census comparison: equal censuses, then the first keys whose counts differ, both counts each")]
+def test_census_difference(t : T?) {
+    var a <- unit_returning(read_short())
+    var b <- unit_returning(read_short())
+    t |> equal(census_difference(a, b), "")
+    b.decls[0].body.body[0].e.cast_kind = "NoOp"
+    t |> success(starts_with(census_difference(a, b), "chain\tIntegralCast > LValueToRValue builder 1, Dumper A 0 | chain\tNoOp > LValueToRValue builder 0, Dumper A 1"), census_difference(a, b))
+    delete_tu(a)
+    delete_tu(b)
+}
+
+[test(description = "a run's counts: Dumper A failed, aggregates refused or typed, scalar-only refused, agreeing, differing in the table, the C-IR or the census")]
 def test_count(t : T?) {
     var n : TypesTotals
     t |> equal(count_types(n, TypesResult(unit = "a.c", dialect = "linux", dumper_error = "boom")), "a.c [linux]: Dumper A failed: boom")
     t |> equal(count_types(n, TypesResult(unit = "b.c", dialect = "msvc", aggregate = true, builder_error = "builder: x")), "")
     t |> equal(count_types(n, TypesResult(unit = "c.c", dialect = "msvc", aggregate = true)), "c.c [msvc]: aggregates in Dumper A's table, but the builder typed the unit")
     t |> equal(count_types(n, TypesResult(unit = "d.c", dialect = "linux", builder_error = "parser: y")), "d.c [linux]: refused: parser: y")
-    t |> equal(count_types(n, TypesResult(unit = "e.c", dialect = "linux", declarations = true, whole = true)), "")
-    t |> equal(count_types(n, TypesResult(unit = "f.c", dialect = "linux", declarations = true)), "")
-    t |> equal(count_types(n, TypesResult(unit = "g.c", dialect = "linux", difference = "entry 0: z")), "g.c [linux]: differs: entry 0: z")
-    t |> equal(describe_types_totals("all", n), "all: 7 units, 1 Dumper A failed, 2 with aggregates, 4 scalar-only: 2 declaration order agrees (1 whole table), 1 differ, 1 refused")
+    t |> equal(count_types(n, TypesResult(unit = "e.c", dialect = "linux", whole = true, cir = true, census = true)), "")
+    t |> equal(count_types(n, TypesResult(unit = "f.c", dialect = "linux", whole = true, cir = true, difference = "census z")), "f.c [linux]: differs: census z")
+    t |> equal(count_types(n, TypesResult(unit = "g.c", dialect = "linux", census = true, difference = "table entry 0: z")), "g.c [linux]: differs: table entry 0: z")
+    t |> equal(describe_types_totals("all", n), "all: 7 units, 1 Dumper A failed, 2 with aggregates, 4 scalar-only: 2 whole table, 2 C-IR, 2 census agree; 2 differ, 1 refused")
 }
 
-// the fixture `name` compared under `dialect` as `whole/declarations/aggregate`, the builder's
-// error after it when it has one
+// the fixture `name` compared under `dialect` as `whole/cir/census/aggregate`, the builder's error
+// or the differences after it
 def private compared(name, dialect : string) : string {
     let r = compare_types("{FIXTURES}/{name}", "compare/work/types", target_by_name(dialect))
     return "Dumper A: {r.dumper_error}" if (!empty(r.dumper_error))
-    let shape = "{r.whole}/{r.declarations}/{r.aggregate}"
-    return empty(r.builder_error) ? shape : "{shape} {r.builder_error}"
+    let shape = "{r.whole}/{r.cir}/{r.census}/{r.aggregate}"
+    return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: declarations alone agree whole, an expression type first agrees by declarations, an aggregate and a constant array size refused", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR and the census; an aggregate and a constant array size refused", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
-            t |> equal(compared("decl_order.c", dialect), "true/true/false")
-            t |> equal(compared("expr_first.c", dialect), "false/true/false")
-            t |> equal(compared("aggregate.c", dialect), "false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
-            t |> equal(compared("refused.c", dialect), "false/false/false builder: {FIXTURES}/refused.c:2:11: an array size other than an integer literal is not typed yet")
+            t |> equal(compared("conversions.c", dialect), "true/true/true/false")
+            t |> equal(compared("aggregate.c", dialect), "false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
+            t |> equal(compared("refused.c", dialect), "false/false/false/false builder: {FIXTURES}/refused.c:2:11: an array size other than an integer literal is not typed yet")
         }
     }
 }
