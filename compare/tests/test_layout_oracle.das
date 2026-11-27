@@ -1,0 +1,186 @@
+options gen2
+require dastest/testing_boost public
+require strings
+require daslib/fio
+require daslib/strings_boost
+require ../layout/layout_oracle.das
+require ../../frontend/c_layout.das
+require ../../converter/cir.das
+require ../../converter/dumper_a.das
+
+//! `compare/layout/layout_oracle.das`: clang's text AST dump read for the records' attributes, the
+//! two record lists matched, a record described and compared, and units through the pinned clang:
+//! the rule fixtures with no difference, refusals and a failing unit counted apart.
+
+// a dump of a packed record under `#pragma pack(2)` with an `aligned(8)` member, a field named
+// like a flag, an implicit anonymous member, a nested bare `aligned` union, an implicit record,
+// an `ms_struct` record with an `_Alignas(type)` member, and a declaration that is no definition
+let DUMP = "TranslationUnitDecl 0x1 <<invalid sloc>> <invalid sloc>
+|-RecordDecl 0x2 <<invalid sloc>> <invalid sloc> implicit struct __NSConstantString_tag definition
+| `-FieldDecl 0x3 <<invalid sloc>> <invalid sloc> isa 'const int *'
+|-RecordDecl 0x4 <a.c:2:1, col:60> col:8 struct S definition
+| |-MaxFieldAlignmentAttr 0x5 <<invalid sloc>> Implicit 16
+| |-PackedAttr 0x6 <col:23>
+| |-FieldDecl 0x7 <col:12, col:17> col:17 referenced used 'int'
+| | `-AlignedAttr 0x8 <col:33, col:42> aligned
+| |   `-ConstantExpr 0x9 <col:41> 'int'
+| |     |-value: Int 8
+| |     `-IntegerLiteral 0xa <col:41> 'int' 8
+| |-FieldDecl 0xb <col:20, col:27> col:24 'int'
+| | `-PackedAttr 0xc <col:40>
+| |-RecordDecl 0xd <line:3:3, col:30> col:3 union definition
+| | |-AlignedAttr 0xe <col:20> aligned
+| | | `-<<<NULL>>>
+| | `-FieldDecl 0xf <col:11, col:15> col:15 c 'char'
+| `-FieldDecl 0x10 <col:3> col:3 implicit referenced 'union S::(anonymous at a.c:3:3)'
+|-RecordDecl 0x11 <line:5:1, col:40> col:8 struct M definition
+| |-MSStructAttr 0x12 <col:20>
+| `-FieldDecl 0x13 <col:12, col:17> col:17 m 'int'
+|   `-AlignedAttr 0x14 <col:3, col:17> _Alignas 'double'
+`-RecordDecl 0x15 <line:7:1, col:8> col:8 struct F
+"
+
+[test(description = "the dump's record definitions come in order with their attributes and their members' names and attributes; clang's implicit records and declarations are left out")]
+def test_dump_records(t : T?) {
+    let records <- dump_records(DUMP)
+    t |> equal(length(records), 3)
+    t |> equal("{records[0].is_union} {records[0].packed} {records[0].pack} {records[0].aligned} {records[0].ms_struct}", "false true 2 0 false")
+    t |> equal(join([for (m in records[0].members); "{m.name}/{m.packed}/{m.aligned}"], " "), "used/false/8 /true/0 /false/0")
+    t |> equal("{records[1].is_union} {records[1].aligned} {join([for (m in records[1].members); m.name], ",")}", "true 16 c")
+    t |> equal("{records[2].ms_struct} {records[2].members[0].name} {records[2].members[0].alignas_type}", "true m true")
+    let tail <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:9> col:8 struct T definition\n  `-AlignedAttr 0x2 <col:3> aligned\n    `-ConstantExpr 0x3 <col:4> 'int'\n      |-value: Int 4\n")
+    t |> equal(tail[0].aligned, 4)
+    let typed <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:9> col:8 struct T definition\n  `-AlignedAttr 0x2 <col:3> _Alignas 'long'\n")
+    t |> success(typed[0].alignas_type)
+}
+
+def private laid_record(names : array<string>; is_union : bool = false) : LaidRecord {
+    return <- LaidRecord(is_union = is_union, size = 4l, align = 4l, at = "a.c:1:8",
+                         members <- [for (name in names); LaidMember(name = name, size = 4l, align = 4, off = 0l)])
+}
+
+def private dump_record(names : array<string>; is_union : bool = false) : DumpRecord =>
+    <- DumpRecord(is_union = is_union, members <- [for (name in names); DumpMember(name = name)])
+
+[test(description = "the two lists are matched by kind and member names in order, a record the dump lacks within the window matched to none")]
+def test_match_records(t : T?) {
+    let ours <- [laid_record(["a"]), laid_record(["x"]), laid_record(["b"], true), laid_record(["c"])]
+    let theirs <- [dump_record(["a"]), dump_record(["b"]), dump_record(["skipped"]), dump_record(["b"], true), dump_record(["c"])]
+    t |> equal(join([for (m in match_records(ours, theirs, 16)); "{m}"], " "), "0 -1 3 4")
+    t |> equal(join([for (m in match_records(ours, theirs, 1)); "{m}"], " "), "0 -1 -1 -1")
+}
+
+[test(description = "a record is described from libclang's members and the dump's attributes, or not at all with the reason")]
+def test_describe_record(t : T?) {
+    var rec = laid_record(["a", ""])
+    var dump = dump_record(["a", ""])
+    dump.pack = 2
+    dump.members[1].aligned = 8
+    var desc : CLayoutRecord
+    var required : table<string; int>
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "")
+    t |> equal("{desc.dialect} {desc.pack} {desc.at} {length(desc.members)} {desc.members[1].aligned}", "linux 2 a.c:1:8 2 8")
+    rec.members[0].typedef_required = true
+    rec.members[0].desugared_align = 8
+    rec.members[1].record_key = "k"
+    required["k"] = 16
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "")
+    t |> equal("{desc.members[0].align} {desc.members[0].required_align} {desc.members[1].required_align}", "4 4 16")
+    t |> equal(describe_record(rec, dump, "msvc", required, desc), "")
+    t |> equal("{desc.dialect} {desc.members[0].align} {desc.members[0].required_align}", "msvc 8 4")
+    rec.members[1].record_key = "missing"
+    t |> equal(describe_record(rec, dump, "msvc", required, desc), "a member's record has no layout of ours")
+    rec.members[1].record_key = ""
+    rec.size = -2l
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "clang gives the record no layout")
+    rec.size = 4l
+    dump.alignas_type = true
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on the record")
+    dump.alignas_type = false
+    dump.members[0].alignas_type = true
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on a member")
+    dump.members[0].alignas_type = false
+    rec.members[1].off = -1l
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "an anonymous member that makes no name visible")
+}
+
+[test(description = "a difference in size, alignment or any member's offset is one line each")]
+def test_layout_differences(t : T?) {
+    let rec = laid_record(["a", ""])
+    var layout = CRecordLayout(size = 4l, align = 4)
+    layout.offsets |> push_from([0l, 0l])
+    t |> equal(length(layout_differences(rec, layout)), 0)
+    layout.size = 8l
+    layout.align = 8
+    layout.offsets[0] = 32l
+    layout.offsets[1] = 8l
+    t |> equal(join(layout_differences(rec, layout), "; "), "size clang 4 ours 8; align clang 4 ours 8; a at bit clang 0 ours 32; (unnamed) at bit clang 0 ours 8")
+}
+
+[test(description = "the rule fixtures agree with clang on every record; a refused record, a header's record met twice and a unit clang rejects are counted apart", timeout = 1200)]
+def test_units(t : T?) {
+    var error : string
+    let flags <- dumper_frontend_flags(target_lp64_linux(), error)
+    t |> equal(error, "")
+    var rules = LayoutTotals()
+    var seen : table<string; bool>
+    let corpus <- layout_corpus(".", "rules", "linux", error)
+    for (unit in corpus.units) {
+        compare_layout_unit(unit, "linux", flags, seen, rules)
+    }
+    t |> equal(describe_layout_totals("rules", rules), "rules: 2 units (0 clang failures), 69 records: 69 agree, 0 differ, 0 refused, 0 undescribed []")
+    let msvc_flags <- dumper_frontend_flags(target_llp64_msvc(), error)
+    var msvc_rules = LayoutTotals()
+    var msvc_seen : table<string; bool>
+    let msvc_corpus <- layout_corpus(".", "rules", "msvc", error)
+    for (unit in msvc_corpus.units) {
+        compare_layout_unit(unit, "msvc", msvc_flags, msvc_seen, msvc_rules)
+    }
+    t |> equal(describe_layout_totals("rules", msvc_rules), "rules: 3 units (0 clang failures), 95 records: 95 agree, 0 differ, 0 refused, 0 undescribed []")
+    let dir = test_temp_dir()
+    let header = path_join(dir, "shared.h")
+    fwrite(header, "struct H \{ char c; int i; \};\n")
+    let first = path_join(dir, "first.c")
+    fwrite(first, "#include \"shared.h\"\ntypedef int v4 __attribute__((vector_size(16)));\nstruct V \{ v4 v; \};\nstruct __attribute__((ms_struct)) W \{ int a; \};\nstruct B \{ int x : 3; \} __attribute__((aligned));\ntypedef struct Fwd Fwd;\nstruct Fwd \{ int a; \};\nstruct UsesFwd \{ Fwd f; \};\n")
+    let second = path_join(dir, "second.c")
+    fwrite(second, "#include \"shared.h\"\nstruct Anon \{ struct \{ int : 3; \}; int b; \};\n")
+    let broken = path_join(dir, "broken.c")
+    fwrite(broken, "int broken = ;\n")
+    var totals = LayoutTotals()
+    var seen_here : table<string; bool>
+    var with_dir <- clone_to_move(flags)
+    with_dir |> push("-I{dir}")
+    for (unit in fixed_array(first, second, broken)) {
+        compare_layout_unit(unit, "linux", with_dir, seen_here, totals)
+    }
+    t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 8 records: 5 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]")
+    t |> success(length(totals.lines) == 1 && find(totals.lines[0], "broken.c: clang: ") >= 0, join(totals.lines, "\n"))
+}
+
+[test(description = "a corpus is known by name and found under the root, never empty by absence; a run over an unknown one fails")]
+def test_corpora(t : T?) {
+    var error : string
+    let unknown <- layout_corpus(".", "nothing", "linux", error)
+    t |> equal(error, "unknown corpus 'nothing': rules, c-testsuite, gcc-torture, lua or doom")
+    for (name in fixed_array("c-testsuite", "gcc-torture", "lua", "doom")) {
+        error = ""
+        let missing <- layout_corpus("/no/such/root", name, "linux", error)
+        t |> success(error |> starts_with("corpus {name}: /no/such/root/") && error |> ends_with(" is missing"), error)
+    }
+    let root = test_temp_dir()
+    let torture = path_join(root, "suites/gcc_torture/fetch/gcc/gcc/testsuite/gcc.c-torture/execute")
+    mkdir_rec(torture)
+    mkdir_rec(path_join(root, "lua/fetch/lua-5.4.8/src"))
+    mkdir_rec(path_join(root, "doom/fetch/PureDOOM/src/DOOM"))
+    fwrite(path_join(root, "suites/gcc_torture/expected_pass.txt"), "# head\n\nb-1\na-2\n")
+    error = ""
+    let listed <- layout_corpus(root, "gcc-torture", "linux", error)
+    t |> equal(error, "")
+    t |> equal(join([for (u in listed.units); base_name(u)], " "), "b-1.c a-2.c")
+    let lua <- layout_corpus(root, "lua", "linux", error)
+    t |> equal(join(lua.extra, " "), "-DLUA_USE_JUMPTABLE=0")
+    let doom <- layout_corpus(root, "doom", "linux", error)
+    t |> success(doom.extra[0] |> starts_with("-I") && length(doom.extra) == 7)
+    t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["nothing"])), 1)
+    t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"], dialect = "win")), 1)
+}

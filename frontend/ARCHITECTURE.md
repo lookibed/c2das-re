@@ -8,11 +8,14 @@ sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - 
 lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
 `#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
 C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
-statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23), the type
+statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and
+`ARCHITECTURE_STATEMENTS.md`, section 23), the type
 table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the
 expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29
 to 36), with the names and places it gives (`ARCHITECTURE_NAMES.md`, sections 37 to 39), and
-the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 40). No converter pass calls the preprocessor, the parser or the C-IR builder yet.
+the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 40), and the record layout of
+`ARCHITECTURE_LAYOUT.md` and `ARCHITECTURE_LAYOUT_MSVC.md` (sections 50 to 56). No converter pass
+calls the preprocessor, the parser, the C-IR builder or the layout yet.
 
 ## 1. File charters
 
@@ -69,6 +72,15 @@ the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 40). No conv
 - `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
   block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
   forms, and a unit with real bodies with its allocation probe.
+- `c_layout.das` - the record layout of a dialect (`ARCHITECTURE_LAYOUT.md`, the `msvc` rules in
+  `ARCHITECTURE_LAYOUT_MSVC.md`): a record's size, alignment and member bit offsets from a
+  description of its members, and the record written into a C-IR type with the `packed` verdict of
+  `converter/bit_units.das`, which it requires. It reads no C text: the type builder describes the
+  record.
+- `tests/test_c_layout.das` - every layout rule of both dialects with clang's numbers for a record
+  of `compare/layout/fixtures/rules.c` or `fixtures/msvc/rules_msvc.c`, every refusal with its
+  message, and the C-IR write with its `packed` verdicts. The comparison with clang over the
+  corpora is `compare/layout/`.
 - `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, the text the
   parser tests read.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and
