@@ -38,47 +38,101 @@ struct ParseResult {
     differences : array<Difference>
     lines : int
     skipped : array<string>
+    not_compared : array<string>    //!< one reason per thing the oracle cannot compare (`ARCHITECTURE.md#compared`)
     parser_lines : array<string>    //!< the parser's side, whole
     clang_lines : array<string>     //!< clang's side, whole
 }
 
+// the ends of the runs of `b` from `j` that a `?` may stand for: an array size's (the `?` right
+// after `[`) is any text up to the `]` that closes it; any other is one part of a type, a run with
+// its parentheses and brackets balanced and none of `,`, `*`, `[`, `]`, `)` outside them; never a
+// `"`, never empty
+def private wildcard_ends(b : array<uint8>#; j : int; size : bool) : array<int> {
+    var ends : array<int>
+    var depth = 0
+    var at = j
+    while (at < length(b)) {
+        let c = int(b[at])
+        break if (c == '"' || (depth == 0 && (c == ']' || c == ')' || (!size && (c == ',' || c == '*' || c == '[')))))
+        depth += (c == '(' || c == '[') ? 1 : (c == ')' || c == ']') ? -1 : 0
+        at++
+        if (depth == 0) {
+            ends |> push(at)
+        }
+    }
+    return <- ends
+}
+
+def private match_from(a, b : array<uint8>#; i0, j0 : int) : bool {
+    var i = i0
+    var j = j0
+    while (i < length(a)) {
+        if (a[i] == uint8('?')) {
+            let size = i > 0 && a[i - 1] == uint8('[')
+            for (stop in wildcard_ends(b, j, size)) {
+                return true if (match_from(a, b, i + 1, stop))
+            }
+            return false
+        }
+        return false if (j >= length(b) || a[i] != b[j])
+        i++
+        j++
+    }
+    return j == length(b)
+}
+
 //! Whether line `ours` (the parser's) matches `theirs` (clang's): equal, where each `?` of `ours`
-//! stands for any run of characters with no `"` in `theirs` - a type, or a part of one, the tree
-//! alone cannot spell (`ARCHITECTURE.md#compared`).
+//! stands for one part of a type the tree alone cannot spell - a run of `theirs` with balanced
+//! parentheses and none of `,`, `*`, `[`, `]`, `)` outside them - or, right after `[`, for an
+//! array's size (`ARCHITECTURE.md#compared`).
 [arch(at="ARCHITECTURE.md#compared")]
 def lines_match(ours, theirs : string) : bool {
     var matched = false
     peek_data(ours) $(a) {
         peek_data(theirs) $(b) {
-            var i = 0
-            var j = 0
-            var star = -1
-            var star_j = 0
-            let n = length(a)
-            let m = length(b)
-            while (j < m) {
-                if (i < n && a[i] == uint8('?')) {
-                    star = i
-                    star_j = j
-                    i++
-                } elif (i < n && a[i] == b[j]) {
-                    i++
-                    j++
-                } elif (star >= 0 && b[star_j] != uint8('"')) {
-                    star_j++
-                    i = star + 1
-                    j = star_j
-                } else {
-                    return
-                }
-            }
-            while (i < n && a[i] == uint8('?')) {
-                i++
-            }
-            matched = i == n
+            matched = match_from(a, b, 0, 0)
         }
     }
     return matched
+}
+
+// a line's parts: up to its first type, the type, and the rest; `ok` false for a line with no type
+def private type_parts(line : string) : tuple<head : string; spelled : string; rest : string; ok : bool> {
+    let open = find(line, "\"")
+    let close = open < 0 ? -1 : find(line, "\"", open + 1)
+    return (head = line, spelled = "", rest = "", ok = false) if (close < 0)
+    return (head = slice(line, 0, open), spelled = slice(line, open + 1, close), rest = slice(line, close + 1), ok = true)
+}
+
+//! A library builtin's type as written, from clang's own (`ARCHITECTURE.md#causes`): `restrict`
+//! dropped, `__size_t` spelled `size_t`, the decayed `va_list` and `jmp_buf` spelled by their
+//! typedef names.
+def builtin_as_written(spelled : string) : string {
+    var t = replace(replace(spelled, "restrict ", ""), " restrict", "")
+    t = replace(t, "*restrict", "*")
+    t = replace(t, "__size_t", "size_t")
+    t = replace(t, "struct __va_list_tag *", "va_list")
+    return replace(t, "struct __jmp_buf_tag *", "jmp_buf")
+}
+
+//! The cause that explains the difference of the parser's line `ours` from clang's `theirs`, "" for
+//! none (`ARCHITECTURE.md#causes`): a named cause explains only a difference of the declaration's
+//! type, every other part of the lines equal, and only a difference of its shape - a library
+//! builtin's type equal to the written one once `builtin_as_written`, a redeclaration's type equal
+//! to the earlier declaration's (`prior`).
+[arch(at="ARCHITECTURE.md#causes")]
+def explained_by(ours : string; theirs : FormLine) : string {
+    return "" if (empty(theirs.cause))
+    let mine = type_parts(ours)
+    let clang = type_parts(theirs.text)
+    return "" if (!mine.ok || !clang.ok || mine.head != clang.head || !lines_match(mine.rest, clang.rest))
+    if (theirs.cause == LIBRARY_BUILTIN && lines_match(builtin_as_written(mine.spelled), builtin_as_written(clang.spelled))) {
+        return LIBRARY_BUILTIN
+    }
+    if (theirs.cause == MERGED_REDECLARATION && clang.spelled == theirs.prior) {
+        return MERGED_REDECLARATION
+    }
+    return ""
 }
 
 // the lines of a side with a `(file <name>)` line before each run of lines in one file
@@ -113,7 +167,7 @@ def line_differences(ours, theirs : array<FormLine>; var compared : int&) : arra
     compared = common
     for (i in range(common)) {
         continue if (lines_match(ours[i].text, theirs[i].text))
-        out |> push(Difference(line = i + 1, ours = ours[i].text, theirs = theirs[i].text, cause = theirs[i].cause))
+        out |> push(Difference(line = i + 1, ours = ours[i].text, theirs = theirs[i].text, cause = explained_by(ours[i].text, theirs[i])))
         if (head_of(ours[i].text) != head_of(theirs[i].text)) {
             compared = i
             return <- out
@@ -151,7 +205,13 @@ def compare_texts(unit, text, json : string) : ParseResult {
     var ours_lines : array<FormLine>
     for (n in parsed.items) {
         var inscope lines <- parser_lines(p, n)
-        ours_lines |> push_from(lines)
+        for (l in lines) {
+            if (empty(l.note)) {
+                ours_lines |> push(l)
+            } else {
+                result.not_compared |> push(l.note)
+            }
+        }
     }
     var theirs_lines : array<FormLine>
     for (top in clang.tops) {
@@ -214,6 +274,7 @@ struct ParseTotals {
     named_only : int                    //!< the units that differ only by causes clang's semantics name
     differences : table<string; int>    //!< the differing lines by cause, `unnamed` for none
     skipped : table<string; int>
+    not_compared : table<string; int>   //!< what the oracle cannot compare, by reason
 }
 
 def private count_into(var counts : table<string; int>; key : string) {
@@ -232,6 +293,7 @@ def operator +=(var a : ParseTotals; b : ParseTotals) {
     a.named_only += b.named_only
     merge_counts(a.differences, b.differences)
     merge_counts(a.skipped, b.skipped)
+    merge_counts(a.not_compared, b.not_compared)
 }
 
 //! The differences of `r` that no cause of clang's semantics names.
@@ -250,6 +312,9 @@ def add_result(var totals : ParseTotals; r : ParseResult) {
     for (s in r.skipped) {
         count_into(totals.skipped, s)
     }
+    for (reason in r.not_compared) {
+        count_into(totals.not_compared, reason)
+    }
 }
 
 // a table's entries as `name N`, the largest first
@@ -267,6 +332,7 @@ def describe_totals(name : string; totals : ParseTotals) : string {
         w |> write("{name}: {counts} ({totals.named_only} of them only by clang's named causes); {totals.lines} lines compared\n")
         w |> write("  differing lines by cause: {counted(totals.differences)}\n")
         w |> write("  units ended by a refused construct, by construct: {counted(totals.skipped)}\n")
+        w |> write("  not compared, by reason: {counted(totals.not_compared)}\n")
     }
 }
 
@@ -277,6 +343,9 @@ def describe_result(r : ParseResult; show : int = 3) : string {
         w |> write("{r.unit}: {r.verdict}")
         if (r.verdict == "same") {
             w |> write(" ({r.lines} lines)")
+            if (!empty(r.not_compared)) {
+                w |> write(", {length(r.not_compared)} not compared")
+            }
         } elif (r.verdict == "differs") {
             w |> write(" ({length(r.differences)} lines, {unnamed_differences(r)} with no named cause; {r.lines} lines compared)")
         } elif (!empty(r.message)) {

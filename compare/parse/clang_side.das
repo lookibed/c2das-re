@@ -13,11 +13,13 @@ require daslib/strings_boost
 //! entity a file-scope declaration declares.
 
 //! Where each physical line of a preprocessed unit stands, as its line markers place it: the byte
-//! each line starts at, and the file and line it presents.
+//! each line starts at, and the file and line it presents; and, once the tree is read, the type of
+//! each function declaration by its id, which a redeclaration's `previousDecl` names.
 struct PresumedMap {
     starts : array<int>
     files : array<string>
     lines : array<int>
+    function_types : table<string; string>
 }
 
 //! The place a byte offset of the unit stands at, as the line markers present it.
@@ -112,11 +114,15 @@ def place_of(map : PresumedMap; offset : int) : Place {
 }
 
 //! One line of the form: the file it stands in, its text, and, on clang's side, the cause clang's
-//! semantics give for a difference the line may show ("" for none).
+//! semantics give for a difference the line may show ("" for none) with, for a redeclaration, the
+//! earlier declaration's type (`prior`). A line with a `note` is no line of the form: it records
+//! one thing the oracle cannot compare, by its reason (`ARCHITECTURE.md#compared`).
 struct FormLine {
     file : string
     text : string
     cause : string
+    prior : string
+    note : string
 }
 
 //! The cause of a difference in the type of a library function clang knows as a builtin: clang
@@ -355,6 +361,63 @@ def private enumerators(js : JsonValue?; var names : array<BoundName>) {
     }
 }
 
+// whether record or enum `js` has a body: a definition's members, or enumerators
+def private has_body(js : JsonValue?) : bool {
+    return js?["completeDefinition"] ?? false if (kind_of(js) == "RecordDecl")
+    var enumerated = false
+    each_child(js) $(c) {
+        enumerated = enumerated || kind_of(c) == "EnumConstantDecl"
+    }
+    return enumerated
+}
+
+// the line of a tag declared with no body, `(tag struct S@place)`
+def private tag_line(js : JsonValue?; loc : Place) : string {
+    let what = kind_of(js) == "EnumDecl" ? "enum" : js?["tagUsed"] ?? "struct"
+    return "(tag {what} {js?["name"] ?? ""}{place_text(loc)})"
+}
+
+// the begin and end offsets of declaration `js`
+def private span_of(js : JsonValue?) : int2 => int2(offset_of(js?["range"]?["begin"]), offset_of(js?["range"]?["end"]))
+
+//! Whether child `idx` of `kids`, a record or enum with no body, is no declaration of its own: a
+//! tag a neighbouring declaration names (`struct S *p;`, `sizeof(struct S *)`), which clang lists
+//! beside that declaration, its place inside the neighbour's range. A tag standing alone
+//! (`struct S;`) is a forward declaration, a line of the form.
+[arch(at="ARCHITECTURE.md#compared")]
+def tag_of_neighbour(kids : array<JsonValue?>; idx : int) : bool {
+    let k = kind_of(kids[idx])
+    return false if ((k != "RecordDecl" && k != "EnumDecl") || has_body(kids[idx]))
+    let at = offset_of(kids[idx]?["range"]?["begin"])
+    for (j in fixed_array(idx - 1, idx + 1)) {
+        continue if (j < 0 || j >= length(kids))
+        let span = span_of(kids[j])
+        return true if (at >= span.x && at <= span.y)
+    }
+    return false
+}
+
+// the children of `js` that are declarations or statements, attributes and implicit ones left out
+def private declared_children(js : JsonValue?) : array<JsonValue?> {
+    var kids : array<JsonValue?>
+    each_child(js) $(c) {
+        if (!(c?["isImplicit"] ?? false) && !ends_with(kind_of(c), "Attr")) {
+            kids |> push(unsafe(reinterpret<JsonValue?>(c)))
+        }
+    }
+    return <- kids
+}
+
+// the types of every function declaration of `js`, by id, into `types`
+def private function_types(js : JsonValue?; var types : table<string; string>) {
+    if (kind_of(js) == "FunctionDecl") {
+        types[js?["id"] ?? ""] = clang_type(js?["type"]?["qualType"] ?? "")
+    }
+    each_child(js) $(c) {
+        function_types(c, types)
+    }
+}
+
 // the lines and names of the file-scope declaration `js`, a body it holds included
 def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
     var top = ClangTop(key = place_key(begin_of(map, js)))
@@ -383,9 +446,26 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
         }
         let list = empty(params) ? "" : " [{join(params, " ")}]"
         let line = "(decl {name}{place_text(loc)} {type_text(js?["type"])}{decl_flags(js)}{list})"
-        let cause = builtin ? LIBRARY_BUILTIN : present(js?["previousDecl"]) ? MERGED_REDECLARATION : ""
-        top.lines |> push(FormLine(file = loc.file, text = line, cause = cause))
+        let earlier = js?["previousDecl"] ?? ""
+        let prior = empty(earlier) ? "" : map.function_types?[earlier] ?? ""
+        let cause = builtin ? LIBRARY_BUILTIN : !empty(prior) ? MERGED_REDECLARATION : ""
+        top.lines |> push(FormLine(file = loc.file, text = line, cause = cause, prior = prior))
         top.names |> push(BoundName(name = name))
+        var defines = false
+        each_child(js) $(c) {
+            defines = defines || kind_of(c) == "CompoundStmt"
+        }
+        if (defines) {
+            // a definition's parameters, each with the type it is declared with
+            each_child(js) $(c) {
+                if (kind_of(c) == "ParmVarDecl" && !(c?["isImplicit"] ?? false)) {
+                    let pname = c?["name"] ?? ""
+                    let pat = loc_of(map, c)
+                    let head = empty(pname) ? "-" : "{pname}{place_text(pat)}"
+                    top.lines |> push(FormLine(file = loc.file, text = "(param {head} {type_text(c?["type"])})"))
+                }
+            }
+        }
         var labels : table<string; string>
         collect_labels(js, labels)
         each_child(js) $(c) {
@@ -401,8 +481,12 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
         }
         top.lines |> push(FormLine(file = at.file, text = "(static_assert{place_text(at)} {join(parts, " ")})"))
     } elif (k == "RecordDecl" || k == "EnumDecl") {
-        body_lines(map, js, top.lines)
-        enumerators(js, top.names)
+        if (has_body(js)) {
+            body_lines(map, js, top.lines)
+            enumerators(js, top.names)
+        } else {
+            top.lines |> push(FormLine(file = loc.file, text = tag_line(js, loc)))
+        }
     } else {
         let at = begin_of(map, js)
         top.lines |> push(FormLine(file = at.file, text = "(unknown {k}{place_text(at)})"))
@@ -416,30 +500,30 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
 [arch(at="ARCHITECTURE.md#compared")]
 def private body_lines(map : PresumedMap; js : JsonValue?; var lines : array<FormLine>) {
     let is_enum = kind_of(js) == "EnumDecl"
-    var enumerated = false
-    each_child(js) $(c) {
-        enumerated = enumerated || kind_of(c) == "EnumConstantDecl"
-    }
-    return if (is_enum ? !enumerated : !(js?["completeDefinition"] ?? false))
+    return if (!has_body(js))
     let loc = loc_of(map, js)
     let name = js?["name"] ?? ""
     let tag = is_enum ? "enum" : "record {js?["tagUsed"] ?? "struct"}"
     lines |> push(FormLine(file = loc.file, text = "({tag} {empty(name) ? "-" : name}{place_text(loc)})"))
-    each_child(js) $(c) {
+    let kids <- declared_children(js)
+    for (c, idx in kids, count()) {
         let ck = kind_of(c)
-        if (c?["isImplicit"] ?? false) {
-            pass
+        if ((ck == "RecordDecl" || ck == "EnumDecl") && !has_body(c)) {
+            if (!tag_of_neighbour(kids, idx)) {
+                let at = loc_of(map, c)
+                lines |> push(FormLine(file = at.file, text = tag_line(c, at)))
+            }
         } elif (ck == "RecordDecl" || ck == "EnumDecl") {
             body_lines(map, c, lines)
         } elif (ck == "FieldDecl") {
             let fname = c?["name"] ?? ""
             let at = loc_of(map, c)
-            let width <- expression_children(map, c)
+            var inscope width <- expression_children(map, c)
             let tail = empty(width) ? "" : " : {width[0]}"
             lines |> push(FormLine(file = at.file, text = "(field {empty(fname) ? "-" : fname}{place_text(at)} {type_text(c?["type"])}{tail})"))
         } elif (ck == "EnumConstantDecl") {
             let at = loc_of(map, c)
-            let value <- expression_children(map, c)
+            var inscope value <- expression_children(map, c)
             lines |> push(FormLine(file = at.file, text = "(enumerator {c?["name"] ?? ""}{place_text(at)} = {empty(value) ? "-" : value[0]})"))
         } elif (ck == "StaticAssertDecl") {
             lines |> push_from(clang_top(map, c).lines)
@@ -538,8 +622,10 @@ def clang_statement(map : PresumedMap; js : JsonValue?; labels : table<string; s
         }
         lines |> push(FormLine(file = begin.file, text = "(end)"))
     } elif (k == "DeclStmt") {
-        for (i in indexes) {
-            lines |> push_from(clang_top(map, (inner as _array)[i]).lines)
+        let kids <- declared_children(js)
+        for (idx in range(length(kids))) {
+            continue if (tag_of_neighbour(kids, idx))
+            lines |> push_from(clang_top(map, kids[idx]).lines)
         }
     } elif (k == "AttributedStmt" && length(indexes) == 1) {
         clang_statement(map, (inner as _array)[indexes[0]], labels, lines)
@@ -566,17 +652,23 @@ def clang_statement(map : PresumedMap; js : JsonValue?; labels : table<string; s
 [arch(at="ARCHITECTURE.md#compared")]
 def clang_unit(json, text, name : string) : ClangUnit {
     var unit : ClangUnit
-    let map <- presumed_map(text, name)
+    var map <- presumed_map(text, name)
     var error : string
     var js = read_json(json, error)
     if (js == null) {
         unit.error = "clang's JSON: {error}"
         return <- unit
     }
+    function_types(js, map.function_types)
+    var kids : array<JsonValue?>
     each_child(js) $(c) {
         if (!(c?["isImplicit"] ?? false) && offset_of(c?["loc"]) >= 0) {
-            unit.tops |> emplace(clang_top(map, c))
+            kids |> push(unsafe(reinterpret<JsonValue?>(c)))
         }
+    }
+    for (idx in range(length(kids))) {
+        continue if (tag_of_neighbour(kids, idx))
+        unit.tops |> emplace(clang_top(map, kids[idx]))
     }
     unsafe {
         delete js

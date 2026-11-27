@@ -70,7 +70,8 @@ def test_fixture_verdicts(t : T?) {
     let work = test_temp_dir()
     let expected <- {"expressions.c" => "same", "types.c" => "same", "typedefs.c" => "same", "static_assert.c" => "same",
                      "bodies.c" => "same", "edges.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "parser refused",
-                     "clang_refuses.c" => "clang refused", "refused.c" => "construct refused"}
+                     "clang_refuses.c" => "clang refused", "refused.c" => "construct refused", "causes.c" => "differs",
+                     "wildcards.c" => "same", "oldstyle.c" => "same", "param_bodies.c" => "same", "forward.c" => "same"}
     for (name, verdict in keys(expected), values(expected)) {
         let r <- compare_unit(path_join("compare/parse/fixtures", name), work, flags)
         t |> equal(r.verdict, verdict, "{name}: {describe_result(r)}")
@@ -154,16 +155,148 @@ def test_library_builtin_named(t : T?) {
 
 [test(description = "the walk goes on past a line pair naming one entity, and stops at a pair naming two, which no longer align")]
 def test_line_differences(t : T?) {
-    let ours <- [FormLine(text = "(decl a@1:5 \"int\")"), FormLine(text = "(decl b@2:5 \"int\")"), FormLine(text = "(decl c@3:5 \"int\")"), FormLine(text = "(decl d@4:5 \"int\")")]
-    let theirs <- [FormLine(text = "(decl a@1:5 \"long\")", cause = "x"), FormLine(text = "(decl b@2:5 \"int\")"), FormLine(text = "(decl d@4:5 \"int\")"), FormLine(text = "(decl e@5:5 \"int\")")]
+    let ours <- [FormLine(text = "(decl a@1:5 \"int ()\")"), FormLine(text = "(decl b@2:5 \"int\")"), FormLine(text = "(decl c@3:5 \"int\")"), FormLine(text = "(decl d@4:5 \"int\")")]
+    let theirs <- [FormLine(text = "(decl a@1:5 \"int (void)\")", cause = MERGED_REDECLARATION, prior = "int (void)"), FormLine(text = "(decl b@2:5 \"int\")"),
+                   FormLine(text = "(decl d@4:5 \"int\")"), FormLine(text = "(decl e@5:5 \"int\")")]
     var compared = 0
     let found <- line_differences(ours, theirs, compared)
     t |> equal(length(found), 2)
     t |> equal(found[0].line, 1)
-    t |> equal(found[0].cause, "x")
+    t |> equal(found[0].cause, MERGED_REDECLARATION)
     t |> equal(found[1].line, 3)
     t |> equal(found[1].cause, "")
     t |> equal(compared, 2)
+}
+
+[test(description = "a named cause explains only a difference of the type it names, of the shape it names: every other part equal, a builtin's type as written once clang's own spellings are undone, a redeclaration's type the earlier declaration's")]
+def test_explained_by(t : T?) {
+    let builtin = FormLine(text = "(decl memcpy@5:7 \"void *(void *restrict, const void *restrict, __size_t)\" [- - -])", cause = LIBRARY_BUILTIN)
+    t |> equal(explained_by("(decl memcpy@5:7 \"void *(void *, const void *, size_t)\" [- - -])", builtin), LIBRARY_BUILTIN)
+    t |> equal(explained_by("(decl memcpy@5:7 \"void *(void *, const void *, int)\" [- - -])", builtin), "")
+    t |> equal(explained_by("(decl memcpy@5:8 \"void *(void *, const void *, size_t)\" [- - -])", builtin), "")
+    t |> equal(explained_by("(decl memcpy@5:7 \"void *(void *, const void *, size_t)\" [- -])", builtin), "")
+    t |> equal(explained_by("(decl memcpy@5:7 \"void *(void *, const void *, size_t)\" static [- - -])", builtin), "")
+    let va = FormLine(text = "(decl v@1:5 \"int (struct __va_list_tag *, struct __jmp_buf_tag *)\")", cause = LIBRARY_BUILTIN)
+    t |> equal(explained_by("(decl v@1:5 \"int (va_list, jmp_buf)\")", va), LIBRARY_BUILTIN)
+    let merged = FormLine(text = "(decl m@7:5 \"int (void)\")", cause = MERGED_REDECLARATION, prior = "int (void)")
+    t |> equal(explained_by("(decl m@7:5 \"int ()\")", merged), MERGED_REDECLARATION)
+    t |> equal(explained_by("(decl n@7:5 \"int ()\")", merged), "")
+    let unmerged = FormLine(text = "(decl m@7:5 \"int (int)\")", cause = MERGED_REDECLARATION, prior = "int (void)")
+    t |> equal(explained_by("(decl m@7:5 \"int ()\")", unmerged), "")
+    t |> equal(explained_by("(decl m@7:5 \"int ()\")", FormLine(text = "(decl m@7:5 \"int (void)\")", cause = "elsewhere")), "")
+    t |> equal(explained_by("(static_assert@1:1 (int@1:16 1) -)", FormLine(text = "(static_assert@1:1 (int@1:16 0) -)", cause = LIBRARY_BUILTIN)), "")
+}
+
+// the `nth` occurrence (from 0) of `what` in `text` replaced by `with`
+def private replace_nth(text, what, by : string; nth : int) : string {
+    var at = -1
+    for (_ in range(nth + 1)) {
+        at = find(text, what, at + 1)
+        return text if (at < 0)
+    }
+    return slice(text, 0, at) + by + slice(text, at + length(what))
+}
+
+[test(description = "a named cause never accepts a name, a place or a type of another shape: each mutation of a builtin's or a redeclaration's line is a difference no cause names", timeout = 1200)]
+def test_named_causes_mutated(t : T?) {
+    let unit = dumped(t, "causes.c")
+    let clean <- compare_texts("causes.c", unit.text, unit.json)
+    t |> equal(clean.verdict, "differs", describe_result(clean))
+    t |> equal(length(clean.differences), 2, describe_result(clean))
+    t |> equal(unnamed_differences(clean), 0, describe_result(clean))
+    t |> equal(clean.lines, 11)
+    // the second `f`'s parameter renamed, the second `f` renamed, the builtin's type and the merged type changed
+    let renamed_param = replace_nth(unit.json, "\"name\": \"a\"", "\"name\": \"WRONG\"", 1)
+    let renamed_f = replace_nth(unit.json, "\"name\": \"f\"", "\"name\": \"g\"", 1)
+    let retyped = replace(unit.json, "__size_t)", "int)")
+    let remerged = replace_nth(unit.json, "\"qualType\": \"int (void)\"", "\"qualType\": \"int (int)\"", 1)
+    for (json in fixed_array(renamed_param, renamed_f, retyped, remerged)) {
+        t |> success(json != unit.json)
+        let r <- compare_texts("causes.c", unit.text, json)
+        t |> success(unnamed_differences(r) > 0, describe_result(r))
+    }
+}
+
+[test(description = "a ? stands for one part of a type: never for the type around it, a pointer, an array or a parameter beside it")]
+def test_wildcard_one_part(t : T?) {
+    t |> success(lines_match("(decl f \"int (?, int)\")", "(decl f \"int (typeof (1), int)\")"))
+    t |> success(!lines_match("(decl f \"int (?, int)\")", "(decl f \"void (typeof (1), float)\")"))
+    t |> success(!lines_match("(decl f \"int (?, int)\")", "(decl f \"int (int, int, int)\")"))
+    t |> success(lines_match("(decl ta \"? *[3]\")", "(decl ta \"typeof (1) *[3]\")"))
+    t |> success(!lines_match("(decl ta \"? *[3]\")", "(decl ta \"double\")"))
+    t |> success(!lines_match("(decl ta \"? *[3]\")", "(decl ta \"int * *[3]\")"))
+    t |> success(lines_match("(decl u \"? *\")", "(decl u \"struct (unnamed at u.c:1:1) *\")"))
+    t |> success(!lines_match("(decl u \"?\")", "(decl u \"int *\")"))
+    t |> success(!lines_match("(decl u \"?\")", "(decl u \"int[2]\")"))
+    t |> success(lines_match("(decl a \"int[?]\")", "(decl a \"int[n * 2]\")"))
+    t |> success(!lines_match("(decl a \"int[?]\")", "(decl a \"int[]\")"))
+    t |> success(!lines_match("(decl a \"?\")", "(decl a \"\")"))
+}
+
+[test(description = "the parts of a type around a ? are compared: a mutated return type, parameter, pointer or array, and an _Atomic pointer's type, are differences", timeout = 1200)]
+def test_wildcards_mutated(t : T?) {
+    let unit = dumped(t, "wildcards.c")
+    let clean <- compare_texts("wildcards.c", unit.text, unit.json)
+    t |> equal(clean.verdict, "same", describe_result(clean))
+    let mutations <- [("\"int (typeof (1), int)\"", "\"void (typeof (1), float)\""), ("\"typeof (1) *[3]\"", "\"double\""),
+                      ("\"_Atomic(int *) *\"", "\"_Atomic(int *)\""), ("\"_Atomic(int (*)(void))\"", "\"_Atomic(int (*)(int))\"")]
+    for (m in mutations) {
+        t |> success(find(unit.json, m._0) >= 0, m._0)
+        let r <- compare_texts("wildcards.c", unit.text, replace(unit.json, m._0, m._1))
+        t |> equal(r.verdict, "differs", m._1)
+    }
+}
+
+[test(description = "an old-style definition compares each parameter's declared type and the function's promoted type: a changed declaration-list type, on either side, is a difference", timeout = 1200)]
+def test_old_style_mutated(t : T?) {
+    let unit = dumped(t, "oldstyle.c")
+    let clean <- compare_texts("oldstyle.c", unit.text, unit.json)
+    t |> equal(clean.verdict, "same", describe_result(clean))
+    let lines = join(clean.parser_lines, "\n")
+    t |> success(find(lines, "(decl f@3:5 \"int (int, double, long)\"") >= 0, lines)
+    t |> success(find(lines, "(param a@3:21 \"char\")") >= 0, lines)
+    // the parser's text mutated in place, every offset kept: `long c` read as `char c`, `char a` as `int  a`
+    for (m in fixed_array(("long c;", "char c;"), ("char a;", "int  a;"), ("char *p;", "long *p;"))) {
+        t |> success(find(unit.text, m._0) >= 0, m._0)
+        let r <- compare_texts("oldstyle.c", replace(unit.text, m._0, m._1), unit.json)
+        t |> equal(r.verdict, "differs", m._1)
+    }
+}
+
+[test(description = "a tag body clang's JSON leaves out is counted as not compared, each occurrence; one it lists beside the declaration is compared", timeout = 1200)]
+def test_param_bodies(t : T?) {
+    let unit = dumped(t, "param_bodies.c")
+    let clean <- compare_texts("param_bodies.c", unit.text, unit.json)
+    t |> equal(clean.verdict, "same", describe_result(clean))
+    t |> equal(length([for (n in clean.not_compared); n; where n == NOT_IN_PARAMETER]), 2)
+    t |> equal(length([for (n in clean.not_compared); n; where n == NOT_IN_BLOCK]), 1)
+    var totals : ParseTotals
+    add_result(totals, clean)
+    t |> success(find(describe_totals("set", totals), "not compared, by reason: {NOT_IN_PARAMETER} 2, {NOT_IN_BLOCK} 1") >= 0, describe_totals("set", totals))
+    t |> success(find(describe_result(clean), "3 not compared") >= 0, describe_result(clean))
+    // the bodies clang lists are compared: a field renamed in the parser's text differs
+    for (m in fixed_array(("int e;", "int z;"), ("int w;", "int z;"), ("int mp;", "int mq;"), ("Q \{ int a; \}", "Q \{ int z; \}"))) {
+        t |> success(find(unit.text, m._0) >= 0, m._0)
+        let r <- compare_texts("param_bodies.c", replace(unit.text, m._0, m._1), unit.json)
+        t |> equal(r.verdict, "differs", m._1)
+    }
+}
+
+[test(description = "a tag declared with no body is a line on both sides, at file scope, in a block and in a record; a changed keyword or a dropped declaration is a difference", timeout = 1200)]
+def test_forward_tags(t : T?) {
+    let unit = dumped(t, "forward.c")
+    let clean <- compare_texts("forward.c", unit.text, unit.json)
+    t |> equal(clean.verdict, "same", describe_result(clean))
+    let lines = join(clean.clang_lines, "\n")
+    for (piece in ["(tag struct S@2:8)", "(tag union U@3:7)", "(tag enum E@4:6)", "(tag struct L@6:23)", "(tag union N@6:45)", "(tag struct In@7:24)"]) {
+        t |> success(find(lines, piece) >= 0, piece)
+    }
+    t |> equal(length([for (l in clean.clang_lines); l; where starts_with(l, "(tag ")]), 6)
+    for (m in fixed_array(("struct S;", "union  S;"), ("struct L;", "         "), ("union N;", "        "), ("struct In;", "          "))) {
+        t |> success(find(unit.text, m._0) >= 0, m._0)
+        let r <- compare_texts("forward.c", replace(unit.text, m._0, m._1), unit.json)
+        t |> equal(r.verdict, "differs", m._1)
+    }
 }
 
 [test(description = "a refusal names its place: the directive the tokens refuse, and clang's own error", timeout = 1200)]
@@ -243,7 +376,7 @@ def test_corpus_errors(t : T?) {
     error = ""
     let fixtures <- corpus_units(getcwd(), "fixtures", error)
     t |> equal(error, "")
-    t |> equal(length(fixtures), 11)
+    t |> equal(length(fixtures), 16)
     t |> equal(length(none) + length(missing), 0)
 }
 

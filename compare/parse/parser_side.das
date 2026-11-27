@@ -5,6 +5,7 @@ module parser_side public
 
 require strings
 require daslib/strings_boost
+require daslib/cmp
 require clang_side
 require ../../frontend/c_parser.das
 
@@ -174,11 +175,9 @@ def private array_size(p : CParser; n : CNodeRec) : string {
 //! The type that specifier list `specs` and declarator `d` make, as clang spells it. `decay`
 //! spells a parameter: an array adjusts to a pointer and a function to a pointer to it.
 //! `completed` marks a declarator whose initializer completes an array of no size, so its size is
-//! `?`.
+//! `?`. A part the tree cannot spell is `?` alone, the rest of the type spelled around it.
 [arch(at="ARCHITECTURE.md#compared")]
 def spell_type(var p : CParser; specs, d : int; decay, completed : bool) : string {
-    let base = base_spelling(p, specs)
-    return "?" if (base == "?")
     var chain : array<int>
     var at = d
     while (at >= 0) {
@@ -188,17 +187,32 @@ def spell_type(var p : CParser; specs, d : int; decay, completed : bool) : strin
         }
         at = n.kind == CNode.D_NAME ? -1 : n.a
     }
-    // the node nearest the name is the outermost type: the text grows from it to the base, on its
-    // left (pointers, the parentheses' opening) and on its right (suffixes, the closing)
+    // the node nearest the name is the outermost type, the first of `outward`
+    let outward <- [for (i in range(length(chain))); chain[length(chain) - 1 - i]]
+    return spell_chain(p, base_spelling(p, specs), outward, 0, decay, completed, false)
+}
+
+// the type of declarator nodes `outward[from..]`, outermost first, around the type `base`: the text
+// grows from the outermost node to the base, on its left (pointers, the parentheses' opening) and on
+// its right (suffixes, the closing). `bare` spells the node at `from` with no qualifiers: it is
+// the pointer an `_Atomic(...)` wraps, the qualifiers written outside it
+def private spell_chain(var p : CParser; base : string; outward : array<int>; from : int; decay, completed, bare : bool) : string {
     var left, right : array<string>
     var after_pointer = false
-    for (back in range(length(chain))) {
-        let n = nd(p, chain[length(chain) - 1 - back])
-        let outermost = back == 0
-        var atomic = false
+    var inner_base = base
+    for (i in range(from, length(outward))) {
+        let n = nd(p, outward[i])
+        let outermost = i == 0
         if (n.kind == CNode.D_POINTER || (outermost && decay && n.kind == CNode.D_ARRAY)) {
-            let q = qualifiers(p, n.kind == CNode.D_POINTER ? n.b : n.c, atomic)
-            return "?" if (atomic)
+            var atomic = false
+            let q = i == from && bare ? "" : qualifiers(p, n.kind == CNode.D_POINTER ? n.b : n.c, atomic)
+            if (atomic) {
+                // clang spells an `_Atomic` pointer `_Atomic(<the pointer's type>)`, its other
+                // qualifiers before it, and the outer parts around that
+                let wrapped = spell_chain(p, base, outward, i, false, completed, true)
+                inner_base = empty(q) ? "_Atomic({wrapped})" : "{q} _Atomic({wrapped})"
+                break
+            }
             // a blank parts the qualifiers from what stands left of the text, never from a suffix
             let blank = empty(q) || empty(left) ? "" : " "
             left |> push("*{q}{blank}")
@@ -217,15 +231,13 @@ def spell_type(var p : CParser; specs, d : int; decay, completed : bool) : strin
             let size = array_size(p, n)
             right |> push("[{(empty(size) && completed && outermost) ? "?" : size}]")
         } else {
-            let params = parameter_types(p, n)
-            return "?" if (params == "?")
-            right |> push("({params})")
+            right |> push("({parameter_types(p, n)})")
         }
         after_pointer = false
     }
-    return base if (empty(left) && empty(right))
+    return inner_base if (empty(left) && empty(right))
     let text = join([for (i in range(length(left))); left[length(left) - 1 - i]], "") + join(right, "")
-    return starts_with(text, "[") ? "{base}{text}" : "{base} {text}"
+    return starts_with(text, "[") ? "{inner_base}{text}" : "{inner_base} {text}"
 }
 
 // the single parameter `(void)`
@@ -235,18 +247,68 @@ def private only_void(p : CParser; f : CNodeRec) : bool {
     return nd(p, specs).kind == CNode.SPEC_KEYWORD && nd(p, specs).op == int(CTok.VOID) && nd(p, specs).next < 0
 }
 
-// the parameter types of function declarator `f` as clang spells them; "?" when one is not the
-// tree's to tell, or the list is an old-style identifier list
+//! The specifiers of the declaration in a definition's old-style declaration list whose
+//! init-declarator has declarator `d`; -1 for none.
+def old_style_specifiers(p : CParser; d : int) : int {
+    for (n in p.ast.nodes) {
+        continue if (n.kind != CNode.DECL)
+        var id = n.b
+        while (id >= 0) {
+            return n.a if (nd(p, id).a == d)
+            id = nd(p, id).next
+        }
+    }
+    return -1
+}
+
+//! The declared type of old-style parameter `ip` (an identifier list's name) as its declaration
+//! list types it, adjusted as a parameter; `int` when no declaration names it.
+def old_style_type(var p : CParser; ip : int) : string {
+    let d = nd(p, ip).b
+    return "int" if (d < 0)
+    return spell_type(p, old_style_specifiers(p, d), d, true, false)
+}
+
+// the type an old-style parameter of declared type `declared` has in its function's type: the
+// default argument promotions (C11 6.5.2.2p6), as clang writes the function's type: the integer
+// types below `int` and `_Bool` promote to `int`, `float` to `double`, a qualifier of the parameter
+// itself is dropped; a typedef name or an enum promotes by a type the tree does not hold, `?`
+def private promoted(var p : CParser; ip : int) : string {
+    let d = nd(p, ip).b
+    return "int" if (d < 0)
+    let specs = old_style_specifiers(p, d)
+    var declared = spell_type(p, specs, d, true, false)
+    var plain = true
+    var at = d
+    while (at >= 0) {
+        let k = nd(p, at).kind
+        plain = plain && (k == CNode.D_NAME || k == CNode.D_PAREN)
+        at = k == CNode.D_NAME ? -1 : nd(p, at).a
+    }
+    return declared if (!plain)
+    var t = specs
+    while (t >= 0) {
+        let k = nd(p, t).kind
+        return "?" if (k == CNode.SPEC_TYPEDEF_NAME || k == CNode.SPEC_ENUM)
+        t = nd(p, t).next
+    }
+    for (q in fixed_array("const ", "volatile ", "restrict ")) {
+        declared = replace(declared, q, "")
+    }
+    let to_int <- ["char", "signed char", "unsigned char", "short", "unsigned short", "_Bool"]
+    return "int" if (has_value(to_int, declared))
+    return declared == "float" ? "double" : declared
+}
+
+// the parameter types of function declarator `f` as clang spells them; for an old-style
+// identifier list, each parameter's promoted type
 def private parameter_types(var p : CParser; f : CNodeRec) : string {
-    return "?" if (f.op == 2)
     return "void" if (only_void(p, f))
     var parts : array<string>
     var at = f.b
     while (at >= 0) {
         let prm = nd(p, at)
-        let t = spell_type(p, prm.a, prm.b, true, false)
-        return "?" if (t == "?")
-        parts |> push(t)
+        parts |> push(f.op == 2 ? promoted(p, at) : spell_type(p, prm.a, prm.b, true, false))
         at = prm.next
     }
     if (f.op == 1) {
@@ -414,9 +476,16 @@ def private body_lines(var p : CParser; n : int; var lines : array<FormLine>) {
             lines |> push_from(parser_lines(p, item))
         } elif (m.kind == CNode.MEMBER_DECL) {
             tag_lines(p, m.a, lines)
+            if (m.b < 0) {
+                forward_line(p, m.a, lines)
+            }
             var md = m.b
             while (md >= 0) {
                 let f = nd(p, md)
+                var inscope nested : array<int>
+                collect_bodies(p, f.a, -1, nested, nested)
+                collect_bodies(p, f.b, -1, nested, nested)
+                bodies_in_order(p, nested, lines)
                 let name = name_node(p, f.a)
                 let place_tok = name >= 0 ? nd(p, name).tok : m.tok
                 let field_name = name >= 0 ? symbol(p, nd(p, name).a) : "-"
@@ -442,11 +511,148 @@ def private tag_lines(var p : CParser; specs : int; var lines : array<FormLine>)
     }
 }
 
+//! What a tag body clang's JSON leaves out stands in: a parameter of a function's own declarator
+//! (clang keeps it in the function, which its JSON does not show), or a declarator or a type name
+//! inside a function body (clang keeps it in the function's scope, not in the statement).
+let NOT_IN_PARAMETER = "a tag body in a function's own parameter declaration"
+let NOT_IN_BLOCK = "a tag body in a declarator or a type name inside a function body"
+
+// the tag bodies under node `n` (the node and the lists its fields hold), in `printed`; those in
+// the parameters of function declarator `own` itself, in `owned` (a body deeper in such a
+// parameter's declarator is in `printed`). The walk stops at a body, whose own members
+// `body_lines` reads, and at a statement expression, which is not compared
+def private collect_bodies(var p : CParser; n, own : int; var printed, owned : array<int>) {
+    return if (n < 0)
+    let node = nd(p, n)
+    let k = node.kind
+    if ((k == CNode.SPEC_RECORD || k == CNode.SPEC_ENUM) && node.b == 1) {
+        printed |> push(n)
+        return
+    }
+    return if (k == CNode.STMT_EXPR)
+    if (n == own) {
+        collect_bodies(p, node.a, own, printed, owned)
+        var prm = node.b
+        while (prm >= 0) {
+            if (nd(p, prm).kind == CNode.PARAM) {
+                var spec = nd(p, prm).a
+                while (spec >= 0) {
+                    collect_bodies(p, spec, -1, owned, owned)
+                    spec = nd(p, spec).next
+                }
+                collect_bodies(p, nd(p, prm).b, -1, printed, owned)
+            }
+            prm = nd(p, prm).next
+        }
+        return
+    }
+    let fields = fixed_array(node.a, node.b, node.c, node.d)
+    var roles : int[4]
+    peek_data(NODE_FORMS[int(k)]._1) $(form) {
+        for (i in range(4)) {
+            roles[i] = int(form[i + 1])
+        }
+    }
+    for (role, i in roles, count()) {
+        if (role == 'n') {
+            collect_bodies(p, fields[i], own, printed, owned)
+        } elif (role == 'l') {
+            var item = fields[i]
+            while (item >= 0) {
+                collect_bodies(p, item, own, printed, owned)
+                item = nd(p, item).next
+            }
+        }
+    }
+}
+
+// the body lines of tag bodies `bodies`, in the order of their tokens: the order clang declares them
+def private bodies_in_order(var p : CParser; var bodies : array<int>; var lines : array<FormLine>) {
+    sort(bodies) <| cmp_by(nd(p, _).tok)
+    for (b in bodies) {
+        body_lines(p, b, lines)
+    }
+}
+
+// a note per body of `bodies`, which the oracle cannot compare, for `reason`
+def private note_bodies(var p : CParser; bodies : array<int>; reason : string; var lines : array<FormLine>) {
+    lines |> reserve(length(lines) + length(bodies))
+    for (b in bodies) {
+        lines |> push(FormLine(file = token_place(p, nd(p, b).tok).file, note = reason))
+    }
+}
+
+// a note per tag body under expression `e` inside a function body
+def private note_expression(var p : CParser; e : int; var lines : array<FormLine>) {
+    var inscope found : array<int>
+    collect_bodies(p, e, -1, found, found)
+    note_bodies(p, found, NOT_IN_BLOCK, lines)
+}
+
+// the line of a tag declared with no body by specifier list `specs` alone (`struct S;`), none when
+// the list holds no such tag
+def private forward_line(var p : CParser; specs : int; var lines : array<FormLine>) {
+    var at = specs
+    while (at >= 0) {
+        let n = nd(p, at)
+        if ((n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) && n.b != 1 && n.a >= 0) {
+            let name_tok = tag_name_token(p, n.tok)
+            let what = n.kind == CNode.SPEC_ENUM ? "enum" : c_kind_name(n.op)
+            lines |> push(line_at(p, name_tok, "(tag {what} {symbol(p, n.a)}{place_text(token_place(p, name_tok))})"))
+        }
+        at = n.next
+    }
+}
+
+// a definition's parameter lines, each with the type it is declared with: a prototype's
+// parameters adjusted as clang adjusts them, an identifier list's names typed by the declaration
+// list
+def private parameter_lines(var p : CParser; f : int; var lines : array<FormLine>) {
+    return if (f < 0 || only_void(p, nd(p, f)))
+    var prm = nd(p, f).b
+    while (prm >= 0) {
+        let n = nd(p, prm)
+        if (n.kind == CNode.IDENT_PARAM) {
+            let named = n.b >= 0 ? name_node(p, n.b) : -1
+            let at = named >= 0 ? at_text(p, named) : at_text(p, prm)
+            lines |> push(line_at(p, n.tok, "(param {symbol(p, n.a)}{at} \"{old_style_type(p, prm)}\")"))
+        } else {
+            let pn = name_node(p, n.b)
+            let head = pn < 0 ? "-" : "{symbol(p, nd(p, pn).a)}{at_text(p, pn)}"
+            lines |> push(line_at(p, n.tok, "(param {head} \"{spell_type(p, n.a, n.b, true, false)}\")"))
+        }
+        prm = n.next
+    }
+}
+
+// init-declarator `id`'s line with the tag bodies its declarator and initializer hold: outside a
+// function body clang lists those of the declarator before the line and those of the initializer
+// after it, and keeps those of a function's own parameters, which are noted; inside a function body
+// it keeps them all, each noted
+def private declarator_lines(var p : CParser; specs, id : int; is_typedef, in_block : bool; flags : string; var lines : array<FormLine>) {
+    let init = nd(p, id)
+    let own = is_typedef ? -1 : c_name_function(p.ast, init.a)
+    var inscope before, owned, after : array<int>
+    collect_bodies(p, init.a, own, before, owned)
+    collect_bodies(p, init.b, -1, after, after)
+    note_bodies(p, owned, NOT_IN_PARAMETER, lines)
+    if (in_block) {
+        note_bodies(p, before, NOT_IN_BLOCK, lines)
+        note_bodies(p, after, NOT_IN_BLOCK, lines)
+        lines |> push(declarator_line(p, specs, id, is_typedef, flags))
+        return
+    }
+    bodies_in_order(p, before, lines)
+    lines |> push(declarator_line(p, specs, id, is_typedef, flags))
+    bodies_in_order(p, after, lines)
+}
+
 //! The lines of declaration `n`, each with the file it stands in: the bodies its specifiers hold,
-//! then one line per declarator, or the `_Static_assert`'s; a function definition's line and its
-//! body's lines.
+//! a tag it declares with no body, then one line per declarator with the bodies it holds, or the
+//! `_Static_assert`'s; a function definition's line, its parameters' lines and its body's lines.
+//! `in_block` marks a declaration inside a function body.
 [arch(at="ARCHITECTURE.md#compared")]
-def parser_lines(var p : CParser; n : int) : array<FormLine> {
+def parser_lines(var p : CParser; n : int; in_block : bool = false) : array<FormLine> {
     var lines : array<FormLine>
     let decl = nd(p, n)
     if (decl.kind == CNode.STATIC_ASSERT) {
@@ -458,14 +664,25 @@ def parser_lines(var p : CParser; n : int) : array<FormLine> {
     tag_lines(p, specs, lines)
     let flags = specifier_flags(p, specs)
     if (decl.kind == CNode.FUNC_DEF) {
-        lines |> push(declarator_line(p, specs, decl.b, false, flags))
+        declarator_lines(p, specs, decl.b, false, false, flags, lines)
+        parameter_lines(p, c_name_function(p.ast, nd(p, decl.b).a), lines)
+        var old = decl.c
+        while (old >= 0) {
+            var inscope kept : array<int>
+            collect_bodies(p, old, -1, kept, kept)
+            note_bodies(p, kept, NOT_IN_PARAMETER, lines)
+            old = nd(p, old).next
+        }
         statement_lines(p, decl.d, lines)
         return <- lines
+    }
+    if (decl.b < 0) {
+        forward_line(p, specs, lines)
     }
     let is_typedef = has_keyword(p, specs, CTok.TYPEDEF)
     var id = decl.b
     while (id >= 0) {
-        lines |> push(declarator_line(p, specs, id, is_typedef, flags))
+        declarator_lines(p, specs, id, is_typedef, in_block, flags, lines)
         id = nd(p, id).next
     }
     return <- lines
@@ -475,7 +692,7 @@ def parser_lines(var p : CParser; n : int) : array<FormLine> {
 def private item_lines(var p : CParser; n : int; var lines : array<FormLine>) {
     let k = nd(p, n).kind
     if (k == CNode.DECL || k == CNode.STATIC_ASSERT) {
-        lines |> push_from(parser_lines(p, n))
+        lines |> push_from(parser_lines(p, n, true))
     } else {
         statement_lines(p, n, lines)
     }
@@ -502,6 +719,7 @@ def statement_lines(var p : CParser; s : int; var lines : array<FormLine>) {
         }
         lines |> push(line_at(p, n.tok, "(end)"))
     } elif (k == CNode.EXPR_STMT) {
+        note_expression(p, n.a, lines)
         lines |> push(line_at(p, n.tok, "(expr{at} {parser_expression(p, n.a)})"))
     } elif (k == CNode.NULL_STMT) {
         lines |> push(line_at(p, n.tok, "(null)"))
@@ -513,21 +731,25 @@ def statement_lines(var p : CParser; s : int; var lines : array<FormLine>) {
             statement_lines(p, -1, lines)
         }
     } elif (k == CNode.CASE) {
+        note_expression(p, n.a, lines)
         lines |> push(line_at(p, n.tok, "(case{at} {parser_expression(p, n.a)} {parser_expression(p, n.b)})"))
         item_lines(p, n.c, lines)
     } elif (k == CNode.DEFAULT) {
         lines |> push(line_at(p, n.tok, "(default{at})"))
         item_lines(p, n.a, lines)
     } elif (k == CNode.IF) {
+        note_expression(p, n.a, lines)
         lines |> push(line_at(p, n.tok, "(if{at} {parser_expression(p, n.a)} {n.c >= 0 ? "else" : "-"})"))
         statement_lines(p, n.b, lines)
         if (n.c >= 0) {
             statement_lines(p, n.c, lines)
         }
     } elif (k == CNode.SWITCH || k == CNode.WHILE) {
+        note_expression(p, n.a, lines)
         lines |> push(line_at(p, n.tok, "({NODE_FORMS[int(k)]._0}{at} {parser_expression(p, n.a)})"))
         statement_lines(p, n.b, lines)
     } elif (k == CNode.DO) {
+        note_expression(p, n.b, lines)
         lines |> push(line_at(p, n.tok, "(do{at} {parser_expression(p, n.b)})"))
         statement_lines(p, n.a, lines)
     } elif (k == CNode.FOR) {
@@ -535,10 +757,17 @@ def statement_lines(var p : CParser; s : int; var lines : array<FormLine>) {
         let init = is_decl ? "decl" : parser_expression(p, n.a)
         lines |> push(line_at(p, n.tok, "(for{at} {init} {parser_expression(p, n.b)} {parser_expression(p, n.c)})"))
         if (is_decl) {
-            lines |> push_from(parser_lines(p, n.a))
+            lines |> push_from(parser_lines(p, n.a, true))
+        } else {
+            note_expression(p, n.a, lines)
         }
+        note_expression(p, n.b, lines)
+        note_expression(p, n.c, lines)
         statement_lines(p, n.d, lines)
     } else {
+        if (k == CNode.RETURN) {
+            note_expression(p, n.a, lines)
+        }
         lines |> push(line_at(p, n.tok, leaf_text(p, s)))
     }
 }

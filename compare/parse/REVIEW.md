@@ -16,6 +16,14 @@ cannot spell clang's text there, to the list of section 3, and a fixture line th
 the "Not compared" list of section 3.** An omission the document does not name reads as a
 comparison that passed.
 
+**A diff that leaves out a part of the parser's tree that clang's JSON does not show counts each
+occurrence as a `note` line with its reason, so the run's totals print it under `not compared`.**
+A part dropped in silence makes a unit `same` over a tree nothing compared.
+
+**A diff to a named cause (`explained_by`, a cause the clang side writes on a line) lets it explain
+only a difference of the type it names, in the shape section 7 lists, every other part of the line
+compared as on any line.** A cause that accepts a whole line accepts any parser defect on it.
+
 **A diff to the clang flags here takes them from Dumper A (`dumper_frontend_flags`,
 `DUMPER_FLAGS`), never writes its own.** Two flag sets compare the parser against a
 preprocessing the converter never runs.

@@ -37,8 +37,11 @@ the meaning of the program is left to it (section 3).
   `expressions.c` (every expression form, as file-scope initializers), `types.c` (type names,
   declarators, storage classes), `typedefs.c` (the typedef table's effect), `static_assert.c`,
   `bodies.c` (record and enum bodies, definitions, every statement), `edges.c` (precedence,
-  postfix chains, type names in odd places, GNU forms), all `same`; `semantic.c` (a clang semantic
-  difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
+  postfix chains, type names in odd places, GNU forms), `wildcards.c` (a `?` for one part of a
+  type), `oldstyle.c` (old-style definitions), `param_bodies.c` (tag bodies inside declarators,
+  some not compared), `forward.c` (tags declared with no body), all `same`; `semantic.c` (a clang
+  semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
+  `causes.c` (a builtin and a merged redeclaration, `differs` by named causes only);
   `refused.c` (`construct refused`); `pragma.c` (`parser refused`); `clang_refuses.c` (`clang
   refused`).
 - The tests are `compare/tests/test_parse_oracle.das`.
@@ -59,7 +62,11 @@ place is compared from two readings of the markers, the parser's and the oracle'
 Each entity a declaration declares is one line, at file scope and in a block alike. A typedef is `(typedef
 <name>@<line>:<col> "<type>")`; any other declarator is `(decl <name>@<line>:<col> "<type>"
 <flags> [<parameter names>] = <initializer>)`. A `_Static_assert` is `(static_assert@<line>:<col>
-<condition> <message>)`. The type is spelled as clang spells it. The flags are the storage class
+<condition> <message>)`. A tag declared with no body by a declaration of its own (`struct S;`, at
+file scope, in a block or in a record) is `(tag <keyword> <tag>@<place>)`; a tag a declaration
+names with no body (`struct S *p;`) has no line of its own: clang lists it beside that
+declaration, its place inside the declaration's range (`tag_of_neighbour`). The type is spelled as
+clang spells it. The flags are the storage class
 (`static`, `extern`), `thread_local` and `inline`. The parameter names, each `-` when unnamed, stand
 for a declarator that applies a function to its name and has parameters. A line `(file <name>)`
 opens each run of lines in one file.
@@ -72,7 +79,9 @@ specifiers hold comes before the members it types, as clang nests it. The field 
 anonymous member, and the names it brings into the record, are clang's and not compared; the
 member's own record body is.
 
-A function definition is its declaration's line, then its body as statements: one line per
+A function definition is its declaration's line, then one `(param <name>@<place> "<type>")` per
+parameter (`-` and no place for an unnamed one), with the type the parameter is declared with,
+adjusted as a parameter, then its body as statements: one line per
 statement in order, with its kind, place and expressions: `(compound@...)` closed by `(end)`,
 `(expr@... <e>)`, `(null)` (unplaced: clang places it at its `;`, the parser at any attribute
 before it), `(label@... <name>)`, `(case@... <value> <last>)` (`-` with no GNU range),
@@ -82,6 +91,12 @@ before it), `(label@... <name>)`, `(case@... <value> <last>)` (`-` with no GNU r
 `(asm@...)`; each statement under one follows it. A declaration in a block is its lines; a label at a
 block's end has a `(null)` statement, as clang gives it one.
 
+An old-style definition (`int f(a, b) char a; float b; {...}`) has the type clang gives it, its
+parameters' types promoted (C11 6.5.2.2p6): the integer types below `int` and `_Bool` to `int`,
+`float` to `double`, a qualifier of the parameter dropped; each parameter's line has the type its
+declaration-list entry gives it, `int` for none. A typedef name or an enum promotes by a type
+the tree does not hold (an enum's by its values), so its promoted type is `?`.
+
 The parser spells a type from its specifiers and declarator. A builtin type takes its canonical
 name (`long int signed` is `long`, `_Complex` alone is `_Complex double`), the qualifiers go
 first in the order `const volatile restrict`, and `_Atomic` wraps the type it qualifies. The
@@ -90,12 +105,17 @@ a function after it, the text in parentheses when an array or a function follows
 parameter's outermost array or function type is adjusted to a pointer, as C11 6.7.6.3p7 and p8 say
 and clang writes it. An array size is the value of an integer constant; any other size is `?`.
 
-A `?` in a parser line stands for any run of characters with no `"` in clang's line
-(`lines_match`), so it never reaches past one type. The parser writes it where the tree alone
-cannot spell clang's text: an array size that is no integer constant (clang writes its value or its
-text), an array of no size that an initializer completes, `typeof` (clang writes its operand as it
-prints it), and a pointer qualified `_Atomic`. A tag with no name has a body, which no slice of the
-parser reads yet; clang names it by its place.
+A `?` in a parser line stands for one part of a type, never the type around it (`lines_match`):
+a run of clang's line with its parentheses and brackets balanced and none of `,`, `*`, `[`, `]`,
+`)` or `"` outside them, so `int (?, int)` and `? *[3]` compare the return type, the other
+parameter, the pointer and the array, and a `?` never stands for a pointer or a parameter beside
+it; right after `[` it is an array's size, any text up to the closing `]`. The parser writes it
+where the tree alone cannot spell clang's text, for that part alone: an array size that is no
+integer constant (clang writes its value or its text), an array of no size that an initializer
+completes, the operand of `typeof` (clang writes it as it prints it), a tag with no name (below),
+and an old-style parameter's promoted type when it is a typedef name or an enum. A pointer
+qualified `_Atomic` is spelled as clang spells it, `_Atomic(int *)`, its other qualifiers before
+it and the outer parts around it.
 
 An expression is a nested form named as `c_dump` names the nodes (`frontend/ARCHITECTURE_PARSER.md`
 section 15), each with the place of its first token: an identifier with its name, an integer
@@ -105,6 +125,14 @@ its `.` or `->`, the type of a cast, a `sizeof` or `_Alignof` of a type, a compo
 
 Not compared, each for its reason:
 
+- a tag body in a parameter of a function's own declarator (`int f(struct S { int a; } p);`), and
+  any tag body in a declarator or a type name inside a function body: clang keeps the tag in the
+  function or its scope and its JSON shows no node for it. The parser's side counts each one, by
+  that reason, under `not compared` in the run's totals (`NOT_IN_PARAMETER`, `NOT_IN_BLOCK`). A
+  tag body clang lists beside a declaration outside a function body is compared: in a nested
+  declarator (`int (*fp)(struct P { int e; } q);`, a typedef's parameters, an array size) before
+  the declaration's line, in an initializer's type name after it, in a record member's declarator
+  before the field's line;
 - the value of a floating constant, a character constant and a string literal: clang writes a
   value the parser does not compute;
 - the inside of an initializer list: clang's tree holds its semantic form (members filled in,
@@ -127,12 +155,9 @@ does not know is `(unknown <name>@...)`: either differs from the other side. Cla
 call.
 
 A difference that clang's semantics make stays a difference: the parser has no way to know it, and
-the oracle does not hide it. Where clang's tree says why, the clang side names the cause on the
-line, and a difference on that line is counted under it: a declaration of a library function clang
-knows as a builtin (`BuiltinAttr`) has clang's own type, the builtin's merged with the written one
-(`__size_t` for `size_t`, `restrict` added; `builtin.c`); a function declared before has the type
-merged with the earlier declaration's (`previousDecl`), so a definition `int m() {}` after `int
-m(void);` is `int (void)` (`semantic.c`). Other known ones, which the tree does not mark: a parameter of a function or array typedef's type is adjusted to a pointer (`semantic.c`;
+the oracle does not hide it. Where clang's tree says why, the difference is counted under a named
+cause (section 7). Other known ones, which the tree does not mark: a parameter of a function or
+array typedef's type is adjusted to a pointer (`semantic.c`;
 `va_list` is an array typedef); clang keeps the parentheses of an abstract declarator in an adjusted
 parameter's type (`int ([4])` is `int (*)`); a typedef of `void` as the only parameter; an
 attribute that changes a type (`mode`).
@@ -177,3 +202,27 @@ table as `-D`, `-funsigned-char`, `-w`, `-nostdinc` and the own headers), into `
 line markers kept. Clang then dumps that output as JSON (`-Xclang -ast-dump=json -fsyntax-only`)
 under the triple, `-undef` and `DUMPER_FLAGS`, so no macro is left to expand, and the parser reads
 the same file.
+
+## 7. Named causes {#causes}
+
+A named cause explains one difference of one shape, and nothing else on the line. The clang side
+marks a function declaration's line with the cause its tree states: `BuiltinAttr`, a library
+function clang knows as a builtin, whose redeclaration has clang's own type, the builtin's merged
+with the written one; or `previousDecl`, a function declared before, whose type is merged with the
+earlier declaration's (that declaration's type rides on the line as `prior`). `explained_by`
+accepts the cause for a differing line only when everything but the declaration's type is the same
+on both sides - the name, the place, the flags, the parameter names and places, the initializer -
+and the type differs in the cause's shape alone:
+
+- a library builtin: the two types are the same once clang's own spellings are undone
+  (`builtin_as_written`): `restrict` dropped from both, `__size_t` read as `size_t`, the decayed
+  `struct __va_list_tag *` and `struct __jmp_buf_tag *` read as `va_list` and `jmp_buf`
+  (`builtin.c`, `causes.c`);
+- a redeclaration: clang's type is the earlier declaration's type as clang wrote it, so a
+  definition `int m() {}` after `int m(void);` is `int (void)` (`semantic.c`, `causes.c`). A
+  builtin's earlier declaration is clang's implicit one, so a builtin is held to its own shape.
+
+Any other difference on such a line has no cause and counts as unnamed. A difference with a
+cause is the only kind that lets the walk go on past its line, and its line names the same entity
+on both sides, so a named cause never stops the comparison of the lines after it.
+
