@@ -206,10 +206,10 @@ def builder_tu(unit, work : string; target : CirTarget; var tu : CirTu; var erro
         var r = new CIr
         c_ir_open(*r, target, get_full_file_name(own_include_dir()) + "/")
         if (!c_ir_unit(*r, *p, u)) {
-            error = "builder: {r.b.err}"
+            error = "builder: {r.err}"
         }
         delete_tu(tu)
-        tu <- r.b.tu
+        tu <- r.tu
         unsafe {
             delete r
         }

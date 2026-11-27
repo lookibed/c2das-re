@@ -90,18 +90,18 @@ def private ir_of(text : string; msvc : bool = false) : string {
     c_ir_open(*r, msvc ? target_llp64_msvc() : target_lp64_linux(), "")
     var out : array<string>
     if (c_ir_unit(*r, p, u)) {
-        for (d in r.b.tu.decls) {
+        for (d in r.tu.decls) {
             if (d.k == "global" && d.init != null) {
-                out |> push("{d.name}={shown(r.b.tu.types, d.init)}")
+                out |> push("{d.name}={shown(r.tu.types, d.init)}")
             } elif (d.k == "func") {
-                statements(r.b.tu.types, d.body, out)
+                statements(r.tu.types, d.body, out)
             }
         }
     } else {
-        out |> push("error: {r.b.err}")
+        out |> push("error: {r.err}")
     }
     let listed = join(out, " ; ")
-    delete_tu(r.b.tu)
+    delete_tu(r.tu)
     unsafe {
         delete r
     }
@@ -209,8 +209,8 @@ def test_table_order(t : T?) {
     var r = new CIr
     c_ir_open(*r, target_lp64_linux(), "")
     t |> success(c_ir_unit(*r, p, u))
-    t |> equal(join([for (ty in r.b.tu.types); c_type_key(ty)], " "), "int:8:false:char int:32:true:int void func:2::false int:16:true:short")
-    delete_tu(r.b.tu)
+    t |> equal(join([for (ty in r.tu.types); c_type_key(ty)], " "), "int:8:false:char int:32:true:int void func:2::false int:16:true:short")
+    delete_tu(r.tu)
     unsafe {
         delete r
     }

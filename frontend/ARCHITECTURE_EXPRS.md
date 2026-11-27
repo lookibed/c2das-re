@@ -81,8 +81,11 @@ rank. Rank follows the spelling (`long` above `int` at one width, `long long` ab
 
 `c_fold` evaluates an integer constant expression (C11 6.6) over typed nodes: integer and character
 literals, integer casts, `sizeof`, the unary, binary, logical and conditional operators, each step
-held in its node's type (wrapped to the width, unsigned arithmetic for unsigned operands). A
-`case` label is folded so (its `v`; a GNU range is refused), and so is an index designator. A null
+held in its node's type (wrapped to the width, unsigned arithmetic for unsigned operands).
+`c_fold_node` types a parser expression and folds it: the unit's one evaluator, for a `case`
+label (its `v`; a GNU range is refused), an index designator, and through `CTypes.fold` an array
+size (`ARCHITECTURE_TYPES.md` section 26). A typed size expression adds pool types only, as Dumper
+A's table holds the folded array type and no node of its size. A null
 pointer constant (`c_is_null`, 6.3.2.3p3) is an integer constant expression of value 0, or an
 explicit cast of one to `void *`.
 

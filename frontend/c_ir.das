@@ -15,12 +15,13 @@ require c_exprs public
 //! Open the builder over the dialect `target` with an empty unit; `library_dir` is the own libc
 //! headers' folder (`c_types_open`).
 def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
-    c_types_open(r.b, target, library_dir)
-    r.b.tu.decls |> clear()
+    c_types_open(r, target, library_dir)
+    r.tu.decls |> clear()
     r.ids |> clear()
     r.id_undo |> clear()
     r.id_marks |> clear()
     r.ret = -1
+    r.fold = @@c_fold_node
 }
 
 // the location of token `tok` as a C-IR place
@@ -49,9 +50,9 @@ def private value_of(var r : CIr; var p : CParser; n : int) : CirExpr? {
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-slots")]
 def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? {
     let n = p.ast.nodes[init]
-    let k = r.b.pool[t].k
-    let elem = k == "array" ? r.b.pool[t].elem : -1
-    let char_array = elem >= 0 && r.b.pool[elem].k == "int" && r.b.pool[elem].w == 8
+    let k = r.pool[t].k
+    let elem = k == "array" ? r.pool[t].elem : -1
+    let char_array = elem >= 0 && r.pool[elem].k == "int" && r.pool[elem].w == 8
     if (n.kind == CNode.STRING && char_array) {
         var s = c_string_literal(r, p, n.a, n.b)
         if (s != null) {
@@ -64,7 +65,7 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
     } elif (k != "array") {
         let item = n.a
         if (item < 0 || p.ast.nodes[item].next >= 0 || p.ast.nodes[item].a >= 0) {
-            c_refuse(r.b, p, n.tok, "a braced scalar initializer of other than one value")
+            c_refuse(r, p, n.tok, "a braced scalar initializer of other than one value")
             return null
         }
         return initializer(r, p, p.ast.nodes[item].b, t)
@@ -79,17 +80,16 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
     while (item >= 0) {
         let it = p.ast.nodes[item]
         if (it.a >= 0) {
-            var at = c_expr(r, p, p.ast.nodes[it.a].a)
             var v = 0l
-            if (p.ast.nodes[it.a].kind != CNode.DESIG_INDEX || p.ast.nodes[it.a].next >= 0 || at == null || !c_fold(r, at, v)) {
-                c_refuse(r.b, p, it.tok, "this designator")
+            if (p.ast.nodes[it.a].kind != CNode.DESIG_INDEX || p.ast.nodes[it.a].next >= 0 || !c_fold_node(r, p, p.ast.nodes[it.a].a, v)) {
+                c_refuse(r, p, it.tok, "this designator")
                 return null
             }
             pos = int(v)
         }
         let value = p.ast.nodes[it.b]
-        if (r.b.pool[elem].k == "array" && value.kind != CNode.INIT_LIST && value.kind != CNode.STRING) {
-            c_refuse(r.b, p, it.tok, "an initializer of an array of arrays with elided braces")
+        if (r.pool[elem].k == "array" && value.kind != CNode.INIT_LIST && value.kind != CNode.STRING) {
+            c_refuse(r, p, it.tok, "an initializer of an array of arrays with elided braces")
             return null
         }
         var v = initializer(r, p, it.b, elem)
@@ -110,6 +110,13 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
     }
     sort(x.init_items, cmp_by(_.pos))
     return x
+}
+
+// whether expression node `n` is a character constant under parentheses, as Dumper A marks a
+// `case` label's value
+def private is_char_constant(p : CParser; n : int) : bool {
+    let k = p.ast.nodes[n].kind
+    return k == CNode.CHAR || (k == CNode.PAREN && is_char_constant(p, p.ast.nodes[n].a))
 }
 
 // the name a declarator declares, as text
@@ -134,7 +141,7 @@ def private parameters(var r : CIr; var p : CParser; f : int; var into : array<C
     return true if (p.ast.nodes[f].op == 2 || c_is_void_list(p, p.ast.nodes[f].b))
     var param = p.ast.nodes[f].b
     while (param >= 0) {
-        let t = c_types_use(r.b, c_param_type(r.b, p, param))
+        let t = c_types_use(r, c_param_type(r, p, param))
         return false if (t < 0)
         into |> push(CirParam(name = name_of(p, p.ast.nodes[param].b), t = t))
         param = p.ast.nodes[param].next
@@ -157,7 +164,7 @@ def private function_id(r : CIr; p : CParser; sym, t, f : int) : CId {
 // a file-scope global `g`, merged into an earlier one of its name as Dumper A merges a tentative
 // definition: the initializer and an `extern` declaration's completed type move to the earlier one
 def private push_global(var r : CIr; var g : CirDecl?) {
-    for (prev in r.b.tu.decls) {
+    for (prev in r.tu.decls) {
         if (prev.k == "global" && prev.name == g.name && empty(prev.from_func)) {
             if (g.init != null && prev.init == null) {
                 prev.init = g.init
@@ -171,7 +178,7 @@ def private push_global(var r : CIr; var g : CirDecl?) {
             return
         }
     }
-    r.b.tu.decls |> push(g)
+    r.tu.decls |> push(g)
 }
 
 // declaration node `decl` in Dumper A's order, per init-declarator its type, then its
@@ -186,7 +193,7 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
     let is_static = has_storage(p, n.a, CTok.STATIC)
     let is_extern = has_storage(p, n.a, CTok.EXTERN)
     if (n.b < 0) {
-        return c_specifier_type(r.b, p, n.a) >= 0
+        return c_specifier_type(r, p, n.a) >= 0
     }
     var next = n.b
     while (next >= 0) {
@@ -197,32 +204,32 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         let name = pp_symbol_text(p.unit.lx, sym)
         let f = c_name_function(p.ast, d)
         let at = loc_of(p, p.ast.nodes[id].tok)
-        return false if (!c_plain_attributes(r.b, p, p.ast.nodes[id].d))
-        let base = c_specifier_type(r.b, p, n.a)
-        let t = c_declarator_type(r.b, p, base, d, false, p.ast.nodes[id].b)
+        return false if (!c_plain_attributes(r, p, p.ast.nodes[id].d))
+        let base = c_specifier_type(r, p, n.a)
+        let t = c_declarator_type(r, p, base, d, false, p.ast.nodes[id].b)
         return false if (t < 0)
         if (typedef_decl) {
-            var td = CirType(k = "typedef", name = name, to = c_types_use(r.b, t))
-            let entry = c_types_intern_typedef(r.b, td)
-            r.b.tu.decls |> push(new CirDecl(k = "typedefdecl", name = name, c_name = name, t = entry, loc = at))
-            c_types_bind(r.b, sym, t)
+            var td = CirType(k = "typedef", name = name, to = c_types_use(r, t))
+            let entry = c_types_intern_typedef(r, td)
+            r.tu.decls |> push(new CirDecl(k = "typedefdecl", name = name, c_name = name, t = entry, loc = at))
+            c_types_bind(r, sym, t)
             continue
         }
-        if (r.b.pool[t].k == "func") {
+        if (r.pool[t].k == "func") {
             let local = !empty(fn)
-            if (local && key_exists(r.b.declared, sym)) {
+            if (local && key_exists(r.declared, sym)) {
                 continue
             }
-            var cd = new CirDecl(k = "func", name = name, c_name = name, t = c_types_use(r.b, t), is_static = is_static, loc = at)
-            r.b.declared[sym] = true
+            var cd = new CirDecl(k = "func", name = name, c_name = name, t = c_types_use(r, t), is_static = is_static, loc = at)
+            r.declared[sym] = true
             c_ir_bind(r, sym, function_id(r, p, sym, t, f))
             if (f >= 0 && !parameters(r, p, f, cd.params)) {
                 return false
             }
-            r.b.tu.decls |> push(cd)
+            r.tu.decls |> push(cd)
             continue
         }
-        let ti = c_types_use(r.b, t)
+        let ti = c_types_use(r, t)
         c_ir_bind(r, sym, CId(t = t, old_style = -1))
         let init = p.ast.nodes[id].b
         var value = init >= 0 ? used(r, initializer(r, p, init, t)) : null
@@ -230,18 +237,18 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         if (empty(fn)) {
             push_global(r, new CirDecl(k = "global", name = name, c_name = name, t = ti, is_static = is_static, is_extern = is_extern && init < 0, init = value, loc = at))
         } elif (is_static) {
-            r.b.tu.decls |> push(new CirDecl(k = "global", name = "{fn}_{name}", c_name = name, t = ti, is_static = true, from_func = fn, init = value, loc = at))
+            r.tu.decls |> push(new CirDecl(k = "global", name = "{fn}_{name}", c_name = name, t = ti, is_static = true, from_func = fn, init = value, loc = at))
             into |> push(new CirStmt(s = "null", loc = at))
         } elif (is_extern) {
-            if (!key_exists(r.b.declared, sym)) {
-                r.b.tu.decls |> push(new CirDecl(k = "global", name = name, c_name = name, t = ti, is_extern = true, loc = at))
+            if (!key_exists(r.declared, sym)) {
+                r.tu.decls |> push(new CirDecl(k = "global", name = name, c_name = name, t = ti, is_extern = true, loc = at))
             }
             into |> push(new CirStmt(s = "null", loc = at))
         } else {
             into |> push(new CirStmt(s = "decl", name = name, t = ti, init = value, loc = at))
         }
         if (empty(fn) || is_extern) {
-            r.b.declared[sym] = true
+            r.declared[sym] = true
         }
     }
     return true
@@ -265,13 +272,11 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
             into |> push(new CirStmt(s = "default", loc = at))
         } else {
             var v = 0l
-            var value = c_expr(r, p, n.a)
-            if (n.b >= 0 || value == null || !c_fold(r, value, v)) {
-                c_refuse(r.b, p, n.tok, "this case label")
+            if (n.b >= 0 || !c_fold_node(r, p, n.a, v)) {
+                c_refuse(r, p, n.tok, "this case label")
                 return false
             }
-            into |> push(new CirStmt(s = "case", v = v, is_char = value.e == "int_lit" && value.is_char, loc = at))
-            delete_expr(value)
+            into |> push(new CirStmt(s = "case", v = v, is_char = is_char_constant(p, n.a), loc = at))
         }
         let sub = n.kind == CNode.LABEL ? n.b : n.kind == CNode.DEFAULT ? n.a : n.c
         if (sub < 0) {
@@ -298,7 +303,7 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
     var ok = true
     if (n.kind == CNode.COMPOUND) {
         st.s = "compound"
-        c_types_scope_open(r.b)
+        c_types_scope_open(r)
         c_ir_open(r)
         var item = n.a
         while (ok && item >= 0) {
@@ -306,7 +311,7 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
             item = p.ast.nodes[item].next
         }
         c_ir_close(r)
-        c_types_scope_close(r.b)
+        c_types_scope_close(r)
     } elif (n.kind == CNode.EXPR_STMT) {
         st.s = "expr"
         st.e = used(r, value_of(r, p, n.a))
@@ -322,11 +327,11 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.s = "return"
         if (n.a >= 0) {
             var e = c_expr(r, p, n.a)
-            st.e = e == null ? null : used(r, r.b.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, e, r.ret))
+            st.e = e == null ? null : used(r, r.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, e, r.ret))
             ok = st.e != null
         }
     } else {
-        c_refuse(r.b, p, n.tok, "this statement")
+        c_refuse(r, p, n.tok, "this statement")
         ok = false
     }
     return ok
@@ -356,7 +361,7 @@ def private branch(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         ok = st.cond != null && one(r, p, n.b, fn, st.body_s)
     } else {
         st.s = "for"
-        c_types_scope_open(r.b)
+        c_types_scope_open(r)
         c_ir_open(r)
         if (n.a >= 0 && p.ast.nodes[n.a].kind == CNode.DECL) {
             st.init_s = new CirStmt(s = "compound", loc = loc_of(p, p.ast.nodes[n.a].tok))
@@ -371,7 +376,7 @@ def private branch(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.inc = ok && n.c >= 0 ? used(r, value_of(r, p, n.c)) : null
         ok = ok && (n.c < 0 || st.inc != null) && one(r, p, n.d, fn, st.body_s)
         c_ir_close(r)
-        c_types_scope_close(r.b)
+        c_types_scope_close(r)
     }
     return ok
 }
@@ -393,10 +398,10 @@ def private statement_block(var r : CIr; var p : CParser; e : int) : int {
 
 // whether type-name node `t` names `void`
 def private is_void_name(var r : CIr; var p : CParser; t : int) : bool {
-    let saved = r.b.err
-    let ty = c_type_name_type(r.b, p, t)
-    r.b.err = saved
-    return ty >= 0 && r.b.pool[ty].k == "void"
+    let saved = r.err
+    let ty = c_type_name_type(r, p, t)
+    r.err = saved
+    return ty >= 0 && r.pool[ty].k == "void"
 }
 
 // statement node `s` as one C-IR statement into `slot`: a run of markers or declarations becomes
@@ -444,33 +449,33 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         var param = p.ast.nodes[f].b
         while (param >= 0) {
             let typing = p.ast.nodes[param].b
-            let pt = c_parameter_type(r.b, p, p.ast.nodes[declaration_of(p, n.c, typing)].a, typing)
+            let pt = c_parameter_type(r, p, p.ast.nodes[declaration_of(p, n.c, typing)].a, typing)
             return false if (pt < 0)
             typed |> push(pt)
             names |> push(pp_symbol_text(p.unit.lx, p.ast.nodes[param].a))
-            r.b.old_style |> push(c_promoted(r.b, pt))
+            r.old_style |> push(c_promoted(r, pt))
             param = p.ast.nodes[param].next
         }
     }
-    let t = c_declarator_type(r.b, p, c_specifier_type(r.b, p, n.a), d, false)
-    r.b.old_style |> clear()
-    let ti = c_types_use(r.b, t)
+    let t = c_declarator_type(r, p, c_specifier_type(r, p, n.a), d, false)
+    r.old_style |> clear()
+    let ti = c_types_use(r, t)
     return false if (ti < 0)
     var cd = new CirDecl(k = "func", name = name, c_name = name, t = ti, is_static = has_storage(p, n.a, CTok.STATIC), loc = loc_of(p, n.tok))
-    r.b.declared[sym] = true
+    r.declared[sym] = true
     if (old_style) {
         var none : array<int>
-        c_ir_bind(r, sym, CId(t = c_function(r.b, r.b.pool[t].ret, none, false), is_function = true, old_style = t))
+        c_ir_bind(r, sym, CId(t = c_function(r, r.pool[t].ret, none, false), is_function = true, old_style = t))
     } else {
         c_ir_bind(r, sym, function_id(r, p, sym, t, f))
     }
     c_ir_open(r)
-    c_types_scope_open(r.b)
+    c_types_scope_open(r)
     var ok = true
     if (old_style) {
         cd.params |> reserve(length(typed))
         for (pt, pname in typed, names) {
-            cd.params |> push(CirParam(name = pname, t = c_types_use(r.b, pt)))
+            cd.params |> push(CirParam(name = pname, t = c_types_use(r, pt)))
             c_ir_bind(r, c_symbol(p.unit, pname), CId(t = pt, old_style = -1))
         }
     } else {
@@ -479,19 +484,19 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         while (ok && param >= 0) {
             let psym = c_declarator_name(p.ast, p.ast.nodes[param].b)
             if (psym >= 0) {
-                c_ir_bind(r, psym, CId(t = c_param_type(r.b, p, param), old_style = -1))
+                c_ir_bind(r, psym, CId(t = c_param_type(r, p, param), old_style = -1))
             }
             param = p.ast.nodes[param].next
         }
     }
-    r.ret = r.b.unqualified[r.b.pool[t].ret]
+    r.ret = r.unqualified[r.pool[t].ret]
     var body : array<CirStmt?>
     ok = ok && statement(r, p, n.d, name, body)
-    c_types_scope_close(r.b)
+    c_types_scope_close(r)
     c_ir_close(r)
     if (ok) {
         cd.body = body[0]
-        r.b.tu.decls |> push(cd)
+        r.tu.decls |> push(cd)
     } else {
         delete_decl(cd)
     }
@@ -500,9 +505,9 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
 
 // whether external declaration `decl` stands in a file under the own libc headers' folder
 def private in_library(r : CIr; var p : CParser; decl : int) : bool {
-    return false if (empty(r.b.library_dir))
+    return false if (empty(r.library_dir))
     let file = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
-    return starts_with(file, r.b.library_dir)
+    return starts_with(file, r.library_dir)
 }
 
 // a library declaration, which adds no type and no declaration: its typedef names bound to their
@@ -518,41 +523,41 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
     while (id >= 0) {
         let d = p.ast.nodes[id].a
         let sym = c_declarator_name(p.ast, d)
-        let t = c_declarator_type(r.b, p, c_specifier_type(r.b, p, n.a), d, false)
+        let t = c_declarator_type(r, p, c_specifier_type(r, p, n.a), d, false)
         if (t < 0) {
             if (typedef_decl) {
-                r.b.typedefs |> erase(sym)
-                r.b.untyped[sym] = r.b.err
+                r.typedefs |> erase(sym)
+                r.untyped[sym] = r.err
             } else {
                 r.ids |> erase(sym)
             }
-            r.b.err = ""
+            r.err = ""
         } elif (typedef_decl) {
-            c_types_bind(r.b, sym, t)
-            r.b.untyped |> erase(sym)
-        } elif (r.b.pool[t].k == "func") {
-            r.b.declared[sym] = true
+            c_types_bind(r, sym, t)
+            r.untyped |> erase(sym)
+        } elif (r.pool[t].k == "func") {
+            r.declared[sym] = true
             c_ir_bind(r, sym, function_id(r, p, sym, t, c_name_function(p.ast, d)))
         } else {
-            r.b.declared[sym] = true
+            r.declared[sym] = true
             c_ir_bind(r, sym, CId(t = t, old_style = -1))
         }
         id = is_def ? -1 : p.ast.nodes[id].next
     }
 }
 
-//! The C-IR of unit node `u`, which `c_unit` built, into `r.b.tu`: its declarations, bodies and
+//! The C-IR of unit node `u`, which `c_unit` built, into `r.tu`: its declarations, bodies and
 //! expressions, and the type table in the order Dumper A's walk interns it; false with the error
 //! set at the first construct not built yet. Under the msvc dialect `size_t`, which clang declares
 //! there before the unit, is `unsigned long long`.
 [arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
 def c_ir_unit(var r : CIr; var p : CParser; u : int) : bool {
-    if (is_msvc(r.b.tu.target)) {
-        c_types_bind(r.b, c_symbol(p.unit, "size_t"), c_builtin(r.b, "unsigned long long"))
+    if (is_msvc(r.tu.target)) {
+        c_types_bind(r, c_symbol(p.unit, "size_t"), c_builtin(r, "unsigned long long"))
     }
     var none : array<CirStmt?>
     var at = p.ast.nodes[u].a
-    while (empty(r.b.err) && at >= 0) {
+    while (empty(r.err) && at >= 0) {
         if (in_library(r, p, at)) {
             library_declaration(r, p, at)
         } elif (p.ast.nodes[at].kind == CNode.FUNC_DEF) {
@@ -562,5 +567,5 @@ def c_ir_unit(var r : CIr; var p : CParser; u : int) : bool {
         }
         at = p.ast.nodes[at].next
     }
-    return empty(r.b.err)
+    return empty(r.err)
 }
