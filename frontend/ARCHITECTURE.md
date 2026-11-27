@@ -8,10 +8,11 @@ sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - 
 lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
 `#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
 C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
-statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23), the type
-table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the
-expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29
-to 36). No converter pass calls the preprocessor, the parser or the C-IR builder yet.
+statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and
+`ARCHITECTURE_STATEMENTS.md`, section 23), the type table built from the parser's tree
+(`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the expressions with their conversions and the
+unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29 to 36). No converter pass calls the
+preprocessor, the parser or the C-IR builder yet.
 
 ## 1. File charters
 
