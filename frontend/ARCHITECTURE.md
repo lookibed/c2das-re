@@ -163,7 +163,8 @@ end, and `pp_next_header_name` reads one token with a header name allowed, for t
 as they come. A token is its kind (`PpTok`), the file id, its byte offset and length in the file as
 read, its line and byte column (both from 1), `has_space`, `at_bol` and, for an identifier, its
 symbol. Its bytes are read on request: `pp_spelling` builds the string, `pp_spelling_is` compares
-in place.
+in place, and `pp_token_range` gives their offset and length in the working buffer (below) whose
+first byte is `pp_buffer_data`, for a reader that keeps a token as a byte range.
 
 The scanner is dasFlex's: `[flex(flags = true)]` builds the automaton when the module compiles and
 gives the two flags; dasFlex is fetched at its `VERSIONS.md` pin into `fetch/dasFlex/` and loaded
