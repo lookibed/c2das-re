@@ -239,7 +239,7 @@ def test_gnu_forms(t : T?) {
     t |> equal(parsed("-(int)x"), "(unary - (cast (type_name [(spec int)] -) (ident x)))")
     t |> equal(parsed("__builtin_va_arg(ap, int)"), "(va_arg (ident ap) (type_name [(spec int)] -))")
     t |> equal(parsed("__builtin_offsetof(struct S, a.b[2].c)"),
-               "(offsetof (type_name [(record struct S [])] -) [(field a) (field b) (index_desig (int 2) -) (field c)])")
+               "(offsetof (type_name [(record struct S 0 [])] -) [(field a) (field b) (index_desig (int 2) -) (field c)])")
     t |> equal(parsed("__builtin_types_compatible_p(int, T)"), "(types_compatible (type_name [(spec int)] -) (type_name [(typedef_name T)] -))")
     t |> equal(parsed("__builtin_choose_expr(1, a, b)"), "(call (ident __builtin_choose_expr) [(int 1) (ident a) (ident b)])")
     t |> equal(parsed("(typeof(x))y"), "(cast (type_name [(typeof_expr (ident x))] -) (ident y))")
@@ -247,7 +247,7 @@ def test_gnu_forms(t : T?) {
     t |> equal(parsed("(__attribute__((unused)) int)x"), "(cast (type_name [(attribute __attribute__((unused))) (spec int)] -) (ident x))")
     t |> equal(parsed("(int *__attribute__((aligned(8))) const)p"), "(cast (type_name [(spec int)] (d_pointer - [(attribute __attribute__((aligned(8)))) (spec const)])) (ident p))")
     t |> equal(parsed("(int (__attribute__((x)) *))p"), "(cast (type_name [(spec int)] (d_paren (d_pointer - []) [(attribute __attribute__((x)))])) (ident p))")
-    t |> equal(parsed("(struct __attribute__((packed)) S *)p"), "(cast (type_name [(record struct S [(attribute __attribute__((packed)))])] (d_pointer - [])) (ident p))")
+    t |> equal(parsed("(struct __attribute__((packed)) S *)p"), "(cast (type_name [(record struct S 0 [] [(attribute __attribute__((packed)))])] (d_pointer - [])) (ident p))")
 }
 
 [test(description = "a type name: builtin specifiers and qualifiers, tags, typedef names, and abstract pointer, array, function and parenthesised declarators")]
@@ -271,9 +271,12 @@ def test_type_names(t : T?) {
     t |> equal(parsed("(int ((*)))x"), "(cast (type_name [(spec int)] (d_paren (d_paren (d_pointer - []) []) [])) (ident x))")
     t |> equal(parsed("(int ([3]))x"), "(cast (type_name [(spec int)] (d_paren (d_array 0 - (int 3) []) [])) (ident x))")
     t |> equal(parsed("(T)\{x\}"), "(compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (ident x))]))")
-    t |> equal(parsed("(struct S *)p"), "(cast (type_name [(record struct S [])] (d_pointer - [])) (ident p))")
-    t |> equal(parsed("(union U)u"), "(cast (type_name [(record union U [])] -) (ident u))")
-    t |> equal(parsed("(enum E)1"), "(cast (type_name [(enum E [])] -) (int 1))")
+    t |> equal(parsed("(struct S *)p"), "(cast (type_name [(record struct S 0 [])] (d_pointer - [])) (ident p))")
+    t |> equal(parsed("(union U)u"), "(cast (type_name [(record union U 0 [])] -) (ident u))")
+    t |> equal(parsed("(enum E)1"), "(cast (type_name [(enum E 0 [])] -) (int 1))")
+    t |> equal(parsed("(struct S \{ int a; \} *)p"), "(cast (type_name [(record struct S 1 [(member_decl 0 [(spec int)] [(member (d_name a) -)])])] (d_pointer - [])) (ident p))")
+    t |> equal(parsed("(union \{ int a; \})u"), "(cast (type_name [(record union - 1 [(member_decl 0 [(spec int)] [(member (d_name a) -)])])] -) (ident u))")
+    t |> equal(parsed("(enum \{ A \})1"), "(cast (type_name [(enum - 1 [(enumerator A -)])] -) (int 1))")
     t |> equal(parsed("(_Bool)x"), "(cast (type_name [(spec _Bool)] -) (ident x))")
     t |> equal(parsed("(_Atomic int)x"), "(cast (type_name [(spec _Atomic) (spec int)] -) (ident x))")
     t |> equal(parsed("(_Alignas(8) int)x"), "(cast (type_name [(alignas_expr (int 8)) (spec int)] -) (ident x))")
@@ -295,9 +298,6 @@ def test_refusals(t : T?) {
     t |> equal(parsed("a + (\{ 1; \})"), "error: t.c:1:5: a statement expression is not parsed")
     t |> equal(parsed("&&lab"), "error: t.c:1:1: a label address (&&label) is not parsed")
     t |> equal(parsed("_Generic(x, int: 1)"), "error: t.c:1:1: a generic selection (_Generic) is not parsed")
-    t |> equal(parsed("(struct S \{ int a; \} *)p"), "error: t.c:1:11: a struct body is not parsed")
-    t |> equal(parsed("(union \{ int a; \})u"), "error: t.c:1:8: a union body is not parsed")
-    t |> equal(parsed("(enum \{ A \})1"), "error: t.c:1:7: an enum body is not parsed")
     t |> equal(parsed("(__int128)x"), "error: t.c:1:2: the __int128 type is not parsed")
     t |> equal(parsed("(unsigned __int128)x"), "error: t.c:1:11: the __int128 type is not parsed")
     t |> equal(parsed("(_Atomic(int))x"), "error: t.c:1:2: the _Atomic(type) specifier is not parsed")
@@ -331,7 +331,7 @@ def test_malformed(t : T?) {
         ("sizeof(T)\{", "t.c:1:11: expected an expression, got end of input"),
         ("(int [3)x", "t.c:1:8: expected ']', got ')'"),
         ("(int (*)(int,))f", "t.c:1:14: expected a parameter declaration, got ')'"),
-        ("(struct)x", "t.c:1:8: expected a tag name after 'struct', got ')'"),
+        ("(struct)x", "t.c:1:8: expected a tag name or '\{' after 'struct', got ')'"),
         ("s.", "t.c:1:3: expected a member name, got end of input"),
         ("p->1", "t.c:1:4: expected a member name, got '1'"),
         ("__builtin_offsetof(T, )", "t.c:1:23: expected a member name, got ')'"),
