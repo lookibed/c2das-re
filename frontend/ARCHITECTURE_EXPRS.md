@@ -127,8 +127,9 @@ suffix `int`, `long`, `long long`; octal or hex with no suffix the signed and un
 rank in turn; `u`, `l`, `ll` and their combinations their own lists; the widths the dialect's. Its
 `v` is the decimal value. A character constant is an `int` of the one byte it holds, read as plain
 `char` (unsigned under both dialects); with `L` the dialect's `wchar_t` (`int`, msvc's
-`unsigned short`), with `u` `unsigned short`, with `U` `unsigned int`, of the one character it holds;
-both set `is_char`. A string literal is `char[N]` of its bytes, escapes decoded, a universal
+`unsigned short`), with `u` `unsigned short`, with `U` `unsigned int`, of the one character it holds,
+or of its one octal or hexadecimal escape's value, a code unit and not a byte (`L'\400'` is 256; a
+value past `INT_MAX` refused); both set `is_char`. A string literal is `char[N]` of its bytes, escapes decoded, a universal
 character name as its UTF-8 bytes, adjacent literals joined, the NUL appended; a prefixed one is
 refused. A floating constant is `float` with `f`, `long double` with `l`, else `double`, its `v` by
 section 36.

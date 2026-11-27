@@ -601,6 +601,32 @@ def private one_code_point(b : array<uint8>) : int {
     return code
 }
 
+// the value of character-constant body `body` (quotes included) that is one octal or hexadecimal
+// escape and nothing else, a code unit of a prefixed constant's type, not a byte (C11 6.4.4.4p9);
+// -1 for any other body, -2 for a value past `INT_MAX`, which the builder does not type
+def private numeric_escape(body : string) : int {
+    var value = -1
+    peek_data(body) $(text) {
+        let digits = length(text) - 2
+        return if (digits < 2 || int(text[1]) != '\\')
+        let hex = int(text[2]) == 'x'
+        return if ((!hex && digits - 1 > 3) || (hex && digits - 2 > 8))
+        var v = 0l
+        for (i in range(hex ? 3 : 2, digits + 1)) {
+            let h = int(text[i])
+            if (hex && is_hex(h)) {
+                v = v * 16l + int64(is_number(h) ? h - '0' : (h | 0x20) - 'a' + 10)
+            } elif (!hex && h >= '0' && h <= '7') {
+                v = v * 8l + int64(h - '0')
+            } else {
+                return
+            }
+        }
+        value = v > 2147483647l ? -2 : int(v)
+    }
+    return value
+}
+
 // a character constant node from token `tok` (C11 6.4.4.4): plain, an `int` of the one byte it
 // holds, read as the dialect's plain `char` does; `L`, `u` or `U`, of the dialect's `wchar_t`
 // (`int`, msvc's `unsigned short`), `char16_t` or `char32_t`, the one character it holds
@@ -616,10 +642,11 @@ def private char_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
         let v = r.tu.target.char_signed && b >= 128 ? b - 256 : b
         return new CirExpr(e = "int_lit", t = int_t(r), v = "{v}", is_char = true)
     }
-    let code = one_code_point(bytes)
+    let escaped = empty(prefix) ? -1 : numeric_escape(slice(spelled, quote))
+    let code = escaped >= 0 ? escaped : one_code_point(bytes)
     let wide = is_msvc(r.tu.target) ? "unsigned short" : "int"
     let spell = prefix == "L" ? wide : prefix == "u" ? "unsigned short" : prefix == "U" ? "unsigned int" : ""
-    if (empty(spell) || code < 0 || (spell == "unsigned short" && code > 0xFFFF)) {
+    if (empty(spell) || code < 0 || escaped == -2 || (spell == "unsigned short" && code > 0xFFFF)) {
         c_refuse(r, p, tok, "the character constant {spelled}")
         return null
     }

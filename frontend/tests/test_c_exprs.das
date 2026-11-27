@@ -177,7 +177,7 @@ def test_builtin(t : T?) {
     t |> equal(ir_of("void g(void) \{ __builtin_abort(); \}"), "expr call<void>(FunctionToPointerDecay<func*>(__builtin_abort); )")
 }
 
-[test(description = "literals: an integer literal's type by base, suffix and value under both dialects, character constants plain, escaped, wide and of plain unsigned char, floating constants by suffix")]
+[test(description = "literals: an integer literal's type by base, suffix and value under both dialects, character constants plain, escaped, wide and of plain unsigned char, a wide one of a numeric escape, floating constants by suffix")]
 def test_literals(t : T?) {
     t |> run("linux") @(t : T?) {
         t |> equal(ir_of("void g(void) \{ 2147483647; 2147483648; 0x80000000; 0xffffffffffffffff; 10u; 10l; 10ul; 07; 'a'; '\\xff'; L'b'; u'c'; U'd'; 1.5; 1.5f; 2.5L; \}"),
@@ -186,6 +186,13 @@ def test_literals(t : T?) {
     t |> run("msvc: long is 32 bits, wchar_t unsigned short") @(t : T?) {
         t |> equal(ir_of("void g(void) \{ 2147483648; 4294967296; 0x80000000l; L'b'; \}", true),
                    "expr 2147483648<long long> ; expr 4294967296<long long> ; expr 2147483648<unsigned long> ; expr '98'<unsigned short>")
+    }
+    t |> run("a prefixed constant's one octal or hexadecimal escape: a code unit, not a byte; one past INT_MAX refused") @(t : T?) {
+        t |> equal(ir_of("void g(void) \{ L'\\400'; U'\\x41'; \}"), "expr '256'<int> ; expr '65'<unsigned int>")
+        t |> equal(ir_of("void g(void) \{ L'\\400'; \}", true), "expr '256'<unsigned short>")
+        t |> equal(ir_of("void g(void) \{ U'\\x80000000'; \}"), "error: t.c:1:16: the character constant U'\\x80000000' is not typed yet")
+        t |> equal(ir_of("void g(void) \{ L'\\4000'; \}"), "error: t.c:1:16: the character constant L'\\4000' is not typed yet")
+        t |> equal(ir_of("void g(void) \{ L'\\4a'; \}"), "error: t.c:1:16: the character constant L'\\4a' is not typed yet")
     }
 }
 
