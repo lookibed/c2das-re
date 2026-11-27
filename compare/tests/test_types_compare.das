@@ -142,6 +142,7 @@ def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
             t |> equal(compared("conversions.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("redeclared.c", dialect), "true/true/true/true/false")
             t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
             t |> equal(compared("refused.c", dialect), "false/false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")
         }

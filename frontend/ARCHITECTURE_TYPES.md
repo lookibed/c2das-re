@@ -40,12 +40,18 @@ only; the table grows by uses, in the order Dumper A's walk reaches the same dec
   `static` and `extern` locals alike - except that a block declaration of a function whose name a
   declaration before it declared (the unit's, or the own headers') adds nothing, as clang links it
   to that declaration;
-- an old-style definition: its type as clang gives it, `R (P...)` with each parameter's adjusted
-  type from its declaration in the list under the default argument promotions (`char` and `short`
-  are `int`, `float` is `double`), then each parameter's adjusted type itself, in the identifier
-  list's order.
+- an old-style definition: its type as clang gives it, `R (P...)` with each parameter's type
+  promoted (C11 6.5.2.2p6: an integer type narrower than `int` and `_Bool` to `int`, `float` to
+  `double`), then each parameter's adjusted type from its declaration in the list, unpromoted, in
+  the identifier list's order (`int` for a name the list does not declare); an attribute on such a
+  declaration that changes a type is refused, as anywhere.
 
-`(void)` and `()` are one type, `R` with no parameter and not variadic. A typedef name keeps the
+A declaration's specifiers name one type, resolved once before its declarators: a typedef name
+one declarator binds does not change the type the next declarator starts from
+(`typedef T T2, *T, T3;` makes `T3` the outer `T`).
+
+`(void)` and `()` are one type, `R` with no parameter and not variadic, and so is a parameter
+list of one typedef name of `void`. A typedef name keeps the
 pool type it names for its scope: a block's bindings end with the block (`for` opens one too).
 
 ## 25. Specifiers {#c-types-specifiers}
@@ -65,8 +71,10 @@ Records, unions and enums are the Aggregates phase: the builder refuses them whe
 and its keys (by structure, a typedef by name) take them as further kinds. It refuses, with the
 place of the construct, `file:line:col: <construct> is not typed yet`: a struct, union or enum type,
 `_Complex`, `_Atomic`, `typeof` of an expression, `_Alignas`, an attribute naming `mode`,
-`vector_size` or `ext_vector_type` (in the specifiers, on a pointer, around a parenthesised
-declarator, after a declarator or a parameter), and a typedef name it has no type for - one clang
+`vector_size` or `ext_vector_type` in either spelling (in the specifiers, on a pointer, around a
+parenthesised declarator, after a declarator, a parameter, an old-style parameter's declaration
+or an own header's typedef), `_Atomic` on a pointer or in an array parameter's brackets, and a
+typedef name it has no type for - one clang
 predeclares (`__builtin_va_list`, `__builtin_ms_va_list`, `__NSConstantString`) or an own header's
 typedef it does not type, whose own refusal follows the message.
 
@@ -83,7 +91,8 @@ An array's size is an integer constant expression (C11 6.6) from 0 to 2^31 - 1, 
 unit's one evaluator: `CTypes.fold`, which the walk sets to `c_exprs.das`'s `c_fold_node`
 (`ARCHITECTURE_EXPRS.md` section 32), so array sizes, index designators and `case` labels fold
 alike. Any other size - a variable one, which the spec leaves out of scope - is refused, and so is
-`[*]` under a declarator. An array with no size is count -1 unless its initializer sizes it (section 27).
+`[*]` under a declarator. An array with no size is count -1 unless its initializer sizes it (section
+27) or it is a tentative definition the unit's end completes.
 
 ## 27. Initializers and expression types {#c-types-arrays}
 
@@ -91,8 +100,17 @@ An unsized array that has an initializer takes its count from it: a run of strin
 its bytes - each escape one byte, a universal character name its UTF-8 bytes, the NUL included -
 and so does one braced alone for a character array; an initializer list gives one past the last
 position its items fill, each item the position after the one before, an index designator `[k]`
-(an integer constant expression) moving it to `k`; for an array of arrays each item is braced or a string
-literal. A prefixed (wide or UTF) string literal, any other designator (a range, a nested one, a
+(an integer constant expression) moving it to `k`; for an array of arrays each item is braced or a
+string literal. A position past 2^31 - 1 is refused. An array of unknown size that a typedef names
+(`typedef char A[]; A a = "hello";`) is sized by the initializer the same way.
+
+A file-scope declaration with no initializer and no `extern` is a tentative definition (C11
+6.9.2): clang completes the last such definition of an array of unknown size to one element at the
+unit's end, and Dumper A reads that type at the declaration. So the builder gives the declaration
+`T[1]` when no later declaration of the name defines it, and keeps the size unknown when a later
+one does (with a size, an initializer, or tentatively); a later `extern` declaration with no size
+changes nothing, and one with a size is refused (the completion it makes waits for the Aggregates
+phase). A prefixed (wide or UTF) string literal, any other designator (a range, a nested one, a
 non-constant index), an elided brace in an array of arrays and any other initializer of an unsized
 array are refused.
 
@@ -105,3 +123,29 @@ markers name each declaration's file: a declaration in a file whose name starts 
 builder is opened with (`c_types_open`'s `library_dir`) adds no type. Its typedef names are bound to
 their pool types, or, for one the builder refuses, to the refusal, which a use in the unit reports;
 its function names count as declared for the block rule of section 24.
+
+## 60. Redeclarations {#c-types-redeclarations}
+
+clang gives a redeclaration of a name the composite of its type and the earlier one's (C11 6.2.7p4),
+and Dumper A reads that type. The builder keeps, per name declared at file scope or with `extern`
+(a function declaration in a block included), the pool type its last declaration has and whether
+it had a prototype, and gives a redeclaration (a definition included):
+
+- of a function with no prototype (`int f();`), after one with a prototype: the earlier type;
+- of a function with a prototype, after one with none: its own type;
+- of an array of unknown size, after one with a size: the earlier type; of an array with a size,
+  after one of unknown size: its own;
+- of the same type: that type.
+
+A function the own headers declared and the unit declares again is held to the header's type the
+same way, computed when the unit's declaration is met. Any other pair of different types - two
+prototypes with different parameters, arrays of different sizes, a composite inside a pointer or a
+parameter - is refused at the redeclaration, as its composite waits for the Aggregates phase's
+machinery.
+
+A unit's file-scope declaration of a C library function that clang knows as a builtin, with a type
+clang does not merge (`int strlen(char *);`, c-testsuite 00025), makes Dumper A intern the
+library's type (`unsigned long (char *)`) before the declaration's own (its
+`note_library_redeclaration`). The builder holds no table of clang's library builtins, so it
+interns the declaration's type alone, and `compare/types` reports such a unit as differing.
+

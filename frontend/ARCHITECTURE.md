@@ -9,10 +9,11 @@ lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 t
 `#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
 C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
 statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23), the type
-table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the
+table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60), and the
 expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29
 to 36), with the names and places it gives (`ARCHITECTURE_NAMES.md`, sections 37 to 39), and
-the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 40). No converter pass calls the preprocessor, the parser or the C-IR builder yet.
+the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 40). No converter pass calls
+the preprocessor, the parser or the C-IR builder yet.
 
 ## 1. File charters
 

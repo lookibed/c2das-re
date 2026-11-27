@@ -56,6 +56,10 @@ struct CTypes {
     fn_extern_names : table<string>         //!< the names its block-scope `extern` declarations and prototypes declare
     fn_name : string                        //!< the C name of the function being read
     fold : function<(var b : CTypes; var p : CParser; n : int; var v : int64&) : bool> //!< an integer constant expression's value; null for none
+    prior : table<int; int>         //!< an ordinary name declared at file scope, or `extern`, to its (composite) pool type
+    prototyped : table<int; bool>   //!< such a name whose function type has a prototype
+    library_functions : table<int; int2>    //!< a function the own headers declare: its declaration and init-declarator
+    unit_items : int                //!< the unit's first external declaration
     err : string
 }
 
@@ -77,7 +81,19 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.undo |> clear()
     b.marks |> clear()
     b.declared |> clear()
+    b.prior |> clear()
+    b.prototyped |> clear()
+    b.library_functions |> clear()
+    b.unit_items = -1
     b.err = ""
+}
+
+//! The first error, at token `tok`: a construct clang rejects (`what` is invalid C there), so
+//! the unit has no C-IR, as Dumper A's clang gives it none.
+def c_reject(var b : CTypes; var p : CParser; tok : int; what : string) {
+    if (empty(b.err)) {
+        b.err = "{c_where(p.unit, tok)}: {what} is invalid C, which clang rejects"
+    }
 }
 
 //! The first error, at token `tok`: a construct the builder does not type yet, and `why` after it.
@@ -311,7 +327,7 @@ def private builtin_type(var b : CTypes; set : int) : int {
 }
 
 // the attribute words that change the type they stand on
-let private TYPE_ATTRIBUTES <- ["mode", "__mode__", "vector_size", "__vector_size__", "ext_vector_type"]
+let private TYPE_ATTRIBUTES <- ["mode", "__mode__", "vector_size", "__vector_size__", "ext_vector_type", "__ext_vector_type__"]
 
 //! False with the error set when list `at` holds an attribute naming one of `TYPE_ATTRIBUTES`.
 def c_plain_attributes(var b : CTypes; var p : CParser; at : int) : bool {
@@ -523,6 +539,10 @@ def private initializer_count(var b : CTypes; var p : CParser; init, elem : int)
             refuse(b, p, it.tok, "an unsized array of arrays initialized with elided braces")
             return -2
         }
+        if (next == 2147483647) {
+            refuse(b, p, it.tok, "an array sized past 2^31 - 1")
+            return -2
+        }
         next++
         count = max(count, next)
         item = it.next
@@ -564,7 +584,7 @@ def c_declarator_type(var b : CTypes; var p : CParser; base, d : int; adjust : b
     if (n.op == 2) {
         params := b.old_style
     }
-    var param = n.op == 2 || c_is_void_list(p, n.b) ? -1 : n.b
+    var param = n.op == 2 || c_is_void_list(b, p, n.b) ? -1 : n.b
     while (param >= 0) {
         let pt = c_param_type(b, p, param)
         return -1 if (pt < 0)
@@ -578,15 +598,19 @@ def c_declarator_type(var b : CTypes; var p : CParser; base, d : int; adjust : b
     return c_declarator_type(b, p, f, n.a, adjust, init)
 }
 
-//! Whether parameter list `param` is `(void)`: one parameter, no declarator, `void` alone with
-//! qualifiers aside.
-def c_is_void_list(p : CParser; param : int) : bool {
+//! Whether parameter list `param` is `(void)`: one parameter, no declarator, `void` alone - the
+//! keyword or a typedef name of it - with qualifiers aside.
+def c_is_void_list(b : CTypes; p : CParser; param : int) : bool {
     return false if (param < 0 || p.ast.nodes[param].next >= 0 || p.ast.nodes[param].b >= 0)
     var found = false
     var at = p.ast.nodes[param].a
     while (at >= 0) {
         let n = p.ast.nodes[at]
         if (n.kind == CNode.SPEC_KEYWORD && n.op == int(CTok.VOID)) {
+            found = true
+        } elif (n.kind == CNode.SPEC_TYPEDEF_NAME) {
+            let named = b.typedefs?[n.a] ?? -1
+            return false if (named < 0 || b.pool[b.unqualified[named]].k != "void")
             found = true
         } elif (n.kind != CNode.SPEC_KEYWORD || n.op < int(CTok.CONST) || n.op > int(CTok.RESTRICT)) {
             return false
@@ -667,3 +691,108 @@ def c_declares_typedef(p : CParser; specs : int) : bool {
 //! The `typedef` entry `t` interned by its name: one entry per name, whatever type a later
 //! typedef of the name gives it.
 def c_types_intern_typedef(var b : CTypes; var t : CirType) : int => intern(b, "typedef:{t.name}", t)
+
+//! Pool type `t` of declarator `d`, an array of unknown size a typedef names, sized by initializer
+//! `init` as one the declarator spells is (`c_declarator_type`): the declarator is the name alone.
+[arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
+def c_sized_by_initializer(var b : CTypes; var p : CParser; t, d, init : int) : int {
+    return t if (t < 0 || init < 0 || !is_end(p, d))
+    let u = b.unqualified[t]
+    return t if (b.pool[u].k != "array" || b.pool[u].count >= 0)
+    let count = initializer_count(b, p, init, b.pool[u].elem)
+    return count == -2 ? -1 : array_of(b, b.pool[u].elem, count)
+}
+
+// whether specifier list `specs` holds keyword `k`
+def private has_keyword(p : CParser; specs : int; k : CTok) : bool {
+    var at = specs
+    while (at >= 0) {
+        return true if (p.ast.nodes[at].kind == CNode.SPEC_KEYWORD && p.ast.nodes[at].op == int(k))
+        at = p.ast.nodes[at].next
+    }
+    return false
+}
+
+// whether declarator `d` with initializer `init` gives its array a size: one written in its
+// outermost array, or an initializer
+def private gives_size(p : CParser; d, init : int) : bool {
+    return true if (init >= 0)
+    var at = d
+    while (at >= 0 && p.ast.nodes[at].kind == CNode.D_PAREN) {
+        at = p.ast.nodes[at].a
+    }
+    return at >= 0 && p.ast.nodes[at].kind == CNode.D_ARRAY && p.ast.nodes[at].b >= 0
+}
+
+//! The pool type of a file-scope declaration with no initializer and no `extern` (a tentative
+//! definition, C11 6.9.2) of pool type `t`, init-declarator `id` declaring `sym`: an array of
+//! unknown size is completed to one element at the unit's end, as clang does for the last such
+//! definition, unless a later definition of the name follows; -1 with the error set when a later
+//! `extern` declaration sizes it.
+[arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
+def c_tentative(var b : CTypes; var p : CParser; t, sym, id : int) : int {
+    let u = b.unqualified[t]
+    return t if (b.pool[u].k != "array" || b.pool[u].count >= 0)
+    var after = false
+    var decl = b.unit_items
+    while (decl >= 0) {
+        let dn = p.ast.nodes[decl]
+        var other = dn.kind == CNode.DECL ? dn.b : -1
+        while (other >= 0) {
+            if (after && c_declarator_name(p.ast, p.ast.nodes[other].a) == sym) {
+                let sized = gives_size(p, p.ast.nodes[other].a, p.ast.nodes[other].b)
+                if (!has_keyword(p, dn.a, CTok.EXTERN)) {
+                    return t
+                } elif (sized) {
+                    refuse(b, p, p.ast.nodes[id].tok, "an array of unknown size defined tentatively and sized by a later extern declaration", " (its completion waits for the Aggregates phase)")
+                    return -1
+                }
+            }
+            after = after || other == id
+            other = p.ast.nodes[other].next
+        }
+        decl = dn.next
+    }
+    return array_of(b, b.pool[u].elem, 1)
+}
+
+//! Whether function declarator `f` declares a prototype: a parameter list, `(void)` included; an
+//! empty `()` and an identifier list do not.
+def c_has_prototype(p : CParser; f : int) : bool => f >= 0 && (p.ast.nodes[f].b >= 0 || p.ast.nodes[f].op == 1) && p.ast.nodes[f].op != 2
+
+//! The pool type a declaration of `sym` with pool type `t` (function declarator `f`, -1 for none)
+//! has after the declarations of the name before it (C11 6.2.7p4, the composite type): a function
+//! declared with no prototype keeps the earlier prototype, an array of unknown size the earlier
+//! size; any other pair of different types is refused at token `tok`, as its composite waits for
+//! the Aggregates phase. A function only the own headers declared before is the header's type.
+[arch(at="ARCHITECTURE_TYPES.md#c-types-redeclarations")]
+def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
+    var prev = b.prior?[sym] ?? -1
+    var prev_proto = b.prototyped?[sym] ?? false
+    let u = b.unqualified[t]
+    if (prev < 0 && b.pool[u].k == "func" && key_exists(b.library_functions, sym)) {
+        let lib = b.library_functions?[sym] ?? int2(-1, -1)
+        let lib_base = c_specifier_type(b, p, p.ast.nodes[lib.x].a)
+        prev = c_declarator_type(b, p, lib_base, p.ast.nodes[lib.y].a, false)
+        return -1 if (prev < 0)
+        prev_proto = c_has_prototype(p, c_name_function(p.ast, p.ast.nodes[lib.y].a))
+    }
+    let proto = c_has_prototype(p, f)
+    var result = t
+    if (prev >= 0 && b.unqualified[prev] != u) {
+        assume a = b.pool[b.unqualified[prev]]
+        assume n = b.pool[u]
+        let functions = a.k == "func" && n.k == "func" && b.unqualified[a.ret] == b.unqualified[n.ret]
+        let arrays = a.k == "array" && n.k == "array" && b.unqualified[a.elem] == b.unqualified[n.elem]
+        if ((functions && !proto && prev_proto) || (arrays && n.count < 0)) {
+            result = prev
+        } elif (!(functions && proto && !prev_proto) && !(arrays && a.count < 0)) {
+            refuse(b, p, tok, "a redeclaration of '{pp_symbol_text(p.unit.lx, sym)}' whose type differs from the earlier one's", " (its composite type waits for the Aggregates phase)")
+            return -1
+        }
+    }
+    b.prior[sym] = result
+    b.prototyped[sym] = proto || prev_proto
+    return result
+}
+

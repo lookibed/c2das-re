@@ -130,9 +130,9 @@ def test_slot_conversions(t : T?) {
         t |> equal(ir_of("void k(const char *s, long n); int f(a, b) char a; float b; \{ return 0; \} void g(char *m) \{ k(m, 1); f(1, 2); \}"),
                    "return 0<int> ; expr call<void>(FunctionToPointerDecay<func*>(k); NoOp<char*>(LValueToRValue<char*>(m)), IntegralCast<long>(1<int>)) ; expr call<int>(FunctionToPointerDecay<func*>(f); 1<int>, IntegralToFloating<double>(2<int>))")
     }
-    t |> run("a pointer to and from void *, an integer to a pointer, a pointer to _Bool and to an integer") @(t : T?) {
-        t |> equal(ir_of("void g(int *p, void *v, long l) \{ v = p; p = v; p = l; _Bool b = p; l = p; \}"),
-                   "expr assign<void*>(v, BitCast<void*>(LValueToRValue<int*>(p))) ; expr assign<int*>(p, BitCast<int*>(LValueToRValue<void*>(v))) ; expr assign<int*>(p, IntegralToPointer<int*>(LValueToRValue<long>(l))) ; b:_Bool=PointerToBoolean<_Bool>(LValueToRValue<int*>(p)) ; expr assign<long>(l, PointerToIntegral<long>(LValueToRValue<int*>(p)))")
+    t |> run("a pointer to and from void *, a pointer to _Bool") @(t : T?) {
+        t |> equal(ir_of("void g(int *p, void *v) \{ v = p; p = v; _Bool b = p; \}"),
+                   "expr assign<void*>(v, BitCast<void*>(LValueToRValue<int*>(p))) ; expr assign<int*>(p, BitCast<int*>(LValueToRValue<void*>(v))) ; b:_Bool=PointerToBoolean<_Bool>(LValueToRValue<int*>(p))")
     }
 }
 
@@ -189,10 +189,11 @@ def test_literals(t : T?) {
         t |> equal(ir_of("void g(void) \{ 0xc000000080000000LL; 0xc000000080000000ULL; 0xc000000080000000; 0x7fffffffffffffffLL; \}", true),
                    "expr -4611686016279904256<long long> ; expr 13835058057429647360<unsigned long long> ; expr 13835058057429647360<unsigned long long> ; expr 9223372036854775807<long long>")
     }
-    t |> run("a prefixed constant's one octal or hexadecimal escape: a code unit, not a byte; one past INT_MAX refused") @(t : T?) {
+    t |> run("a prefixed constant's one octal or hexadecimal escape: a code unit, not a byte; one past its type's range refused") @(t : T?) {
         t |> equal(ir_of("void g(void) \{ L'\\400'; U'\\x41'; \}"), "expr '256'<int> ; expr '65'<unsigned int>")
         t |> equal(ir_of("void g(void) \{ L'\\400'; \}", true), "expr '256'<unsigned short>")
-        t |> equal(ir_of("void g(void) \{ U'\\x80000000'; \}"), "error: t.c:1:16: the character constant U'\\x80000000' is not typed yet")
+        t |> equal(ir_of("void g(void) \{ U'\\x80000000'; \}"), "expr '2147483648'<unsigned int>")
+        t |> equal(ir_of("void g(void) \{ L'\\x80000000'; \}"), "error: t.c:1:16: the character constant L'\\x80000000' is not typed yet")
         t |> equal(ir_of("void g(void) \{ L'\\4000'; \}"), "error: t.c:1:16: the character constant L'\\4000' is not typed yet")
         t |> equal(ir_of("void g(void) \{ L'\\4a'; \}"), "error: t.c:1:16: the character constant L'\\4a' is not typed yet")
     }
@@ -274,7 +275,7 @@ def test_refusals(t : T?) {
     t |> equal(ir_of("void g(void) \{ y; \}"), "error: t.c:1:16: the identifier 'y', which names no variable or function the builder knows, is not typed yet")
     t |> equal(ir_of("void g(void) \{ __builtin_expect; \}"), "error: t.c:1:16: the builtin '__builtin_expect' other than as a callee is not typed yet")
     t |> equal(ir_of("void g(int x) \{ x ?: 1; \}"), "error: t.c:1:17: GNU's ?: with no middle operand is not typed yet")
-    t |> equal(ir_of("void g(int *p) \{ p * 2; \}"), "error: t.c:1:18: this operator on a pointer is not typed yet")
+    t |> equal(ir_of("void g(int *p) \{ p * 2; \}"), "error: t.c:1:18: this operator on operands of these types is invalid C, which clang rejects")
     t |> equal(ir_of("void g(int x) \{ *x; \}"), "error: t.c:1:17: a dereference of a value that is no pointer is not typed yet")
     t |> equal(ir_of("void g(int x) \{ x(); \}"), "error: t.c:1:17: a call of a value that is no function is not typed yet")
     t |> equal(ir_of("void g(int x) \{ x[1]; \}"), "error: t.c:1:17: a subscript of a value that is no pointer is not typed yet")
@@ -306,3 +307,56 @@ def test_names(t : T?) {
                    "x ; y() ; f(x1) ; y1:int=LValueToRValue<int>(x1) ; null - - ; return add<int>(LValueToRValue<int>(x), call<int>(FunctionToPointerDecay<func*>(y); ))")
     }
 }
+[test(description = "a block declaration of a function declared before rebinds its prototype for the calls in its scope, adding no declaration")]
+def test_block_prototype(t : T?) {
+    t |> equal(ir_of("int f(); void g(void) \{ int f(double); f(1); \} void h(void) \{ f(1); \}"),
+               "expr call<int>(FunctionToPointerDecay<func*>(f); IntegralToFloating<double>(1<int>)) ; expr call<int>(FunctionToPointerDecay<func*>(f); 1<int>)")
+}
+
+[test(description = "a wide character constant's numeric escape keeps its whole value; one past its type's range is refused")]
+def test_wide_escapes(t : T?) {
+    t |> equal(ir_of("void g(void) \{ L'\\x100'; u'\\400'; U'\\x10000'; \}"), "expr '256'<int> ; expr '256'<unsigned short> ; expr '65536'<unsigned int>")
+    t |> equal(ir_of("void g(void) \{ u'\\x10000'; \}"), "error: t.c:1:16: the character constant u'\\x10000' is not typed yet")
+}
+
+[test(description = "?: of pointers to compatible types has their composite type, the other arm cast to it; one to a function of no parameter is refused")]
+def test_conditional_composite(t : T?) {
+    t |> equal(ir_of("void g(int c, int (*p)[3], int (*q)[]) \{ c ? p : q; c ? q : p; \}"), "expr cond<int[3]*>(LValueToRValue<int>(c), LValueToRValue<int[3]*>(p), BitCast<int[3]*>(LValueToRValue<int[-1]*>(q))) ; expr cond<int[3]*>(LValueToRValue<int>(c), BitCast<int[3]*>(LValueToRValue<int[-1]*>(q)), LValueToRValue<int[3]*>(p))")
+    t |> equal(ir_of("void h(int c, int (*f)(), int (*k)(double)) \{ c ? f : k; \}"), "error: t.c:1:47: a conditional of function pointers one of which takes no parameter is not typed yet (whether it has a prototype is not in its type)")
+}
+
+[test(description = "invalid C clang rejects is refused at its place, never built: an assignment or initializer of incompatible types, operands of the wrong kind, a call's argument count against its prototype, a false _Static_assert")]
+def test_invalid_c(t : T?) {
+    t |> equal(ir_of("void g(void) \{ int *p = 1.5; \}"), "error: t.c:1:25: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("int x = (void)0;"), "error: t.c:1:9: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("int *p = 1;"), "error: t.c:1:10: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("char *c; int *q = c;"), "error: t.c:1:19: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(int *q) \{ long l; l = q; \}"), "error: t.c:1:26: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("int *h(void) \{ return 1; \}"), "error: t.c:1:23: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("void k(int *); void g(void) \{ k(2); \}"), "error: t.c:1:33: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("int x = 1.0 << 1;"), "error: t.c:1:9: this operator on operands of these types is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(int *p) \{ p + p; \}"), "error: t.c:1:18: this operator on operands of these types is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(double d) \{ d % 2; \}"), "error: t.c:1:20: this operator on operands of these types is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(int *p, long *q) \{ p - q; \}"), "error: t.c:1:27: a difference of pointers to incompatible types is invalid C, which clang rejects")
+    t |> equal(ir_of("void f(void); void g(void) \{ f(1); \}"), "error: t.c:1:30: a call with 1 arguments of a function whose prototype has 0 is invalid C, which clang rejects")
+    t |> equal(ir_of("void f(double); void g(void) \{ f(); \}"), "error: t.c:1:32: a call with 0 arguments of a function whose prototype has 1 is invalid C, which clang rejects")
+    t |> equal(ir_of("int pr(const char *, ...); void g(void) \{ pr(); \}"), "error: t.c:1:43: a call with 0 arguments of a function whose prototype has 1 is invalid C, which clang rejects")
+    t |> equal(ir_of("int h(); void g(void) \{ h(1, 2); \}"), "expr call<int>(FunctionToPointerDecay<func*>(h); 1<int>, 2<int>)")
+    t |> equal(ir_of("void g(void) \{ _Static_assert(0, \"bad\"); \}"), "error: t.c:1:16: a _Static_assert whose condition is 0 is invalid C, which clang rejects")
+    t |> equal(ir_of("_Static_assert(1 + 1 == 3, \"bad\");"), "error: t.c:1:1: a _Static_assert whose condition is 0 is invalid C, which clang rejects")
+    t |> equal(ir_of("_Static_assert(sizeof(int) == 4, \"ok\"); int x = 1;"), "x=1<int>")
+    t |> equal(ir_of("int y; _Static_assert(y, \"v\");"), "error: t.c:1:8: a _Static_assert whose condition the builder cannot fold is not typed yet")
+}
+
+[test(description = "a floating constant cast at once to an integer type is an integer constant: (int)0.0 is a null pointer constant")]
+def test_float_cast_null(t : T?) {
+    t |> equal(ir_of("int *p = (int)0.0; int *q = (int)0.5;"), "p=NullToPointer<int*>(FloatingToIntegral!<int>(0x0p+0<double>)) ; q=NullToPointer<int*>(FloatingToIntegral!<int>(0x1p-1<double>))")
+    t |> equal(ir_of("int *n = (int)1.0;"), "error: t.c:1:10: a value of this type in a slot of that type is invalid C, which clang rejects")
+}
+
+[test(description = "a long double literal: under linux through x87's 64-bit value and clang's 21-digit text, under msvc a double")]
+def test_long_double_literal(t : T?) {
+    t |> equal(ir_of("long double x = 0x1.00000000000008001p0L;"), "x=0x1p+0<long double>")
+    t |> equal(ir_of("long double x = 0x1.00000000000008001p0L;", true), "x=0x1.0000000000001p+0<long double>")
+}
+
