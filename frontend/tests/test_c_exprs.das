@@ -164,6 +164,12 @@ def test_argument_promotions(t : T?) {
                "expr call<int>(FunctionToPointerDecay<func*>(printf); NoOp<char*>(ArrayToPointerDecay<char*>(str<char[3]>)), IntegralCast<int>(LValueToRValue<char>(c)), FloatingCast<double>(LValueToRValue<float>(f))) ; expr call<int>(FunctionToPointerDecay<func*>(h); IntegralCast<int>(LValueToRValue<char>(c)), FloatingCast<double>(LValueToRValue<float>(f)))")
 }
 
+[test(description = "__builtin_expect, the one builtin typed: called through a decay to its prototype, its arguments converted to long; its reference typed as clang types a builtin")]
+def test_builtin(t : T?) {
+    t |> equal(ir_of("void g(int x) \{ __builtin_expect(x, 0); \}"),
+               "expr call<long>(FunctionToPointerDecay<func*>(__builtin_expect); IntegralCast<long>(LValueToRValue<int>(x)), IntegralCast<long>(0<int>))")
+}
+
 [test(description = "literals: an integer literal's type by base, suffix and value under both dialects, character constants plain, escaped, wide and of plain unsigned char, floating constants by suffix")]
 def test_literals(t : T?) {
     t |> run("linux") @(t : T?) {
