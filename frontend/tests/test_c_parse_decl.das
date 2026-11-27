@@ -331,3 +331,42 @@ def test_declarator_contexts(t : T?) {
         t |> equal(decls(c._0), "error: {c._1}", c._0)
     }
 }
+
+// the tree of the declarator of the first init-declarator of declaration `text` and the node
+// `c_name_function` finds in it, as dumps
+def private name_function_of(text : string) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c")
+    let d = c_declaration(p)
+    if (p.failed) {
+        return "error: {p.err}"
+    }
+    let f = c_name_function(p.ast, p.ast.nodes[p.ast.nodes[d].b].a)
+    return f < 0 ? "-" : c_dump(p.ast, p.unit, f)
+}
+
+[test(description = "where a declaration's parts are decided: each typedef name binds right after its own declarator, `typedef` counts anywhere among the specifiers, an identifier list nested under a pointer is refused, both parentheses `_Static_assert` and an asm label need, every attribute before a later declarator kept in order, and a typedef name in an identifier list")]
+def test_declaration_details(t : T?) {
+    t |> equal(decls("typedef int U, A[sizeof(U)];"),
+               "(decl 0 [(spec typedef) (spec int)] [(init_decl (d_name U) - -) (init_decl (d_array 0 (d_name A) (sizeof_type (type_name [(typedef_name U)] -)) []) - -)])")
+    t |> equal(decls("int typedef U; U x;"), "(decl 0 [(spec int) (spec typedef)] [(init_decl (d_name U) - -)]) (decl 0 [(typedef_name U)] [(init_decl (d_name x) - -)])")
+    t |> equal(decls("int *f(a);"), "error: t.c:1:8: an identifier list outside a function definition is not parsed")
+    t |> equal(decls("_Static_assert 1);"), "error: t.c:1:16: expected '(', got '1'")
+    t |> equal(decls("int x __asm__ \"s\");"), "error: t.c:1:15: expected '(', got '\"s\"'")
+    t |> equal(decls("int a, __attribute__((x)) __attribute__((y)) b __attribute__((z));"),
+               "(decl 0 [(spec int)] [(init_decl (d_name a) - -) (init_decl (d_name b) - - [(attribute __attribute__((x))) (attribute __attribute__((y))) (attribute __attribute__((z)))])])")
+    t |> equal(decls("int f(a, T);"), "error: t.c:1:10: expected a parameter name, got 'T'")
+}
+
+[test(description = "a function definition is told by its declarator: a function applied to its name through parentheses, the first declarator only, never a non-function; `c_name_function` finds the function node, not a pointer around it, and none for no declarator")]
+def test_definition_identified(t : T?) {
+    t |> equal(decls("int (f)(void) \{\}"), "error: t.c:1:15: a function definition is not parsed")
+    t |> equal(decls("int x \{\}"), "error: t.c:1:7: expected ';', got '\{'")
+    t |> equal(decls("int x, f(void) \{\}"), "error: t.c:1:16: expected ';', got '\{'")
+    t |> equal(name_function_of("int *f(void);"), "(d_function 0 (d_name f) [(param [(spec void)] -)])")
+    t |> equal(name_function_of("int (f)(int);"), "(d_function 0 (d_paren (d_name f) []) [(param [(spec int)] -)])")
+    t |> equal(name_function_of("int (*fp)(int);"), "-")
+    t |> equal(name_function_of("int x;"), "-")
+    let ast : CAst
+    t |> equal(c_name_function(ast, -1), -1)
+}
