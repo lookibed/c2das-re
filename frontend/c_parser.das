@@ -304,7 +304,7 @@ def private member_declarations(var p : CParser) : int {
             break if (identifier_list_refused(p, d))
             let width = accept(p, CTok.COLON) ? c_constant_expression(p) : -1
             c_append(p.ast, attrs, attributes(p))
-            c_append(p.ast, members, node(p, CNode.MEMBER_DECLARATOR, d >= 0 ? start_of(p, d) : member_at, 0, d, width, attrs.head))
+            c_append(p.ast, members, node(p, CNode.MEMBER_DECLARATOR, member_at, 0, d, width, attrs.head))
             first = false
             more = accept(p, CTok.COMMA)
         }
@@ -593,13 +593,9 @@ def private identifier_list(var p : CParser; f : int) {
 def private keep_prototype_scope(var p : CParser; f : int) {
     let mark = p.scopes.marks[length(p.scopes.marks) - 1]
     p.ast.nodes[f].c = length(p.prototype_bindings)
-    let need = length(p.prototype_bindings) + length(p.scopes.undo) - mark
-    if (need > capacity(p.prototype_bindings)) {
-        p.prototype_bindings |> reserve(max(need, 2 * capacity(p.prototype_bindings)))
-    }
     for (at in range(mark, length(p.scopes.undo))) {
         let sym = p.scopes.undo[at].sym
-        p.prototype_bindings |> push(int2(sym, int(p.scopes.binding[sym])))
+        p.prototype_bindings |> push(int2(sym, int(p.scopes.binding[sym]))) // nolint:PERF006 - one array for every prototype's run, grown by doubling
     }
     p.ast.nodes[f].d = length(p.prototype_bindings) - p.ast.nodes[f].c
 }
