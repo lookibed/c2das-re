@@ -153,6 +153,7 @@ def test_specifiers_once(t : T?) {
 def test_redeclarations(t : T?) {
     t |> equal(types_of("int f(int); int f();"), "int:32:true:int func:0:0:false")
     t |> equal(types_of("int f(); int f(int x) \{ return x; \}"), "int:32:true:int func:0::false func:0:0:false")
+    t |> equal(types_of("int f(); int f(a) int a; \{ return a; \}"), "int:32:true:int func:0::false func:0:0:false")
     t |> equal(types_of("extern int a[3]; int a[];"), "int:32:true:int array:0:3")
     t |> equal(types_of("extern int a[]; int a[2];"), "int:32:true:int array:0:-1 array:0:2")
     t |> equal(types_of("int g(int); void h(void) \{ extern int g(); \}"), "int:32:true:int func:0:0:false void func:2::false")

@@ -684,8 +684,9 @@ def private has_prototype(p : CParser; f : int) : bool => f >= 0 && (p.ast.nodes
 
 //! The pool type a declaration of `sym` with pool type `t` (function declarator `f`, -1 for none)
 //! has after the declarations of the name before it (C11 6.2.7p4, the composite type): a function
-//! declared with no prototype keeps the earlier prototype, an array of unknown size the earlier
-//! size; any other pair of different types is refused, as its composite waits for the Aggregates
+//! declared with no prototype keeps the earlier prototype, a prototype or an old-style definition
+//! after a declaration with none keeps its own type (Dumper A's), an array of unknown size the
+//! earlier size; any other pair of different types is refused, as its composite waits for the Aggregates
 //! phase. A function only the own headers declared before is the header's type.
 [arch(at="ARCHITECTURE_TYPES.md#c-types-redeclarations")]
 def private linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
@@ -699,6 +700,7 @@ def private linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int 
         prev_proto = has_prototype(p, c_name_function(p.ast, p.ast.nodes[lib.y].a))
     }
     let proto = has_prototype(p, f)
+    let old_style = f >= 0 && p.ast.nodes[f].op == 2
     var result = t
     if (prev >= 0 && prev != t) {
         assume a = b.pool[prev]
@@ -707,7 +709,7 @@ def private linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int 
         let arrays = a.k == "array" && n.k == "array" && a.elem == n.elem
         if ((functions && !proto && prev_proto) || (arrays && n.count < 0)) {
             result = prev
-        } elif (!(functions && proto && !prev_proto) && !(arrays && a.count < 0)) {
+        } elif (!(functions && (proto || old_style) && !prev_proto) && !(arrays && a.count < 0)) {
             refuse(b, p, tok, "a redeclaration of '{pp_symbol_text(p.unit.lx, sym)}' whose type differs from the earlier one's", " (its composite type waits for the Aggregates phase)")
             return -1
         }

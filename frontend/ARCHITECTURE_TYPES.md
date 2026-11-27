@@ -132,7 +132,8 @@ and Dumper A reads that type. The builder keeps, per name declared at file scope
 it had a prototype, and gives a redeclaration (a definition included):
 
 - of a function with no prototype (`int f();`), after one with a prototype: the earlier type;
-- of a function with a prototype, after one with none: its own type;
+- of a function with a prototype, or an old-style definition (`int f(a) int a; {...}`), after one
+  with none: its own type, as Dumper A takes the definition's;
 - of an array of unknown size, after one with a size: the earlier type; of an array with a size,
   after one of unknown size: its own;
 - of the same type: that type.
