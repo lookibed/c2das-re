@@ -94,7 +94,9 @@ block's end has a `(null)` statement, as clang gives it one.
 An old-style definition (`int f(a, b) char a; float b; {...}`) has the type clang gives it, its
 parameters' types promoted (C11 6.5.2.2p6): the integer types below `int` and `_Bool` to `int`,
 `float` to `double`, a qualifier of the parameter dropped; each parameter's line has the type its
-declaration-list entry gives it, `int` for none. A typedef name or an enum promotes by a type
+declaration-list entry gives it, `int` for none. A tag body in the declaration list comes before
+the definition's line, where clang lists it, at file scope. A stray `;` at file scope is no line on
+either side: the parser keeps nothing for it, and clang's `EmptyDecl` is left out. A typedef name or an enum promotes by a type
 the tree does not hold (an enum's by its values), so its promoted type is `?`.
 
 The parser spells a type from its specifiers and declarator. A builtin type takes its canonical

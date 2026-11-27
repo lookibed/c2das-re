@@ -649,7 +649,8 @@ def private declarator_lines(var p : CParser; specs, id : int; is_typedef, in_bl
 
 //! The lines of declaration `n`, each with the file it stands in: the bodies its specifiers hold,
 //! a tag it declares with no body, then one line per declarator with the bodies it holds, or the
-//! `_Static_assert`'s; a function definition's line, its parameters' lines and its body's lines.
+//! `_Static_assert`'s; for a function definition the bodies its old-style declaration list holds
+//! (clang lists them at file scope), its line, its parameters' lines and its body's lines.
 //! `in_block` marks a declaration inside a function body.
 [arch(at="ARCHITECTURE.md#compared")]
 def parser_lines(var p : CParser; n : int; in_block : bool = false) : array<FormLine> {
@@ -664,15 +665,15 @@ def parser_lines(var p : CParser; n : int; in_block : bool = false) : array<Form
     tag_lines(p, specs, lines)
     let flags = specifier_flags(p, specs)
     if (decl.kind == CNode.FUNC_DEF) {
-        declarator_lines(p, specs, decl.b, false, false, flags, lines)
-        parameter_lines(p, c_name_function(p.ast, nd(p, decl.b).a), lines)
         var old = decl.c
         while (old >= 0) {
             var inscope kept : array<int>
             collect_bodies(p, old, -1, kept, kept)
-            note_bodies(p, kept, NOT_IN_PARAMETER, lines)
+            bodies_in_order(p, kept, lines)
             old = nd(p, old).next
         }
+        declarator_lines(p, specs, decl.b, false, false, flags, lines)
+        parameter_lines(p, c_name_function(p.ast, nd(p, decl.b).a), lines)
         statement_lines(p, decl.d, lines)
         return <- lines
     }

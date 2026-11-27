@@ -397,3 +397,31 @@ def test_mutated_body_differs(t : T?) {
         t |> equal(r.verdict, "differs", m._1)
     }
 }
+
+// the result of unit `text` written to `name` in a fresh folder, through both sides
+def private unit_result(t : T?; name, text : string) : ParseResult {
+    let flags <- flags_of(t)
+    let dir = path_join(test_temp_dir(), "units")
+    mkdir_rec(dir)
+    let path = path_join(dir, name)
+    t |> success(fwrite(path, text), path)
+    return <- compare_unit(path, dir, flags)
+}
+
+[test(description = "a tag body in an old-style definition's declaration list is compared where clang lists it, at file scope before the function's line", timeout = 600)]
+def test_old_style_list_body(t : T?) {
+    let r <- unit_result(t, "kr_body.c", "int kb(s) struct KS \{ int a; \} s; \{ return s.a; \}\n")
+    t |> equal(r.verdict, "same", describe_result(r))
+    let lines = join(r.parser_lines, "\n")
+    t |> success(find(lines, "(record struct KS@1:18)\n(field a@1:27 \"int\")\n(end)\n(decl kb@1:5") >= 0, lines)
+    t |> equal(length(r.not_compared), 0)
+}
+
+[test(description = "a stray `;` at file scope is no line on either side, as the parser keeps none", timeout = 600)]
+def test_stray_semicolon(t : T?) {
+    let r <- unit_result(t, "stray.c", "int a;;\nint b;\n")
+    t |> equal(r.verdict, "same", describe_result(r))
+    t |> equal(join(r.clang_lines, " "), join(r.parser_lines, " "))
+    t |> success(find(join(r.clang_lines, " "), "unknown") < 0, join(r.clang_lines, " "))
+}
+

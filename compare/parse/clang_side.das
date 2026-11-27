@@ -648,7 +648,8 @@ def clang_statement(map : PresumedMap; js : JsonValue?; labels : table<string; s
 }
 
 //! The file-scope declarations of clang's JSON dump `json` of the preprocessed text `text`, whose
-//! own name is `name`; the implicit declarations clang makes before a unit are left out.
+//! own name is `name`; the implicit declarations clang makes before a unit and the `EmptyDecl` of a
+//! stray `;` are left out.
 [arch(at="ARCHITECTURE.md#compared")]
 def clang_unit(json, text, name : string) : ClangUnit {
     var unit : ClangUnit
@@ -662,7 +663,7 @@ def clang_unit(json, text, name : string) : ClangUnit {
     function_types(js, map.function_types)
     var kids : array<JsonValue?>
     each_child(js) $(c) {
-        if (!(c?["isImplicit"] ?? false) && offset_of(c?["loc"]) >= 0) {
+        if (!(c?["isImplicit"] ?? false) && offset_of(c?["loc"]) >= 0 && kind_of(c) != "EmptyDecl") {
             kids |> push(unsafe(reinterpret<JsonValue?>(c)))
         }
     }
