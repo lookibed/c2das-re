@@ -216,7 +216,8 @@ and the type differs in the cause's shape alone:
 
 - a library builtin: the two types are the same once clang's own spellings are undone
   (`builtin_as_written`): `restrict` dropped from both, `__size_t` read as `size_t`, the decayed
-  `struct __va_list_tag *` and `struct __jmp_buf_tag *` read as `va_list` and `jmp_buf`
+  `struct __va_list_tag *` and `struct __jmp_buf_tag *` read as `va_list` and `jmp_buf`, and the
+  typedef names of `va_list`'s chain (`__gnuc_va_list`, `__builtin_va_list`) read as `va_list`
   (`builtin.c`, `causes.c`);
 - a redeclaration: clang's type is the earlier declaration's type as clang wrote it, so a
   definition `int m() {}` after `int m(void);` is `int (void)` (`semantic.c`, `causes.c`). A

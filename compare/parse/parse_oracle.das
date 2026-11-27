@@ -106,12 +106,15 @@ def private type_parts(line : string) : tuple<head : string; spelled : string; r
 
 //! A library builtin's type as written, from clang's own (`ARCHITECTURE.md#causes`): `restrict`
 //! dropped, `__size_t` spelled `size_t`, the decayed `va_list` and `jmp_buf` spelled by their
-//! typedef names.
+//! typedef names, and the names of `va_list`'s typedef chain (`__gnuc_va_list`,
+//! `__builtin_va_list`) read as `va_list`.
 def builtin_as_written(spelled : string) : string {
     var t = replace(replace(spelled, "restrict ", ""), " restrict", "")
     t = replace(t, "*restrict", "*")
     t = replace(t, "__size_t", "size_t")
     t = replace(t, "struct __va_list_tag *", "va_list")
+    t = replace(t, "__builtin_va_list", "va_list")
+    t = replace(t, "__gnuc_va_list", "va_list")
     return replace(t, "struct __jmp_buf_tag *", "jmp_buf")
 }
 
