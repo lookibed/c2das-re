@@ -15,7 +15,7 @@ def private plain(name : string; size : int64; align : int) : CLayoutMember => C
 
 def private bits(name : string; size : int64; width : int) : CLayoutMember => CLayoutMember(name = name, size = size, align = int(size), is_bitfield = true, width = width)
 
-def private flexible(name : string; align : int) : CLayoutMember => CLayoutMember(name = name, align = align, is_flexible = true)
+def private flexible(name : string; align : int) : CLayoutMember => CLayoutMember(name = name, size = 1024l, align = align, is_flexible = true)
 
 def private packed(m : CLayoutMember) : CLayoutMember {
     var r = m
