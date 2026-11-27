@@ -2,9 +2,8 @@
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family. It
 describes Dumper C's parser: the C tokens it reads, the tree it builds, and how it decides what it
-reads. The parser reads expressions, type names, declarations with their record and enum bodies, function
-definitions and whole units; a function body stays a range of tokens, and it has no entry for a
-statement.
+reads. The parser reads expressions, type names, declarations with their record and enum bodies,
+function definitions and whole units; its statements are `ARCHITECTURE_STATEMENTS.md`.
 
 ## 14. The C tokens {#c-tokens}
 
@@ -37,8 +36,9 @@ in either order; a decimal floating constant with a `.` or an exponent; a hexade
 neither is an error, `invalid numeric constant '<spelling>'`; so is an imaginary suffix. Its value
 is not computed here. A punctuator keeps the kind `PpTok` gives it, so a digraph has the kind of
 the punctuator it spells. A character constant and a string literal stay one token each; adjacent
-string literals are joined by the parser. `#` and `##` outside a line marker, `::`, a pp-token of kind
-OTHER and an unterminated comment are errors.
+string literals are joined by the parser. A `::`, which the pp-lexer reads as one token, is two
+`:` tokens, as clang reads it in C17. `#` and `##` outside a line marker, a pp-token of kind OTHER
+and an unterminated comment are errors.
 
 A `#` that starts a line opens a line marker, `# <line> "<file>" <flags>` as `clang -E` writes it,
 or `#line <line> "<file>"`. The lines after it are placed at that line, in that file; a marker with
@@ -148,7 +148,8 @@ left operand's.
 The parser stops at the first error: `failed` is set, `err` holds `file:line:col: what` at the
 token where it stopped, and the cursor moves to the EOF token, so every loop ends. Malformed input
 reads `expected <what>, got '<token>'` (`got end of input` at the end). A construct the parser does
-not take reads `<construct> is not parsed`: a statement expression, a label address `&&label`,
+not take reads `<construct> is not parsed`: a label address `&&label`, a computed goto `goto *`,
+`asm goto`, a nested function definition,
 `_Generic`, `__int128`, `_Atomic(T)`, `_Imaginary`, `__auto_type`,
 `__real__`, `__imag__`, `__label__`, and the old GNU designator `member:`. Every loop either
 consumes a token or stops.
@@ -156,8 +157,8 @@ consumes a token or stops.
 Recursion is bounded so that deep input ends in a located refusal, never in a stack overflow,
 which ends the daslang context. A level is opened by each assignment expression, constant
 expression, `?:` arm after the `:`, prefix operator, cast, compound literal where a unary expression
-stands, initializer list, type name, parameter list, record or enum body, and a declarator's `*`
-or parentheses; every
+stands, initializer list, type name, parameter list, record or enum body, compound statement,
+the statement of a selection or iteration statement, and a declarator's `*` or parentheses; every
 cycle of the parser's calls passes one of them. The 257th level is refused as `nesting deeper than
 256 levels`. An expression in 255 parentheses is 256 levels.
 
@@ -170,7 +171,10 @@ parenthesised declarator, 112 for a parameter list with a pointer declarator in 
 parameter list alone, 353 for a `typeof` in a declaration, 278 for a `sizeof` of an array type in
 an array size. The record forms: 561 bytes for a record body in a member of a record body, and 449
 for a record body in a parameter list of a member's function declarator, whose cycle holds two
-levels open, the body and the parameter list. 256 levels of the costliest form take about 165 KiB. The
+levels open, the body and the parameter list. The statement forms: 224 bytes for a block in a block
+(a label before it costs nothing), 337 for an `if` statement's body, 305 for a `while`'s, 320 for a
+`for`'s, and 409 for a statement expression in a statement expression, whose cycle holds two
+levels open, the block and the assignment expression. 256 levels of the costliest form take about 165 KiB. The
 parser therefore runs on a context stack of at least 256 KiB (`options stack = 262144`), which
 leaves a third of it for the caller. A context's stack is the `options stack` of the program that
 made it, 16 KiB when none is given (daslang's default): a test's context takes its test file's
@@ -269,7 +273,7 @@ scope, so a body reads `typedef char T; int f(enum { T = 1 } x) { return sizeof(
 enumerator, as clang does. An identifier list opens no prototype scope: its names are bound by the declaration
 list, in the definition's scope.
 
-The body is kept unparsed: a `body` node spans its tokens from the `{` to the `}` that balances it,
-and a missing `}` is `expected '}' closing the function body` at the end of input. It is read in
-the scope `c_parameters_declare` fills, the definition's own prototype scope, which the statement
-parser will hold open while it parses the body in place of the range.
+The body is a compound statement (`ARCHITECTURE_STATEMENTS.md` section 23) read in the scope the
+definition opens, which `c_parameters_declare` fills with the definition's own prototype scope: a
+parameter or an enumerator of a parameter's type shadows a typedef name in the body, and the name
+is a type again after it.

@@ -205,9 +205,9 @@ def test_typedef_table(t : T?) {
     }
 }
 
-[test(description = "a declaration the parser does not take is refused at its token: an identifier list outside a definition and the refused words; a function definition in a block is malformed at its brace")]
+[test(description = "a declaration the parser does not take is refused at its token: an identifier list outside a definition and the refused words; a function definition in a block, a GNU nested function, at its brace")]
 def test_refusals(t : T?) {
-    t |> equal(decls("int f(void) \{ return 0; \}"), "error: t.c:1:13: expected ';', got '\{'")
+    t |> equal(decls("int f(void) \{ return 0; \}"), "error: t.c:1:13: a nested function definition is not parsed")
     t |> equal(decls("int h(a, b);"), "error: t.c:1:7: an identifier list outside a function definition is not parsed")
     t |> equal(decls("int f(a) int a; \{\}"), "error: t.c:1:7: an identifier list outside a function definition is not parsed")
     t |> equal(decls("__int128 x;"), "error: t.c:1:1: the __int128 type is not parsed")
@@ -360,7 +360,7 @@ def test_declaration_details(t : T?) {
 
 [test(description = "a function definition is told by its declarator: a function applied to its name through parentheses, the first declarator only, never a non-function; `c_name_function` finds the function node, not a pointer around it, and none for no declarator")]
 def test_definition_identified(t : T?) {
-    t |> equal(decls("int (f)(void) \{\}"), "error: t.c:1:15: expected ';', got '\{'")
+    t |> equal(decls("int (f)(void) \{\}"), "error: t.c:1:15: a nested function definition is not parsed")
     t |> equal(decls("int x \{\}"), "error: t.c:1:7: expected ';', got '\{'")
     t |> equal(decls("int x, f(void) \{\}"), "error: t.c:1:16: expected ';', got '\{'")
     t |> equal(name_function_of("int *f(void);"), "(d_function 0 (d_name f) [(param [(spec void)] -)])")

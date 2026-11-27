@@ -64,8 +64,25 @@ enum CNode {
     MEMBER_DECLARATOR
     ENUMERATOR
     FUNC_DEF
-    BODY
     UNIT
+    COMPOUND
+    EXPR_STMT
+    NULL_STMT
+    LABEL
+    CASE
+    DEFAULT
+    IF
+    SWITCH
+    WHILE
+    DO
+    FOR
+    GOTO
+    CONTINUE
+    BREAK
+    RETURN
+    STMT_EXPR
+    ASM
+    ASM_OPERAND
 }
 
 //! Per node kind, its dump name and the roles of `op`, `a`, `b`, `c`, `d`: `-` unused, `n` a node
@@ -131,8 +148,25 @@ let NODE_FORMS <- fixed_array(
     ("enumerator", "-sna-"),        // the name, the value, the attributes
     ("func_def", "ilnln"),          // 1 after `__extension__`; the specifiers, the init-declarator, the
     //                                 old-style declarations, the body
-    ("body", "-r---"),              // a function body's tokens from its `{` to its `}`, not parsed yet
-    ("unit", "-l---"))              // the external declarations
+    ("unit", "-l---"),              // the external declarations
+    ("compound", "-l---"),          // the declarations and statements
+    ("expr_stmt", "-n---"),
+    ("null", "----a"),              // `;`, the attributes before it
+    ("label", "-sn-a"),             // the name, the statement (- at a block's end), the attributes after `:`
+    ("case", "-nnn-"),              // the value, the GNU range's last value, the statement
+    ("default", "-n---"),           // the statement
+    ("if", "-nnn-"),                // the condition, the statement, the `else` statement
+    ("switch", "-nn--"),            // the controlling expression, the statement
+    ("while", "-nn--"),             // the condition, the statement
+    ("do", "-nn--"),                // the statement, the condition
+    ("for", "-nnnn"),               // the declaration or expression, the condition, the step, the statement
+    ("goto", "-s---"),              // the label
+    ("continue", "-----"),
+    ("break", "-----"),
+    ("return", "-n---"),
+    ("stmt_expr", "-n---"),         // GNU `({ ... })`, its compound statement
+    ("asm", "inlll"),               // 1 `volatile`, 2 `inline`; the template, outputs, inputs, clobbers (strings)
+    ("asm_operand", "-snn-"))       // the `[name]` (- for none), the constraint, the expression
 
 //! One node: its kind, its fields by `NODE_FORMS`, the next node of the list it is in, and `tok`,
 //! the token it starts at, which places it.
