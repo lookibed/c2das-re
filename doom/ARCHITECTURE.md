@@ -55,8 +55,11 @@ committed references under `ref/` are those files copied by hand after a referen
   checks each demo (or `--demo`'s) natively and under `--tiers` (default `interp,jit`) with the sync
   build, times the speed build `--samples` runs a cell (default 3) into `results_linux.json`, a
   cell that does not stand failing the run; `--readme` renders it into `README.md`. `--speed` with
-  `--native`, `--convert` or `--compile-check` takes the speed build: `work/native/doom-speed`,
-  `work/<layout>-speed/`.
+  `--native`, `--convert` or `--compile-check` takes the speed build, `DOOM_FINAL_CHECKSUM` in place
+  of `DOOM_TIC_CHECKSUM`: `work/native/doom-speed`, `work/<layout>-speed/`. Each sync and speed run
+  `--fps` takes logs one evidence line (`fps.das`'s `timed_evidence`): `timed <lane> demo<N>, <sync
+  or speed> build <entry>: hash on|off (...), tics 0-<N-1> (<N> gametics) in <S> s = <F> fps; <what
+  held it to the reference>`.
 - `run.das --trace` with any of the above: the build, the conversion and the runs of the trace
   (section 3), apart from the reference ones. `--native` builds `work/native/doom-trace` with
   `DOOM_TIC_TRACE` after the sidecar's defines; `--demo N` runs it and writes its trace lines to

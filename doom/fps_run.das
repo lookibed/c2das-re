@@ -94,6 +94,8 @@ def fps_sync(plan : FpsPlan; lane : string; demo : int) : FpsCell {
         cell.error = "sync build: {problem}"
         cell.desync = !empty(synced.sync.desync)
         to_log(LOG_ERROR, "doom: {cell.workload}, {lane}: {cell.error}\n")
+    } else {
+        to_log(LOG_INFO, "doom: {timed_evidence(spec, synced)}\n")
     }
     return <- cell
 }
@@ -108,7 +110,7 @@ def fps_sample(plan : FpsPlan; demo : int; var cell : FpsCell) : bool {
         to_log(LOG_ERROR, "doom: {cell.workload}, {cell.lane}: {cell.error}\n")
         return false
     }
-    to_log(LOG_INFO, "doom: {cell.workload}, {cell.lane}: {run.timing.tics} gametics in {run.timing.seconds} s\n")
+    to_log(LOG_INFO, "doom: {timed_evidence(spec, run)}\n")
     return true
 }
 

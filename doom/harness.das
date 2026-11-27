@@ -213,6 +213,59 @@ def tic_sync(expected, got : array<string>; tics : int) : TicSync {
 //! The `trace=` lines of `text` in order, which the `DOOM_TIC_TRACE` build of patch 0002 prints.
 def trace_lines(text : string) : array<string> => <- [for (line in split(text, "\n")); line; where line |> starts_with("trace=")]
 
+//! The define of patch 0001's tic lines and per-tic checksums, which the speed build leaves out.
+let TIC_CHECKSUM_DEFINE = "DOOM_TIC_CHECKSUM"
+//! The define of patch 0001's one `final` line, the speed build's.
+let FINAL_CHECKSUM_DEFINE = "DOOM_FINAL_CHECKSUM"
+
+//! The text after `final ` of the first `final tic=` line of `output`, the speed build's one checksum
+//! line (the last tic run, as the reference log's line of it reads); "" without one.
+def final_line(output : string) : string {
+    let prefix = "final "
+    for (line in split(output, "\n")) {
+        if (line |> starts_with("{prefix}tic=")) {
+            return slice(line, length(prefix))
+        }
+    }
+    return ""
+}
+
+//! A speed build's `final` line against the reference `expected`: every line compared, all in sync
+//! when it is the last line, else none, the mismatch in `desync` with its `fields`; nothing compared
+//! for an empty reference.
+def final_sync(expected : array<string>; final : string) : TicSync {
+    var sync = TicSync(compared = length(expected))
+    if (empty(expected)) {
+        return sync
+    }
+    let last = expected[length(expected) - 1]
+    if (final == last) {
+        sync.in_sync = sync.compared
+    } elif (empty(final)) {
+        sync.desync = "expected the final `{last}`, got no `final` line"
+    } else {
+        sync.desync = "expected the final `{last}`, got `{final}`"
+        sync.fields = differing_fields(last, final)
+    }
+    return sync
+}
+
+//! The speed build's defines from the sync build's `defines`: `FINAL_CHECKSUM_DEFINE` first, as
+//! `speed_sidecar` writes them, then the rest without `TIC_CHECKSUM_DEFINE`.
+def speed_defines(defines : array<string>) : array<string> {
+    var speed <- [FINAL_CHECKSUM_DEFINE]
+    speed |> push_from([for (define in defines); define; where define != TIC_CHECKSUM_DEFINE])
+    return <- speed
+}
+
+//! The speed build's sidecar from the sync build's text `sidecar`: `TIC_CHECKSUM_DEFINE` taken out
+//! (`without_define`), `FINAL_CHECKSUM_DEFINE` first (`with_define`); "" with `error` set when either
+//! refuses.
+def speed_sidecar(sidecar : string; var error : string&) : string {
+    let without = without_define(sidecar, TIC_CHECKSUM_DEFINE, error)
+    return empty(error) ? with_define(without, FINAL_CHECKSUM_DEFINE, error) : ""
+}
+
 //! `sidecar`'s text with `define` first among its defines, in the spelling of the sidecar's own
 //! file (`"defines": [`) or of a variant's written one (`"defines" : [` over lines); "" with `error`
 //! set when the text has no single `"defines"` key opening an array.

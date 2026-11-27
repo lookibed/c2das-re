@@ -19,6 +19,14 @@ in order: `players[0].mo->x`, `y`, `z`, `angle` (each 0 while `players[0].mo` is
 or, on a tic that starts a screen melt, the screen the melt starts from (`wipe_EndScreen` puts it
 back); the melt's own steps run no tic and print nothing. Every tic of a timedemo has its line.
 
+Under `-DDOOM_FINAL_CHECKSUM`, the speed build's define (`ARCHITECTURE_RUN.md` section 9), the same
+code builds without the per-tic hunks: `G_CheckDemoStatus`, as a `-timedemo` run reaches the end of
+its demo (in `G_Ticker` of the tic past the last, before that tic changes anything), prints one line,
+`final tic=<gametic - 1> cs=<8 hex digits> fb=<8 hex digits>`, `cs` of the state the last tic left
+and `fb` of the screen `D_Display` drew for it: the reference log's last line after `final `, the
+same bytes for all three demos natively. That build hashes nothing else, one frame and 24 bytes of
+state for the whole run, inside the host's timed window.
+
 `w_wad.c`, `r_data.c` and `i_video.c` make the frame a function of the game alone, so the
 reference frames are the patched source's, not vanilla's, at the pixels below. A column
 drawer reads `dc_source[(frac >> FRACBITS) & 127]`, up to 127 bytes past a column's start: a wall

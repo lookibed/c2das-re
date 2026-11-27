@@ -92,6 +92,17 @@ def run_problem(run : DemoRun) : string {
     return ""
 }
 
+//! The evidence line of a timed `run` of `spec`, one `run_problem` passes: the lane, the demo and
+//! the build, whether it hashed (the sync build every tic, the speed build once as the demo ends),
+//! the tics the host timed, the seconds and fps, and what held it to the reference.
+def timed_evidence(spec : DemoSpec; run : DemoRun) : string {
+    let n = run.timing.tics
+    let build = run.speed ? "speed build" : "sync build"
+    let hash = run.speed ? "hash off (no per-tic cs or fb; one cs and fb of the last tic as the demo ends)" : "hash on (cs and fb every tic, a tic line each)"
+    let held = run.speed ? "final `{run.final}` is the reference's last tic" : "every tic held to the reference, not a speed sample"
+    return "timed {spec.tier} demo{spec.demo}, {build} {spec.entry}: {hash}, tics 0-{n - 1} ({n} gametics) in {run.timing.seconds:.3f} s = {double(n) / run.timing.seconds:.1f} fps; {held}"
+}
+
 //! `run` added to `cell`: its fps a sample, the median and spread recomputed; false with the cell's
 //! error set (`desync` when the run fell out of sync) when the run gives no fps.
 def add_run(var cell : FpsCell; run : DemoRun) : bool {
@@ -200,7 +211,7 @@ def render_fps(c : FpsCapture) : string {
     }
     let machine = box_label(capture_box(c.box, c.cpu), c.cpu)
     var text = "Box {machine}, {c.platform}; c2das-re `{c.commit}`, captured {c.timestamp}; {c.clang}; daslang {c.daslang}.\n\n"
-    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, which leaves the patch's per-tic checksums and tic lines out: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median{spread_note(c.spread_rule)}; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
+    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, which leaves the patch's per-tic checksums and tic lines out and hashes once, the last tic's state and frame, held to the reference log's last line: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median{spread_note(c.spread_rule)}; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
     let failed <- [for (cell in c.cells); "\n- {cell.workload}, {fps_title(cell.lane)}: {cell.error}"; where !empty(cell.error)]
     let notes <- upstream_footnotes([DOOM_PROGRAM], das_lanes)
     return text + table_of(headers, rows, 1) + join(failed, "") + "\n" + (empty(notes) ? "" : "\n" + join(notes, "\n") + "\n")
