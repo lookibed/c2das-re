@@ -111,13 +111,11 @@ def c_implicit(var x : CirExpr?; t : int; kind : string) : CirExpr? {
     return cast_node(x, t, kind)
 }
 
-// whether node `x` designates an object: a variable, a string literal, a subscript, a dereference
-// of an object pointer
+// whether node `x` designates an object: a variable, a string literal, a subscript, a member (of
+// a call's record result too, which clang materializes), a dereference of an object pointer
 def private is_lvalue(r : CIr; x : CirExpr?) : bool {
-    if (x.e == "ref" || x.e == "index" || x.e == "str_lit") {
+    if (x.e == "ref" || x.e == "index" || x.e == "str_lit" || x.e == "member") {
         return kind_of(r, x.t) != "func"
-    } elif (x.e == "member") {
-        return x.arrow || is_lvalue(r, x.base)
     }
     return x.e == "un" && x.op == "deref" && kind_of(r, x.t) != "func"
 }
@@ -162,13 +160,14 @@ def c_promote(var r : CIr; var x : CirExpr?) : CirExpr? {
 }
 
 // the type value or lvalue `x` of unqualified pool type `t` takes under the integer promotions: a
-// bit-field narrower than `int` is `int`, an unsigned one as wide as `int` is `unsigned int`, an
-// enum is its integer type, an integer narrower than `int` is `int`; any other type its own
+// bit-field narrower than `int` is `int` whatever its type's width, one as wide as `int` is `int`
+// or, of an unsigned type, `unsigned int`, a wider one keeps its type; an enum is its integer
+// type, an integer narrower than `int` is `int`; any other type its own
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
 def private promoted(var r : CIr; x : CirExpr?; t : int) : int {
     let width = bitfield_width(r, x)
     let underlying = r.pool[t].k == "enum" ? c_builtin(r, r.pool[t].is_signed ? "int" : "unsigned int") : t
-    if (width >= 0 && r.pool[underlying].w <= r.tu.target.int_w) {
+    if (width >= 0 && width <= r.tu.target.int_w) {
         return width < r.tu.target.int_w || r.pool[underlying].is_signed ? int_t(r) : c_builtin(r, "unsigned int")
     } elif (is_int(r, underlying) && r.pool[underlying].w < r.tu.target.int_w) {
         return int_t(r)
@@ -760,6 +759,14 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok, s
     return x
 }
 
+// whether pool type `e` is an enum and `i` the integer type it is compatible with (C11 6.7.2.2p4):
+// a pointer to each is one composite pointer type, the integer's, as clang merges them
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-enums")]
+def private enum_of_int(var r : CIr; e, i : int) : bool {
+    let ue = unq(r, e)
+    return r.pool[ue].k == "enum" && unq(r, i) == c_builtin(r, r.pool[ue].is_signed ? "int" : "unsigned int")
+}
+
 // the conditional `c ? a : b` at token `tok` (C11 6.5.15): the condition promoted, arithmetic arms
 // by the usual arithmetic conversions, a null pointer constant arm converted to the other arm's
 // pointer type, a `void *` arm taking the other, two other pointers both made `void *`
@@ -791,6 +798,12 @@ def private conditional(var r : CIr; var p : CParser; var c, a, b : CirExpr?; to
             } elif (points_at_void(r, b.t)) {
                 t = b.t
                 a = c_implicit(a, t, "BitCast")
+            } elif (enum_of_int(r, r.pool[a.t].to, r.pool[b.t].to)) {
+                t = b.t
+                a = c_implicit(a, t, "BitCast")
+            } elif (enum_of_int(r, r.pool[b.t].to, r.pool[a.t].to)) {
+                t = a.t
+                b = c_implicit(b, t, "BitCast")
             } elif (c_bare(r, a.t) != c_bare(r, b.t)) {
                 t = c_pointer(r, c_builtin(r, "void"))
                 a = c_implicit(a, t, "BitCast")

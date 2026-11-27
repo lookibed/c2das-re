@@ -34,6 +34,10 @@ def private shown(x : CirExpr?) : string {
         return "{x.cast_kind}{x.explicit_cast ? "!" : ""}<{x.t}>({shown(x.a)})"
     } elif (x.e == "ref") {
         return x.vol ? "{x.name}~" : x.name
+    } elif (x.e == "call") {
+        return "call<{x.t}>({shown(x.fn)})"
+    } elif (x.e == "cond") {
+        return "cond<{x.t}>({shown(x.c)}, {shown(x.a)}, {shown(x.b)})"
     } elif (x.e == "index") {
         return "index<{x.t}>({shown(x.base)}, {shown(x.i)}){x.vol ? "~" : ""}"
     } elif (x.e == "int_lit") {
@@ -186,6 +190,21 @@ def test_volatile_and_bitfield_assignment(t : T?) {
     t |> equal(cir_of("struct S \{ volatile long u[2]; unsigned i : 6; \}; void g(struct S s) \{ s.u[0]; s.i += 3; \}"), "struct S 24/8 \{u:2@0 i:3@16/128:6\}; int:64:true:long; array:1:2; int:32:false:unsigned int; void; func:4:0:false; ptr:1; int:32:true:int | record 0 1:8 | LValueToRValue<1>(index<1>(ArrayToPointerDecay<6>(s.0<2>~), 0<7>)~) | assignadd<3>(s.1<3>, 3<7>)")
 }
 
+[test(description = "a bit-field narrower than int promotes to int whatever its type's width, one as wide as int to int or unsigned int, a wider one keeps its type")]
+def test_wide_bitfields(t : T?) {
+    t |> equal(cir_of("struct W \{ unsigned long a : 3; unsigned long b : 32; unsigned long c : 40; long d : 32; \}; void g(struct W w) \{ -w.a; -w.b; -w.c; -w.d; \}"), "struct W 24/8 \{a:1@0/0:3 b:1@0/3:32 c:1@8/64:40 d:2@16/128:32\}; int:64:false:unsigned long; int:64:true:long; void; func:3:0:false; int:32:true:int; int:32:false:unsigned int | record 0 1:8 | neg<5>(IntegralCast<5>(LValueToRValue<1>(w.0<1>))) | neg<6>(IntegralCast<6>(LValueToRValue<1>(w.1<1>))) | neg<1>(LValueToRValue<1>(w.2<1>)) | neg<5>(IntegralCast<5>(LValueToRValue<2>(w.3<2>)))")
+}
+
+[test(description = "a member of a call's record result is read like an lvalue's; a pointer to an enum and one to its integer type make the integer's pointer in a conditional")]
+def test_rvalue_member_and_enum_pointers(t : T?) {
+    t |> equal(cir_of("struct S \{ int h; \}; struct S f(void); enum e \{ a = -1 \}; int *p; enum e *q; void g(void) \{ f().h; 1 ? q : p; \}"), "struct S 4/4 \{h:1@0\}; int:32:true:int; func:0::false; enum e 'enum e' \{a=-1\}; ptr:1; ptr:3; void; func:6::false; ptr:2 | record 0 1:8 | enumdef 3 1:45 | p:4 | q:5 | LValueToRValue<1>(call<0>(FunctionToPointerDecay<8>(f)).0<1>) | cond<4>(1<1>, BitCast<4>(LValueToRValue<5>(q)), LValueToRValue<4>(p))")
+}
+
+[test(description = "a record's member may name a typedef the unit declares before the record's definition and after its first use")]
+def test_typedef_ahead(t : T?) {
+    t |> equal(cir_of("typedef struct P P; typedef unsigned char u8; struct P \{ u8 b; P *next; \};"), "struct P 16/8 \{b:1@0 next:2@8\}; int:8:false:unsigned char; ptr:0; typedef:P:0; typedef:u8:1 | record 0 1:54")
+}
+
 [test(description = "every record and enum construct the builder does not type is refused at its place")]
 def test_refusals(t : T?) {
     t |> equal(cir_of("struct S \{ int a; \}; struct S \{ int b; \};"), "error: t.c:1:22: a struct tag defined again is not typed yet")
@@ -195,6 +214,7 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("void f(struct S \{ int a; \} s);"), "error: t.c:1:8: a struct defined in this place is not typed yet")
     t |> equal(cir_of("struct S \{ int; \};"), "error: t.c:1:12: a member declaration that declares no member is not typed yet")
     t |> equal(cir_of("struct S \{ float f : 3; \};"), "error: t.c:1:18: a bit-field of other than an integer type is not typed yet")
+    t |> equal(cir_of("struct S \{ int *p; \}; int x; struct S a[2] = \{ &x \};"), "error: t.c:1:48: an initializer of an array of records with elided braces is not typed yet")
     t |> equal(cir_of("struct S \{ int a; \}; struct S a[] = \{ 1, 2 \};"), "error: t.c:1:39: an unsized array of records initialized with elided braces is not typed yet")
     t |> equal(cir_of("int n; struct S \{ int f : n; \};"), "error: t.c:1:27: a bit-field width other than an integer constant from 0 to 64 is not typed yet")
     t |> equal(cir_of("struct S \{ int a; \} __attribute__((aligned(sizeof(int))));"), "error: t.c:1:36: an `aligned` attribute of other than an integer literal is not typed yet")

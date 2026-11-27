@@ -516,9 +516,10 @@ def private look_ahead(var b : CTypes; var p : CParser; specs : int) {
     }
 }
 
-//! The one file-scope definition of each record tag of unit node `u`, the own headers' included,
-//! which a use of the tag before it completes: Dumper A reads a record's fields where its type is
-//! first reached, from clang's whole unit.
+//! The one file-scope definition of each record and enum tag of unit node `u`, the own headers'
+//! included, which a use of the tag before it completes, and each file-scope typedef name's one
+//! declaration, which such a definition's members may name before the walk binds it: Dumper A reads
+//! a record's fields where its type is first reached, from clang's whole unit.
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-definitions")]
 def c_tag_lookahead(var b : CTypes; var p : CParser; u : int) {
     var at = p.ast.nodes[u].a
@@ -526,6 +527,15 @@ def c_tag_lookahead(var b : CTypes; var p : CParser; u : int) {
         let n = p.ast.nodes[at]
         if (n.kind == CNode.DECL || n.kind == CNode.FUNC_DEF) {
             look_ahead(b, p, n.a)
+        }
+        if (n.kind == CNode.DECL && c_declares_typedef(p, n.a)) {
+            var id = n.b
+            while (id >= 0) {
+                let d = p.ast.nodes[id].a
+                let sym = c_declarator_name(p.ast, d)
+                b.typedef_defs[sym] = key_exists(b.typedef_defs, sym) ? int2(-1, -1) : int2(at, d)
+                id = p.ast.nodes[id].next
+            }
         }
         at = n.next
     }

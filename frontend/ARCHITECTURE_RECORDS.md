@@ -16,7 +16,9 @@ record's fields from clang's whole unit where its type is first reached, so a us
 file-scope definition of its tag (`typedef struct node node;` before `struct node { ... }`) takes
 that definition (`c_tag_lookahead` finds each tag's one file-scope definition, the own headers'
 included): the use marks it, and it is built once the declaration of the use is bound
-(`c_tag_complete`), before a type is interned, a member read or a size taken. A record never
+(`c_tag_complete`), before a type is interned, a member read or a size taken; such a definition's members may
+name a typedef the unit declares at file scope after the use (each typedef name's one file-scope
+declaration is found with the definitions). A record never
 defined is incomplete: its entry has size and alignment -1 and no field.
 
 An enum named before its one file-scope definition (`typedef enum foo E;` first) takes it the same
@@ -28,7 +30,8 @@ again is refused, as Dumper A binds its constants by place. A definition is buil
 declaration, a member or the walk stands; one in a parameter list or a type name is refused, and
 so are a tag defined again in its own scope and a tag of another kind. glibc's `struct
 __jmp_buf_tag`, which Dumper A holds as the opaque `jmp_buf`, is refused, and with it `jmp_buf`. An
-initializer list of a struct or union is refused: initializers of aggregates are A.3's. A record or enum with no tag that a typedef declares by its name alone
+initializer list of a struct or union, and an array of records initialized with elided braces,
+are refused: initializers of aggregates are A.3's. A record or enum with no tag that a typedef declares by its name alone
 (`typedef struct { ... } Q;`) is named by it; any other with no tag is named "", and an enum with
 no name is spelled `enum (unnamed at <file>:<line>:<col>)`, the place of its keyword, as clang
 spells it. A definition in an own header is built where the header stands; one the builder refuses
@@ -73,16 +76,18 @@ Under msvc an enum is an `int` and its values are wrapped into it; under linux i
 when no value is negative, else `int`, and an enum no 32-bit type holds is refused. An enumerator is
 an `int`, or under linux the enum's `unsigned int` when one of its values is past INT_MAX. A
 reference to one is an `enum_ref` of its enum and name. An enum's value promotes to its type's
-integer by an `IntegralCast`, and converts as an integer of that type.
+integer by an `IntegralCast`, and converts as an integer of that type. A pointer to an enum and
+one to its integer type are compatible: in a conditional they make the integer's pointer.
 
 ## 46. Member access {#c-records-access}
 
 `.` and `->` name a field of a complete struct or union: its own, or one an anonymous member makes
 visible, each anonymous member on the way a `member` node of its own, `arrow` on the first access
 alone. A member's type is its field's with the record's qualifiers; a `volatile` one, or an
-array of volatile elements, marks the lvalue, a variable's and a subscript's alike. A member of an
-lvalue, and every `->`, is an lvalue. A read of a bit-field narrower than `int` promotes to `int`,
-an unsigned one as wide as `int` to `unsigned int`, as clang promotes bit-fields; a compound
+array of volatile elements, marks the lvalue, a variable's and a subscript's alike. Every member is read as an lvalue, one of a call's
+record result too, which clang materializes. A read of a bit-field narrower than `int` promotes to `int`
+whatever its type's width, one as wide as `int` to `int` or, of an unsigned type, `unsigned int`,
+and a wider one keeps its type, as clang promotes bit-fields; a compound
 assignment to one computes in that promoted type.
 
 ## 47. Dims {#c-records-dims}

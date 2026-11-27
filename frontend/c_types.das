@@ -67,6 +67,7 @@ struct CTypes {
     untyped_tags : table<int; string>       //!< a tag an own header defines that the builder does not type, and why
     defined_tags : table<int; bool>         //!< every tag a definition has named so far, in any scope
     tag_names : table<string; bool>         //!< the names records and enums have taken
+    typedef_defs : table<int; int2>         //!< a typedef name's one file-scope declaration (declaration, declarator), which a record built at an earlier use reads
     tag_defs : table<int; int>              //!< a tag's symbol to its one file-scope definition, built at the tag's first use
     tag_built : table<int; int>             //!< a record or enum specifier with a body to the pool type it defines
     tag_pending : array<int2>               //!< (definition, pool record) a use reached before the definition, not built yet
@@ -104,6 +105,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.untyped_tags |> clear()
     b.defined_tags |> clear()
     b.tag_names |> clear()
+    b.typedef_defs |> clear()
     b.tag_defs |> clear()
     b.tag_built |> clear()
     b.tag_pending |> clear()
@@ -481,7 +483,12 @@ def private named_type(var b : CTypes; var p : CParser; at : int) : int {
         }
         return tagged
     }
-    let named = b.typedefs?[n.a] ?? -1
+    var named = b.typedefs?[n.a] ?? -1
+    let ahead = b.typedef_defs?[n.a] ?? int2(-1, -1)
+    if (named < 0 && b.defining > 0 && ahead.x >= 0 && !key_exists(b.untyped, n.a)) {
+        named = c_declarator_type(b, p, c_specifier_type(b, p, p.ast.nodes[ahead.x].a), ahead.y, false)
+        return named if (named >= 0 || !empty(b.err))
+    }
     if (named < 0) {
         let why = b.untyped?[n.a] ?? ""
         let name = pp_symbol_text(p.unit.lx, n.a)

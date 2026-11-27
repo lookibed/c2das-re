@@ -109,7 +109,11 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
             pos = int(v)
         }
         let value = p.ast.nodes[it.b]
-        if (r.pool[elem].k == "array" && value.kind != CNode.INIT_LIST && value.kind != CNode.STRING) {
+        let ek = r.pool[r.unqualified[elem]].k
+        if ((ek == "struct" || ek == "union") && value.kind != CNode.INIT_LIST) {
+            c_refuse(r, p, it.tok, "an initializer of an array of records with elided braces")
+            return null
+        } elif (r.pool[elem].k == "array" && value.kind != CNode.INIT_LIST && value.kind != CNode.STRING) {
             c_refuse(r, p, it.tok, "an initializer of an array of arrays with elided braces")
             return null
         }
