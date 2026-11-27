@@ -183,9 +183,11 @@ def test_literals(t : T?) {
         t |> equal(ir_of("void g(void) \{ 2147483647; 2147483648; 0x80000000; 0xffffffffffffffff; 10u; 10l; 10ul; 07; 'a'; '\\xff'; L'b'; u'c'; U'd'; 1.5; 1.5f; 2.5L; \}"),
                    "expr 2147483647<int> ; expr 2147483648<long> ; expr 2147483648<unsigned int> ; expr 18446744073709551615<unsigned long> ; expr 10<unsigned int> ; expr 10<long> ; expr 10<unsigned long> ; expr 7<int> ; expr '97'<int> ; expr '255'<int> ; expr '98'<int> ; expr '99'<unsigned short> ; expr '100'<unsigned int> ; expr 0x1.8p+0<double> ; expr 0x1.8p+0<float> ; expr 0x1.4p+1<long double>")
     }
-    t |> run("msvc: long is 32 bits, wchar_t unsigned short") @(t : T?) {
+    t |> run("msvc: long is 32 bits, wchar_t unsigned short, an ll literal past long long a wrapped long long") @(t : T?) {
         t |> equal(ir_of("void g(void) \{ 2147483648; 4294967296; 0x80000000l; L'b'; \}", true),
                    "expr 2147483648<long long> ; expr 4294967296<long long> ; expr 2147483648<unsigned long> ; expr '98'<unsigned short>")
+        t |> equal(ir_of("void g(void) \{ 0xc000000080000000LL; 0xc000000080000000ULL; 0xc000000080000000; 0x7fffffffffffffffLL; \}", true),
+                   "expr -4611686016279904256<long long> ; expr 13835058057429647360<unsigned long long> ; expr 13835058057429647360<unsigned long long> ; expr 9223372036854775807<long long>")
     }
     t |> run("a prefixed constant's one octal or hexadecimal escape: a code unit, not a byte; one past INT_MAX refused") @(t : T?) {
         t |> equal(ir_of("void g(void) \{ L'\\400'; U'\\x41'; \}"), "expr '256'<int> ; expr '65'<unsigned int>")

@@ -443,7 +443,8 @@ def private literal_candidates(unsigned_suffix : bool; longs : int; decimal : bo
 }
 
 // an integer literal node from token `tok` (C11 6.4.4.1): its value and the type its base, suffix
-// and value give
+// and value give; under msvc an `ll` literal without `u` that `long long` does not hold is a
+// wrapped `long long`, as clang's MSVC compatibility types it
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-literals")]
 def private int_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
     let spelled = to_lower(c_spelling(p.unit, tok))
@@ -468,6 +469,10 @@ def private int_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
         value = value * base + uint64(d)
     }
     let decimal = base == 10ul
+    if (ok && is_msvc(r.tu.target) && longs == 2 && !unsigned_suffix && value > 0x7FFFFFFFFFFFFFFFul) {
+        // clang's MSVC compatibility: an `ll` literal past `long long` stays `long long`, wrapped
+        return new CirExpr(e = "int_lit", t = c_builtin(r, "long long"), v = "-{decimal(~value + 1ul)}")
+    }
     let t = ok ? literal_type(r, value, literal_candidates(unsigned_suffix, longs, decimal)) : -1
     if (t < 0) {
         c_refuse(r, p, tok, "the integer literal '{c_spelling(p.unit, tok)}', which no type of its list holds,")

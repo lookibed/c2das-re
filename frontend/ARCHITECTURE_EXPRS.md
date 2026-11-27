@@ -125,7 +125,9 @@ An explicit cast takes its operand as a value (to `void` too) and its kind from 
 An integer literal takes the first type of its list that holds its value (6.4.4.1): decimal with no
 suffix `int`, `long`, `long long`; octal or hex with no suffix the signed and unsigned types of each
 rank in turn; `u`, `l`, `ll` and their combinations their own lists; the widths the dialect's. Its
-`v` is the decimal value. A character constant is an `int` of the one byte it holds, read as plain
+`v` is the decimal value. Under msvc an `ll` literal without `u` past `long long` is a `long long`
+of the wrapped value, as clang's MSVC compatibility types it (`0xc000000080000000LL` is
+-4611686016279904256). A character constant is an `int` of the one byte it holds, read as plain
 `char` (unsigned under both dialects); with `L` the dialect's `wchar_t` (`int`, msvc's
 `unsigned short`), with `u` `unsigned short`, with `U` `unsigned int`, of the one character it holds,
 or of its one octal or hexadecimal escape's value, a code unit and not a byte (`L'\400'` is 256; a
