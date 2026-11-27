@@ -123,6 +123,10 @@ struct FormLine {
 //! gives a redeclaration its own type, the builtin's merged with the written one.
 let LIBRARY_BUILTIN = "a library builtin: clang's own type"
 
+//! The cause of a difference in the type of a function declared before: clang gives a
+//! redeclaration the type merged with the earlier one's, which may spell it another way.
+let MERGED_REDECLARATION = "a redeclaration: clang's merged type"
+
 //! A name an entity of a file-scope declaration binds in the ordinary name space, and whether as a
 //! typedef name.
 struct BoundName {
@@ -131,13 +135,11 @@ struct BoundName {
 }
 
 //! One file-scope declaration of clang's tree: the place of its first token, its lines (one per
-//! entity it declares, none for a tag declaration), the names it binds, and the constructs in it the
-//! oracle does not compare yet.
+//! entity it declares and per line of a body it holds), and the names it binds.
 struct ClangTop {
     key : string
     lines : array<FormLine>
     names : array<BoundName>
-    not_compared : array<string>
 }
 
 //! A unit's file-scope declarations as clang reads them, or the error that stopped the reading.
@@ -353,7 +355,7 @@ def private enumerators(js : JsonValue?; var names : array<BoundName>) {
     }
 }
 
-// the lines, names and uncompared constructs of the file-scope declaration `js`
+// the lines and names of the file-scope declaration `js`, a body it holds included
 def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
     var top = ClangTop(key = place_key(begin_of(map, js)))
     let k = kind_of(js)
@@ -381,7 +383,8 @@ def private clang_top(map : PresumedMap; js : JsonValue?) : ClangTop {
         }
         let list = empty(params) ? "" : " [{join(params, " ")}]"
         let line = "(decl {name}{place_text(loc)} {type_text(js?["type"])}{decl_flags(js)}{list})"
-        top.lines |> push(FormLine(file = loc.file, text = line, cause = builtin ? LIBRARY_BUILTIN : ""))
+        let cause = builtin ? LIBRARY_BUILTIN : present(js?["previousDecl"]) ? MERGED_REDECLARATION : ""
+        top.lines |> push(FormLine(file = loc.file, text = line, cause = cause))
         top.names |> push(BoundName(name = name))
         var labels : table<string; string>
         collect_labels(js, labels)
@@ -472,6 +475,51 @@ def private statement_children(js : JsonValue?) : array<int> {
 // an expression child in the form, `-` for an absent part
 def private part(map : PresumedMap; js : JsonValue?) : string => empty(kind_of(js)) ? "-" : clang_expression(map, js)
 
+// the line of statement `js`, whose statement children are `indexes` of its `inner`, past the kinds
+// `clang_statement` reads itself; `subs` gets the indexes of the statements under it, in order
+def private statement_head(map : PresumedMap; js : JsonValue?; labels : table<string; string>; indexes : array<int>; var subs : array<int>) : string {
+    let k = kind_of(js)
+    let at = place_text(begin_of(map, js))
+    let inner = js?["inner"]
+    let n = length(indexes)
+    if (k == "NullStmt") {
+        return "(null)"
+    } elif (k == "LabelStmt" && n == 1) {
+        subs |> push(indexes[0])
+        return "(label{at} {js?["name"] ?? ""})"
+    } elif (k == "CaseStmt" && n >= 2) {
+        let gnu_range = js?["isGNURange"] ?? false
+        subs |> push(indexes[n - 1])
+        return "(case{at} {part(map, (inner as _array)[indexes[0]])} {gnu_range ? part(map, (inner as _array)[indexes[1]]) : "-"})"
+    } elif (k == "DefaultStmt" && n == 1) {
+        subs |> push(indexes[0])
+        return "(default{at})"
+    } elif (k == "IfStmt" && n >= 2) {
+        subs |> push(indexes[1])
+        if (n == 3) {
+            subs |> push(indexes[2])
+        }
+        return "(if{at} {part(map, (inner as _array)[indexes[0]])} {n == 3 ? "else" : "-"})"
+    } elif ((k == "SwitchStmt" || k == "WhileStmt") && n == 2) {
+        subs |> push(indexes[1])
+        return "({k == "SwitchStmt" ? "switch" : "while"}{at} {part(map, (inner as _array)[indexes[0]])})"
+    } elif (k == "DoStmt" && n == 2) {
+        subs |> push(indexes[0])
+        return "(do{at} {part(map, (inner as _array)[indexes[1]])})"
+    } elif (k == "GotoStmt") {
+        return "(goto{at} {labels?[js?["targetLabelDeclId"] ?? ""] ?? "?"})"
+    } elif (k == "ContinueStmt" || k == "BreakStmt") {
+        return "({k == "ContinueStmt" ? "continue" : "break"}{at})"
+    } elif (k == "ReturnStmt") {
+        return "(return{at} {n == 1 ? part(map, (inner as _array)[indexes[0]]) : "-"})"
+    } elif (k == "GCCAsmStmt") {
+        return "(asm{at})"
+    } elif (is_expression(k) && !ends_with(k, "Stmt")) {
+        return "(expr{at} {clang_expression(map, js)})"
+    }
+    return "(unknown {k}{at})"
+}
+
 //! The lines of statement `js` and the statements under it, in order (`ARCHITECTURE.md#compared`):
 //! one line per statement with its kind, place and expressions, a block closed by `(end)`; a
 //! declaration statement is its declarations' lines, and the attributes of a statement are not
@@ -483,71 +531,33 @@ def clang_statement(map : PresumedMap; js : JsonValue?; labels : table<string; s
     let at = place_text(begin)
     let indexes <- statement_children(js)
     let inner = js?["inner"]
-    let n = length(indexes)
-    var head = ""
-    var subs : array<int>
     if (k == "CompoundStmt") {
         lines |> push(FormLine(file = begin.file, text = "(compound{at})"))
         for (i in indexes) {
             clang_statement(map, (inner as _array)[i], labels, lines)
         }
         lines |> push(FormLine(file = begin.file, text = "(end)"))
-        return
     } elif (k == "DeclStmt") {
         for (i in indexes) {
             lines |> push_from(clang_top(map, (inner as _array)[i]).lines)
         }
-        return
-    } elif (k == "AttributedStmt" && n == 1) {
+    } elif (k == "AttributedStmt" && length(indexes) == 1) {
         clang_statement(map, (inner as _array)[indexes[0]], labels, lines)
-        return
-    } elif (k == "NullStmt") {
-        head = "(null)"
-    } elif (k == "LabelStmt" && n == 1) {
-        head = "(label{at} {js?["name"] ?? ""})"
-        subs |> push(indexes[0])
-    } elif (k == "CaseStmt" && n >= 2) {
-        let gnu_range = js?["isGNURange"] ?? false
-        head = "(case{at} {part(map, (inner as _array)[indexes[0]])} {gnu_range ? part(map, (inner as _array)[indexes[1]]) : "-"})"
-        subs |> push(indexes[n - 1])
-    } elif (k == "DefaultStmt" && n == 1) {
-        head = "(default{at})"
-        subs |> push(indexes[0])
-    } elif (k == "IfStmt" && n >= 2) {
-        head = "(if{at} {part(map, (inner as _array)[indexes[0]])} {n == 3 ? "else" : "-"})"
-        for (i in range(1, n)) {
-            subs |> push(indexes[i])
-        }
-    } elif ((k == "SwitchStmt" || k == "WhileStmt") && n == 2) {
-        head = "({k == "SwitchStmt" ? "switch" : "while"}{at} {part(map, (inner as _array)[indexes[0]])})"
-        subs |> push(indexes[1])
-    } elif (k == "DoStmt" && n == 2) {
-        head = "(do{at} {part(map, (inner as _array)[indexes[1]])})"
-        subs |> push(indexes[0])
-    } elif (k == "ForStmt" && n == 5) {
-        let is_decl = kind_of((inner as _array)[indexes[0]]) == "DeclStmt"
-        lines |> push(FormLine(file = begin.file, text = "(for{at} {is_decl ? "decl" : part(map, (inner as _array)[indexes[0]])} {part(map, (inner as _array)[indexes[2]])} {part(map, (inner as _array)[indexes[3]])})"))
+    } elif (k == "ForStmt" && length(indexes) == 5) {
+        let first = (inner as _array)[indexes[0]]
+        let is_decl = kind_of(first) == "DeclStmt"
+        let head = "(for{at} {is_decl ? "decl" : part(map, first)} {part(map, (inner as _array)[indexes[2]])} {part(map, (inner as _array)[indexes[3]])})"
+        lines |> push(FormLine(file = begin.file, text = head))
         if (is_decl) {
-            clang_statement(map, (inner as _array)[indexes[0]], labels, lines)
+            clang_statement(map, first, labels, lines)
         }
         clang_statement(map, (inner as _array)[indexes[4]], labels, lines)
-        return
-    } elif (k == "GotoStmt") {
-        head = "(goto{at} {labels?[js?["targetLabelDeclId"] ?? ""] ?? "?"})"
-    } elif (k == "ContinueStmt" || k == "BreakStmt") {
-        head = "({k == "ContinueStmt" ? "continue" : "break"}{at})"
-    } elif (k == "ReturnStmt") {
-        head = "(return{at} {n == 1 ? part(map, (inner as _array)[indexes[0]]) : "-"})"
-    } elif (k == "GCCAsmStmt") {
-        head = "(asm{at})"
-    } elif (is_expression(k) && !ends_with(k, "Stmt")) {
-        head = "(expr{at} {clang_expression(map, js)})"
     } else {
-        head = "(unknown {k}{at})"
-    }
-    lines |> push(FormLine(file = begin.file, text = head))
-    for (i in subs) {
-        clang_statement(map, (inner as _array)[i], labels, lines)
+        var subs : array<int>
+        lines |> push(FormLine(file = begin.file, text = statement_head(map, js, labels, indexes, subs)))
+        for (i in subs) {
+            clang_statement(map, (inner as _array)[i], labels, lines)
+        }
     }
 }
 

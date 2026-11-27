@@ -30,8 +30,7 @@ struct Difference {
 
 //! What a unit gave: `same`, `differs` (its differences), `construct refused` (the parser refused
 //! a construct it does not take, which ends the unit), `parser refused` (any other located error
-//! of the parser) or `clang refused` (clang's error); the lines compared, the construct refused,
-//! and the constructs left uncompared.
+//! of the parser) or `clang refused` (clang's error); the lines compared, and the construct refused.
 struct ParseResult {
     unit : string
     verdict : string
@@ -39,7 +38,6 @@ struct ParseResult {
     differences : array<Difference>
     lines : int
     skipped : array<string>
-    not_compared : array<string>
     parser_lines : array<string>    //!< the parser's side, whole
     clang_lines : array<string>     //!< clang's side, whole
 }
@@ -158,7 +156,6 @@ def compare_texts(unit, text, json : string) : ParseResult {
     var theirs_lines : array<FormLine>
     for (top in clang.tops) {
         theirs_lines |> push_from(top.lines)
-        result.not_compared |> push_from(top.not_compared)
     }
     let ours <- with_files(ours_lines)
     let theirs <- with_files(theirs_lines)
@@ -209,15 +206,14 @@ def private first_line(text : string) : string {
     return stop >= 0 ? slice(text, 0, stop) : text
 }
 
-//! The totals of a set of units: the units per verdict, the lines compared, the constructs skipped
-//! and those left uncompared, each by its name.
+//! The totals of a set of units: the units per verdict, the lines compared, the differing lines by
+//! cause, and the constructs that ended a unit, each by its name.
 struct ParseTotals {
     verdicts : table<string; int>
     lines : int
     named_only : int                    //!< the units that differ only by causes clang's semantics name
     differences : table<string; int>    //!< the differing lines by cause, `unnamed` for none
     skipped : table<string; int>
-    not_compared : table<string; int>
 }
 
 def private count_into(var counts : table<string; int>; key : string) {
@@ -236,7 +232,6 @@ def operator +=(var a : ParseTotals; b : ParseTotals) {
     a.named_only += b.named_only
     merge_counts(a.differences, b.differences)
     merge_counts(a.skipped, b.skipped)
-    merge_counts(a.not_compared, b.not_compared)
 }
 
 //! The differences of `r` that no cause of clang's semantics names.
@@ -255,9 +250,6 @@ def add_result(var totals : ParseTotals; r : ParseResult) {
     for (s in r.skipped) {
         count_into(totals.skipped, s)
     }
-    for (s in r.not_compared) {
-        count_into(totals.not_compared, s)
-    }
 }
 
 // a table's entries as `name N`, the largest first
@@ -275,7 +267,6 @@ def describe_totals(name : string; totals : ParseTotals) : string {
         w |> write("{name}: {counts} ({totals.named_only} of them only by clang's named causes); {totals.lines} lines compared\n")
         w |> write("  differing lines by cause: {counted(totals.differences)}\n")
         w |> write("  units ended by a refused construct, by construct: {counted(totals.skipped)}\n")
-        w |> write("  not compared yet (by construct): {counted(totals.not_compared)}\n")
     }
 }
 

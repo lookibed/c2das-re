@@ -130,10 +130,11 @@ A difference that clang's semantics make stays a difference: the parser has no w
 the oracle does not hide it. Where clang's tree says why, the clang side names the cause on the
 line, and a difference on that line is counted under it: a declaration of a library function clang
 knows as a builtin (`BuiltinAttr`) has clang's own type, the builtin's merged with the written one
-(`__size_t` for `size_t`, `restrict` added; `builtin.c`). Other known ones, which the tree does not
-mark: a parameter of a function or array typedef's type is adjusted to a pointer (`semantic.c`;
+(`__size_t` for `size_t`, `restrict` added; `builtin.c`); a function declared before has the type
+merged with the earlier declaration's (`previousDecl`), so a definition `int m() {}` after `int
+m(void);` is `int (void)` (`semantic.c`). Other known ones, which the tree does not mark: a parameter of a function or array typedef's type is adjusted to a pointer (`semantic.c`;
 `va_list` is an array typedef); clang keeps the parentheses of an abstract declarator in an adjusted
-parameter's type (`int ([4])` is `int (*)`); a prototype merged into a later definition's type; a typedef of `void` as the only parameter; an
+parameter's type (`int ([4])` is `int (*)`); a typedef of `void` as the only parameter; an
 attribute that changes a type (`mode`).
 
 A tag with no name has a type clang names by its place and its owner (`struct (unnamed at ...)`,

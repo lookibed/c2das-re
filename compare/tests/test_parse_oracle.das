@@ -126,13 +126,17 @@ def test_refused_construct(t : T?) {
     t |> equal(r.lines, 0)
 }
 
-[test(description = "clang's semantic adjustment shows as the first differing line of both sides, never as the same", timeout = 1200)]
+[test(description = "clang's semantic adjustment shows as the first differing line of both sides, never as the same, and a merged redeclaration's type differs by its named cause", timeout = 1200)]
 def test_semantic_difference(t : T?) {
     let flags <- flags_of(t)
     let r <- compare_unit("compare/parse/fixtures/semantic.c", test_temp_dir(), flags)
     t |> equal(r.verdict, "differs")
     t |> equal(r.differences[0].ours, "(decl g@4:6 \"void (F)\" [f@4:10])")
     t |> equal(r.differences[0].theirs, "(decl g@4:6 \"void (F *)\" [f@4:10])")
+    t |> equal(length(r.differences), 2, describe_result(r))
+    t |> equal(r.differences[1].ours, "(decl m@6:5 \"int ()\")")
+    t |> equal(r.differences[1].theirs, "(decl m@6:5 \"int (void)\")")
+    t |> equal(r.differences[1].cause, MERGED_REDECLARATION)
 }
 
 [test(description = "a library builtin's redeclaration differs by clang's own type, the difference named and the walk going on past it", timeout = 1200)]

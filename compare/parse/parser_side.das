@@ -538,15 +538,24 @@ def statement_lines(var p : CParser; s : int; var lines : array<FormLine>) {
             lines |> push_from(parser_lines(p, n.a))
         }
         statement_lines(p, n.d, lines)
-    } elif (k == CNode.GOTO) {
-        lines |> push(line_at(p, n.tok, "(goto{at} {symbol(p, n.a)})"))
-    } elif (k == CNode.CONTINUE || k == CNode.BREAK || k == CNode.ASM) {
-        lines |> push(line_at(p, n.tok, "({NODE_FORMS[int(k)]._0}{at})"))
-    } elif (k == CNode.RETURN) {
-        lines |> push(line_at(p, n.tok, "(return{at} {parser_expression(p, n.a)})"))
     } else {
-        lines |> push(line_at(p, n.tok, "(unknown {NODE_FORMS[int(k)]._0}{at})"))
+        lines |> push(line_at(p, n.tok, leaf_text(p, s)))
     }
+}
+
+// the line of a statement with no statement under it: `goto`, `continue`, `break`, `asm`, `return`
+def private leaf_text(var p : CParser; s : int) : string {
+    let n = nd(p, s)
+    let at = at_text(p, s)
+    let k = n.kind
+    if (k == CNode.GOTO) {
+        return "(goto{at} {symbol(p, n.a)})"
+    } elif (k == CNode.CONTINUE || k == CNode.BREAK || k == CNode.ASM) {
+        return "({NODE_FORMS[int(k)]._0}{at})"
+    } elif (k == CNode.RETURN) {
+        return "(return{at} {parser_expression(p, n.a)})"
+    }
+    return "(unknown {NODE_FORMS[int(k)]._0}{at})"
 }
 
 //! A unit read by the parser's unit entry: its external declarations, or the error that stopped
