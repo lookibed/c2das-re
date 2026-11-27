@@ -242,6 +242,20 @@ def test_refusals(t : T?) {
         rec.dialect = "msvc"
         t |> equal(laid(rec), "r.c:1:8: an `ms_struct` record is not laid out")
     }
+    t |> run("a member or a record of 2^60 bytes or more, past clang's limit, under either dialect") @(t : T?) {
+        let limit = 1l << 60l
+        t |> equal(laid(record([plain("a", 1l << 61l, 1), plain("b", 1l, 1)])), "member `a` is 2^60 bytes or more, past clang's limit of a record")
+        t |> equal(laid(record([plain("a", limit, 1), plain("b", 8l, 8)])), "member `a` is 2^60 bytes or more, past clang's limit of a record")
+        t |> equal(laid(record([plain("a", limit - 1l, 1)])), "size {limit - 1l} align 1 at 0")
+        var two = record([plain("a", 1l << 59l, 1), plain("b", 1l << 59l, 1)])
+        two.at = "r.c:1:8"
+        t |> equal(laid(two), "r.c:1:8: the record reaches 2^60 bytes, past clang's limit")
+        t |> equal(laid(msvc(record([plain("a", 1l << 59l, 1), plain("b", 1l << 59l, 1)]))), "the record reaches 2^60 bytes, past clang's limit")
+        t |> equal(laid(msvc(record([plain("a", 1l << 61l, 1)]))), "member `a` is 2^60 bytes or more, past clang's limit of a record")
+        t |> equal(laid(record([plain("a", 8l, 8), plain("b", limit - 9l, 1)])), "the record reaches 2^60 bytes, past clang's limit")
+        t |> equal(laid(msvc(record([plain("a", 8l, 8), plain("b", limit - 9l, 1)]))), "the record reaches 2^60 bytes, past clang's limit")
+        t |> equal(laid(record([plain("a", 8l, 8), plain("b", limit - 17l, 1)])), "size {limit - 8l} align 8 at 0 64")
+    }
     t |> run("a pack or record alignment that is no power of two") @(t : T?) {
         t |> equal(laid(with_pack(record([plain("a", 1l, 1)]), 3)), "`#pragma pack(3)` is not a power of two")
         t |> equal(laid(with_aligned(record([plain("a", 1l, 1)]), 6)), "`aligned(6)` is not a power of two")

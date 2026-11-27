@@ -68,9 +68,21 @@ struct private Builder {
 
 def private is_power_of_two(n : int) : bool => n > 0 && (n & (n - 1)) == 0
 
+// clang's largest record, in bytes: a member or a record of this size or more is refused, so no
+// count of bits passes 2^63
+let private RECORD_LIMIT = 1l << 60l
+
+// whether member `m`, placed past `end` bytes, could reach `RECORD_LIMIT`: its size and the most
+// padding its largest alignment can add, past `end`, all below the limit, so no sum overflows
+def private reaches_limit(end : int64; m : CLayoutMember; rec : CLayoutRecord) : bool {
+    let pad = int64(max(max(m.align, m.aligned), max(rec.aligned, 1))) - 1l
+    return end + (m.is_flexible ? 0l : m.size) + pad >= RECORD_LIMIT
+}
+
 def private round_up_bits(n, to : int64) : int64 => (n + to - 1l) / to * to
 
 def private refuse(var layout : CRecordLayout; at, what : string) {
+    layout.offsets |> clear()
     layout.failed = true
     layout.err = empty(at) ? what : "{at}: {what}"
 }
@@ -101,6 +113,8 @@ def private member_refusal(rec : CLayoutRecord; m : CLayoutMember; idx : int) : 
     }
     if (m.size < 0l) {
         return "{name} has an incomplete type"
+    } elif (m.size >= RECORD_LIMIT) {
+        return "{name} is 2^60 bytes or more, past clang's limit of a record"
     }
     if (m.is_bitfield && (m.width < 0 || int64(m.width) > m.size * 8l)) {
         return "{name} is {m.width} bits wide, outside its type of {m.size * 8l} bits"
@@ -247,6 +261,10 @@ def private ms_layout(rec : CLayoutRecord; var layout : CRecordLayout) {
     var b = MsBuilder(align = 1, required = max(1, rec.aligned), max_field = rec.packed ? 1 : rec.pack)
     layout.offsets |> reserve(length(rec.members))
     for (m in rec.members) {
+        if (reaches_limit(b.size, m, rec)) {
+            refuse(layout, rec.at, "the record reaches 2^60 bytes, past clang's limit")
+            return
+        }
         layout.offsets |> push(ms_place(rec, m, b))
     }
     var size = round_up_bits(b.size, int64(b.align))
@@ -255,6 +273,9 @@ def private ms_layout(rec : CLayoutRecord; var layout : CRecordLayout) {
     size = round_up_bits(size, int64(rounding))
     if (size == 0l) {
         size = b.required >= 4 ? int64(align) : 4l
+    } elif (size >= RECORD_LIMIT) {
+        refuse(layout, rec.at, "the record reaches 2^60 bytes, past clang's limit")
+        return
     }
     layout.size = size
     layout.align = align
@@ -262,7 +283,7 @@ def private ms_layout(rec : CLayoutRecord; var layout : CRecordLayout) {
 }
 
 //! The layout of record `rec` under its dialect's rules; a refusal for `ms_struct`, a member type
-//! the C-IR has no type for, and a malformed description.
+//! the C-IR has no type for, a malformed description, and a member or record of 2^60 bytes or more.
 [arch(at="ARCHITECTURE_LAYOUT.md#c-layout-record")]
 def c_record_layout(rec : CLayoutRecord) : CRecordLayout {
     var layout : CRecordLayout
@@ -296,10 +317,19 @@ def c_record_layout(rec : CLayoutRecord) : CRecordLayout {
     var b = Builder(align = max(1, rec.aligned))
     layout.offsets |> reserve(length(rec.members))
     for (m in rec.members) {
+        if (reaches_limit(b.data_bits / 8l, m, rec)) {
+            refuse(layout, rec.at, "the record reaches 2^60 bytes, past clang's limit")
+            return <- layout
+        }
         layout.offsets |> push(m.is_bitfield ? place_bitfield(rec, m, b) : place_member(rec, m, b))
     }
+    let size = round_up_bits((b.size_bits + 7l) / 8l, int64(b.align))
+    if (size >= RECORD_LIMIT) {
+        refuse(layout, rec.at, "the record reaches 2^60 bytes, past clang's limit")
+        return <- layout
+    }
     layout.align = b.align
-    layout.size = round_up_bits(b.size_bits, int64(b.align) * 8l) / 8l
+    layout.size = size
     return <- layout
 }
 

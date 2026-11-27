@@ -46,7 +46,11 @@ one, else the record's) are set, and no number is, for:
 - a description no C record has: an alignment, `aligned` or `#pragma pack` value that is no power
   of two, a member of incomplete type, a flexible array member that is not the last member or is
   a bitfield, a bitfield wider than its type or of negative width, and a named bitfield of width
-  0.
+  0;
+- a member of 2^60 bytes or more, and a record its members would bring to 2^60 bytes (clang's
+  limit: it refuses such a record), checked before any size is counted in bits, so no bit offset
+  overflows; the check adds the most padding a member's largest alignment can add, so a record
+  within that much of the limit is refused too.
 
 ## 51. Members {#c-layout-members}
 
