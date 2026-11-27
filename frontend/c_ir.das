@@ -35,7 +35,8 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
     r.fn_name = ""
 }
 
-// the location of token `tok` as a C-IR place
+// the place of token `tok` in the C-IR: where the unit's text puts it, after its line markers
+[arch(at="ARCHITECTURE_NAMES.md#c-ir-places")]
 def private loc_of(var p : CParser; tok : int) : CirLoc {
     let t = p.unit.toks[tok]
     return CirLoc(file = c_file_name(p.unit, t.file), line = t.line, col = t.col)
@@ -436,7 +437,11 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
         return statement(r, p, sub, fn, into)
     }
     if (n.kind == CNode.EXPR_STMT && statement_block(p, n.a) >= 0) {
-        return statement(r, p, statement_block(p, n.a), fn, into)
+        let built = statement(r, p, statement_block(p, n.a), fn, into)
+        if (built) {
+            into[length(into) - 1].loc = at
+        }
+        return built
     }
     var st = new CirStmt(loc = at)
     let ok = n.kind == CNode.IF || n.kind == CNode.WHILE || n.kind == CNode.DO || n.kind == CNode.SWITCH || n.kind == CNode.FOR ? branch(r, p, n, fn, st) : simple(r, p, n, fn, st)
