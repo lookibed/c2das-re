@@ -55,6 +55,13 @@ def test_records(t : T?) {
         t |> equal(unit("struct O \{ struct I \{ int x; \} i; union \{ int u; \}; __extension__ struct \{ int y; \}; \};"),
                    "(decl 0 [(record struct O 1 [(member_decl 0 [(record struct I 1 [(member_decl 0 [(spec int)] [(member (d_name x) -)])])] [(member (d_name i) -)]) (member_decl 0 [(record union - 1 [(member_decl 0 [(spec int)] [(member (d_name u) -)])])] []) (member_decl 1 [(record struct - 1 [(member_decl 0 [(spec int)] [(member (d_name y) -)])])] [])])] [])")
     }
+    t |> run("a named member placed at its declarator, an unnamed bit-field at its colon") @(t : T?) {
+        var p : CParser
+        opened(p, "struct S \{ int *p; unsigned :0; \};")
+        let u = c_unit(p)
+        t |> equal(c_dump(p.ast, p.unit, p.ast.nodes[u].a, true),
+                   "(decl@1:1 0 [(record@1:1 struct S 1 [(member_decl@1:12 0 [(spec@1:12 int)] [(member@1:16 (d_pointer@1:16 (d_name@1:17 p) []) -)]) (member_decl@1:20 0 [(spec@1:20 unsigned)] [(member@1:29 - (int@1:30 0))])])] [])")
+    }
     t |> run("forward and incomplete tags, a flexible array member, a function pointer member, an empty body") @(t : T?) {
         t |> equal(unit("struct F; struct F *p; union U;"), "(decl 0 [(record struct F 0 [])] []) (decl 0 [(record struct F 0 [])] [(init_decl (d_pointer (d_name p) []) - -)]) (decl 0 [(record union U 0 [])] [])")
         t |> equal(unit("struct V \{ int n; int a[]; \};"), "(decl 0 [(record struct V 1 [(member_decl 0 [(spec int)] [(member (d_name n) -)]) (member_decl 0 [(spec int)] [(member (d_array 0 (d_name a) - []) -)])])] [])")
@@ -157,6 +164,7 @@ def test_malformed_records(t : T?) {
     t |> equal(unit("struct S \{ const; \};"), "error: t.c:1:12: a specifier list with no type specifier is not parsed")
     t |> equal(unit("struct S \{ int (*fp)(a); \};"), "error: t.c:1:22: an identifier list outside a function definition is not parsed")
     t |> equal(unit("struct S \{ __attribute__((packed)) x; \};"), "error: t.c:1:12: a specifier list with no type specifier is not parsed")
+    t |> equal(unit("struct S \{ __attribute__((unused)) const; \};"), "error: t.c:1:12: a specifier list with no type specifier is not parsed")
 }
 
 [test(description = "function definitions: a prototype's, with specifiers, attributes after the declarator and `__extension__`, one returning a function pointer; the body a compound statement")]
@@ -189,7 +197,7 @@ def test_old_style(t : T?) {
     }
 }
 
-[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, so does an enumerator a parameter's type declares, and after the definition the typedef is a type again")]
+[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, so does an enumerator a parameter's type declares, no earlier prototype's names are, and after the definition the typedef is a type again")]
 def test_body_scope(t : T?) {
     t |> equal(unit("void f6(T T) \{ T = 2; \} T after;"),
                "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f6) [(param [(typedef_name T)] (d_name T))]) - -) [] (compound [(expr_stmt (assign = (ident T) (int 2)))])) (decl 0 [(typedef_name T)] [(init_decl (d_name after) - -)])")
@@ -197,6 +205,8 @@ def test_body_scope(t : T?) {
                "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f9) [(param [(spec int)] (d_name T))]) - -) [] (compound [(expr_stmt (assign = (ident T) (int 4)))]))")
     t |> equal(unit("int g(enum \{ T = 1 \} x, int y) \{ return sizeof(T) + y; \} T later;"),
                "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name g) [(param [(enum - 1 [(enumerator T (int 1))])] (d_name x)) (param [(spec int)] (d_name y))]) - -) [] (compound [(return (binary + (sizeof_expr (paren (ident T))) (ident y)))])) (decl 0 [(typedef_name T)] [(init_decl (d_name later) - -)])")
+    t |> equal(unit("void f(int T) \{\} void g(int x) \{ sizeof(T); \}"),
+               "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f) [(param [(spec int)] (d_name T))]) - -) [] (compound [])) (func_def 0 [(spec void)] (init_decl (d_function 0 (d_name g) [(param [(spec int)] (d_name x))]) - -) [] (compound [(expr_stmt (sizeof_type (type_name [(typedef_name T)] -)))]))")
     t |> equal(unit("int T(void) \{ return 0; \} int y = T;"),
                "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name T) [(param [(spec void)] -)]) - -) [] (compound [(return (int 0))])) (decl 0 [(spec int)] [(init_decl (d_name y) (ident T) -)])")
 }
@@ -245,6 +255,10 @@ def test_file_scope(t : T?) {
     t |> equal(unit("__extension__ __asm__ volatile(\"\");"), "error: t.c:1:15: a file-scope asm is not parsed")
     t |> equal(unit("const;"), "error: t.c:1:1: a specifier list with no type specifier is not parsed")
     t |> equal(unit("__attribute__((x)) x;"), "error: t.c:1:1: a specifier list with no type specifier is not parsed")
+    t |> equal(unit("__attribute__((unused)) const;"), "error: t.c:1:1: a specifier list with no type specifier is not parsed")
+    for (text in fixed_array("int f(a);", "int f(a), g;", "int f(a) = 0;")) {
+        t |> equal(unit(text), "error: t.c:1:7: an identifier list outside a function definition is not parsed", text)
+    }
     t |> equal(unit("int x; \}"), "error: t.c:1:8: expected a declaration, got '\}'")
     var p : CParser
     opened(p, "__attribute__((unused));")
