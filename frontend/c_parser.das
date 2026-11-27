@@ -1448,7 +1448,7 @@ def c_unit(var p : CParser) : int {
 //! the token at `t` and those after it start a declaration in a block, past any `__extension__`s:
 //! a storage class, a function specifier, `_Static_assert`, or a type name's first token, but an
 //! identifier followed by `:`, which is a label, and attributes followed by `;`, a null statement
-[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def private declaration_starts(p : CParser) : bool {
     var t = p.pos
     while (p.unit.toks[t].kind == int(CTok.EXTENSION)) {
@@ -1474,7 +1474,7 @@ def private declaration_starts(p : CParser) : bool {
 
 //! a compound statement at its `{` (C11 6.8.2): a scope and a nesting level, declarations and
 //! statements in any order, to its `}`
-[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def private compound(var p : CParser) : int {
     let at = p.pos
     return -1 if (!enter(p))
@@ -1540,7 +1540,7 @@ def private label_statement(var p : CParser; n, s : int) {
 //! A statement at the cursor (C11 6.8). A run of labels is read in a loop, each the statement of
 //! the one before, so a long run costs no recursion; after labels a block's `}` or a declaration
 //! may stand, as clang takes it.
-[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def c_statement(var p : CParser) : int {
     var first = -1
     var last = -1
@@ -1564,7 +1564,7 @@ def c_statement(var p : CParser) : int {
 
 //! `if`, then any chain of `else if`, read in a loop so a long chain costs no recursion; each `if`
 //! a scope of its own
-[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def private if_statement(var p : CParser) : int {
     var first = -1
     var prev = -1
@@ -1644,7 +1644,7 @@ def private for_storage(var p : CParser; d : int) {
 
 //! `for`: a declaration or an expression, a condition, a step, each optional, and a statement; the
 //! declaration's names in a scope that ends with the statement (C11 6.8.5p5)
-[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def private for_statement(var p : CParser) : int {
     let at = p.pos
     p.pos++
@@ -1695,7 +1695,7 @@ def private asm_operands(var p : CParser) : int {
 
 //! an asm statement: `volatile` and `inline` once each, the template, then up to three sections of
 //! operands, outputs, inputs and clobbers; `asm goto` is refused
-[arch(at="ARCHITECTURE_PARSER.md#c-statements")]
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def private asm_statement(var p : CParser) : int {
     let at = p.pos
     p.pos++
