@@ -61,6 +61,14 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.err = ""
 }
 
+//! The first error, at token `tok`: a construct clang rejects (`what` is invalid C there), so
+//! the unit has no C-IR, as Dumper A's clang gives it none.
+def c_reject(var b : CTypes; var p : CParser; tok : int; what : string) {
+    if (empty(b.err)) {
+        b.err = "{c_where(p.unit, tok)}: {what} is invalid C, which clang rejects"
+    }
+}
+
 //! The first error, at token `tok`: a construct the builder does not type yet, and `why` after it.
 def c_refuse(var b : CTypes; var p : CParser; tok : int; what : string; why : string = "") {
     refuse(b, p, tok, what, why)

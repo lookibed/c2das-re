@@ -24,16 +24,27 @@ dereference of a volatile-qualified type set `vol`.
 A reference to a function an old-style definition defined has the type `R ()`, as clang's reference
 does, while its calls convert by the definition's promoted parameters (section 33); a declaration
 with no prototype keeps the type and prototype of an earlier one of the name (clang's composite
-type). `__builtin_expect` is the one builtin function typed, only as a callee: its reference has the
-type clang gives a builtin, `<builtin fn type>` (`c_builtin_fn_type`, in the table `void (...)`,
-keyed apart), and its decay is to a pointer to its prototype `long (long, long)`.
+type), and a block declaration of a function declared before binds its prototype for the calls in
+its block, though it adds no declaration (`int f(); ... { int f(double); f(1); }` converts the
+argument to `double`). `__builtin_expect` is the one builtin function typed, only as a callee: its
+reference has the type clang gives a builtin, `<builtin fn type>` (`c_builtin_fn_type`, in the table
+`void (...)`, keyed apart), and its decay is to a pointer to its prototype `long (long, long)`.
 
 Refused, at the construct's place: an identifier no variable or function in scope names (an enum
 constant among them, until the Aggregates phase), a builtin other than as a callee, GNU's `?:` with
-no middle operand, a member access, `va_arg`, `offsetof`, `__func__`, a compound literal, `_Alignof`,
-a statement expression other than a statement block (section 35), an operator on a pointer C does
-not define, a dereference, subscript or call of a value of the wrong type, a cast or a conditional
-of types clang refuses.
+no middle operand, a member access, `va_arg`, `offsetof`, `__func__`, a compound literal,
+`_Alignof`, a statement expression other than a statement block (section 35), a dereference,
+subscript or call of a value of the wrong type, a cast or a conditional of types clang refuses.
+
+Invalid C that clang rejects - with Dumper A's flags too, `-w` included, so Dumper A gives such a
+unit no C-IR - is never built: the builder stops at its place with `<place>: <what> is invalid C,
+which clang rejects` (`c_reject`). That covers a slot given a value it does not take (section 33),
+the operands of a binary operator of a kind it does not take (`%`, the shifts and the bitwise
+operators integers; `*` and `/` arithmetic; `+` arithmetic, or a pointer and an integer; `-` that,
+or two pointers to compatible types; a comparison arithmetic, or a pointer and a pointer or an
+integer; `&&` and `||` scalars), a call whose argument count a prototype does not allow (fewer
+arguments than its parameters, or more when it is not variadic), and a `_Static_assert` whose
+condition is 0 (section 32).
 
 ## 30. Casts {#c-exprs-casts}
 
@@ -74,28 +85,42 @@ rank. Rank follows the spelling (`long` above `int` at one width, `long long` ab
 - `?:`: the condition promoted; arithmetic arms by the usual arithmetic conversions; else both
   values, two `void` arms `void`, a null pointer constant converted to the other arm's pointer type
   (`NullToPointer`, also over an explicit `(void *)0`), a pointer to `void` taking the other arm by
-  `BitCast`, two other pointers of different types both made `void *` by `BitCast`.
+  `BitCast`, two pointers to compatible types their composite type (`c_composite`, C11 6.2.7p3: an
+  array of unknown size takes the other's size, so `int (*)[3]` and `int (*)[]` give `int (*)[3]`),
+  the arm of another type converted to it by `BitCast`, two pointers to incompatible types both made
+  `void *` by `BitCast`. Two pointers to functions one of which takes no parameter are refused: the
+  pool keeps no mark of a prototype, so `int (*)()`, whose composite with `int (*)(double)` is that
+  type, and `int (*)(void)`, which is incompatible with it, are one type there.
 - `,`: both operands values; the right one's type. A `switch` controlling expression is promoted.
 
 ## 32. Constants {#c-exprs-constants}
 
 `c_fold` evaluates an integer constant expression (C11 6.6) over typed nodes: integer and character
 literals, integer casts, `sizeof`, the unary, binary, logical and conditional operators, each step
-held in its node's type (wrapped to the width, unsigned arithmetic for unsigned operands). A
-`case` label is folded so (its `v`; a GNU range is refused), and so is an index designator. A null
-pointer constant (`c_is_null`, 6.3.2.3p3) is an integer constant expression of value 0, or an
-explicit cast of one to `void *`.
+held in its node's type (wrapped to the width, unsigned arithmetic for unsigned operands). A `case`
+label is folded so (its `v`; a GNU range is refused), and so is an index designator. A null pointer
+constant (`c_is_null`, 6.3.2.3p3) is an integer constant expression of value 0, or an explicit cast
+of one to `void *`. A floating constant cast at once to an integer type is an integer constant
+(6.6p6), its value truncated toward zero (`c_float_integer`), so `(int)0.0` is a null pointer
+constant. A `_Static_assert`'s condition is folded the same way where it stands, at file scope or in
+a block, and adds nothing to the C-IR: 0 is invalid C, and a condition the builder cannot fold yet
+is refused.
 
 ## 33. Conversions to a slot's type {#c-exprs-slots}
 
 `c_assigned` converts as by assignment (6.5.16.1, clang's copy initialization) to the slot's type
 unqualified: the operand a value, then arithmetic to arithmetic by the pair's kind (`IntegralCast`,
 `IntegralToFloating`, `FloatingToIntegral`, `FloatingCast`, `IntegralToBoolean`,
-`FloatingToBoolean`); to a pointer `NullToPointer` from a null pointer constant, `IntegralToPointer`
-from another integer, `NoOp` from a pointer whose type differs only in qualifiers (`char *` to
-`const char *`), `BitCast` from any other pointer; a pointer to `_Bool` `PointerToBoolean`, to
-another integer `PointerToIntegral`. A literal is converted, never retyped (`char c = 1` is an
-`IntegralCast` over `1`). The slots:
+`FloatingToBoolean`); to a pointer `NullToPointer` from a null pointer constant, `NoOp` from a
+pointer whose type differs only in qualifiers (`char *` to `const char *`), `BitCast` from a pointer
+to a compatible type or from or to a pointer to `void`; a pointer to `_Bool` `PointerToBoolean`.
+Every other pair is invalid C clang rejects (section 29): an integer other than a null pointer
+constant to a pointer and a pointer to an integer other than `_Bool` (clang's `int-conversion`, an
+error by default), a pointer to an incompatible type (`incompatible-pointer-types`), a floating
+value to a pointer, a value of no scalar type to a scalar. Compatibility is the pool's
+(`c_composite`), in which a function with no parameter is compatible with any function of its
+result, `()` and `(void)` being one type there. A literal is converted, never retyped (`char c = 1`
+is an `IntegralCast` over `1`). The slots:
 
 - a scalar initializer, braced or not, and a list's items, each to its element type at its position
   (an index designator sets it; the items in position order, a later one for a position replacing
@@ -123,8 +148,10 @@ suffix `int`, `long`, `long long`; octal or hex with no suffix the signed and un
 rank in turn; `u`, `l`, `ll` and their combinations their own lists; the widths the dialect's. Its
 `v` is the decimal value. A character constant is an `int` of the one byte it holds, read as plain
 `char` (unsigned under both dialects); with `L` the dialect's `wchar_t` (`int`, msvc's
-`unsigned short`), with `u` `unsigned short`, with `U` `unsigned int`, of the one character it holds;
-both set `is_char`. A string literal is `char[N]` of its bytes, escapes decoded, a universal
+`unsigned short`), with `u` `unsigned short`, with `U` `unsigned int`, of the one character it holds
+(`wide_units`: an octal or hex escape its whole value, `L'\x100'` 256, a universal character name
+and a UTF-8 sequence of the source their code point), refused past its type's range; both set
+`is_char`. A string literal is `char[N]` of its bytes, escapes decoded, a universal
 character name as its UTF-8 bytes, adjacent literals joined, the NUL appended; a prefixed one is
 refused. A floating constant is `float` with `f`, `long double` with `l`, else `double`, its `v` by
 section 36.
@@ -132,22 +159,22 @@ section 36.
 ## 35. Order and statements {#c-exprs-order}
 
 Dumper A interns a node's type before its operands' (`dump_expr_node` reads the node's type, then
-dumps its children), left to right, and a `sizeof`'s operand type, or its operand expression's types,
-after its own. `c_exprs_use` turns a typed expression's pool types into table indices in that order,
-and the walk of `c_ir.das` calls it where Dumper A dumps the expression: a variable's initializer
-right after the variable's type; in a body each statement's expressions in source order - an `if`'s
-condition before its branches, a `while`'s before its body, a `do`'s after, a `for`'s initializer,
-condition and step before its body, a `switch`'s controlling expression, a `return` value. A `case`
-label's expression adds no type (Dumper A folds it from the tree).
+dumps its children), left to right, and a `sizeof`'s operand type, or its operand expression's
+types, after its own. `c_exprs_use` turns a typed expression's pool types into table indices in that
+order, and the walk of `c_ir.das` calls it where Dumper A dumps the expression: a variable's
+initializer right after the variable's type; in a body each statement's expressions in source order
+- an `if`'s condition before its branches, a `while`'s before its body, a `do`'s after, a `for`'s
+initializer, condition and step before its body, a `switch`'s controlling expression, a `return`
+value. A `case` label's expression adds no type (Dumper A folds it from the tree).
 
-The statements are Dumper A's shapes: a block's declarations as its statements (a local's `decl`,
-a hoisted `static` a `null` with the static in `decls` as a global named `<function>_<name>` before
+The statements are Dumper A's shapes: a block's declarations as its statements (a local's `decl`, a
+hoisted `static` a `null` with the static in `decls` as a global named `<function>_<name>` before
 the function, an `extern` a `null`, a block function declaration nothing), `case`, `default` and a
-label as markers followed by the statement under them, a `for`'s declaration as a compound
-statement in `init_s`, an expression statement (and a `for`'s initializer and step, an `if`, `while`,
-`do` or `for` condition) made a value, a GNU statement expression used as a statement - through
-parentheses, `__extension__` and a cast to `void` - as its compound statement. Names are C.4's:
-the C-IR here keeps each declaration's own name, and the comparison sets names aside.
+label as markers followed by the statement under them, a `for`'s declaration as a compound statement
+in `init_s`, an expression statement (and a `for`'s initializer and step, an `if`, `while`, `do` or
+`for` condition) made a value, a GNU statement expression used as a statement - through parentheses,
+`__extension__` and a cast to `void` - as its compound statement. Names are C.4's: the C-IR here
+keeps each declaration's own name, and the comparison sets names aside.
 
 ## 36. Floating constants {#c-exprs-floats}
 
@@ -159,8 +186,10 @@ the nearest value of the type with ties to even, a value below the smallest norm
 bits and one past the largest finite infinite (`c_float_value`). A `float` constant's value then
 goes through clang's text of it, nine significant digits cut and rounded up when the first digit
 cut is 5 or more, as LLVM's `APFloat::toString` does (`c_float_decimal`), read back as a double. A
-double's seventeen digits read back to the same double, so it is printed as it is; a `long double`
-constant is read as a double, the dialect's width (clang's own reading at 64 bits can differ in
-its last bit where the decimal lies near a halfway point of the double). The print
+double's seventeen digits read back to the same double, so it is printed as it is. A `long double`
+constant under msvc is a double. Under linux it is x87's extended type: the value is rounded to a
+64-bit significand (exponents -16382 to 16383), clang's text of it has twenty-one digits, and that
+text read back as a double is the value Dumper A prints - which can differ from the source rounded
+straight to a double (`0x1.00000000000008001p0L` is `0x1p+0`, not `0x1.0000000000001p+0`). The print
 (`c_hex_float`) is glibc's `%a` of a double: `0x1.<hex digits>p<exponent>` without trailing zero
 digits, a subnormal `0x0.<hex digits>p-1022`, zero `0x0p+0`, infinity `inf`.

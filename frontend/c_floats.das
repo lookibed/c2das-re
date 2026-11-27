@@ -340,12 +340,20 @@ def c_hex_float(v : CBinary) : string {
     return "0x{lead}{empty(hex) ? "" : "."}{hex}p{sign}{abs(exp)}"
 }
 
-//! Floating constant `spelled` of C type `kind` (`float`, `double` or `long double`, its suffix
-//! gone) as Dumper A writes it: clang's value (a `long double` read as a double, the dialect's
-//! width), through clang's decimal text of it (nine digits for a `float`, seventeen for a double,
-//! which read back to the same double), as a hex-float.
+//! Floating constant `spelled` of C type `kind` (`float`, `double`, `long double` where it is a
+//! double, `extended` for linux's x87 `long double`; its suffix gone) as Dumper A writes it: clang's
+//! value in the type, through clang's decimal text of it (nine digits for a `float`, seventeen for
+//! a double, which read back to the same double, twenty-one for x87's), read as a double, as a
+//! hex-float.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-floats")]
 def c_float_literal(spelled : string; kind : string) : string {
+    if (kind == "extended") {
+        // the linux `long double`: x87's 64-bit significand, then clang's 21-digit text of it
+        let x = c_float_value(spelled, 64, -16382, 16383)
+        return "inf" if (x.inf)
+        let dec = c_float_decimal(x, 21)
+        return c_hex_float(c_float_value("{dec.text}e{dec.e10}", 53, -1022, 1023))
+    }
     if (kind == "float") {
         let f = c_float_value(spelled, 24, -126, 127)
         return "inf" if (f.inf)
@@ -354,3 +362,29 @@ def c_float_literal(spelled : string; kind : string) : string {
     }
     return c_hex_float(c_float_value(spelled, 53, -1022, 1023))
 }
+
+//! The integer value of hex-float `hex` (as `c_hex_float` writes it) truncated toward zero, into
+//! `v`; false for `inf` and a value past 63 bits.
+def c_float_integer(hex : string; var v : int64&) : bool {
+    let at_p = find(hex, "p")
+    return false if (!starts_with(hex, "0x") || at_p < 0)
+    let digits = slice(hex, 2, at_p)
+    let dot = find(digits, ".")
+    let fraction = dot < 0 ? 0 : length(digits) - dot - 1
+    var m = 0ul
+    for (ch in replace(digits, ".", "")) {
+        m = (m << 4ul) | uint64(is_number(ch) ? ch - '0' : (ch | 0x20) - 'a' + 10)
+    }
+    let exponent = slice(hex, at_p + 1)
+    let negative = starts_with(exponent, "-")
+    let magnitude = to_int(negative || starts_with(exponent, "+") ? slice(exponent, 1) : exponent)
+    let shift = (negative ? -magnitude : magnitude) - 4 * fraction
+    if (shift >= 0) {
+        return false if (shift > 62 || (m >> uint64(63 - shift)) != 0ul)
+        v = int64(m << uint64(shift))
+    } else {
+        v = -shift >= 64 ? 0l : int64(m >> uint64(-shift))
+    }
+    return true
+}
+

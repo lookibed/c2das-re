@@ -60,7 +60,7 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
         return s
     } elif (n.kind != CNode.INIT_LIST) {
         var x = c_expr(r, p, init)
-        return x == null ? null : c_assigned(r, x, t)
+        return x == null ? null : c_assigned(r, p, x, t, n.tok)
     } elif (k != "array") {
         let item = n.a
         if (item < 0 || p.ast.nodes[item].next >= 0 || p.ast.nodes[item].a >= 0) {
@@ -216,6 +216,25 @@ def private object_type(var r : CIr; var p : CParser; t, id : int; local, is_ext
     return typed
 }
 
+// a `_Static_assert` (C11 6.7.10): its condition folded, as clang checks it; Dumper A's walk adds
+// nothing for it. A false one is invalid C; one the builder cannot fold yet is refused
+[arch(at="ARCHITECTURE_EXPRS.md#c-exprs-constants")]
+def private static_assertion(var r : CIr; var p : CParser; n : CNodeRec) : bool {
+    var x = c_expr(r, p, n.a)
+    return false if (x == null)
+    var v = 0l
+    let folded = c_fold(r, x, v)
+    delete_expr(x)
+    if (!folded) {
+        c_refuse(r.b, p, n.tok, "a _Static_assert whose condition the builder cannot fold")
+        return false
+    } elif (v == 0l) {
+        c_reject(r.b, p, n.tok, "a _Static_assert whose condition is 0")
+        return false
+    }
+    return true
+}
+
 // declaration node `decl` in Dumper A's order, per init-declarator its type, then its
 // initializer's or its parameters' types; `fn` the function holding a block declaration ("" at file
 // scope), `into` the block's statements: a local its `decl`, a hoisted `static` and an `extern` a
@@ -223,6 +242,7 @@ def private object_type(var r : CIr; var p : CParser; t, id : int; local, is_ext
 [arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
 def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; var into : array<CirStmt?>) : bool {
     let n = p.ast.nodes[decl]
+    return static_assertion(r, p, n) if (n.kind == CNode.STATIC_ASSERT)
     return true if (n.kind != CNode.DECL)
     let typedef_decl = c_declares_typedef(p, n.a)
     let is_static = has_storage(p, n.a, CTok.STATIC)
@@ -294,7 +314,7 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
     if (n.kind == CNode.DECL) {
         return declaration(r, p, s, fn, into)
     } elif (n.kind == CNode.STATIC_ASSERT) {
-        return true
+        return static_assertion(r, p, n)
     } elif (n.kind == CNode.LABEL || n.kind == CNode.CASE || n.kind == CNode.DEFAULT) {
         if (n.kind == CNode.LABEL) {
             into |> push(new CirStmt(s = "label", label_name = pp_symbol_text(p.unit.lx, n.a), loc = at))
@@ -359,7 +379,7 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.s = "return"
         if (n.a >= 0) {
             var e = c_expr(r, p, n.a)
-            st.e = e == null ? null : used(r, r.b.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, e, r.ret))
+            st.e = e == null ? null : used(r, r.b.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, p, e, r.ret, p.ast.nodes[n.a].tok))
             ok = st.e != null
         }
     } else {
