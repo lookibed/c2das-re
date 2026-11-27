@@ -207,6 +207,41 @@ def test_statements(t : T?) {
                "g_s=1<int> ; null - - ; null - - ; if LValueToRValue<int>(x) - ; expr assign<int>(x, 2<int>) ; return 0<int> ; while LValueToRValue<int>(x) - ; expr postdec<int>(x) ; do 0<int> - ; expr postinc<int>(x) ; for lt<int>(LValueToRValue<int>(i), 2<int>) postinc<int>(i) ; i:int=0<int> ; null - - ; switch LValueToRValue<int>(x) - ; case 97c ; case 2 ; break - - ; default - - ; null - - ; label l ; goto l ; expr LValueToRValue<int>(x) ; return LValueToRValue<int>(x)")
 }
 
+// the places the builder gives unit `text`: each declaration's `name@file:line:col`, then its body's
+// statements' `kind@line:col`, the top level of each block in order
+def private places_of(text : string) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c")
+    let u = c_unit(p)
+    return "parse error: {p.err}" if (p.failed)
+    var r = new CIr
+    c_ir_open(*r, target_lp64_linux(), "")
+    var out : array<string>
+    if (c_ir_unit(*r, p, u)) {
+        for (d in r.tu.decls) {
+            out |> push("{d.name}@{d.loc.file}:{d.loc.line}:{d.loc.col}")
+            if (d.body != null) {
+                for (st in d.body.body) {
+                    out |> push("{st.s}@{st.loc.line}:{st.loc.col}")
+                }
+            }
+        }
+    } else {
+        out |> push("error: {r.err}")
+    }
+    delete_tu(r.tu)
+    unsafe {
+        delete r
+    }
+    return join(out, " ")
+}
+
+[test(description = "places from the builder's own tokens: the file and line a line marker gives, the column the token stands at in the text; a declaration at its name, a statement at its first token, a GNU statement block used as a statement at its expression statement's")]
+def test_places(t : T?) {
+    t |> equal(places_of("# 7 \"s.c\"\nint  g;\nint f(int x) \{\n  x = 1;\n   (\{ x; \});\n\}\n"),
+               "g@s.c:7:6 f@s.c:8:5 expr@9:3 compound@10:4")
+}
+
 [test(description = "the table order: a declaration's type, then its initializer's node types before their operands', a body's expressions where they stand")]
 def test_table_order(t : T?) {
     var p : CParser
