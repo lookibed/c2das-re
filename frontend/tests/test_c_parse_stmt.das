@@ -261,3 +261,23 @@ def test_whole_unit(t : T?) {
     t |> equal(strings_used, 0, "string allocations")
     t |> success(heap_used <= 16, "heap allocations {heap_used} over {length(p.unit.toks)} tokens")
 }
+
+[test(description = "the audit's arms: each required parenthesis is located when missing; an `else if` chain closes every scope it opened; the lookahead past several `__extension__` and attribute groups reaches a declaration, and an unclosed attribute ends at the input's end; an asm statement with outputs alone keeps them; a `_Static_assert` as a `for` declaration; 256 nested `if`s with null bodies are exactly the bound")]
+def test_audit_arms(t : T?) {
+    t |> equal(stmt("x = (\{ 1; \};"), "error: t.c:1:12: expected ')', got ';'")
+    t |> equal(stmt("while (1 ;"), "error: t.c:1:10: expected ')', got ';'")
+    t |> equal(stmt("do ; while 1);"), "error: t.c:1:12: expected '(', got '1'")
+    t |> equal(stmt("do ; while (1;"), "error: t.c:1:14: expected ')', got ';'")
+    t |> equal(stmt("for ;;) ;"), "error: t.c:1:5: expected '(', got ';'")
+    t |> equal(stmt("for (;;i ;"), "error: t.c:1:10: expected ')', got ';'")
+    t |> equal(stmt("\{ if (sizeof(enum \{ T \})) ; else if (1) ; T x; \}"),
+               "(compound [(if (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -)) (null) (if (int 1) (null) -)) (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)])])")
+    t |> equal(stmt("\{ __extension__ __extension__ int x; \}"), "(compound [(decl 1 [(spec int)] [(init_decl (d_name x) - -)])])")
+    t |> equal(stmt("\{ __attribute__((unused)) __attribute__((unused)); \}"),
+               "(compound [(null [(attribute __attribute__((unused))) (attribute __attribute__((unused)))])])")
+    t |> equal(stmt("\{ __attribute__((unused)"), "error: t.c:1:25: expected ')' closing __attribute__, got end of input")
+    t |> equal(stmt("asm(\"\" : \"=r\"(x));"), "(asm 0 (string \"\") [(asm_operand - (string \"=r\") (ident x))] [] [])")
+    t |> equal(stmt("for (_Static_assert(1);;) ;"), "(for (static_assert (int 1) -) - - (null))")
+    t |> success(stmt("{repeat("if (1) ", 256)};") |> starts_with("(if (int 1) (if (int 1)"))
+    t |> equal(stmt("{repeat("if (1) ", 257)};"), "error: t.c:1:1797: nesting deeper than 256 levels is not parsed")
+}
