@@ -610,6 +610,6 @@ def test_definition_identified(t : T?) {
     t |> equal(name_function_of("int (f)(int);"), "(d_function 0 (d_paren (d_name f) []) [(param [(spec int)] -)])")
     t |> equal(name_function_of("int (*fp)(int);"), "-")
     t |> equal(name_function_of("int x;"), "-")
-    var ast : CAst
+    let ast : CAst
     t |> equal(c_name_function(ast, -1), -1)
 }
