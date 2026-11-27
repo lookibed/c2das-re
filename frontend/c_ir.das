@@ -362,6 +362,7 @@ def private table_dims(var r : CIr; var p : CParser; d, t : int) : array<CirDim>
 // name, a block's `static` hoisted with a `null` in its place, a block's `extern` declared at file
 // scope once with a `null` in its place, any other local a `decl` statement into `into`
 def private variable(var r : CIr; var g : CirDecl?; sym : int; global, is_static, is_extern, no_init : bool; var into : array<CirStmt?>) {
+    let at = g.loc
     if (global) {
         g.is_extern = is_extern && no_init
         push_global(r, g)
@@ -369,7 +370,7 @@ def private variable(var r : CIr; var g : CirDecl?; sym : int; global, is_static
         g.is_static = true
         g.from_func = r.fn_name
         r.tu.decls |> push(g)
-        into |> push(new CirStmt(s = "null", loc = g.loc))
+        into |> push(new CirStmt(s = "null", loc = at))
     } elif (is_extern) {
         if (!key_exists(r.declared, sym)) {
             g.is_extern = true
@@ -377,9 +378,9 @@ def private variable(var r : CIr; var g : CirDecl?; sym : int; global, is_static
         } else {
             delete_decl(g)
         }
-        into |> push(new CirStmt(s = "null", loc = g.loc))
+        into |> push(new CirStmt(s = "null", loc = at))
     } else {
-        var st = new CirStmt(s = "decl", name = g.name, t = g.t, init = g.init, loc = g.loc)
+        var st = new CirStmt(s = "decl", name = g.name, t = g.t, init = g.init, loc = at)
         st.dims <- g.dims
         g.init = null
         delete_decl(g)

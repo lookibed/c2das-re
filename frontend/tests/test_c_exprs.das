@@ -248,10 +248,11 @@ def private places_of(text : string) : string {
     return join(out, " ")
 }
 
-[test(description = "places from the builder's own tokens: the file and line a line marker gives, the column the token stands at in the text; a declaration at its name, a statement at its first token, a GNU statement block used as a statement at its expression statement's")]
+[test(description = "places from the builder's own tokens: the file and line a line marker gives, the column the token stands at in the text; a declaration at its name, a statement at its first token, a GNU statement block used as a statement at its expression statement's, a hoisted static's and a block extern's null at its name")]
 def test_places(t : T?) {
     t |> equal(places_of("# 7 \"s.c\"\nint  g;\nint f(int x) \{\n  x = 1;\n   (\{ x; \});\n\}\n"),
                "g@s.c:7:6 f@s.c:8:5 expr@9:3 compound@10:4")
+    t |> equal(places_of("int v;\nvoid f(void) \{\n  static int s;\n   extern int v;\n\}\n"), "v@t.c:1:5 f_s@t.c:3:14 f@t.c:2:6 null@3:14 null@4:15")
 }
 
 [test(description = "the table order: a declaration's type, then its initializer's node types before their operands', a body's expressions where they stand")]
