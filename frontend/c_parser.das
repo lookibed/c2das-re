@@ -36,6 +36,7 @@ struct CParser {
     failed : bool
     err : string
     int128_names : int2 //!< `__int128_t` and `__uint128_t`, typedef names of a refused type
+    prototype_bindings : array<int2>    //!< each prototype scope's bindings at its close, (symbol, binding), a run per function declarator
 }
 
 //! The deepest nesting the parser takes, in levels (`ARCHITECTURE_PARSER.md` section 19 lists what
@@ -92,6 +93,7 @@ def c_parser_open_text(var p : CParser; text, name : string; msvc : bool = false
     p.depth = 0
     p.operators |> clear()
     p.operands |> clear()
+    p.prototype_bindings |> clear()
     p.failed = !clean
     p.err = p.unit.err
     for (builtin in fixed_array("__builtin_va_list", "__builtin_ms_va_list", "__NSConstantString")) {
@@ -286,7 +288,7 @@ def private member_declarations(var p : CParser) : int {
         if (specs < 0) {
             fail(p, "a member declaration")
             break
-        } elif (!typed) {
+        } elif (!typed && !(kind(p) == int(CTok.SEMI) && attributes_only(p.ast, specs))) {
             untyped(p, specs_at)
             break
         }
@@ -299,6 +301,7 @@ def private member_declarations(var p : CParser) : int {
             let member_at = p.pos
             let d = kind(p) == int(CTok.COLON) ? -1 : declarator(p, CDeclarator.NAMED)
             array_context(p, d, false)
+            break if (identifier_list_refused(p, d))
             let width = accept(p, CTok.COLON) ? c_constant_expression(p) : -1
             c_append(p.ast, attrs, attributes(p))
             c_append(p.ast, members, node(p, CNode.MEMBER_DECLARATOR, d >= 0 ? start_of(p, d) : member_at, 0, d, width, attrs.head))
@@ -583,6 +586,24 @@ def private identifier_list(var p : CParser; f : int) {
     p.ast.nodes[f].b = list.head
 }
 
+//! the bindings the innermost scope, a prototype's, made, kept for function declarator `f` as it
+//! closes (`c` the first of its run in `prototype_bindings`, `d` their count): a definition's body
+//! is read in that scope again
+[arch(at="ARCHITECTURE_PARSER.md#c-definitions")]
+def private keep_prototype_scope(var p : CParser; f : int) {
+    let mark = p.scopes.marks[length(p.scopes.marks) - 1]
+    p.ast.nodes[f].c = length(p.prototype_bindings)
+    let need = length(p.prototype_bindings) + length(p.scopes.undo) - mark
+    if (need > capacity(p.prototype_bindings)) {
+        p.prototype_bindings |> reserve(max(need, 2 * capacity(p.prototype_bindings)))
+    }
+    for (at in range(mark, length(p.scopes.undo))) {
+        let sym = p.scopes.undo[at].sym
+        p.prototype_bindings |> push(int2(sym, int(p.scopes.binding[sym])))
+    }
+    p.ast.nodes[f].d = length(p.prototype_bindings) - p.ast.nodes[f].c
+}
+
 //! a function declarator's parameters, in a prototype scope of their own, into node `f`; in a
 //! named declarator an identifier no typedef binds opens an old-style identifier list
 [arch(at="ARCHITECTURE_PARSER.md#c-type-names")]
@@ -621,6 +642,7 @@ def private parameters(var p : CParser; f : int; mode : CDeclarator) {
             c_append(p.ast, list, node(p, CNode.PARAM, at, 0, specs, d, attrs))
             break if (!accept(p, CTok.COMMA))
         }
+        keep_prototype_scope(p, f)
         c_scope_close(p)
         leave(p)
     }
@@ -1254,6 +1276,16 @@ def private starts_definition(p : CParser; d, id : int; binding : CBinding) : bo
     return k == int(CTok.LBRACE) || (ids == f && k != int(CTok.SEMI) && k != int(CTok.COMMA) && k != int(CTok.ASSIGN))
 }
 
+//! the refusal of an old-style identifier list in declarator `d`, anywhere but a definition's own
+//! function declarator, which `starts_definition` takes first; true when it refused
+def private identifier_list_refused(var p : CParser; d : int) : bool {
+    let ids = identifier_list_in(p.ast, d)
+    return false if (ids < 0 || p.failed)
+    p.pos = p.ast.nodes[p.ast.nodes[ids].b].tok
+    refuse(p, "an identifier list outside a function definition")
+    return true
+}
+
 //! the name declarator `d` declares in an old-style definition's declaration list, typed by `d` in
 //! the identifier list of function declarator `f`; an error at the name when the list does not hold
 //! it or a declaration before typed it
@@ -1272,15 +1304,17 @@ def private type_old_style_param(var p : CParser; f, d : int) {
     p.ast.nodes[param].b = d
 }
 
-//! Bind the parameter names of function declarator `f` as ordinary identifiers in the innermost
-//! scope: the scope a definition's body is read in.
+//! Bind again in the innermost scope what the parameter list of function declarator `f` bound:
+//! every name its prototype scope declared, the parameters and the enumerators of a parameter's
+//! type; none for an old-style identifier list, whose names the declaration list binds. The scope
+//! a definition's body is read in.
 [arch(at="ARCHITECTURE_PARSER.md#c-definitions")]
 def c_parameters_declare(var p : CParser; f : int) {
-    var param = p.ast.nodes[f].b
-    while (param >= 0) {
-        let n = p.ast.nodes[param]
-        c_declare(p, n.kind == CNode.IDENT_PARAM ? n.a : c_declarator_name(p.ast, n.b), CBinding.ORDINARY)
-        param = n.next
+    let n = p.ast.nodes[f]
+    for (at in range(max(n.c, 0), max(n.c, 0) + max(n.d, 0))) {
+        let entry = p.prototype_bindings[at]
+        let binding = entry.y == int(CBinding.TYPEDEF) ? CBinding.TYPEDEF : entry.y == int(CBinding.ORDINARY) ? CBinding.ORDINARY : CBinding.NONE
+        c_declare(p, entry.x, binding)
     }
 }
 
@@ -1346,6 +1380,11 @@ def private declaration(var p : CParser; place : CPlace; f : int) : int {
         untyped(p, specs_at)
         return -1
     }
+    if (place == CPlace.OLD_STYLE && kind(p) == int(CTok.SEMI)) {
+        p.pos = specs_at
+        fail(p, "a declaration of a parameter")
+        return -1
+    }
     let binding = declares_typedef(p.ast, specs) ? CBinding.TYPEDEF : CBinding.ORDINARY
     var list = CList()
     var first = true
@@ -1363,11 +1402,11 @@ def private declaration(var p : CParser; place : CPlace; f : int) : int {
                 break
             }
         }
-        let ids = identifier_list_in(p.ast, d)
-        if (ids >= 0 && !p.failed) {
-            p.pos = p.ast.nodes[p.ast.nodes[ids].b].tok
-            refuse(p, "an identifier list outside a function definition")
+        if (identifier_list_refused(p, d)) {
             break
+        } elif (place == CPlace.OLD_STYLE && !p.failed && p.ast.nodes[id].c >= 0) {
+            p.pos = p.ast.nodes[p.ast.nodes[id].c].tok
+            fail(p, "';'")
         } elif (place == CPlace.OLD_STYLE && !p.failed) {
             type_old_style_param(p, f, d)
         }
