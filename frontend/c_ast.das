@@ -165,8 +165,8 @@ let NODE_FORMS <- fixed_array(
     ("break", "-----"),
     ("return", "-n---"),
     ("stmt_expr", "-n---"),         // GNU `({ ... })`, its compound statement
-    ("asm", "inlll"),               // 1 `volatile`, 2 `inline`; the template, outputs, inputs, clobbers
-    ("asm_operand", "-r---"))       // an asm operand's or clobber's tokens
+    ("asm", "inlll"),               // 1 `volatile`, 2 `inline`; the template, outputs, inputs, clobbers (strings)
+    ("asm_operand", "-snn-"))       // the `[name]` (- for none), the constraint, the expression
 
 //! One node: its kind, its fields by `NODE_FORMS`, the next node of the list it is in, and `tok`,
 //! the token it starts at, which places it.

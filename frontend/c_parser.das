@@ -1207,6 +1207,26 @@ def private static_assert_decl(var p : CParser) : int {
     return node(p, CNode.STATIC_ASSERT, at, 0, condition, message)
 }
 
+//! adjacent string literals at the cursor, none of them prefixed, as one string node: the text an
+//! asm label, template, constraint or clobber takes (clang takes no wide or Unicode one there); -1
+//! and an error otherwise, the refusal naming `place`
+def private unprefixed_literal(var p : CParser; place : string) : int {
+    if (kind(p) != int(CTok.STRING_LITERAL)) {
+        fail(p, "a string literal")
+        return -1
+    }
+    let at = p.pos
+    while (kind(p) == int(CTok.STRING_LITERAL) && p.unit.lx.flex.bytes[p.unit.toks[p.pos].start] == uint8('"')) {
+        p.pos++
+    }
+    if (kind(p) == int(CTok.STRING_LITERAL)) {
+        refuse(p, "a prefixed string literal in {place}")
+        return -1
+    }
+    p.pos = at
+    return string_literal(p)
+}
+
 //! a declarator's tail after it: a GNU asm label `__asm__("name")`, then attributes; `before` holds
 //! the attributes written before the declarator
 def private init_declarator(var p : CParser; d, before : int) : int {
@@ -1215,19 +1235,8 @@ def private init_declarator(var p : CParser; d, before : int) : int {
         let at = p.pos
         p.pos++
         take(p, CTok.LPAREN)
-        if (kind(p) != int(CTok.STRING_LITERAL)) {
-            fail(p, "a string literal")
-            return -1
-        }
-        while (kind(p) == int(CTok.STRING_LITERAL) && p.unit.lx.flex.bytes[p.unit.toks[p.pos].start] == uint8('"')) {
-            p.pos++
-        }
-        if (kind(p) == int(CTok.STRING_LITERAL)) {
-            refuse(p, "a prefixed string literal in an asm label")
-            return -1
-        }
-        p.pos = at + 2
-        let name = string_literal(p)
+        let name = unprefixed_literal(p, "an asm label")
+        return -1 if (name < 0)
         take(p, CTok.RPAREN)
         asm_name = node(p, CNode.ASM_LABEL, at, 0, name)
     }
@@ -1383,7 +1392,7 @@ def private declaration(var p : CParser; place : CPlace; f : int) : int {
     if (specs < 0) {
         fail(p, "a declaration")
         return -1
-    } elif (!typed && !(place == CPlace.FILE && kind(p) == int(CTok.SEMI) && attributes_only(p.ast, specs))) {
+    } elif (!typed && !((place == CPlace.FILE || extension == 1) && kind(p) == int(CTok.SEMI) && attributes_only(p.ast, specs))) {
         untyped(p, specs_at)
         return -1
     }
@@ -1452,6 +1461,7 @@ def c_unit(var p : CParser) : int {
 //! the token at `t` and those after it start a declaration in a block, past any `__extension__`s:
 //! a storage class, a function specifier, `_Static_assert`, or a type name's first token, but an
 //! identifier followed by `:`, which is a label, and attributes followed by `;`, a null statement
+//! unless an `__extension__` before them makes a declaration of attributes alone, as clang takes it
 [arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def private declaration_starts(p : CParser) : bool {
     var t = p.pos
@@ -1470,7 +1480,7 @@ def private declaration_starts(p : CParser) : bool {
                 break if (depth == 0)
             }
         }
-        return p.unit.toks[t].kind != int(CTok.SEMI)
+        return p.unit.toks[t].kind != int(CTok.SEMI) || p.unit.toks[p.pos].kind == int(CTok.EXTENSION)
     }
     return ((k >= int(CTok.TYPEDEF) && k <= int(CTok.NORETURN)) || k == int(CTok.STATIC_ASSERT)
         || (type_starts_at(p, t) && !(k == int(CTok.IDENTIFIER) && p.unit.toks[min(t + 1, p.last)].kind == int(CTok.COLON))))
@@ -1486,7 +1496,7 @@ def private compound(var p : CParser) : int {
     c_scope_open(p)
     var items = CList()
     while (!p.failed && kind(p) != int(CTok.RBRACE) && kind(p) != int(CTok.EOF)) {
-        c_append(p.ast, items, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : c_statement(p))
+        c_append(p.ast, items, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : statement(p, true))
     }
     take(p, CTok.RBRACE)
     c_scope_close(p)
@@ -1542,10 +1552,13 @@ def private label_statement(var p : CParser; n, s : int) {
 }
 
 //! A statement at the cursor (C11 6.8). A run of labels is read in a loop, each the statement of
-//! the one before, so a long run costs no recursion; after labels a block's `}` or a declaration
-//! may stand, as clang takes it.
+//! the one before, so a long run costs no recursion.
+def c_statement(var p : CParser) : int => statement(p, false)
+
+//! a statement at the cursor, `in_block` when it is an item of a compound statement: only there may
+//! a block's `}` or a declaration follow labels, as clang takes it
 [arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
-def c_statement(var p : CParser) : int {
+def private statement(var p : CParser; in_block : bool) : int {
     var first = -1
     var last = -1
     while (!p.failed) {
@@ -1560,7 +1573,9 @@ def c_statement(var p : CParser) : int {
     }
     return -1 if (p.failed)
     return unlabeled(p) if (last < 0)
-    if (kind(p) != int(CTok.RBRACE)) {
+    if (!in_block) {
+        label_statement(p, last, unlabeled(p))
+    } elif (kind(p) != int(CTok.RBRACE)) {
         label_statement(p, last, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : unlabeled(p))
     }
     return first
@@ -1672,26 +1687,36 @@ def private for_statement(var p : CParser) : int {
     return n
 }
 
-//! the operands of one asm section, each kept as its tokens to a `,`, `:` or `)` outside brackets
-def private asm_operands(var p : CParser) : int {
+//! the operands of one asm section: each an optional `[name]`, its constraint and its expression in
+//! parentheses, read as an expression so a declaration in it binds as clang binds it; a clobber
+//! section's are string literals
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
+def private asm_operands(var p : CParser; clobbers : bool) : int {
     var list = CList()
     if (kind(p) == int(CTok.COLON) || kind(p) == int(CTok.RPAREN)) {
         return list.head
     }
     while (!p.failed) {
         let at = p.pos
-        var depth = 0
-        while (kind(p) != int(CTok.EOF)) {
-            let k = kind(p)
-            break if (depth == 0 && (k == int(CTok.COMMA) || k == int(CTok.COLON) || k == int(CTok.RPAREN)))
-            depth += k == int(CTok.LPAREN) || k == int(CTok.LBRACKET) ? 1 : k == int(CTok.RPAREN) || k == int(CTok.RBRACKET) ? -1 : 0
-            p.pos++
+        if (clobbers) {
+            c_append(p.ast, list, unprefixed_literal(p, "an asm statement"))
+        } else {
+            var name = -1
+            if (accept(p, CTok.LBRACKET)) {
+                if (kind(p) != int(CTok.IDENTIFIER)) {
+                    fail(p, "an asm operand name")
+                    break
+                }
+                name = sym(p)
+                p.pos++
+                take(p, CTok.RBRACKET)
+            }
+            let constraint = p.failed ? -1 : unprefixed_literal(p, "an asm statement")
+            take(p, CTok.LPAREN)
+            let e = p.failed ? -1 : c_expression(p)
+            take(p, CTok.RPAREN)
+            c_append(p.ast, list, node(p, CNode.ASM_OPERAND, at, 0, name, constraint, e))
         }
-        if (p.pos == at) {
-            fail(p, "an asm operand")
-            break
-        }
-        c_append(p.ast, list, node(p, CNode.ASM_OPERAND, at, 0, at, p.pos - 1))
         break if (!accept(p, CTok.COMMA))
     }
     return list.head
@@ -1720,16 +1745,13 @@ def private asm_statement(var p : CParser) : int {
         p.pos++
     }
     take(p, CTok.LPAREN)
-    if (!p.failed && kind(p) != int(CTok.STRING_LITERAL)) {
-        fail(p, "a string literal")
-    }
-    let n = node(p, CNode.ASM, at, flags, p.failed ? -1 : string_literal(p))
+    let n = node(p, CNode.ASM, at, flags, p.failed ? -1 : unprefixed_literal(p, "an asm statement"))
     if (accept(p, CTok.COLON)) {
-        p.ast.nodes[n].b = asm_operands(p)
+        p.ast.nodes[n].b = asm_operands(p, false)
         if (accept(p, CTok.COLON)) {
-            p.ast.nodes[n].c = asm_operands(p)
+            p.ast.nodes[n].c = asm_operands(p, false)
             if (accept(p, CTok.COLON)) {
-                p.ast.nodes[n].d = asm_operands(p)
+                p.ast.nodes[n].d = asm_operands(p, true)
             }
         }
     }
