@@ -261,6 +261,8 @@ def test_invalid_c(t : T?) {
     t |> equal(ir_of("void g(void) \{ int *p = 1.5; \}"), "error: t.c:1:25: a value of this type in a slot of that type is invalid C, which clang rejects")
     t |> equal(ir_of("int x = (void)0;"), "error: t.c:1:9: a value of this type in a slot of that type is invalid C, which clang rejects")
     t |> equal(ir_of("int *p = 1;"), "error: t.c:1:10: a value of this type in a slot of that type is invalid C, which clang rejects")
+    t |> equal(ir_of("void f(long *); void g(void) \{ unsigned long b; f(&b); \}"), "b:unsigned long=- ; expr call<void>(FunctionToPointerDecay<func*>(f); BitCast<long*>(addr<unsigned long*>(b)))")
+    t |> equal(ir_of("unsigned **pp; int **q = pp;"), "error: t.c:1:26: a value of this type in a slot of that type is invalid C, which clang rejects")
     t |> equal(ir_of("char *c; int *q = c;"), "error: t.c:1:19: a value of this type in a slot of that type is invalid C, which clang rejects")
     t |> equal(ir_of("void g(int *q) \{ long l; l = q; \}"), "error: t.c:1:26: a value of this type in a slot of that type is invalid C, which clang rejects")
     t |> equal(ir_of("int *h(void) \{ return 1; \}"), "error: t.c:1:23: a value of this type in a slot of that type is invalid C, which clang rejects")
