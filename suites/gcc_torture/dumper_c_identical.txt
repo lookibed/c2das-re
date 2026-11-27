@@ -279,6 +279,7 @@ linux 921202-2
 linux 921204-1
 linux 921208-1
 linux 930123-1
+linux 930126-1
 linux 930408-1
 linux 930429-1
 linux 930526-1
@@ -311,6 +312,7 @@ linux 950511-1
 linux 950607-1
 linux 950607-2
 linux 950612-1
+linux 950628-1
 linux 950704-1
 linux 950706-1
 linux 950710-1
@@ -411,6 +413,8 @@ linux arith-1
 linux ashldi-1
 linux ashrdi-1
 linux bf-layout-1
+linux bf-pack-1
+linux bf-sign-2
 linux bitfld-1
 linux bitfld-2
 linux bitfld-8
@@ -432,6 +436,7 @@ linux divconst-2
 linux divconst-3
 linux enum-1
 linux enum-2
+linux enum-3
 linux extzvsi
 linux float-floor
 linux floatunsisf-1
@@ -535,9 +540,11 @@ linux pr29695-2
 linux pr29797-1
 linux pr29797-2
 linux pr29798
+linux pr30185
 linux pr31072
 linux pr31136
 linux pr31448
+linux pr31448-2
 linux pr31605
 linux pr32500
 linux pr33142
@@ -761,6 +768,8 @@ linux pr85529-1
 linux pr85529-2
 linux pr85582-1
 linux pr86492
+linux pr86659-1
+linux pr86659-2
 linux pr86844
 linux pr87290
 linux pr89634
@@ -1101,6 +1110,7 @@ msvc 921202-2
 msvc 921204-1
 msvc 921208-1
 msvc 930123-1
+msvc 930126-1
 msvc 930408-1
 msvc 930429-1
 msvc 930526-1
@@ -1133,6 +1143,7 @@ msvc 950511-1
 msvc 950607-1
 msvc 950607-2
 msvc 950612-1
+msvc 950628-1
 msvc 950704-1
 msvc 950706-1
 msvc 950710-1
@@ -1234,6 +1245,7 @@ msvc ashldi-1
 msvc ashrdi-1
 msvc bf-layout-1
 msvc bf-pack-1
+msvc bf-sign-2
 msvc bitfld-1
 msvc bitfld-2
 msvc bitfld-8
@@ -1255,6 +1267,7 @@ msvc divconst-2
 msvc divconst-3
 msvc enum-1
 msvc enum-2
+msvc enum-3
 msvc extzvsi
 msvc float-floor
 msvc floatunsisf-1
@@ -1358,6 +1371,7 @@ msvc pr29695-2
 msvc pr29797-1
 msvc pr29797-2
 msvc pr29798
+msvc pr30185
 msvc pr31072
 msvc pr31136
 msvc pr31448
@@ -1585,6 +1599,8 @@ msvc pr85529-1
 msvc pr85529-2
 msvc pr85582-1
 msvc pr86492
+msvc pr86659-1
+msvc pr86659-2
 msvc pr86844
 msvc pr87290
 msvc pr89634
