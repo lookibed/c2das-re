@@ -96,6 +96,11 @@ def test_describe_record(t : T?) {
     rec.size = 4l
     dump.alignas_type = true
     t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on the record")
+    dump.members |> push(DumpMember(name = "extra"))
+    dump.alignas_type = false
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "libclang and the dump count its members apart")
+    dump.members |> pop()
+    dump.alignas_type = true
     dump.alignas_type = false
     dump.members[0].alignas_type = true
     t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on a member")
@@ -117,26 +122,26 @@ def test_layout_differences(t : T?) {
     t |> equal(join(layout_differences(rec, layout), "; "), "size clang 4 ours 8; align clang 4 ours 8; a at bit clang 0 ours 32; (unnamed) at bit clang 0 ours 8")
 }
 
-[test(description = "the rule fixtures agree with clang on every record; a refused record, a header's record met twice and a unit clang rejects are counted apart", timeout = 1200)]
+[test(description = "the rule fixtures agree with clang on every record, the three one macro expansion defines and a typedef of an array under msvc among them; a refused record, an undescribed one (listed), a header's record met twice and a unit clang rejects are counted apart", timeout = 1200)]
 def test_units(t : T?) {
     var error : string
     let flags <- dumper_frontend_flags(target_lp64_linux(), error)
     t |> equal(error, "")
     var rules = LayoutTotals()
-    var seen : table<string; bool>
+    var seen : table<string; string>
     let corpus <- layout_corpus(".", "rules", "linux", error)
     for (unit in corpus.units) {
         compare_layout_unit(unit, "linux", flags, seen, rules)
     }
-    t |> equal(describe_layout_totals("rules", rules), "rules: 2 units (0 clang failures), 69 records: 69 agree, 0 differ, 0 refused, 0 undescribed []")
+    t |> equal(describe_layout_totals("rules", rules), "rules: 3 units (0 clang failures), 72 records (0 compared again under another description): 72 agree, 0 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records")
     let msvc_flags <- dumper_frontend_flags(target_llp64_msvc(), error)
     var msvc_rules = LayoutTotals()
-    var msvc_seen : table<string; bool>
+    var msvc_seen : table<string; string>
     let msvc_corpus <- layout_corpus(".", "rules", "msvc", error)
     for (unit in msvc_corpus.units) {
         compare_layout_unit(unit, "msvc", msvc_flags, msvc_seen, msvc_rules)
     }
-    t |> equal(describe_layout_totals("rules", msvc_rules), "rules: 3 units (0 clang failures), 95 records: 95 agree, 0 differ, 0 refused, 0 undescribed []")
+    t |> equal(describe_layout_totals("rules", msvc_rules), "rules: 5 units (0 clang failures), 100 records (0 compared again under another description): 100 agree, 0 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records")
     let dir = test_temp_dir()
     let header = path_join(dir, "shared.h")
     fwrite(header, "struct H \{ char c; int i; \};\n")
@@ -147,14 +152,14 @@ def test_units(t : T?) {
     let broken = path_join(dir, "broken.c")
     fwrite(broken, "int broken = ;\n")
     var totals = LayoutTotals()
-    var seen_here : table<string; bool>
+    var seen_here : table<string; string>
     var with_dir <- clone_to_move(flags)
     with_dir |> push("-I{dir}")
     for (unit in fixed_array(first, second, broken)) {
         compare_layout_unit(unit, "linux", with_dir, seen_here, totals)
     }
-    t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 8 records: 5 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]")
-    t |> success(length(totals.lines) == 1 && find(totals.lines[0], "broken.c: clang: ") >= 0, join(totals.lines, "\n"))
+    t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 8 records (0 compared again under another description): 5 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]; not compared: 1 units clang rejects, 1 undescribed records")
+    t |> success(length(totals.lines) == 2 && find(totals.lines[0], "undescribed: an anonymous member that makes no name visible") >= 0 && find(totals.lines[1], "broken.c: clang: ") >= 0, join(totals.lines, "\n"))
 }
 
 [test(description = "a corpus is known by name and found under the root, never empty by absence; a run over an unknown one fails")]
@@ -184,3 +189,26 @@ def test_corpora(t : T?) {
     t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["nothing"])), 1)
     t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"], dialect = "win")), 1)
 }
+
+[test(description = "a header's record is compared again in a unit whose defines or pack describe it otherwise, and only then", timeout = 1200)]
+def test_header_redescribed(t : T?) {
+    var error : string
+    let flags <- dumper_frontend_flags(target_lp64_linux(), error)
+    let dir = test_temp_dir()
+    fwrite(path_join(dir, "packed.h"), "struct P \{ char c; int i; \};\n")
+    let plain_unit = path_join(dir, "plain.c")
+    fwrite(plain_unit, "#include \"packed.h\"\n")
+    let again = path_join(dir, "again.c")
+    fwrite(again, "#include \"packed.h\"\n")
+    let packed_unit = path_join(dir, "packed.c")
+    fwrite(packed_unit, "#pragma pack(1)\n#include \"packed.h\"\n")
+    var with_dir <- clone_to_move(flags)
+    with_dir |> push("-I{dir}")
+    var seen : table<string; string>
+    var totals = LayoutTotals()
+    for (unit in fixed_array(plain_unit, again, packed_unit)) {
+        compare_layout_unit(unit, "linux", with_dir, seen, totals)
+    }
+    t |> equal("{totals.records} {totals.agreed} {totals.redescribed}", "2 2 1")
+}
+

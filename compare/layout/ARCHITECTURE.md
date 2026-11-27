@@ -20,14 +20,15 @@ so it lives outside `frontend/`, whose code does neither (`frontend/ARCHITECTURE
   default the working directory), and `--dialect linux` (the default) or `--dialect msvc`, whose
   triple, predefined-macro table and own headers every unit is then read under. An unknown corpus,
   or one whose folder is missing, is an error and exit 1, never an empty set. It prints each
-  differing record with its differences, each unit clang rejects, each record no dump record
-  matches or whose member's record has no layout of the module's, a line per corpus, and exits 0
-  when no record differs.
+  differing record with its differences, each unit clang rejects, each undescribed record with its
+  reason, a line per corpus with what it did not compare, and exits 0 when no record differs.
 - `fixtures/rules.c` - one record per rule of `frontend/ARCHITECTURE_LAYOUT.md`, the records
   `frontend/tests/test_c_layout.das` quotes, read under both dialects. `fixtures/msvc/rules_msvc.c`
   - the msvc rules `rules.c` does not show (`frontend/ARCHITECTURE_LAYOUT_MSVC.md`), read under
   `msvc` alone, since `__declspec` needs its triple. `fixtures/probe_shapes.c` - the records
-  `probes/test_layout.das` lays out through clang.
+  `probes/test_layout.das` lays out through clang. `fixtures/macro_records.c` - three records one
+  macro expansion defines. `fixtures/msvc/typedef_array.c` - a typedef of an array with `aligned`
+  and an array of an aligned typedef, under `msvc`.
 - The tests are `compare/tests/test_layout_oracle.das`.
 
 ## 2. What is compared
@@ -43,7 +44,8 @@ and `AlignedAttr`. clang's answer is libclang's: the record's size and alignment
 bit offset (`clang_Cursor_getOffsetOfField`). Under `msvc` a member's type requirement is described
 too: a typedef with an `aligned` attribute (an `AlignedAttr` child of a typedef's declaration on the
 way to the type, through arrays) requires the type's alignment, and the member then gets the
-alignment of the canonical type below the typedefs (its own for an array); a member of a record
+alignment of the type below its top-level typedefs alone (clang's `getUnqualifiedDesugaredType`): a
+typedef of an array is laid out by the array, whose element keeps its own typedef's alignment; a member of a record
 type, through arrays, requires that record's `required_align` as the module computes it, so the
 records of a unit are laid out after every record their members' types are, a record found by its
 definition, never by a forward declaration of its tag. An anonymous member is
@@ -51,14 +53,20 @@ the anonymous record libclang visits; its offset is that of a name it makes visi
 offset inside it, as Dumper A finds it (`converter/ARCHITECTURE_DUMPER.md`).
 
 libclang visits a record definition again under a declaration of its type, so the records are
-taken once by their place, in libclang's order; the dump lists the definitions in the same order,
-clang's implicit records left out. A record is matched to the next dump record of the same kind
-and member names within 16 places, else it is counted as matching none. A record met in an earlier
-unit of the corpus (a header's) is counted once.
+taken once by their place, in libclang's order: the expansion file and offset with the spelling file
+and offset, so the records one macro expansion defines are each their own (`fixtures/macro_records.c`);
+the dump lists the definitions in the same order, clang's implicit records left out. A record is
+matched to the next dump record of the same kind and member names within 16 places, else it is
+counted as matching none; one whose libclang and dump member counts differ is undescribed. A record
+met in an earlier unit of the corpus (a header's) is counted once while its description stays the
+same; a unit whose defines or `#pragma pack` describe it otherwise compares it again, counted as
+compared again.
 
 Each record is one of: agreeing (size, alignment and every member's offset equal), differing (each
 difference printed), refused by the module (its reason counted: a vector or 128-bit member,
 `ms_struct`), or undescribed, with its reason: clang gives it no layout, an `_Alignas(type)` whose
 value the dump does not state, an anonymous member that makes no name visible, a member whose record
-has no layout of the module's, or no dump record matching it. A unit libclang or clang rejects is a
-clang failure, counted apart. Only a difference fails the run.
+has no layout of the module's, member counts that differ, or no dump record matching it; each is
+printed with its reason. A unit libclang or clang rejects is a clang failure, printed and counted
+apart. A corpus line ends with what was not compared (the units clang rejects, the undescribed
+records), so its agreement is read against them. Only a difference fails the run.
