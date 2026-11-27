@@ -209,6 +209,7 @@ def builder_tu(unit, work : string; target : CirTarget; var tu : CirTu; var erro
             error = "builder: {r.b.err}"
         }
         delete_tu(tu)
+        delete tu
         tu <- r.b.tu
         unsafe {
             delete r
