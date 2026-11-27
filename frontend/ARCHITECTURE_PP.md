@@ -18,8 +18,18 @@ copied into the `pp.line_text` byte pool.
 
 `pp.tok` is a `PpOutToken`: the lexer's `PpToken`, placed in its physical file, and beside it the
 presumed line and file name `#line` gives it (`pline`, `pname`, an index of `pp.names`); the
-directive layer's token is spelled by the lexer (`spelled`) and comes from no call (`call` -1).
-The expansion's fields of it are `ARCHITECTURE_EXPAND.md`'s. Directive
+directive layer's token is spelled in its file (`spelled` `source`) and comes from no call
+(`call` -1). The expansion's fields of it are `ARCHITECTURE_EXPAND.md`'s.
+
+Every file opened in the unit gets a buffer id, the index of `pp.buffer_data`, which records the
+first byte of its lexer's working buffer (section 4: the file past translation phase 2). A file
+that closes moves its buffer to `pp.closed` instead of freeing it; moving an array keeps its
+bytes where they are, so every buffer stays at the address `buffer_data` records for the unit's
+life. A source token carries its buffer and its byte range there (`buffer`, `at`, `len`), so its
+spelling can be read after its file closed and the lexer moved on: `pp_span_of` gives any handed-out
+token's bytes, `pp_spelling_of` a string of them, `pp_token_span` and `pp_token_spelling` the
+current token's. A token reader that keeps tokens - the C tokens - keeps that range, not a copy.
+The unit holds every file's text this way, which is what clang holds too. Directive
 diagnostics (`pp.diags`) carry the physical place and the presumed one; the lexer's own
 diagnostics stay in `pp.lx.diags`. An error never stops the preprocessor: `#error` and a
 malformed directive are recorded, and reading goes on, as clang reports every error of a unit. A

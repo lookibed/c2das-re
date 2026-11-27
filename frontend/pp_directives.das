@@ -189,7 +189,7 @@ struct PpFile {
 
 //! Where a handed-out token's spelling lies.
 enum PpSpelled {
-    lexer       //!< the lexer's current token: `pp_spelling`
+    source      //!< `len` bytes at `at` of the file buffer `buffer` (`pp_buffer_data`), past translation phase 2
     body        //!< `len` bytes at `at` of `Preprocessor.macro_text`, a macro body's token
     symbol      //!< the text of the identifier's symbol `tok.sym`
     scratch     //!< `len` bytes at `at` of the expansion's `text` pool: a pasted or stringified token, or a copy
@@ -198,14 +198,16 @@ enum PpSpelled {
 //! A token of the translation unit: `tok` placed where it was spelled (a macro body's token in its
 //! `#define`), `pline` and `pname` the line and file name `#line` makes it report - for a token of an
 //! expansion, the place of the outermost macro name; `call` the macro call it came from, an index of
-//! the expansion's `calls`, -1 for a token of the source. `painted` marks a name read while its
-//! macro was disabled: it never expands again.
+//! the expansion's `calls`, -1 for a token of the source. `spelled`, `buffer`, `at` and `len` say
+//! where its spelling lies (`pp_span_of`). `painted` marks a name read while its macro was
+//! disabled: it never expands again.
 struct PpOutToken {
     tok : PpToken
     pline : uint
     pname : int
     call : int
     spelled : PpSpelled
+    buffer : int
     at : int
     len : int
     painted : bool
@@ -279,6 +281,7 @@ struct PpFileState {
     cond_base : int
     guard : GuardState
     guard_sym : int
+    buffer : int        //!< the id of this inclusion's working buffer, an index of `Preprocessor.buffer_data`
 }
 
 //! a suspended file: its lexer with the next token, and its state
@@ -360,6 +363,8 @@ struct Preprocessor {
     pushed_macros : table<int; array<int>>  //!< `#pragma push_macro`'s saved definitions of a name, -1 for none
     last_tok : PpToken                  //!< the directive's last token read
     expansion : PpExpansion?            //!< the macro expansion `pp_next_token` hands out through; none: the directive layer's tokens
+    buffer_data : array<uint8?>         //!< per buffer id, the first byte of a file's working buffer, valid for the unit's life
+    closed : array<array<uint8>>        //!< the working buffers of the closed files, kept so their spellings outlive them
 }
 
 def private intern_text(var pp : Preprocessor; text : string) : int => intern_name(pp.lx.flex.syms, text)
@@ -456,7 +461,8 @@ def private open_file(var pp : Preprocessor; id : int; path : string; found_at :
     pp.files[id].entered++
     pp.pending = false
     pp.state = PpFileState(file = id, dir = dir_name(path), found_at = found_at, pname = name_id(pp, path),
-                           cond_base = length(pp.conds), guard = GuardState.start, guard_sym = -1)
+                           cond_base = length(pp.conds), guard = GuardState.start, guard_sym = -1, buffer = length(pp.buffer_data))
+    pp.buffer_data |> push(pp.lx.flex.data)
 }
 
 //! suspend the file being read, with its next token, and open file `id`
@@ -469,14 +475,14 @@ def private push_file(var pp : Preprocessor; id : int; path : string; found_at :
 }
 
 //! close the file being read and resume the one that included it, at the token it stopped on;
-//! the interner lets go of the closed file's bytes first
+//! the interner lets go of the closed file's bytes first, and the bytes move to `pp.closed`
 def private pop_file(var pp : Preprocessor) {
     flex_symbols_detach(pp.lx.flex.syms)
     var frame <- pp.frames[length(pp.frames) - 1]
     pp.frames |> pop()
     var syms <- pp.lx.flex.syms
     var diags <- pp.lx.diags
-    delete pp.lx.flex.bytes
+    pp.closed |> emplace(pp.lx.flex.bytes)
     delete pp.lx.splices
     pp.lx <- frame.lx
     pp.lx.flex.syms <- syms
@@ -607,18 +613,41 @@ def held_text(held : array<PpHeld>; text : array<uint8>) : string {
     }
 }
 
-//! The text of the token `pp_next_token` read.
-def pp_token_spelling(var pp : Preprocessor) : string {
-    let t & = unsafe(pp.tok)
-    if (t.spelled == PpSpelled.body) {
-        return slice(pp.macro_text, t.at, t.at + t.len)
-    } elif (t.spelled == PpSpelled.symbol) {
-        return pp_symbol_text(pp.lx, t.tok.sym)
+//! The first byte of working buffer `buffer`, a file's text past translation phase 2 (section 5).
+def pp_buffer_data(pp : Preprocessor; buffer : int) : uint8 const? => pp.buffer_data[buffer]
+
+//! The bytes of token `t`'s spelling: of a file, valid for the unit's life; of a macro body, until
+//! the next `#define` grows the pool; of the expansion's pool, until the next `pp_next_token`; of a
+//! symbol, for the interner's life.
+[arch(at="ARCHITECTURE_PP.md#pp-directives")]
+def pp_span_of(var pp : Preprocessor; t : PpOutToken) : tuple<data : uint8 const?; len : int> {
+    if (t.spelled == PpSpelled.source) {
+        return (data = unsafe(pp.buffer_data[t.buffer] + t.at), len = t.len)
+    } elif (t.spelled == PpSpelled.body) {
+        return (data = unsafe(addr(pp.macro_text[t.at])), len = t.len)
     } elif (t.spelled == PpSpelled.scratch) {
-        return slice(pp.expansion.text, t.at, t.at + t.len)
+        return (data = unsafe(addr(pp.expansion.text[t.at])), len = t.len)
     }
-    return pp_spelling(pp.lx)
+    let name = pp_symbol_text(pp.lx, t.tok.sym)
+    return (data = unsafe(reinterpret<uint8 const?>(name)), len = length(name))
 }
+
+//! The bytes of the token `pp_next_token` read, as `pp_span_of` gives them.
+def pp_token_span(var pp : Preprocessor) : tuple<data : uint8 const?; len : int> => pp_span_of(pp, pp.tok)
+
+//! The text of token `t`'s spelling, a new string.
+def pp_spelling_of(var pp : Preprocessor; t : PpOutToken) : string {
+    return pp_symbol_text(pp.lx, t.tok.sym) if (t.spelled == PpSpelled.symbol)
+    let span = pp_span_of(pp, t)
+    return build_string() $(var out) {
+        for (i in range(span.len)) {
+            out |> write_char(int(unsafe(span.data[i])))
+        }
+    }
+}
+
+//! The text of the token `pp_next_token` read.
+def pp_token_spelling(var pp : Preprocessor) : string => pp_spelling_of(pp, pp.tok)
 
 //! The name of symbol `sym`.
 def pp_name(var pp : Preprocessor; sym : int) : string => pp_symbol_text(pp.lx, sym)
@@ -1561,7 +1590,10 @@ def pp_next_directive_token(var pp : Preprocessor) : bool {
         pp.tok.pline = presumed_line(pp, pp.lx.tok.line)
         pp.tok.pname = pp.state.pname
         pp.tok.call = -1
-        pp.tok.spelled = PpSpelled.lexer
+        pp.tok.spelled = PpSpelled.source
+        pp.tok.buffer = pp.state.buffer
+        pp.tok.at = pp.lx.flex.tok.start
+        pp.tok.len = pp.lx.flex.tok.len
         pp.tok.painted = false
         return true
     }

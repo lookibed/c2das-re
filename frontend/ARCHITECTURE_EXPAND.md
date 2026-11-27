@@ -16,10 +16,12 @@ arguments are read, as in clang.
 
 A handed-out token is a `PpOutToken`: the token in its spelling place (a macro body's token in its
 `#define`, an argument's token where it was written), its `call`, and where its spelling lies
-(`spelled`): the lexer's current token, the macro body pool, its identifier's symbol, or the
-expansion's `text` pool for a pasted, stringified or copied token. `pp_token_spelling` reads any
-of them. A spelling in the `text` pool is valid until the next `pp_next_token`: the pool is
-cleared when no context and no call is open.
+(`spelled`): its file's buffer, which the unit keeps (`ARCHITECTURE_PP.md` section 5), the macro
+body pool, its identifier's symbol, or the expansion's `text` pool for a pasted, stringified or
+directive-line token. A source token kept in a context, an argument or a lookahead needs no copy.
+`pp_span_of` and `pp_spelling_of` read any of them. A spelling in the `text` pool is valid until
+the next `pp_next_token`: the pool is cleared when no context and no call is open, so a reader
+that keeps tokens copies those spellings.
 
 ## 25. Rescanning: the context model {#pp-context}
 

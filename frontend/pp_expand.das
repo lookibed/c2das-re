@@ -91,11 +91,11 @@ def private diag(var pp : Preprocessor; severity : PpSeverity; t : PpOutToken; w
 
 //! the bytes of `t`'s spelling appended to `dst`
 def private put_spelling(ex : PpExpander; var pp : Preprocessor; t : PpOutToken; var dst : array<uint8>) {
-    if (t.spelled == PpSpelled.lexer) {
-        let ft & = unsafe(pp.lx.flex.tok)
-        dst |> reserve(length(dst) + ft.len)
-        for (i in range(ft.len)) {
-            dst |> push(pp.lx.flex.bytes[ft.start + i])
+    if (t.spelled == PpSpelled.source) {
+        let data = pp_buffer_data(pp, t.buffer)
+        dst |> reserve(length(dst) + t.len)
+        for (i in range(t.at, t.at + t.len)) {
+            dst |> push(unsafe(data[i]))
         }
     } elif (t.spelled == PpSpelled.body) {
         dst |> reserve(length(dst) + t.len)
@@ -114,32 +114,6 @@ def private put_spelling(ex : PpExpander; var pp : Preprocessor; t : PpOutToken;
             }
         }
     }
-}
-
-//! the spelling of `t` as a string
-def private spelling(ex : PpExpander; var pp : Preprocessor; t : PpOutToken) : string {
-    if (t.spelled == PpSpelled.symbol) {
-        return pp_name(pp, t.tok.sym)
-    } elif (t.spelled == PpSpelled.body) {
-        return slice(pp.macro_text, t.at, t.at + t.len)
-    } elif (t.spelled == PpSpelled.scratch) {
-        return slice(ex.text, t.at, t.at + t.len)
-    }
-    return pp_spelling(pp.lx)
-}
-
-//! `t` spelled by itself, no longer by the lexer's current token: an identifier by its symbol, any
-//! other token by a copy in the expansion's text pool
-def private own(var ex : PpExpander; var pp : Preprocessor; var t : PpOutToken) {
-    return if (t.spelled != PpSpelled.lexer)
-    if (t.tok.kind == int(PpTok.IDENTIFIER)) {
-        t.spelled = PpSpelled.symbol
-        return
-    }
-    t.at = length(ex.text)
-    put_spelling(ex, pp, t, ex.text)
-    t.len = length(ex.text) - t.at
-    t.spelled = PpSpelled.scratch
 }
 
 //! a token of kind `kind` spelled `s`, kept in the text pool, at the place of `at`
@@ -238,7 +212,6 @@ def private next_is_lparen(var ex : PpExpander; var pp : Preprocessor) : bool {
     if (from >= 0) {
         ex.ctx[from].pos--
     } else {
-        own(ex, pp, n)
         ex.ahead = n
         ex.has_ahead = true
     }
@@ -280,7 +253,6 @@ def private next_expanded(var ex : PpExpander; var pp : Preprocessor; var t : Pp
             return true
         }
         if (pp.macros[m].function_like) {
-            own(ex, pp, t)
             return true if (!next_is_lparen(ex, pp) || !call_function_like(ex, pp, m, t))
             continue
         }
@@ -327,7 +299,6 @@ def private collect_args(var ex : PpExpander; var pp : Preprocessor; m, d : int;
         let from = read_raw(ex, pp, t)
         return false if (from == -2)
         if (from == -1) {
-            own(ex, pp, t)
             if (t.tok.at_bol) {
                 t.tok.at_bol = false
                 t.tok.has_space = true
@@ -905,14 +876,13 @@ def private do_pragma_operator(var ex : PpExpander; var pp : Preprocessor; t : P
         diag(pp, PpSeverity.error, t, "_Pragma takes a parenthesized string literal")
         return
     }
-    own(ex, pp, str)
     if (read_raw(ex, pp, rp) == -2 || rp.tok.kind != int(PpTok.RPAREN)) {
         diag(pp, PpSeverity.error, t, "_Pragma takes a parenthesized string literal")
         return
     }
     pp.line |> clear()
     pp.line_text |> clear()
-    pp_open_text(ex.scratch, destringized(spelling(ex, pp, str)), t.tok.file)
+    pp_open_text(ex.scratch, destringized(pp_spelling_of(pp, str)), t.tok.file)
     while (pp_next(ex.scratch)) {
         let at = length(pp.line_text)
         let text = pp_spelling(ex.scratch)

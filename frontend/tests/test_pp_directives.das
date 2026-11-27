@@ -682,3 +682,29 @@ def test_provider_edges(t : T?) {
     t |> equal(stream(dotted), "m")
     t |> equal(dotted.files[0].path, "main.c")
 }
+
+// the bytes of `span` as a string
+def private span_text(span : tuple<data : uint8 const?; len : int>) : string {
+    return build_string() $(var out) {
+        for (i in range(span.len)) {
+            out |> write_char(int(unsafe(span.data[i])))
+        }
+    }
+}
+
+[test(description = "a token's spelling outlives its file: the tokens of an included file, kept past the include's end and more reads, are spelled from the buffer the unit keeps, splices removed")]
+def test_spelling_outlives_file(t : T?) {
+    var pp <- started([("main.c", "#include \"h.h\"\nafter more\n"), ("h.h", "in\\\nside 42 \"s\"\n")])
+    var kept : array<PpOutToken>
+    while (pp_next_token(pp)) {
+        kept |> push(pp.tok)
+        let spelled = pp_token_spelling(pp)
+        t |> equal(span_text(pp_token_span(pp)), spelled)
+    }
+    t |> equal(join([for (k in kept); pp_spelling_of(pp, k)], " "), "inside 42 \"s\" after more")
+    t |> equal(join([for (k in kept); span_text(pp_span_of(pp, k))], " "), "inside 42 \"s\" after more")
+    t |> equal(length(pp.closed), 2)
+    t |> success(kept[0].buffer != kept[3].buffer)
+    t |> equal(kept[0].spelled, PpSpelled.source)
+    t |> equal("{kept[0].at} {kept[0].len} {kept[0].tok.len}", "0 6 8")
+}

@@ -272,3 +272,22 @@ def test_call_record(t : T?) {
     t |> equal("{a0.from}-{a0.to} {a1.from}-{a1.to}", "{length("#define g(a) [a]\n#define f(x, y) g(x) y\nf(")}-{length("#define g(a) [a]\n#define f(x, y) g(x) y\nf(ab")} {length("#define g(a) [a]\n#define f(x, y) g(x) y\nf(ab,\n  ")}-{length("#define g(a) [a]\n#define f(x, y) g(x) y\nf(ab,\n  cd e")}")
     t |> equal(pp.expansion.call_args[calls[1].first_arg].from, -1)
 }
+
+[test(description = "every spelling place is readable after the token: a source argument kept through a call, a body token, a pasted name by its symbol, a stringified token in the pool until the next read")]
+def test_spelling_places(t : T?) {
+    var pp <- started([("main.c", "#define F(x) x body a ## b #x\nF(arg)\n")])
+    var kept : array<PpOutToken>
+    var now : array<string>
+    while (pp_next_token(pp)) {
+        kept |> push(pp.tok)
+        let span = pp_token_span(pp)
+        now |> push(build_string() $(var out) {
+            for (i in range(span.len)) {
+                out |> write_char(int(unsafe(span.data[i])))
+            }
+        })
+    }
+    t |> equal(join(now, " "), "arg body ab \"arg\"")
+    t |> equal(join([for (k in kept); "{k.spelled}"], " "), "source body symbol scratch")
+    t |> equal(join([for (k in kept); k.spelled == PpSpelled.scratch ? "-" : pp_spelling_of(pp, k)], " "), "arg body ab -")
+}
