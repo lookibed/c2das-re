@@ -41,10 +41,12 @@ linux 00040
 linux 00041
 linux 00042
 linux 00043
+linux 00044
 linux 00045
 linux 00046
 linux 00051
 linux 00052
+linux 00053
 linux 00054
 linux 00055
 linux 00056
@@ -224,10 +226,12 @@ msvc 00040
 msvc 00041
 msvc 00042
 msvc 00043
+msvc 00044
 msvc 00045
 msvc 00046
 msvc 00051
 msvc 00052
+msvc 00053
 msvc 00054
 msvc 00055
 msvc 00056
