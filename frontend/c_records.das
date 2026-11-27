@@ -116,7 +116,7 @@ def c_layout_attributes(var b : CTypes; var p : CParser; at : int; var packed : 
 
 //! The `dims` of a declarator `d` of pool type `t` (`docs/c-ir-spec.md` section 3): per array level
 //! from the outermost, in the order the source spells the sizes, the enumerator a size names alone
-//! when its value is the level's count (`enum_t` its pool enum), else `enum_t` 0 and no item; none
+//! (`enum_t` its pool enum; its value is the level's count), else `enum_t` 0 and no item; none
 //! when no size names one, as Dumper A records them.
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-dims")]
 def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
@@ -138,7 +138,7 @@ def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
         var dim = CirDim()
         if (size.kind == CNode.IDENT) {
             let id = b.ids?[size.a] ?? CId()
-            if (id.enum_t >= 0 && id.enum_v == int64(b.pool[level].count)) {
+            if (id.enum_t >= 0) {
                 dim = CirDim(enum_t = id.enum_t, item = pp_symbol_text(p.unit.lx, size.a))
                 named = true
             }

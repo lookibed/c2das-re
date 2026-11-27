@@ -86,6 +86,7 @@ assignment to one computes in that promoted type.
 ## 47. Dims {#c-records-dims}
 
 A declarator's `dims` (a global's, a local's, a field's) holds, per array level of its type from
-the outermost, in the order the source spells the sizes, the enumerator a size names alone when its
-value is that level's count, else enum 0 and no item; a declarator none of whose sizes names one has
+the outermost, in the order the source spells the sizes, the enumerator a size names alone (its value
+is that level's count; Dumper A checks it, since a macro expansion can give two declarators one
+place, which Dumper C's own tokens never do), else enum 0 and no item; a declarator none of whose sizes names one has
 none, as Dumper A records them.
