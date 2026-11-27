@@ -67,6 +67,8 @@ struct Args {
     @clarg_name = "forms-off"
     @clarg_doc = "the forms spelled as before they were introduced, comma-separated: pointer_steps (a pointer step and compound store `p = p + n`, not `p++`, `p += n`), ranged_loops (a range loop only for `<` over locals and constants, not `<=` or a global or member bound), c_switch (a switch spelled as its if-chain or matched-flag loop, not the `c_switch` macro); by default none; sets the sidecar's forms_off"
     forms_off : string = ""
+    @clarg_doc = "the frontend that turns C into C-IR: a (Dumper A, clang's AST, the default) or c (Dumper C, the clang-free builder of frontend/, over clang's preprocessing; scalar programs only)"
+    dumper : string = "a"
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -124,8 +126,9 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {forms_off_error(args.forms_off)}; -? for help\n")
         return 2
     }
-    if (!empty(args.layout) && !is_layout(args.layout)) {
-        to_log(LOG_ERROR, "c2das: --layout is source, source-cut or single, not `{args.layout}`; -? for help\n")
+    let choice = !empty(args.layout) && !is_layout(args.layout) ? "--layout is source, source-cut or single, not `{args.layout}`" : args.dumper != "a" && args.dumper != "c" ? "--dumper is a or c, not `{args.dumper}`" : ""
+    if (!empty(choice)) {
+        to_log(LOG_ERROR, "c2das: {choice}; -? for help\n")
         return 2
     }
     var error : string
@@ -134,7 +137,7 @@ def main : int {
         to_log(LOG_ERROR, "c2das: {error}\n")
         return 1
     }
-    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context, args.checks, args.past_end, args.inline_helpers, args.fn_macros, args.forms_off)
+    let res <- convert_program(input.c_paths, args.out, args.target, "", args.sidecar, args.param_writes, args.loops, input.entry, args.layout, args.edge_census, args.first_member, args.switch_dispatch, args.no_solid_context, args.checks, args.past_end, args.inline_helpers, args.fn_macros, args.forms_off, args.dumper)
     if (!res.ok) {
         to_log(LOG_ERROR, "c2das: {res.error}\n")
         return 1

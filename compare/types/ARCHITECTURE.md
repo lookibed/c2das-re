@@ -4,7 +4,7 @@ Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this docume
 holds the oracle of Dumper C's C-IR builder, `frontend/c_ir.das` with its type table and
 expressions (`frontend/ARCHITECTURE_TYPES.md`, `frontend/ARCHITECTURE_EXPRS.md`): one unit dumped by
 Dumper A and built by Dumper C under one dialect, the two type tables, the two units' declarations,
-statements and expressions, and their conversion censuses compared. It starts clang, so it lives
+statements and expressions, their conversion censuses and their C-IR texts byte for byte compared. It starts clang, so it lives
 outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` section 2).
 
 ## 1. File charters
@@ -13,16 +13,19 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   `table_names`, `has_aggregate`), the first difference of two tables (`first_difference`), of two
   units' C-IR (`cir_difference`, `stmt_difference`, `expr_difference`) and of their conversion
   censuses (`census_difference`, over `metrics/conversion_census_count.das`), the builder's C-IR
-  from `clang -E` text (`builder_tu`), one unit compared (`compare_types`), a run's counts
-  (`TypesTotals`, `count_types`, `describe_types_totals`), the c-testsuite corpus
-  (`c_testsuite_units`) and the command line's run (`TypesArgs`, `run_types`). The clang it runs and
+  (`builder_tu`, through `converter/dumper_c.das`), one unit compared (`compare_types`, the byte
+  diff `frontend/diff.das`'s), a run's counts (`TypesTotals`, `count_types`,
+  `describe_types_totals`), the corpora (`c_testsuite_units`, `gcc_torture_units`), the ratchet
+  (`ratchet_key`, `ratchet_keys`) and the command line's run (`TypesArgs`, `run_types`). The clang it runs and
   its flags are Dumper A's (`default_clang`, `dumper_frontend_flags`).
 - `run.das` - the command line's entry; from the repository root with `das`: `--c-testsuite` (the
-  fetched single-exec suite; a suite not fetched is an error and exit 1), units named after the
-  flags, `--dialect linux|msvc` (repeatable, both by default), `--work <folder>` (default
-  `compare/work/types`, under the gitignored `compare/work/`). It prints each unit that is not an
-  agreement, a line per dialect and the total; exit 0 when no scalar-only unit differs or is
-  refused and Dumper A failed on none, 1 otherwise and when no unit is named.
+  fetched single-exec suite), `--gcc-torture` (the fetched execute units its `expected_pass.txt`
+  lists, Dumper A's passing ids; a suite not fetched is an error and exit 1), units named after the
+  flags, `--dialect linux|msvc` (repeatable, both by default), `--ratchet <file>` with
+  `--update-ratchet` (section 3). It prints
+  each unit that is not an agreement, a line per dialect and the total; with `--ratchet` exit 0
+  when every listed unit stays byte-identical, else exit 0 when no scalar-only unit differs or is
+  refused and Dumper A failed on none; 1 otherwise and when no unit is named.
 - `fixtures/` - `conversions.c`, every conversion group of the scalar world (all three comparisons
   agree); `aggregate.c`, a record the builder refuses; `refused.c`, a scalar-only unit the builder
   refuses (a wide string literal).
@@ -30,16 +33,14 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
 
 ## 2. What is compared {#compared}
 
-A unit is dumped by Dumper A (`dump_tu`, with no sidecar input) under the dialect, and preprocessed
-by `clang -E` under the same flags (`dumper_frontend_flags`) into `<work>/<unit>.<dialect>.i`, line
-markers kept: the builder takes a declaration in a file under the own headers' folder for a
-library one (`frontend/ARCHITECTURE_TYPES.md` section 28). The parser reads that text with the
-dialect's predeclared names, and `c_ir_unit` builds the C-IR.
+A unit is dumped by Dumper A (`dump_tu`, with no sidecar input) under the dialect, and built by
+Dumper C (`dumper_c_tu` of `converter/dumper_c.das`: clang's preprocessing, the frontend's parser
+and builder, which place every node by their own tokens) with no sidecar input either.
 
 A unit is classed per dialect: Dumper A failed (nothing compared); with aggregates, when Dumper A's
 table holds a record, a union or an enum, which the builder refuses until the Aggregates phase (a
 builder that builds such a unit is printed); else scalar-only, where the builder's refusal or the
-parser's is printed and counted, and three comparisons are made, each printing its first
+parser's is printed and counted, and four comparisons are made, each printing its first
 difference:
 
 - the type tables, entry by entry by structural name (`type_name`): an integer by its spelling,
@@ -55,6 +56,22 @@ difference:
   operator; `clang -E` text keeps no trace of a macro);
 - the conversion census of `metrics/conversion_census_count.das` (`census_tu`) over both units,
   key by key: every count of every dimension (castKind, pair, context, rule, clause, chain,
-  anomaly) equal, the plan's C.3 acceptance.
+  anomaly) equal, the plan's C.3 acceptance;
+- the C-IR texts, `write_cir` of each, byte for byte after `cir_diff`'s normalization (the macro
+  fields and the producer set aside, `frontend/ARCHITECTURE_DIFF.md`): places and parentheses
+  included, the plan's C.6.
 
-A scalar-only unit agrees when all three are equal.
+A scalar-only unit agrees when all four are equal; one that differs in its bytes alone differs in
+places or parentheses, which Dumper C takes from `clang -E` text until its preprocessor records
+expansions (`frontend/ARCHITECTURE_NAMES.md` section 39). A scalar-only unit whose table holds no
+array type either is a core unit, the set the Core phase's acceptance names: its printed line says
+`core`, and the totals count the core units and their byte-identical ones apart.
+
+## 3. The ratchet
+
+`--ratchet <file>` names a suite's list of byte-identical units (`suites/<suite>/dumper_c_identical.txt`),
+one `<dialect> <id>` line each, `id` the file stem. A run fails when a listed unit it compares is
+not byte-identical, and reports a byte-identical one the list lacks; `--update-ratchet` adds every
+byte-identical unit of the run to the list, sorted, and keeps the lines of units the run did not
+compare. A list only grows: a run where a listed unit is no longer byte-identical writes nothing
+and fails. The lists are written by this run alone, never by hand.

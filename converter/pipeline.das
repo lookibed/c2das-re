@@ -225,20 +225,61 @@ def dump_inputs(side : Sidecar) : DumpInputs => DumpInputs(defines := side.defin
 // written to `<out_dir>/<stem>.cir.json`, read back and rewritten (the bytes must match); the
 // dumper's tree, which the caller deletes, and `res` carrying the C-IR, the dump's bytes and
 // seconds, or the error
-def private dump_unit(c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult) : CirTu {
+def private dump_unit(c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult; dumper : string) : CirTu {
     // on the heap: a `Dumper` in this frame would take a fifth of das's default stack from the walk under it
     var d = new Dumper
-    var tu <- dump_checked(*d, c_path, out_dir, target, clang, side, res)
+    var tu <- dump_checked(*d, c_path, out_dir, target, clang, side, res, dumper)
     unsafe {
         delete d
     }
     return <- tu
 }
 
-// `dump_unit`'s work over the dumper `d`, whose tree it hands out
-def private dump_checked(var d : Dumper; c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult) : CirTu {
+//! Why Dumper C cannot run from the repository at `root`, "" when it can: the frontend requires
+//! dasFlex, which `scripts/fetch_dasflex.sh` fetches into `fetch/dasFlex`.
+def dasflex_missing(root : string) : string {
+    let flex = path_join(root, "fetch/dasFlex")
+    return stat(flex).is_dir ? "" : "--dumper c needs dasFlex at {flex}: scripts/fetch_dasflex.sh fetches it"
+}
+
+// Dumper C's C-IR of `c_path` under `target` into `tu`, built in a child daslang that loads dasFlex,
+// which `frontend/` requires and the converter does not (`converter/dumper_c_main.das`), and read
+// back from the text it writes to `<out_dir>/<stem>.dumper_c.cir.json`; `error` its failure. A
+// sidecar's inputs are refused, as Dumper C takes none
+[arch(at="ARCHITECTURE_DUMPER_C.md#dumper-c")]
+def private dumper_c_child(c_path, out_dir : string; target : CirTarget; clang : string; inputs : DumpInputs; var tu : CirTu; var error : string&) {
+    if (!empty(inputs.defines) || !empty(inputs.include_dirs) || !empty(inputs.include_files)) {
+        error = "Dumper C takes no sidecar defines, include folders or include files yet"
+        return
+    }
+    let root = dir_name(dir_name(get_full_file_name(string(get_line_info().fileInfo.name))))
+    error = dasflex_missing(root)
+    return if (!empty(error))
+    var argv <- [get_das_root() + "/bin/daslang"]
+    for (folder in ["dasCRuntime", "c_runtime", "fetch/dasFlex"]) {
+        argv |> push_from(["-load_module", path_join(root, folder)])
+    }
+    let cir_path = path_join(out_dir, "{file_stem(c_path)}.dumper_c.cir.json")
+    argv |> push_from([path_join(root, "converter/dumper_c_main.das"), "--", c_path, is_msvc(target) ? "msvc" : "linux", clang, cir_path])
+    var out : string
+    if (run_and_capture(argv, out, 300.0) != 0) {
+        error = strip(out)
+        return
+    }
+    var reread <- read_cir(fread(cir_path), error)
+    swap(tu, reread)
+    delete_tu(reread)
+}
+
+// `dump_unit`'s work over the dumper `d`, whose tree it hands out; `dumper` "c" builds it with
+// Dumper C (`converter/dumper_c.das`) instead of Dumper A
+def private dump_checked(var d : Dumper; c_path, out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult; dumper : string) : CirTu {
     let dump_started = ref_time_ticks()
-    dump_tu(d, c_path, target, empty(clang) ? default_clang() : clang, dump_inputs(side))
+    if (dumper == "c") {
+        dumper_c_child(c_path, out_dir, target, empty(clang) ? default_clang() : clang, dump_inputs(side), d.tu, d.error)
+    } else {
+        dump_tu(d, c_path, target, empty(clang) ? default_clang() : clang, dump_inputs(side))
+    }
     res.dump_seconds += seconds_since(dump_started)
     res.json_bytes += d.json_bytes
     if (!empty(d.error)) {
@@ -352,13 +393,13 @@ def private emit_modules(var tu : CirTu; owners : array<int>; plan : LayoutPlan;
     res.ok = true
 }
 
-def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false; fn_macros : string = ""; forms_off : string = "") : ConvertResult {
+def convert(c_path : string; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false; fn_macros : string = ""; forms_off : string = ""; dumper : string = "a") : ConvertResult {
     var res : ConvertResult
     let side <- conversion_setup(out_dir, find_sidecar(c_path, sidecar_path), param_writes, loops, res.error, "", first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers, fn_macros, forms_off)
     if (!empty(res.error)) {
         return <- res
     }
-    var tu <- dump_unit(c_path, out_dir, target_by_name(target_name), clang, side, res)
+    var tu <- dump_unit(c_path, out_dir, target_by_name(target_name), clang, side, res, dumper)
     if (!empty(res.error)) {
         delete_tu(tu)
         return <- res
@@ -413,7 +454,7 @@ def private program_sidecar(c_paths : array<string>; given : string; var sidecar
 //! helper's expression at the site (the sidecar's `inline_helpers`). With `fn_macros` `expand` no
 //! function-like macro expansion folds into a call of its `[c_macro] def` (the sidecar's
 //! `fn_macros`).
-def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false; fn_macros : string = ""; forms_off : string = "") : ConvertResult {
+def convert_program(c_paths : array<string>; out_dir : string; target_name : string; clang : string = ""; sidecar_path : string = ""; param_writes : string = ""; loops : string = ""; entry : string = "main"; layout : string = ""; census : bool = false; first_member : string = ""; switch_dispatch : string = ""; no_solid_context : bool = false; checks : string = ""; past_end : string = ""; inline_helpers : bool = false; fn_macros : string = ""; forms_off : string = ""; dumper : string = "a") : ConvertResult {
     if (length(c_paths) == 1 && entry == "main") {
         if (census || (!empty(layout) && !is_layout(layout))) {
             var refused : ConvertResult
@@ -450,7 +491,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
     remove(path_join(out_dir, EDGE_REPORT))
     var units : array<CirTu>
     var cir_names : array<string>
-    dump_units(c_paths, out_dir, target_by_name(target_name), clang, side, res, units, cir_names)
+    dump_units(c_paths, out_dir, target_by_name(target_name), clang, side, res, units, cir_names, dumper)
     if (empty(res.error)) {
         let link_started = ref_time_ticks()
         var plan = LayoutPlan()
@@ -517,11 +558,11 @@ def private write_layout_reports(plan : LayoutPlan; census : bool; out_dir : str
 
 // every file of a program dumped as `convert` dumps one, into `units`, its C-IR file's name into
 // `cir_names`, until the first error
-def private dump_units(c_paths : array<string>; out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult; var units : array<CirTu>; var cir_names : array<string>) {
+def private dump_units(c_paths : array<string>; out_dir : string; target : CirTarget; clang : string; side : Sidecar; var res : ConvertResult; var units : array<CirTu>; var cir_names : array<string>; dumper : string) {
     units |> reserve(length(c_paths))
     cir_names |> reserve(length(c_paths))
     for (c_path in c_paths) {
-        var tu <- dump_unit(c_path, out_dir, target, clang, side, res)
+        var tu <- dump_unit(c_path, out_dir, target, clang, side, res, dumper)
         units |> emplace(tu)
         cir_names |> push(base_name(res.cir_path))
         break if (!empty(res.error))

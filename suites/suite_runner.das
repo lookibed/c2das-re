@@ -32,6 +32,8 @@ struct Args {
     tier : string = "interp"
     @clarg_doc = "run only the ids skip.txt lists, writing work/skip_audit.tsv; the ratchet is not judged, and only --update writes it, adding the audited ids that pass"
     audit_skips : bool
+    @clarg_doc = "the frontend: a (Dumper A, the default) or c (Dumper C); the ratchet is Dumper A's, so --update needs a"
+    dumper : string = "a"
     @clarg_short = "?"
     @clarg_name = "show-help"
     @clarg_doc = "show this help and exit"
@@ -48,6 +50,15 @@ def tier_refusal(tier : string; update : bool) : string {
         return "unknown tier `{tier}`: one of {join(SUITE_TIERS, ", ")}"
     }
     return update && tier != "interp" ? "--update records the interpreter's ratchet; run it under --tier interp" : ""
+}
+
+//! Why a run with `dumper` is refused, "" when it is not: a dumper other than `a` and `c`, or `c`
+//! with `records` (`--update` or `--audit-skips`), which write Dumper A's ratchet.
+def dumper_refusal(dumper : string; records : bool) : string {
+    if (dumper != "a" && dumper != "c") {
+        return "unknown dumper `{dumper}`: a or c"
+    }
+    return records && dumper == "c" ? "--update and --audit-skips record Dumper A's ratchet; run them with --dumper a" : ""
 }
 
 //! the folder each file-based suite's tests sit in, from the repository root
@@ -146,9 +157,9 @@ struct ConvertedRun {
 //! `flags` go to the interpreter or the JIT before the module (`-no-module-cache`). The run's
 //! children log at `warning`: the JIT and the exe build report themselves at `info`, which
 //! `scripts/env.sh` sets, and those lines would land in the output a verdict judges.
-def convert_and_run(c_path, work, target, tier : string; timeout : float; flags : array<string>) : ConvertedRun {
+def convert_and_run(c_path, work, target, tier : string; timeout : float; flags : array<string>; dumper : string = "a") : ConvertedRun {
     var run : ConvertedRun
-    let res <- convert(c_path, work, target)
+    let res <- convert(c_path, work, target, "", "", "", "", "", "", false, "", "", false, "", "", dumper)
     if (!res.ok) {
         run.error = first_line(res.error)
         return run
@@ -175,10 +186,10 @@ def compare_output(id : string; rc : int; output, expected : string) : Outcome {
 }
 
 // convert and run one test under `tier`; the suite's verdict judges a module that ran within the timeout
-def private run_one(spec : SuiteSpec; id : string; target, tier : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : Outcome {
+def private run_one(spec : SuiteSpec; id : string; target, tier : string; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>; dumper : string = "a") : Outcome {
     let c_path = "{spec.tests_dir}/{id}.c"
     let no_flags : array<string>
-    let run = convert_and_run(c_path, "{spec.work_dir}/{id}", target, tier, spec.run_timeout, no_flags)
+    let run = convert_and_run(c_path, "{spec.work_dir}/{id}", target, tier, spec.run_timeout, no_flags, dumper)
     if (!run.converted) {
         return Outcome(id = id, status = "convert", reason = run.error)
     }
@@ -338,7 +349,7 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
     if (parsed >= 0) {
         return parsed
     }
-    let refusal = tier_refusal(args.tier, args.update)
+    let refusal = empty(tier_refusal(args.tier, args.update)) ? dumper_refusal(args.dumper, args.update || args.audit_skips) : tier_refusal(args.tier, args.update)
     if (!empty(refusal)) {
         to_log(LOG_ERROR, "{refusal}\n")
         return 2
@@ -361,7 +372,7 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
             count_status(tally, "skip")
             continue
         }
-        record(tally, ratchet, run_one(spec, id, args.target, args.tier, verdict), args.verbose)
+        record(tally, ratchet, run_one(spec, id, args.target, args.tier, verdict, args.dumper), args.verbose)
     }
     return finish_run(spec.name, spec.expected_pass, tally, args.update, !empty(args.filter), tally.passed, args.tier == "interp" ? "" : args.tier)
 }

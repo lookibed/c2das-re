@@ -174,6 +174,17 @@ def test_tier_refusal(t : T?) {
     }
 }
 
+[test]
+def test_dumper_refusal(t : T?) {
+    t |> run("--dumper a or c runs; c never records the ratchet; any other dumper is refused by name") @(t : T?) {
+        t |> equal(dumper_refusal("a", false), "")
+        t |> equal(dumper_refusal("a", true), "")
+        t |> equal(dumper_refusal("c", false), "")
+        t |> equal(dumper_refusal("c", true), "--update and --audit-skips record Dumper A's ratchet; run them with --dumper a")
+        t |> equal(dumper_refusal("b", false), "unknown dumper `b`: a or c")
+    }
+}
+
 // whether a JIT library sits under `dir`'s `.cache/daslang`: the interpreter caches only modules there
 def has_jit_library(dir : string) : bool {
     var out : string
