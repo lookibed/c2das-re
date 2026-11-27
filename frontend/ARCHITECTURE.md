@@ -8,9 +8,10 @@ sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - 
 lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
 `#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
 C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
-statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23), and the
-type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28). No converter
-pass calls the preprocessor, the parser or the type table yet.
+statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 23), the type
+table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the
+expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29
+to 36). No converter pass calls the preprocessor, the parser or the C-IR builder yet.
 
 ## 1. File charters
 
@@ -36,9 +37,19 @@ pass calls the preprocessor, the parser or the type table yet.
   function definitions and the unit, statements (sections 16 to 23).
   One module, since the grammar's parts call each other.
 - `c_types.das` - the C-IR type table of a unit (`ARCHITECTURE_TYPES.md`): the pool of types met,
-  each use interning a type into `CirTu.types` in Dumper A's order, the specifiers, declarators,
-  initializer-sized arrays, the walk over declarations, definitions and bodies, the own headers'
-  declarations. It writes `converter/cir.das`'s structures and requires no other converter module.
+  qualified ones apart, each use interning a type into `CirTu.types`, the specifiers, declarators
+  and initializer-sized arrays, the typedef scopes. It writes `converter/cir.das`'s structures and
+  requires no other converter module.
+- `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
+  constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 29 to 35).
+- `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
+  and the `%a` print (section 36).
+- `c_ir.das` - the unit's C-IR: the walk over declarations, definitions and bodies in Dumper A's
+  order, initializers, statements, the own headers' declarations (`ARCHITECTURE_TYPES.md` sections
+  24 and 28, `ARCHITECTURE_EXPRS.md` sections 33 and 35).
+- `tests/test_c_exprs.das` - per conversion group its exact cast stream, the literals under both
+  dialects, `sizeof`, initializers, every statement form, the table order, every refusal with its
+  place. `tests/test_c_floats.das` - the hard floating constants against clang and the C library.
 - `tests/test_c_types.das` - per type form its entry and spelling under both dialects, a unit's
   order through every statement form, typedefs, adjusted parameters, old-style definitions,
   unsized arrays, the own headers' declarations, and every refusal with its place. The comparison

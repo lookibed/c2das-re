@@ -3,7 +3,6 @@ options indenting = 4
 
 module c_exprs public
 
-require math
 require strings
 require daslib/strings_boost
 require c_floats public
@@ -94,12 +93,18 @@ def c_bare(var r : CIr; t : int) : int {
     let u = unq(r, t)
     let k = r.b.pool[u].k
     if (k == "ptr") {
-        return c_pointer(r.b, c_bare(r, r.b.pool[u].to))
+        let to = c_bare(r, r.b.pool[u].to)
+        return c_pointer(r.b, to)
     } elif (k == "array") {
-        return c_array(r.b, c_bare(r, r.b.pool[u].elem), r.b.pool[u].count)
+        let count = r.b.pool[u].count
+        let elem = c_bare(r, r.b.pool[u].elem)
+        return c_array(r.b, elem, count)
     } elif (k == "func") {
-        var params <- [for (x in r.b.pool[u].params); c_bare(r, x)]
-        return c_function(r.b, c_bare(r, r.b.pool[u].ret), params, r.b.pool[u].variadic)
+        let variadic = r.b.pool[u].variadic
+        let parts := r.b.pool[u].params
+        var params <- [for (x in parts); c_bare(r, x)]
+        let ret = c_bare(r, r.b.pool[u].ret)
+        return c_function(r.b, ret, params, variadic)
     }
     return u
 }
@@ -112,7 +117,7 @@ def private cast_node(var x : CirExpr?; t : int; kind : string; is_explicit : bo
 //! none when `x` has that type already, the cast `x` is retyped when it is an implicit one of the
 //! same kind (a promotion and the conversion after it are one cast).
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-casts")]
-def c_implicit(var r : CIr; var x : CirExpr?; t : int; kind : string) : CirExpr? {
+def c_implicit(var x : CirExpr?; t : int; kind : string) : CirExpr? {
     return x if (x.t == t)
     if (x.e == "cast" && !x.explicit_cast && x.cast_kind == kind) {
         x.t = t
@@ -154,7 +159,7 @@ def private int_t(var r : CIr) : int => c_builtin(r.b, "int")
 def c_promote(var r : CIr; var x : CirExpr?) : CirExpr? {
     var v = c_rvalue(r, x)
     if (is_int(r, v.t) && r.b.pool[v.t].w < r.b.tu.target.int_w) {
-        return c_implicit(r, v, int_t(r), "IntegralCast")
+        return c_implicit(v, int_t(r), "IntegralCast")
     }
     return v
 }
@@ -209,8 +214,8 @@ def c_arith(var r : CIr; var a, b : CirExpr?&) : int {
     a = c_promote(r, a)
     b = c_promote(r, b)
     let common = common_type(r, a.t, b.t)
-    a = c_implicit(r, a, common, arith_kind(r, a.t, common))
-    b = c_implicit(r, b, common, arith_kind(r, b.t, common))
+    a = c_implicit(a, common, arith_kind(r, a.t, common))
+    b = c_implicit(b, common, arith_kind(r, b.t, common))
     return common
 }
 
@@ -251,48 +256,43 @@ def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
         var c = 0l
         return false if (!c_fold(r, x.c, c))
         return c_fold(r, c != 0l ? x.a : x.b, v)
-    } elif (x.e != "bin") {
-        return false
     }
     var a, b : int64
-    return false if (!c_fold(r, x.a, a) || !c_fold(r, x.b, b))
-    let unsigned_operands = !r.b.pool[x.a.t].is_signed
-    let op = x.op
-    if ((op == "div" || op == "rem") && b == 0l) {
-        return false
-    }
-    if (op == "add") {
-        v = a + b
-    } elif (op == "sub") {
-        v = a - b
-    } elif (op == "mul") {
-        v = a * b
-    } elif (op == "div") {
-        v = unsigned_operands ? int64(uint64(a) / uint64(b)) : a / b
-    } elif (op == "rem") {
-        v = unsigned_operands ? int64(uint64(a) % uint64(b)) : a % b
-    } elif (op == "shl") {
-        v = a << b
-    } elif (op == "shr") {
-        v = unsigned_operands ? int64(uint64(a) >> uint64(b)) : a >> b
-    } elif (op == "band") {
-        v = a & b
-    } elif (op == "bor") {
-        v = a | b
-    } elif (op == "bxor") {
-        v = a ^ b
-    } elif (op == "land") {
-        v = a != 0l && b != 0l ? 1l : 0l
-    } elif (op == "lor") {
-        v = a != 0l || b != 0l ? 1l : 0l
-    } else {
-        let less = unsigned_operands ? uint64(a) < uint64(b) : a < b
-        let greater = unsigned_operands ? uint64(a) > uint64(b) : a > b
-        let truth = op == "lt" ? less : op == "gt" ? greater : op == "le" ? !greater : op == "ge" ? !less : op == "eq" ? a == b : a != b
-        v = truth ? 1l : 0l
-    }
+    return false if (x.e != "bin" || !c_fold(r, x.a, a) || !c_fold(r, x.b, b) || !fold_binary(x.op, !r.b.pool[x.a.t].is_signed, a, b, v))
     v = held_in(r, x.t, v)
     return true
+}
+
+// the value of binary C-IR operator `op` over `a` and `b`, unsigned when `unsigned_operands`;
+// false for a division by zero
+def private fold_binary(op : string; unsigned_operands : bool; a, b : int64; var v : int64&) : bool {
+    if ((op == "div" || op == "rem") && b == 0l) {
+        return false
+    } elif (op == "add" || op == "sub" || op == "mul") {
+        v = op == "add" ? a + b : op == "sub" ? a - b : a * b
+    } elif (op == "div" || op == "rem") {
+        let ua = uint64(a)
+        let ub = uint64(b)
+        v = unsigned_operands ? int64(op == "div" ? ua / ub : ua % ub) : op == "div" ? a / b : a % b
+    } elif (op == "shl" || op == "shr") {
+        v = op == "shl" ? a << b : unsigned_operands ? int64(uint64(a) >> uint64(b)) : a >> b
+    } elif (op == "band" || op == "bor" || op == "bxor") {
+        v = op == "band" ? (a & b) : op == "bor" ? (a | b) : (a ^ b)
+    } else {
+        v = truth_of(op, unsigned_operands, a, b) ? 1l : 0l
+    }
+    return true
+}
+
+// the truth of logical or comparison C-IR operator `op` over `a` and `b`, unsigned when
+// `unsigned_operands`
+def private truth_of(op : string; unsigned_operands : bool; a, b : int64) : bool {
+    if (op == "land" || op == "lor") {
+        return op == "land" ? a != 0l && b != 0l : a != 0l || b != 0l
+    }
+    let less = unsigned_operands ? uint64(a) < uint64(b) : a < b
+    let greater = unsigned_operands ? uint64(a) > uint64(b) : a > b
+    return op == "lt" ? less : op == "gt" ? greater : op == "le" ? !greater : op == "ge" ? !less : op == "eq" ? a == b : a != b
 }
 
 //! Whether `x` is a null pointer constant (C11 6.3.2.3p3): an integer constant expression of value
@@ -315,18 +315,18 @@ def c_assigned(var r : CIr; var x : CirExpr?; target : int) : CirExpr? {
     var v = c_rvalue(r, x)
     return v if (v.t == to)
     if (is_arith(r, to) && is_arith(r, v.t)) {
-        return c_implicit(r, v, to, arith_kind(r, v.t, to))
+        return c_implicit(v, to, arith_kind(r, v.t, to))
     } elif (is_ptr(r, to)) {
         if (is_null) {
-            return c_implicit(r, v, to, "NullToPointer")
+            return c_implicit(v, to, "NullToPointer")
         } elif (is_int(r, v.t)) {
-            return c_implicit(r, v, to, "IntegralToPointer")
+            return c_implicit(v, to, "IntegralToPointer")
         }
-        return c_implicit(r, v, to, c_bare(r, v.t) == c_bare(r, to) ? "NoOp" : "BitCast")
+        return c_implicit(v, to, c_bare(r, v.t) == c_bare(r, to) ? "NoOp" : "BitCast")
     } elif (is_bool(r, to) && is_ptr(r, v.t)) {
-        return c_implicit(r, v, to, "PointerToBoolean")
+        return c_implicit(v, to, "PointerToBoolean")
     } elif (is_int(r, to) && is_ptr(r, v.t)) {
-        return c_implicit(r, v, to, "PointerToIntegral")
+        return c_implicit(v, to, "PointerToIntegral")
     }
     return v
 }
@@ -350,10 +350,10 @@ def private explicit_kind(var r : CIr; v : CirExpr?; to : int) : string {
 
 // the C-IR operator of a binary operator token
 def private binary_op(k : int) : string {
-    let ops <- {int('+') => "add", int('-') => "sub", int('*') => "mul", int('/') => "div", int('%') => "rem",
-                int(CTok.SHL) => "shl", int(CTok.SHR) => "shr", int('<') => "lt", int('>') => "gt", int(CTok.LE) => "le",
-                int(CTok.GE) => "ge", int(CTok.EQ) => "eq", int(CTok.NE) => "ne", int('&') => "band", int('|') => "bor",
-                int('^') => "bxor", int(CTok.AND_AND) => "land", int(CTok.OR_OR) => "lor"}
+    let ops <- {'+' => "add", '-' => "sub", '*' => "mul", '/' => "div", '%' => "rem",
+                int(CTok.SHL) => "shl", int(CTok.SHR) => "shr", '<' => "lt", '>' => "gt", int(CTok.LE) => "le",
+                int(CTok.GE) => "ge", int(CTok.EQ) => "eq", int(CTok.NE) => "ne", '&' => "band", '|' => "bor",
+                '^' => "bxor", int(CTok.AND_AND) => "land", int(CTok.OR_OR) => "lor"}
     return ops?[k] ?? ""
 }
 
@@ -398,14 +398,14 @@ def private binary(var r : CIr; var p : CParser; op : string; var a, b : CirExpr
         a = c_rvalue(r, a)
         b = c_rvalue(r, b)
         if (is_int(r, b.t)) {
-            b = c_implicit(r, b, a.t, b_null ? "NullToPointer" : "IntegralToPointer")
+            b = c_implicit(b, a.t, b_null ? "NullToPointer" : "IntegralToPointer")
         } elif (is_int(r, a.t)) {
-            a = c_implicit(r, a, b.t, a_null ? "NullToPointer" : "IntegralToPointer")
+            a = c_implicit(a, b.t, a_null ? "NullToPointer" : "IntegralToPointer")
         } elif (a.t != b.t) {
             if (a_null && !b_null) {
-                a = c_implicit(r, a, b.t, "BitCast")
+                a = c_implicit(a, b.t, "BitCast")
             } else {
-                b = c_implicit(r, b, a.t, "BitCast")
+                b = c_implicit(b, a.t, "BitCast")
             }
         }
         return new CirExpr(e = "bin", t = int_t(r), op = op, a = a, b = b)
@@ -434,6 +434,19 @@ def private literal_type(var r : CIr; v : uint64; candidates : array<string>) : 
     return -1
 }
 
+// the types an integer literal may take, in order (C11 6.4.4.1p5), by its `u` suffix, its count of
+// `l`s and whether it is decimal
+def private literal_candidates(unsigned_suffix : bool; longs : int; decimal : bool) : array<string> {
+    if (unsigned_suffix) {
+        return <- longs == 0 ? ["unsigned int", "unsigned long", "unsigned long long"] : longs == 1 ? ["unsigned long", "unsigned long long"] : ["unsigned long long"]
+    } elif (longs == 0) {
+        return <- decimal ? ["int", "long", "long long"] : ["int", "unsigned int", "long", "unsigned long", "long long", "unsigned long long"]
+    } elif (longs == 1) {
+        return <- decimal ? ["long", "long long"] : ["long", "unsigned long", "long long", "unsigned long long"]
+    }
+    return <- decimal ? ["long long"] : ["long long", "unsigned long long"]
+}
+
 // an integer literal node from token `tok` (C11 6.4.4.1): its value and the type its base, suffix
 // and value give
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-literals")]
@@ -460,17 +473,7 @@ def private int_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
         value = value * base + uint64(d)
     }
     let decimal = base == 10ul
-    var candidates : array<string>
-    if (unsigned_suffix) {
-        candidates <- longs == 0 ? ["unsigned int", "unsigned long", "unsigned long long"] : longs == 1 ? ["unsigned long", "unsigned long long"] : ["unsigned long long"]
-    } elif (longs == 0) {
-        candidates <- decimal ? ["int", "long", "long long"] : ["int", "unsigned int", "long", "unsigned long", "long long", "unsigned long long"]
-    } elif (longs == 1) {
-        candidates <- decimal ? ["long", "long long"] : ["long", "unsigned long", "long long", "unsigned long long"]
-    } else {
-        candidates <- decimal ? ["long long"] : ["long long", "unsigned long long"]
-    }
-    let t = ok ? literal_type(r, value, candidates) : -1
+    let t = ok ? literal_type(r, value, literal_candidates(unsigned_suffix, longs, decimal)) : -1
     if (t < 0) {
         c_refuse(r.b, p, tok, "the integer literal '{c_spelling(p.unit, tok)}', which no type of its list holds,")
         return null
@@ -631,7 +634,7 @@ def private char_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
 // a floating literal node from token `tok` (C11 6.4.4.2): `float` with an `f` suffix, `long
 // double` with an `l`, else `double`; its value as Dumper A spells it (`c_float_literal`)
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-literals")]
-def private float_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
+def private float_literal(var r : CIr; p : CParser; tok : int) : CirExpr? {
     let spelled = c_spelling(p.unit, tok)
     let last = to_lower(slice(spelled, length(spelled) - 1))
     let kind = last == "f" ? "float" : last == "l" ? "long double" : "double"
@@ -688,7 +691,7 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : 
     }
     let shape = old_style >= 0 ? old_style : unq(r, target)
     let params := r.b.pool[shape].params
-    let typed = old_style >= 0 || proto || length(params) > 0 || r.b.pool[shape].variadic
+    let typed = old_style >= 0 || proto || !empty(params) || r.b.pool[shape].variadic
     var x = new CirExpr(e = "call", t = unq(r, r.b.pool[target].ret), fn = callee)
     var arg = n_args
     while (arg >= 0) {
@@ -700,7 +703,7 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : 
         } else {
             a = c_promote(r, a)
             if (is_float(r, a.t) && r.b.pool[a.t].w == 32) {
-                a = c_implicit(r, a, c_builtin(r.b, "double"), "FloatingCast")
+                a = c_implicit(a, c_builtin(r.b, "double"), "FloatingCast")
             }
         }
         x.args |> push(a)
@@ -727,23 +730,23 @@ def private conditional(var r : CIr; var p : CParser; var c, a, b : CirExpr?; to
             t = a.t
         } elif (is_ptr(r, a.t) && b_null) {
             t = a.t
-            b = c_implicit(r, b, t, "NullToPointer")
+            b = c_implicit(b, t, "NullToPointer")
         } elif (is_ptr(r, b.t) && a_null) {
             t = b.t
-            a = c_implicit(r, a, t, "NullToPointer")
+            a = c_implicit(a, t, "NullToPointer")
         } elif (is_ptr(r, a.t) && is_ptr(r, b.t)) {
             if (a.t == b.t) {
                 t = a.t
             } elif (points_at_void(r, a.t)) {
                 t = a.t
-                b = c_implicit(r, b, t, "BitCast")
+                b = c_implicit(b, t, "BitCast")
             } elif (points_at_void(r, b.t)) {
                 t = b.t
-                a = c_implicit(r, a, t, "BitCast")
+                a = c_implicit(a, t, "BitCast")
             } elif (c_bare(r, a.t) != c_bare(r, b.t)) {
                 t = c_pointer(r.b, c_builtin(r.b, "void"))
-                a = c_implicit(r, a, t, "BitCast")
-                b = c_implicit(r, b, t, "BitCast")
+                a = c_implicit(a, t, "BitCast")
+                b = c_implicit(b, t, "BitCast")
             }
         }
     }
@@ -761,9 +764,9 @@ def private unary(var r : CIr; var p : CParser; k : int; var a : CirExpr?; post 
     if (k == int(CTok.INC) || k == int(CTok.DEC)) {
         let op = k == int(CTok.INC) ? (post ? "postinc" : "preinc") : (post ? "postdec" : "predec")
         return new CirExpr(e = "un", t = unq(r, a.t), op = op, a = a)
-    } elif (k == int('&')) {
+    } elif (k == '&') {
         return new CirExpr(e = "un", t = c_pointer(r.b, a.t), op = "addr", a = a)
-    } elif (k == int('*')) {
+    } elif (k == '*') {
         a = c_rvalue(r, a)
         if (!is_ptr(r, a.t)) {
             c_refuse(r.b, p, tok, "a dereference of a value that is no pointer")
@@ -772,12 +775,12 @@ def private unary(var r : CIr; var p : CParser; k : int; var a : CirExpr?; post 
         var x = new CirExpr(e = "un", t = r.b.pool[a.t].to, op = "deref", a = a)
         x.vol = (r.b.quals[x.t] & C_VOLATILE) != 0
         return x
-    } elif (k == int('!')) {
+    } elif (k == '!') {
         a = c_rvalue(r, a)
         return new CirExpr(e = "un", t = int_t(r), op = "not", a = a)
     }
     a = c_promote(r, a)
-    return new CirExpr(e = "un", t = a.t, op = k == int('-') ? "neg" : k == int('+') ? "plus" : "bnot", a = a)
+    return new CirExpr(e = "un", t = a.t, op = k == '-' ? "neg" : k == '+' ? "plus" : "bnot", a = a)
 }
 
 // an assignment `k` of `b` to `a` (C11 6.5.16): plain, the right operand converted to the left's
@@ -795,7 +798,7 @@ def private assignment(var r : CIr; k : int; var a, b : CirExpr?) : CirExpr? {
         b = c_promote(r, b)
         let lhs = is_int(r, t) && r.b.pool[t].w < r.b.tu.target.int_w ? int_t(r) : t
         let common = common_type(r, lhs, b.t)
-        b = c_implicit(r, b, common, arith_kind(r, b.t, common))
+        b = c_implicit(b, common, arith_kind(r, b.t, common))
     }
     return new CirExpr(e = "assign", t = t, op = op, a = a, b = b)
 }
@@ -806,7 +809,7 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
     let name = pp_symbol_text(p.unit.lx, sym)
     for (fn in BUILTIN_FUNCTIONS) {
         if (fn.name == name && !key_exists(r.ids, sym)) {
-            var params <- [for (x in fn.params); c_builtin(r.b, x)]
+            var inscope params <- [for (x in fn.params); c_builtin(r.b, x)]
             let proto = c_function(r.b, c_builtin(r.b, fn.ret), params, false)
             r.ids[sym] = CId(t = proto, is_function = true, proto = true, old_style = -1, builtin = true)
         }
@@ -823,6 +826,66 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
     var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r.b) : id.t, name = name)
     x.vol = (r.b.quals[id.t] & C_VOLATILE) != 0
     return x
+}
+
+// an operator node `node` (unary, postfix, binary, assignment, conditional) typed, its operands first
+def private operator_expr(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    let kind = node.kind
+    if (kind == CNode.UNARY || kind == CNode.POSTFIX) {
+        var a = c_expr(r, p, node.a)
+        return a == null ? null : unary(r, p, node.op, a, kind == CNode.POSTFIX, node.tok)
+    } elif (kind == CNode.COND) {
+        if (node.b < 0) {
+            c_refuse(r.b, p, node.tok, "GNU's ?: with no middle operand")
+            return null
+        }
+        var c = c_expr(r, p, node.a)
+        var a = c == null ? null : c_expr(r, p, node.b)
+        var b = a == null ? null : c_expr(r, p, node.c)
+        return b == null ? null : conditional(r, p, c, a, b, node.tok)
+    }
+    var a = c_expr(r, p, node.a)
+    var b = a == null ? null : c_expr(r, p, node.b)
+    return null if (b == null)
+    if (kind == CNode.ASSIGN) {
+        return assignment(r, node.op, a, b)
+    } elif (node.op != ',') {
+        return binary(r, p, binary_op(node.op), a, b, node.tok)
+    }
+    a = c_rvalue(r, a)
+    b = c_rvalue(r, b)
+    return new CirExpr(e = "comma", t = b.t, a = a, b = b)
+}
+
+// a subscript node `node` typed: both operands values, the pointer one's target its type
+def private subscript(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    var base = c_expr(r, p, node.a)
+    var i = base == null ? null : c_expr(r, p, node.b)
+    return null if (i == null)
+    base = c_rvalue(r, base)
+    i = c_rvalue(r, i)
+    let ptr = is_ptr(r, base.t) ? base.t : i.t
+    if (!is_ptr(r, ptr)) {
+        c_refuse(r.b, p, node.tok, "a subscript of a value that is no pointer")
+        return null
+    }
+    var x = new CirExpr(e = "index", t = r.b.pool[ptr].to, base = base, i = i)
+    x.vol = (r.b.quals[x.t] & C_VOLATILE) != 0
+    return x
+}
+
+// an explicit cast node `node` typed: its operand a value, the kind by the two types
+def private explicit_cast(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    let to = c_type_name_type(r.b, p, node.a)
+    var a = to < 0 ? null : c_expr(r, p, node.b)
+    return null if (a == null)
+    a = c_rvalue(r, a)
+    let ck = explicit_kind(r, a, to)
+    if (empty(ck)) {
+        c_refuse(r.b, p, node.tok, "this cast")
+        return null
+    }
+    return cast_node(a, unq(r, to), ck, true)
 }
 
 //! The C-IR expression of parser expression node `n`, typed by pool types, with no conversion at
@@ -847,62 +910,16 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
             inner.paren = true
         }
         return inner
-    } elif (kind == CNode.UNARY || kind == CNode.POSTFIX) {
-        var a = c_expr(r, p, node.a)
-        return a == null ? null : unary(r, p, node.op, a, kind == CNode.POSTFIX, node.tok)
-    } elif (kind == CNode.BINARY && node.op == int(',')) {
-        var a = c_expr(r, p, node.a)
-        var b = a == null ? null : c_expr(r, p, node.b)
-        return null if (b == null)
-        a = c_rvalue(r, a)
-        b = c_rvalue(r, b)
-        return new CirExpr(e = "comma", t = b.t, a = a, b = b)
-    } elif (kind == CNode.BINARY) {
-        var a = c_expr(r, p, node.a)
-        var b = a == null ? null : c_expr(r, p, node.b)
-        return b == null ? null : binary(r, p, binary_op(node.op), a, b, node.tok)
-    } elif (kind == CNode.ASSIGN) {
-        var a = c_expr(r, p, node.a)
-        var b = a == null ? null : c_expr(r, p, node.b)
-        return b == null ? null : assignment(r, node.op, a, b)
-    } elif (kind == CNode.COND) {
-        if (node.b < 0) {
-            c_refuse(r.b, p, node.tok, "GNU's ?: with no middle operand")
-            return null
-        }
-        var c = c_expr(r, p, node.a)
-        var a = c == null ? null : c_expr(r, p, node.b)
-        var b = a == null ? null : c_expr(r, p, node.c)
-        return b == null ? null : conditional(r, p, c, a, b, node.tok)
+    } elif (kind == CNode.UNARY || kind == CNode.POSTFIX || kind == CNode.BINARY || kind == CNode.ASSIGN || kind == CNode.COND) {
+        return operator_expr(r, p, node)
     } elif (kind == CNode.CALL) {
         let callee = p.ast.nodes[node.a]
         var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
         return fn == null ? null : call(r, p, fn, node.b, node.tok)
     } elif (kind == CNode.INDEX) {
-        var base = c_expr(r, p, node.a)
-        var i = base == null ? null : c_expr(r, p, node.b)
-        return null if (i == null)
-        base = c_rvalue(r, base)
-        i = c_rvalue(r, i)
-        let ptr = is_ptr(r, base.t) ? base.t : i.t
-        if (!is_ptr(r, ptr)) {
-            c_refuse(r.b, p, node.tok, "a subscript of a value that is no pointer")
-            return null
-        }
-        var x = new CirExpr(e = "index", t = r.b.pool[ptr].to, base = base, i = i)
-        x.vol = (r.b.quals[x.t] & C_VOLATILE) != 0
-        return x
+        return subscript(r, p, node)
     } elif (kind == CNode.CAST) {
-        let to = c_type_name_type(r.b, p, node.a)
-        var a = to < 0 ? null : c_expr(r, p, node.b)
-        return null if (a == null)
-        a = c_rvalue(r, a)
-        let ck = explicit_kind(r, a, to)
-        if (empty(ck)) {
-            c_refuse(r.b, p, node.tok, "this cast")
-            return null
-        }
-        return cast_node(a, unq(r, to), ck, true)
+        return explicit_cast(r, p, node)
     } elif (kind == CNode.SIZEOF_TYPE) {
         let of_t = c_type_name_type(r.b, p, node.a)
         return of_t < 0 ? null : sizeof_node(r, p, of_t, null, node.tok)

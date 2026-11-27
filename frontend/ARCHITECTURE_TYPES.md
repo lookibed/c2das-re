@@ -1,9 +1,10 @@
 # frontend Architecture - the type table
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family. It
-describes `c_types.das`, which builds a unit's C-IR type table (`docs/c-ir-spec.md` sections 2
-and 3, `CirTu.types` of `converter/cir.das`) from the parser's tree, so that the table equals
-Dumper A's entry for entry.
+describes `c_types.das`, which types the parser's specifiers and declarators and keeps a unit's
+C-IR type table (`docs/c-ir-spec.md` sections 2 and 3, `CirTu.types` of `converter/cir.das`), and
+the walk of `c_ir.das` that fills the table in Dumper A's order, so that it equals Dumper A's entry
+for entry. The expressions the walk types are `ARCHITECTURE_EXPRS.md`'s.
 
 ## 24. What Dumper A's table is {#c-types-order}
 
@@ -19,17 +20,23 @@ apart, a pointer, an array and a function by the indices of their parts, a typed
 and is interned once, at its first use.
 
 The builder states a type once, in its pool (`CTypes.pool`), by the same structural keys over pool
-indices, with qualifiers dropped and typedef names resolved, and uses it (`c_types_use`): the
-parts not yet in the table first, in that order, then the type. Computing a type adds to the pool
+indices, typedef names resolved, and uses it (`c_types_use`): the parts not yet in the table first,
+in that order, then the type. A qualified type is a pool entry of its own (`c_qualified`, keyed by
+its qualifier bits and its unqualified entry; an array's qualifiers on its element, C11 6.7.3p9),
+since a conversion depends on qualifiers (`ARCHITECTURE_EXPRS.md` section 33); its use is its
+unqualified type's table entry, as Dumper A drops every qualifier. A function type's parameters
+are unqualified. Computing a type adds to the pool
 only; the table grows by uses, in the order Dumper A's walk reaches the same declarations:
 
 - the external declarations in order, those of the own libc headers adding nothing (section 28);
 - a typedef declaration: its type, then its `typedef` entry, keyed by the name, so a second
   typedef of one name - another block's, of another type - adds its type and shares the entry;
-- a variable declaration: its type (then its initializer's expression types, section 27);
+- a variable declaration: its type, then its initializer's expression types
+  (`ARCHITECTURE_EXPRS.md` section 35);
 - a function declaration: its type, then each parameter's adjusted type, which the function's type
   holds already; a definition then its body;
-- a body: its statements depth-first in source order, each declaration in it as at file scope -
+- a body: its statements depth-first in source order, each expression where it stands
+  (`ARCHITECTURE_EXPRS.md` section 35), each declaration in it as at file scope -
   `static` and `extern` locals alike - except that a block declaration of a function whose name a
   declaration before it declared (the unit's, or the own headers') adds nothing, as clang links it
   to that declaration;
@@ -88,14 +95,8 @@ literal. A prefixed (wide or UTF) string literal, any other designator (a range,
 non-literal index), an elided brace in an array of arrays and any other initializer of an unsized
 array are refused.
 
-Expression types are not built yet (C.3). In Dumper A's table they interleave with the
-declaration types: right after a variable's type come the types of its initializer's nodes
-(literals, implicit and explicit casts, string literals' `char[N]` arrays, decays, `sizeof` and
-compound-literal type names), and in a body each expression statement, condition, `return` value
-and loop step adds its nodes' types where it stands among the declarations. Declarations inside an
-expression (a statement expression's, a compound literal's or a cast's type name) are not walked.
-So the table matches Dumper A's whole only for a unit whose expressions bring no type of their own
-before its declarations do; `compare/types/` compares the declaration-derived order on its own.
+An array size other than an integer literal is refused here: `c_types.das` evaluates no constant
+expression, which `c_exprs.das` does over typed expressions (`ARCHITECTURE_EXPRS.md` section 32).
 
 ## 28. The own libc headers {#c-types-library}
 

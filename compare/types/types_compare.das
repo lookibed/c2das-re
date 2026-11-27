@@ -173,22 +173,11 @@ def census_difference(ours, theirs : CirTu) : string {
     var oc, tc : ConversionCensus
     census_tu(ours, oc)
     census_tu(theirs, tc)
-    var keys : table<string; bool>
-    for (k in keys(oc.n)) {
-        keys[k] = true
-    }
-    for (k in keys(tc.n)) {
-        keys[k] = true
-    }
-    var listed <- [for (k in keys(keys)); k]
+    var listed <- [for (k in keys(oc.n)); k]
+    listed |> push_from([for (k in keys(tc.n)); k; where !key_exists(oc.n, k)])
     sort(listed)
-    var diffs : array<string>
-    for (k in listed) {
-        if (count_of(oc, k) != count_of(tc, k) && length(diffs) < 3) {
-            diffs |> push("{k} builder {count_of(oc, k)}, Dumper A {count_of(tc, k)}")
-        }
-    }
-    return join(diffs, " | ")
+    let diffs <- [for (k in listed); "{k} builder {count_of(oc, k)}, Dumper A {count_of(tc, k)}"; where count_of(oc, k) != count_of(tc, k)]
+    return join([for (i in range(min(3, length(diffs)))); diffs[i]], " | ")
 }
 
 //! The builder's C-IR of `unit` under `target` into `tu`: `clang -E` under Dumper A's flags into
@@ -219,6 +208,7 @@ def builder_tu(unit, work : string; target : CirTarget; var tu : CirTu; var erro
         if (!c_ir_unit(*r, *p, u)) {
             error = "builder: {r.b.err}"
         }
+        delete_tu(tu)
         tu <- r.b.tu
         unsafe {
             delete r

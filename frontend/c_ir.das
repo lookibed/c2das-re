@@ -5,6 +5,7 @@ module c_ir public
 
 require strings
 require daslib/strings_boost
+require daslib/cmp
 require c_exprs public
 
 //! A unit's C-IR from the parser's tree as Dumper A writes it (`ARCHITECTURE_TYPES.md`,
@@ -107,7 +108,7 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
         pos++
         item = it.next
     }
-    sort(x.init_items) $(a, b) => a.pos < b.pos
+    sort(x.init_items, cmp_by(_.pos))
     return x
 }
 
@@ -118,7 +119,7 @@ def private name_of(var p : CParser; d : int) : string {
 }
 
 // whether specifier list `specs` holds storage class `k`
-def private has_storage(var p : CParser; specs : int; k : CTok) : bool {
+def private has_storage(p : CParser; specs : int; k : CTok) : bool {
     var at = specs
     while (at >= 0) {
         return true if (p.ast.nodes[at].kind == CNode.SPEC_KEYWORD && p.ast.nodes[at].op == int(k))
@@ -144,7 +145,7 @@ def private parameters(var r : CIr; var p : CParser; f : int; var into : array<C
 // the identifier entry of function `sym` declared with pool type `t` by function declarator `f`
 // (-1 for one declared through a typedef): a declaration with no prototype keeps the type and
 // prototype of one before it, as clang's composite type does
-def private function_id(var r : CIr; var p : CParser; sym, t, f : int) : CId {
+def private function_id(r : CIr; p : CParser; sym, t, f : int) : CId {
     let proto = f < 0 || (p.ast.nodes[f].op != 2 && !(p.ast.nodes[f].op == 0 && p.ast.nodes[f].b < 0))
     let before = r.ids?[sym] ?? CId(t = -1, old_style = -1)
     if (!proto && before.t >= 0 && before.is_function) {
@@ -279,7 +280,21 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
         }
         return statement(r, p, sub, fn, into)
     }
+    if (n.kind == CNode.EXPR_STMT && statement_block(r, p, n.a) >= 0) {
+        return statement(r, p, statement_block(r, p, n.a), fn, into)
+    }
     var st = new CirStmt(loc = at)
+    let ok = n.kind == CNode.IF || n.kind == CNode.WHILE || n.kind == CNode.DO || n.kind == CNode.SWITCH || n.kind == CNode.FOR ? branch(r, p, n, fn, st) : simple(r, p, n, fn, st)
+    if (!ok) {
+        delete_stmt(st)
+        return false
+    }
+    into |> push(st)
+    return true
+}
+
+// a statement with no statement under it, or a block, into `st`: its kind and expressions
+def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var st : CirStmt?) : bool {
     var ok = true
     if (n.kind == CNode.COMPOUND) {
         st.s = "compound"
@@ -292,16 +307,36 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
         }
         c_ir_close(r)
         c_types_scope_close(r.b)
-    } elif (n.kind == CNode.EXPR_STMT && statement_block(r, p, n.a) >= 0) {
-        delete_stmt(st)
-        return statement(r, p, statement_block(r, p, n.a), fn, into)
     } elif (n.kind == CNode.EXPR_STMT) {
         st.s = "expr"
         st.e = used(r, value_of(r, p, n.a))
         ok = st.e != null
     } elif (n.kind == CNode.NULL_STMT) {
         st.s = "null"
-    } elif (n.kind == CNode.IF) {
+    } elif (n.kind == CNode.GOTO) {
+        st.s = "goto"
+        st.label_name = pp_symbol_text(p.unit.lx, n.a)
+    } elif (n.kind == CNode.CONTINUE || n.kind == CNode.BREAK) {
+        st.s = n.kind == CNode.CONTINUE ? "continue" : "break"
+    } elif (n.kind == CNode.RETURN) {
+        st.s = "return"
+        if (n.a >= 0) {
+            var e = c_expr(r, p, n.a)
+            st.e = e == null ? null : used(r, r.b.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, e, r.ret))
+            ok = st.e != null
+        }
+    } else {
+        c_refuse(r.b, p, n.tok, "this statement")
+        ok = false
+    }
+    return ok
+}
+
+// an `if`, `while`, `do`, `switch` or `for` into `st`, its expressions where Dumper A dumps them
+// among the statements under it
+def private branch(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var st : CirStmt?) : bool {
+    var ok = true
+    if (n.kind == CNode.IF) {
         st.s = "if"
         st.cond = used(r, value_of(r, p, n.a))
         ok = st.cond != null && one(r, p, n.b, fn, st.then_s) && (n.c < 0 || one(r, p, n.c, fn, st.else_s))
@@ -319,7 +354,7 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
         var c = c_expr(r, p, n.a)
         st.cond = c == null ? null : used(r, c_promote(r, c))
         ok = st.cond != null && one(r, p, n.b, fn, st.body_s)
-    } elif (n.kind == CNode.FOR) {
+    } else {
         st.s = "for"
         c_types_scope_open(r.b)
         c_ir_open(r)
@@ -337,28 +372,8 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
         ok = ok && (n.c < 0 || st.inc != null) && one(r, p, n.d, fn, st.body_s)
         c_ir_close(r)
         c_types_scope_close(r.b)
-    } elif (n.kind == CNode.GOTO) {
-        st.s = "goto"
-        st.label_name = pp_symbol_text(p.unit.lx, n.a)
-    } elif (n.kind == CNode.CONTINUE || n.kind == CNode.BREAK) {
-        st.s = n.kind == CNode.CONTINUE ? "continue" : "break"
-    } elif (n.kind == CNode.RETURN) {
-        st.s = "return"
-        if (n.a >= 0) {
-            var e = c_expr(r, p, n.a)
-            st.e = e == null ? null : used(r, r.b.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, e, r.ret))
-            ok = st.e != null
-        }
-    } else {
-        c_refuse(r.b, p, n.tok, "this statement")
-        ok = false
     }
-    if (!ok) {
-        delete_stmt(st)
-        return false
-    }
-    into |> push(st)
-    return true
+    return ok
 }
 
 // the compound statement of GNU statement expression `e` evaluated for its effect alone, through
@@ -453,6 +468,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     c_types_scope_open(r.b)
     var ok = true
     if (old_style) {
+        cd.params |> reserve(length(typed))
         for (pt, pname in typed, names) {
             cd.params |> push(CirParam(name = pname, t = c_types_use(r.b, pt)))
             c_ir_bind(r, c_symbol(p.unit, pname), CId(t = pt, old_style = -1))

@@ -120,7 +120,9 @@ let C_RESTRICT = 4
 def c_qualified(var b : CTypes; t, q : int) : int {
     return t if (t < 0 || q == 0 || (b.quals[t] | q) == b.quals[t] || b.pool[t].k == "func")
     if (b.pool[t].k == "array") {
-        return array_of(b, c_qualified(b, b.pool[t].elem, q), b.pool[t].count)
+        let count = b.pool[t].count
+        let elem = c_qualified(b, b.pool[t].elem, q)
+        return array_of(b, elem, count)
     }
     let base = b.unqualified[t]
     let all = b.quals[t] | q

@@ -14,7 +14,7 @@ require daslib/strings_boost
 
 // `a` without its high zero limbs
 def private trimmed(var a : array<uint>) {
-    while (length(a) > 0 && a[length(a) - 1] == 0u) {
+    while (!empty(a) && a[length(a) - 1] == 0u) {
         a |> pop()
     }
 }
@@ -22,9 +22,9 @@ def private trimmed(var a : array<uint>) {
 // `a * m + add` into `a`
 def private mul_add(var a : array<uint>; m, add : uint) {
     var carry = uint64(add)
-    for (i in range(length(a))) {
-        let v = uint64(a[i]) * uint64(m) + carry
-        a[i] = uint(v & 0xFFFFFFFFul)
+    for (a_elem in a) {
+        let v = uint64(a_elem) * uint64(m) + carry
+        a_elem = uint(v & 0xFFFFFFFFul)
         carry = v >> 32ul
     }
     if (carry != 0ul) {
@@ -69,6 +69,7 @@ def private shifted(a : array<uint>; bits : int) : array<uint> {
     }
     let s = uint(bits % 32)
     var carry = 0u
+    out |> reserve(length(out) + length(a) + 1)
     for (v in a) {
         out |> push(s == 0u ? v : (v << s) | carry)
         carry = s == 0u ? 0u : v >> (32u - s)
@@ -188,7 +189,7 @@ def private decimal_value(n : array<uint>; e10 : int; precision, emin, emax : in
     var q : array<uint>
     for (i in range(precision + 5)) {
         let j = precision + 4 - i
-        let part <- shifted(divisor, j)
+        var inscope part <- shifted(divisor, j)
         mul_add(q, 2u, 0u)
         if (compared(num, part) >= 0) {
             subtract(num, part)
@@ -200,7 +201,7 @@ def private decimal_value(n : array<uint>; e10 : int; precision, emin, emax : in
         }
     }
     trimmed(q)
-    return rounded(q, t, length(num) > 0, precision, emin, emax)
+    return rounded(q, t, !empty(num), precision, emin, emax)
 }
 
 // the value of hex-float significand digits `text` (a point among them) times `2^p` rounded
@@ -226,12 +227,14 @@ def private exponent_of(text : string; at : int) : int {
     return 0 if (at < 0)
     var sign = 1
     var v = 0
-    for (i in range(at + 1, length(text))) {
-        let ch = character_at(text, i)
-        if (ch == '-') {
-            sign = -1
-        } elif (is_number(ch) && v < 100000) {
-            v = v * 10 + ch - '0'
+    peek_data(text) $(bytes) {
+        for (i in range(at + 1, length(bytes))) {
+            let ch = int(bytes[i])
+            if (ch == '-') {
+                sign = -1
+            } elif (is_number(ch) && v < 100000) {
+                v = v * 10 + ch - '0'
+            }
         }
     }
     return sign * v
@@ -256,7 +259,7 @@ def c_float_value(spelled : string; precision, emin, emax : int) : CBinary {
 def private decimal_text(a : array<uint>) : string {
     var rest := a
     var digits : array<uint8>
-    while (length(rest) > 0) {
+    while (!empty(rest)) {
         var carry = 0ul
         for (i in range(length(rest))) {
             let at = length(rest) - 1 - i
@@ -279,14 +282,11 @@ def private decimal_text(a : array<uint>) : string {
 //! decimal expansion, cut there and rounded up when the first digit cut is 5 or more, as LLVM's
 //! `APFloat::toString` does; the result as digits and a power of ten.
 def c_float_decimal(v : CBinary; digits : int) : tuple<text : string; e10 : int> {
-    var n : array<uint>
-    n |> push(uint(v.m & 0xFFFFFFFFul))
-    n |> push(uint(v.m >> 32ul))
-    trimmed(n)
+    var m : array<uint> <- [uint(v.m & 0xFFFFFFFFul), uint(v.m >> 32ul)]
+    trimmed(m)
+    var n <- v.exp >= 0 ? shifted(m, v.exp) : clone_to_move(m)
     var e10 = 0
-    if (v.exp >= 0) {
-        n <- shifted(n, v.exp)
-    } else {
+    if (v.exp < 0) {
         for (_ in range(-v.exp)) {
             mul_add(n, 5u, 0u)
         }
@@ -295,7 +295,7 @@ def c_float_decimal(v : CBinary; digits : int) : tuple<text : string; e10 : int>
     var text = decimal_text(n)
     if (length(text) > digits) {
         let cut = length(text) - digits
-        let up = character_at(text, digits) >= '5'
+        let up = slice(text, digits, digits + 1) >= "5"
         e10 += cut
         text = slice(text, 0, digits)
         if (up) {
@@ -325,16 +325,16 @@ def c_hex_float(v : CBinary) : string {
     } else {
         frac = (v.m << uint64(52 - (high - v.exp))) & 0xFFFFFFFFFFFFFul
     }
-    var hex = ""
     var digits = 13
     while (digits > 0 && (frac & 0xFul) == 0ul) {
         frac >>= 4ul
         digits--
     }
-    let nibbles = "0123456789abcdef"
-    for (i in range(digits)) {
-        let nib = int((frac >> uint64(4 * (digits - 1 - i))) & 0xFul)
-        hex += slice(nibbles, nib, nib + 1)
+    let hex = build_string() $(var w) {
+        for (i in range(digits)) {
+            let nib = int((frac >> uint64(4 * (digits - 1 - i))) & 0xFul)
+            w |> write_char(nib < 10 ? '0' + nib : 'a' + nib - 10)
+        }
     }
     let sign = exp < 0 ? "-" : "+"
     return "0x{lead}{empty(hex) ? "" : "."}{hex}p{sign}{abs(exp)}"
@@ -344,6 +344,7 @@ def c_hex_float(v : CBinary) : string {
 //! gone) as Dumper A writes it: clang's value (a `long double` read as a double, the dialect's
 //! width), through clang's decimal text of it (nine digits for a `float`, seventeen for a double,
 //! which read back to the same double), as a hex-float.
+[arch(at="ARCHITECTURE_EXPRS.md#c-exprs-floats")]
 def c_float_literal(spelled : string; kind : string) : string {
     if (kind == "float") {
         let f = c_float_value(spelled, 24, -126, 127)
