@@ -1286,6 +1286,17 @@ def private identifier_list_refused(var p : CParser; d : int) : bool {
     return true
 }
 
+//! declarator `d` of an old-style declaration list with its init-declarator `id`: no asm label,
+//! and the name typed in function declarator `f`'s identifier list
+def private old_style_declarator(var p : CParser; f, d, id : int) {
+    if (p.ast.nodes[id].c >= 0) {
+        p.pos = p.ast.nodes[p.ast.nodes[id].c].tok
+        fail(p, "';'")
+    } else {
+        type_old_style_param(p, f, d)
+    }
+}
+
 //! the name declarator `d` declares in an old-style definition's declaration list, typed by `d` in
 //! the identifier list of function declarator `f`; an error at the name when the list does not hold
 //! it or a declaration before typed it
@@ -1404,11 +1415,8 @@ def private declaration(var p : CParser; place : CPlace; f : int) : int {
         }
         if (identifier_list_refused(p, d)) {
             break
-        } elif (place == CPlace.OLD_STYLE && !p.failed && p.ast.nodes[id].c >= 0) {
-            p.pos = p.ast.nodes[p.ast.nodes[id].c].tok
-            fail(p, "';'")
         } elif (place == CPlace.OLD_STYLE && !p.failed) {
-            type_old_style_param(p, f, d)
+            old_style_declarator(p, f, d, id)
         }
         first = false
         c_declare(p, c_declarator_name(p.ast, d), binding)
