@@ -24,9 +24,10 @@ dereference of a volatile-qualified type set `vol`.
 A reference to a function an old-style definition defined has the type `R ()`, as clang's reference
 does, while its calls convert by the definition's promoted parameters (section 33); a declaration
 with no prototype keeps the type and prototype of an earlier one of the name (clang's composite
-type). `__builtin_expect` is the one builtin function typed, only as a callee: its reference has the
-type clang gives a builtin, `<builtin fn type>` (`c_builtin_fn_type`, in the table `void (...)`,
-keyed apart), and its decay is to a pointer to its prototype `long (long, long)`.
+type). The builtin functions typed are `__builtin_expect` and `__builtin_abort` (`BUILTIN_FUNCTIONS`),
+only as callees: a reference has the type clang gives a builtin, `<builtin fn type>`
+(`c_builtin_fn_type`, in the table `void (...)`, keyed apart), and its decay is to a pointer to its
+prototype, `long (long, long)` and `void (void)`.
 
 Refused, at the construct's place: an identifier no variable or function in scope names (an enum
 constant among them, until the Aggregates phase), a builtin other than as a callee, GNU's `?:` with

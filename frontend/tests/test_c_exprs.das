@@ -170,10 +170,11 @@ def test_argument_promotions(t : T?) {
                "expr call<int>(FunctionToPointerDecay<func*>(printf); NoOp<char*>(ArrayToPointerDecay<char*>(str<char[3]>)), IntegralCast<int>(LValueToRValue<char>(c)), FloatingCast<double>(LValueToRValue<float>(f))) ; expr call<int>(FunctionToPointerDecay<func*>(h); IntegralCast<int>(LValueToRValue<char>(c)), FloatingCast<double>(LValueToRValue<float>(f)))")
 }
 
-[test(description = "__builtin_expect, the one builtin typed: called through a decay to its prototype, its arguments converted to long; its reference typed as clang types a builtin")]
+[test(description = "the builtins typed, __builtin_expect and __builtin_abort: called through a decay to its prototype, __builtin_expect's arguments converted to long; the reference typed as clang types a builtin")]
 def test_builtin(t : T?) {
     t |> equal(ir_of("void g(int x) \{ __builtin_expect(x, 0); \}"),
                "expr call<long>(FunctionToPointerDecay<func*>(__builtin_expect); IntegralCast<long>(LValueToRValue<int>(x)), IntegralCast<long>(0<int>))")
+    t |> equal(ir_of("void g(void) \{ __builtin_abort(); \}"), "expr call<void>(FunctionToPointerDecay<func*>(__builtin_abort); )")
 }
 
 [test(description = "literals: an integer literal's type by base, suffix and value under both dialects, character constants plain, escaped, wide and of plain unsigned char, floating constants by suffix")]

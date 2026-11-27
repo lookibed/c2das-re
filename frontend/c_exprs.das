@@ -15,7 +15,7 @@ require c_types public
 
 //! The builtin functions the builder types, each with its prototype's result and parameter
 //! spellings as clang declares it.
-let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["long", "long"])]
+let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["long", "long"]), (name = "__builtin_abort", ret = "void", params = array<string>())]
 
 //! The state of a unit's expressions is the type builder's (`CTypes`): its types, the identifiers
 //! in scope and the return type of the function being read.
