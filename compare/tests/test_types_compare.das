@@ -272,3 +272,20 @@ def test_run_types(t : T?) {
     t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 refused, 1 whole table, 1 C-IR, 1 census, 1 bytes agree, 0 differ; byte-identical: aggregates 0/0, scalar-only 1/1, core (no array) 0/0") >= 0, out)
 }
 
+// what run.das prints for fixture `unit` under linux, run as a child
+def private run_das_output(unit : string) : string {
+    let argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
+                 "--dialect", "linux", "{FIXTURES}/{unit}"]
+    var out : string
+    run_and_capture(argv, out, 600.0)
+    return out
+}
+
+[test(description = "run.das's totals count the aggregate units and their byte-identical ones: a unit that differs only in its initializer refusal, and one byte for byte", timeout = 600)]
+def test_run_types_aggregates(t : T?) {
+    let refused = run_das_output("aggregate.c")
+    t |> success(find(refused, "total: 1 units, 0 Dumper A failed, 1 refused, 0 whole table, 0 C-IR, 0 census, 0 bytes agree, 0 differ; byte-identical: aggregates 0/1, scalar-only 0/0") >= 0, refused)
+    let identical = run_das_output("aligned_record.c")
+    t |> success(find(identical, "total: 1 units, 0 Dumper A failed, 0 refused, 1 whole table, 1 C-IR, 1 census, 1 bytes agree, 0 differ; byte-identical: aggregates 1/1, scalar-only 0/0") >= 0, identical)
+}
+

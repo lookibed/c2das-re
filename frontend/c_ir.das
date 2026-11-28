@@ -170,7 +170,7 @@ def private parameters(var r : CIr; var p : CParser; f : int; var into : array<C
     var param = p.ast.nodes[f].b
     while (param >= 0) {
         let pt = c_param_type(r, p, param)
-        return false if (pt < 0 || !c_tag_complete(r, p))
+        return false if (pt < 0)
         let t = c_types_use(r, pt)
         let pname = name_of(p, p.ast.nodes[param].b)
         into |> push(CirParam(name = defines ? local_name(r, pname) : pname, t = t))
@@ -814,7 +814,6 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     var ok = true
     if (old_style) {
         cd.params |> reserve(length(typed))
-        return false if (!c_tag_complete(r, p))
         for (pt, pname in typed, names) {
             let local = local_name(r, pname)
             cd.params |> push(CirParam(name = local, t = c_types_use(r, pt)))
@@ -862,7 +861,6 @@ def private library_tags_untyped(var r : CIr; p : CParser; specs : int) {
         let n = p.ast.nodes[at]
         if ((n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) && n.b == 1 && n.a >= 0 && !key_exists(r.tag_built, at)) {
             r.untyped_tags[n.a] = r.err
-            r.tags |> erase(n.a)
         }
         at = n.next
     }

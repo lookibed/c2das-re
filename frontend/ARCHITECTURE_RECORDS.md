@@ -20,8 +20,10 @@ included): the use marks it, and it is built once the declaration of the use is 
 definition: the file scope's typedef names, tags and identifiers alone, a block's that holds the use
 set aside (`c_in_file_scope`); such a definition's members may name a typedef the unit declares at
 file scope after the use (each typedef name's one file-scope declaration is found with the
-definitions). A record never
-defined is incomplete: its entry has size and alignment -1 and no field.
+definitions). A record built so is complete only past its definition (`CTypes.complete_from`):
+its size and a member access before it are invalid C, as clang reads them, and a use of a tag
+whose one definition is of another kind is too. A record never defined is incomplete: its entry
+has size and alignment -1 and no field.
 
 An enum named before its one file-scope definition (`typedef enum foo E;` first) takes it the same
 way; any other enum named before its definition is refused. A tag defined again in another scope
@@ -34,7 +36,8 @@ a tag only declared do not count; `struct S` and `union S` are two spellings); a
 again is refused, as Dumper A binds its constants by place. A definition is built where a
 declaration, a member or the walk stands; one in a parameter list or a type name, a member's array
 size among them, is refused, and
-so are a tag defined again in its own scope and a tag of another kind. glibc's `struct
+so are a tag defined again in its own scope, a tag of another kind, and a tag declared in a block
+before its definition there (Dumper A refuses a block's lone `struct T;` of a tag the file defines). glibc's `struct
 __jmp_buf_tag`, which Dumper A holds as the opaque `jmp_buf`, is refused, and with it `jmp_buf`. An
 initializer list of a struct or union, and an array of records initialized with elided braces,
 are refused: initializers of aggregates are A.3's. A record or enum with no tag that a typedef declares is named, as clang names it for linkage,

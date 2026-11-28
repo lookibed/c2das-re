@@ -45,7 +45,7 @@ def private shown(x : CirExpr?) : string {
     } elif (x.e == "sizeof_v") {
         return "sizeof<{x.t}>={int64(x.trait_v)}:{x.of_t}"
     } elif (x.e == "un") {
-        return "{x.op}<{x.t}>({shown(x.a)})"
+        return "{x.op}<{x.t}>({shown(x.a)}){x.vol ? "~" : ""}"
     }
     let op = x.e == "assign" ? "assign{x.op}" : x.op
     return "{op}<{x.t}>({shown(x.a)}, {shown(x.b)})"
@@ -293,3 +293,108 @@ def test_enum_pointer_assign(t : T?) {
     t |> equal(cir_of("enum E \{ A \}; unsigned f(unsigned *p); unsigned g(void) \{ enum E e = A; return f(&e); \}", true), "enum E 'enum E' \{A=0\}; int:32:false:unsigned int; ptr:1; func:1:2:false; func:1::false; int:32:true:int; ptr:3; ptr:0 | enumdef 0 1:6 | e:0=IntegralCast<0>(0.A<5>) | call<1>(FunctionToPointerDecay<6>(f))")
 }
 
+
+let LIB_TM = "# 1 \"/lib/time.h\" 1\nstruct tm \{ int tm_sec; long off; \};\n# 2 \"t.c\" 2\n"
+
+[test(description = "layout attributes: `aligned` with a hex, octal or suffixed literal, a name or an overflow refused; the `__ms_struct__`, `__packed__` and `__aligned__` spellings; the largest `aligned` wins; a member's type-changing attribute refused")]
+def test_audit_arms_1(t : T?) {
+    t |> equal(cir_of("struct S \{ char c; \} __attribute__((aligned(0x10))); struct S gs;"), "struct S 16/16 packed \{c:1@0\}; int:8:false:char | record 0 1:8 | gs:0", "LV1")
+    t |> equal(cir_of("struct S \{ char c; \} __attribute__((aligned(010))); struct S gs;"), "struct S 8/8 packed \{c:1@0\}; int:8:false:char | record 0 1:8 | gs:0", "LV2")
+    t |> equal(cir_of("struct S \{ char c; \} __attribute__((aligned(16u))); struct S gs;"), "struct S 16/16 packed \{c:1@0\}; int:8:false:char | record 0 1:8 | gs:0", "LV3")
+    t |> equal(cir_of("enum \{ K = 8 \}; struct S \{ char c; \} __attribute__((aligned(K))); struct S gs;"), "error: t.c:1:53: an `aligned` attribute of other than an integer literal is not typed yet", "LV4")
+    t |> equal(cir_of("struct S \{ char c; \} __attribute__((aligned(4294967296))); struct S gs;"), "error: t.c:1:37: an `aligned` attribute of other than an integer literal is not typed yet", "LV5")
+    t |> equal(cir_of("struct S \{ int a; \} __attribute__((__ms_struct__)); struct S gs;"), "error: t.c:1:1: an `ms_struct` record is not laid out", "HW1")
+    t |> equal(cir_of("struct P \{ char c; int i; \} __attribute__((__packed__)); struct P gp;"), "struct P 5/1 packed \{c:1@0 i:2@1\}; int:8:false:char; int:32:true:int | record 0 1:8 | gp:0", "PK1")
+    t |> equal(cir_of("struct P \{ char c; \} __attribute__((__aligned__(8))); struct P gp;"), "struct P 8/8 packed \{c:1@0\}; int:8:false:char | record 0 1:8 | gp:0", "AL1")
+    t |> equal(cir_of("struct P \{ char c; \} __attribute__((aligned(16), aligned(4))); struct P gp;"), "struct P 16/16 packed \{c:1@0\}; int:8:false:char | record 0 1:8 | gp:0", "AM1")
+    t |> equal(cir_of("struct S \{ int x __attribute__((mode(DI))); \}; struct S gs;"), "error: t.c:1:33: the attribute 'mode', which changes a type, is not typed yet", "PL1")
+}
+
+[test(description = "msvc layouts: a member's record and array requirement under `packed`, the bit-field dialect; dims stop at a pointer level")]
+def test_audit_arms_2(t : T?) {
+    t |> equal(cir_of("struct A \{ char c; \} __attribute__((aligned(8))); struct B \{ char c; struct A a; \} __attribute__((packed)); struct B gb;", true), "struct A 8/8 packed \{c:1@0\}; int:8:false:char; struct B 16/8 \{c:1@0 a:0@8\} | record 0 1:8 | record 2 1:58 | gb:2", "RA1")
+    t |> equal(cir_of("struct A \{ char c; \} __attribute__((aligned(8))); struct B \{ char c; struct A a[2]; \} __attribute__((packed)); struct B gb;", true), "struct A 8/8 packed \{c:1@0\}; int:8:false:char; struct B 24/8 \{c:1@0 a:3@8\}; array:0:2 | record 0 1:8 | record 2 1:58 | gb:2", "RA2")
+    t |> equal(cir_of("struct S \{ char a : 3; int b : 5; \}; struct S gs;", true), "struct S 8/4 \{a:1@0/0:3 b:2@4/32:5\}; int:8:false:char; int:32:true:int | record 0 1:8 | gs:0", "R1")
+    t |> equal(cir_of("enum \{ Z = 0 \}; int (*p)[Z]; int f(void)\{ return p == 0; \}"), "enum  'enum (unnamed at t.c:1:1)' unsigned \{Z=0\}; int:32:true:int; array:1:0; ptr:2; func:1::false | enumdef 0 1:1 | p:3 | eq<1>(LValueToRValue<3>(p), NullToPointer<3>(0<1>))", "DI1B")
+}
+
+[test(description = "members: a record completed before a member's size through a typedef's look-ahead, a member declaring nothing refused, a negative width refused, an unnamed bit-field")]
+def test_audit_arms_3(t : T?) {
+    t |> equal(cir_of("typedef struct P P; typedef struct Q T; struct Q \{ int z; \}; struct P \{ T x; \}; P gp;"), "struct P 4/4 \{x:1@0\}; struct Q 4/4 \{z:2@0\}; int:32:true:int; typedef:P:0; typedef:T:1 | record 1 1:48 | record 0 1:69 | gp:0", "AMC1")
+    t |> equal(cir_of("typedef struct \{ int a; \} T; struct S \{ T; int b; \}; struct S gs;"), "error: t.c:1:41: a member declaration that declares no member is not typed yet", "AD1")
+    t |> equal(cir_of("struct S \{ struct T \{ int x; \}; int b; \}; struct S gs;"), "error: t.c:1:12: a member declaration that declares no member is not typed yet", "AD2")
+    t |> equal(cir_of("struct S \{ int f : -1; \}; struct S gs;"), "error: t.c:1:20: a bit-field width other than an integer constant from 0 to 64 is not typed yet", "BW1")
+    t |> equal(cir_of("struct S \{ int a : 3; int : 0; int b; \}; struct S gs;"), "struct S 8/4 \{a:1@0/0:3 :1@4/32:0 b:1@4\}; int:32:true:int | record 0 1:8 | gs:0", "UB1")
+}
+
+[test(description = "enums: an own header's enum anchored where the unit uses it, a count from a wider type kept, a value no 32-bit type holds refused; an enum use whose definition is a record refused")]
+def test_audit_arms_4(t : T?) {
+    t |> equal(cir_of("# 1 \"/lib/e.h\" 1\nenum lib_e \{ L0, L1 \};\n# 2 \"t.c\" 2\nenum lib_e x;\n", false, "/lib/"), "enum lib_e 'enum lib_e' unsigned \{L0=0,L1=1\} | enumdef 0 2:12 | x:0", "E1")
+    t |> equal(cir_of("enum E \{ A = 2147483648L, B, C = -B < 0 \}; int arr[C + 1];"), "enum E 'enum E' unsigned \{A=2147483648,B=2147483649,C=1\}; int:32:true:int; array:1:2 | enumdef 0 1:6 | arr:2", "EB1")
+    t |> equal(cir_of("enum E \{ A = -2147483649 \};"), "error: t.c:1:1: an enum whose values no 32-bit type holds is not typed yet", "EN1")
+    t |> equal(cir_of("enum E *e; struct E \{ int a; \};"), "error: t.c:1:1: an enum used before its definition is not typed yet", "CT1")
+}
+
+[test(description = "block tags: another kind in scope and a used forward declaration refused; an own header's refused definition named at the unit's use")]
+def test_audit_arms_5(t : T?) {
+    t |> equal(cir_of("int f(void)\{ union U; struct U \{ int a; \} s; s.a = 1; return s.a; \}"), "error: t.c:1:23: a struct tag defined again is not typed yet", "DT1")
+    t |> equal(cir_of("int f(void)\{ struct S; struct S *p = 0; struct S \{ int a; \} s; s.a = 1; return p == 0; \}"), "error: t.c:1:41: a struct tag defined again is not typed yet", "DT2")
+    t |> equal(cir_of("# 1 \"/lib/l.h\" 1\nstruct L \{ float f : 3; \};\n# 2 \"t.c\" 2\nstruct L *lp;\n", false, "/lib/"), "error: t.c:2:1: the tag 'L' is not typed yet: /lib/l.h:1:18: a bit-field of other than an integer type is not typed yet", "DT4")
+    t |> equal(cir_of("# 1 \"/lib/c.h\" 1\ntypedef _Complex double cplx;\n# 2 \"t.c\" 2\ntypedef struct P P; struct P \{ cplx c; \}; P gp;\n", false, "/lib/"), "error: t.c:2:32: the typedef name 'cplx' is not typed yet: /lib/c.h:1:9: a complex type is not typed yet", "NA1")
+}
+
+[test(description = "early completion: a type name's in_type_name set aside, the look-ahead into members and a function definition's specifiers, enumerators bound again, the block's typedefs, tags and identifiers restored")]
+def test_audit_arms_6(t : T?) {
+    t |> equal(cir_of("int n = sizeof(char[sizeof(struct S *)]); struct S \{ struct In \{ int i; \} in; \}; struct S gs;"), "int:32:true:int; int:64:false:unsigned long; int:8:false:char; array:2:8; struct In 4/4 \{i:0@0\}; struct S 4/4 \{in:4@0\} | n:0 | record 4 1:61 | record 5 1:50 | gs:5", "CC1")
+    t |> equal(cir_of("typedef struct In In; struct O \{ struct In \{ int i; \} in; \}; In gi;"), "struct In 4/4 \{i:1@0\}; int:32:true:int; typedef:In:0; struct O 4/4 \{in:0@0\} | record 0 1:41 | record 3 1:30 | gi:0", "LA1")
+    t |> equal(cir_of("struct R *rp; struct R \{ int a; \} g(void) \{ struct R r; r.a = 1; return r; \}"), "struct R 4/4 \{a:1@0\}; int:32:true:int; ptr:0; func:0::false | rp:2 | record 0 1:22 | r:0 | assign<1>(r.0<1>, 1<1>) | LValueToRValue<0>(r)", "LA2")
+    t |> equal(cir_of("int f(void)\{ enum foo *p = 0; return p == 0; \} enum foo \{ e0, e1 \}; int x = e1;"), "int:32:true:int; func:0::false; enum foo 'enum foo' unsigned \{e0=0,e1=1\}; ptr:2 | p:3=NullToPointer<3>(0<0>) | eq<0>(LValueToRValue<3>(p), NullToPointer<3>(0<0>)) | enumdef 2 1:53 | x:0", "TD1")
+    t |> equal(cir_of("typedef int T; int f(void)\{ typedef double T; struct S *p = 0; T y = 1.5; return p == 0; \} struct S \{ T x; \}; struct S gs;"), "int:32:true:int; typedef:T:0; func:0::false; float:64:double; struct S 4/4 \{x:0@0\}; ptr:4 | p:5=NullToPointer<5>(0<0>) | y:3=<3>(-, -) | eq<0>(LValueToRValue<5>(p), NullToPointer<5>(0<0>)) | record 4 1:99 | gs:4", "FS1")
+    t |> equal(cir_of("struct In \{int i;\}; int f(void)\{ struct In \{double d;\}; struct S *p = 0; struct In w; w.d = 1.0; return p == 0; \} struct S \{ struct In in; \}; struct S gs;"), "struct In 4/4 \{i:1@0\}; int:32:true:int; func:1::false; struct In1 8/8 \{d:4@0\}; float:64:double; struct S 4/4 \{in:0@0\}; ptr:5 | record 0 1:8 | record 3 1:41 | p:6=NullToPointer<6>(0<1>) | w:3 | assign<4>(w.0<4>, <4>(-, -)) | eq<1>(LValueToRValue<6>(p), NullToPointer<6>(0<1>)) | record 5 1:122 | gs:5", "FS2")
+    t |> equal(cir_of("enum \{N=2\}; int f(void)\{ enum \{N=5\}; struct S *p = 0; int a[N]; return p == 0; \} struct S \{ int a[N]; \}; struct S gs;"), "enum  'enum (unnamed at t.c:1:1)' unsigned \{N=2\}; int:32:true:int; func:1::false; enum  'enum (unnamed at t.c:1:26)' unsigned \{N=5\}; struct S 8/4 \{a:5@0[0.N]\}; array:1:2; ptr:4; array:1:5 | enumdef 0 1:1 | enumdef 3 1:26 | p:6=NullToPointer<6>(0<1>) | a:7[3.N] | eq<1>(LValueToRValue<6>(p), NullToPointer<6>(0<1>)) | record 4 1:89 | gs:4", "FS3")
+    t |> equal(cir_of("int n = sizeof(int); struct A \{ struct \{ int u; \} in; \}; struct A ga;"), "int:32:true:int; int:64:false:unsigned long; struct  4/4 \{u:0@0\}; struct A 4/4 \{in:2@0\} | n:0 | record 2 1:33 | record 3 1:29 | ga:3", "ITN")
+    t |> equal(cir_of("int f(void)\{ return (struct S *)0 == 0; \} struct S \{ int a; \}; struct S gs;"), "int:32:true:int; func:0::false; struct S 4/4 \{a:0@0\}; ptr:2 | eq<0>(NullToPointer!<3>(0<0>), NullToPointer<3>(0<0>)) | record 2 1:50 | gs:2", "U1")
+    t |> equal(cir_of("struct R \{ int a; \} g(void) \{ struct R r; r.a = 1; return r; \}"), "struct R 4/4 \{a:1@0\}; int:32:true:int; func:0::false | record 0 1:8 | r:0 | assign<1>(r.0<1>, 1<1>) | LValueToRValue<0>(r)", "DF1")
+    t |> equal(cir_of("struct S *f(void) \{ return 0; \} struct S \{ int a; \}; struct S gs;"), "struct S 4/4 \{a:1@0\}; int:32:true:int; ptr:0; func:2::false | NullToPointer<2>(0<1>) | record 0 1:40 | gs:0", "DF2")
+}
+
+[test(description = "expressions: a volatile array's element through a dereference and a subscript, the enum composite with the integer first, an enum target pointee under msvc, `->` on a non-pointer refused; table dims by table index")]
+def test_audit_arms_7(t : T?) {
+    t |> equal(cir_of("volatile int (*pa)[2]; int f(void)\{ return (*pa)[0]; \}"), "int:32:true:int; array:0:2; ptr:1; func:0::false; ptr:0 | pa:2 | LValueToRValue<0>(index<0>(ArrayToPointerDecay<4>(deref<1>(LValueToRValue<2>(pa))~), 0<0>)~)", "V1B")
+    t |> equal(cir_of("volatile int m[2][3]; int f(void)\{ return m[0][1]; \}"), "int:32:true:int; array:0:3; array:1:2; func:0::false; ptr:0; ptr:1 | m:2 | LValueToRValue<0>(index<0>(ArrayToPointerDecay<4>(index<1>(ArrayToPointerDecay<5>(m~), 0<0>)~), 1<0>)~)", "V4B")
+    t |> equal(cir_of("enum e \{ a = -1 \}; int *p; enum e *q; void g(void) \{ 1 ? p : q; \}"), "enum e 'enum e' \{a=-1\}; int:32:true:int; ptr:1; ptr:0; void; func:4::false | enumdef 0 1:6 | p:2 | q:3 | cond<2>(1<1>, LValueToRValue<2>(p), BitCast<2>(LValueToRValue<3>(q)))", "CO1")
+    t |> equal(cir_of("enum E \{ A \}; void f(enum E *p); void g(void)\{ unsigned u = 0; f(&u); \}", true), "enum E 'enum E' \{A=0\}; void; ptr:0; func:1:2:false; func:1::false; int:32:false:unsigned int; int:32:true:int; ptr:3; ptr:5 | enumdef 0 1:6 | u:5=IntegralCast<5>(0<6>) | call<1>(FunctionToPointerDecay<7>(f))", "PA1")
+    t |> equal(cir_of("struct S \{ int a; \}; int f(struct S s)\{ return s->a; \}"), "error: t.c:1:48: a member access of other than a complete struct or union is not typed yet", "MA1")
+    t |> equal(cir_of("enum B \{ B0 \}; enum A \{ A3 = 3 \}; int m[A3];"), "enum B 'enum B' unsigned \{B0=0\}; enum A 'enum A' unsigned \{A3=3\}; int:32:true:int; array:2:3 | enumdef 0 1:6 | enumdef 1 1:21 | m:3[1.A3]", "TDM2")
+}
+
+[test(description = "own headers: record anchors at the first declarator, the declaration with none, each declarator and a statement; names a header's typedef takes, a header record's not, a header function's not")]
+def test_audit_arms_8(t : T?) {
+    t |> equal(cir_of(LIB_TM + "struct W \{ struct tm t; \} w;\n", false, "/lib/"), "struct W 16/8 \{t:1@0\}; struct tm 16/8 \{tm_sec:2@0 off:3@8\}; int:32:true:int; int:64:true:long | record 1 2:27 | record 0 2:8 | w:0", "DTG1")
+    t |> equal(cir_of(LIB_TM + "struct W \{ struct tm t; \};\n", false, "/lib/"), "struct W 16/8 \{t:1@0\}; struct tm 16/8 \{tm_sec:2@0 off:3@8\}; int:32:true:int; int:64:true:long | record 1 2:1 | record 0 2:8", "DTG2")
+    t |> equal(cir_of(LIB_TM + "int x, h(struct tm *tp);\n", false, "/lib/"), "int:32:true:int; struct tm 16/8 \{tm_sec:0@0 off:2@8\}; int:64:true:long; ptr:1; func:0:3:false | x:0 | record 1 2:8", "ANC1")
+    t |> equal(cir_of(LIB_TM + "int f(void) \{\n int x = 0;\n x = sizeof(struct tm);\n return x;\n\}\n", false, "/lib/"), "int:32:true:int; func:0::false; int:64:false:unsigned long; struct tm 16/8 \{tm_sec:0@0 off:4@8\}; int:64:true:long | record 3 4:2 | x:0=0<0> | assign<0>(x, IntegralCast<0>(sizeof<2>=16:3)) | LValueToRValue<0>(x)", "ST1")
+    t |> equal(cir_of("# 1 \"/lib/t.h\" 1\ntypedef int T1;\n# 2 \"t.c\" 2\nstruct T \{ char c; \} gt; int f(void)\{ struct T \{ int a; \} t; t.a = 1; return t.a; \}\n", false, "/lib/"), "struct T 1/1 \{c:1@0\}; int:8:false:char; int:32:true:int; func:2::false; struct T2 4/4 \{a:2@0\} | record 0 2:8 | gt:0 | record 4 2:46 | t:4 | assign<2>(t.0<2>, 1<2>) | LValueToRValue<2>(t.0<2>)", "GN1")
+    t |> equal(cir_of("# 1 \"/lib/t.h\" 1\nstruct T \{ int q; \};\n# 2 \"t.c\" 2\nint f(void)\{ struct T \{ char c; \} t; t.c = 1; return t.c; \}\n", false, "/lib/"), "int:32:true:int; func:0::false; struct T 1/1 \{c:3@0\}; int:8:false:char | record 2 2:21 | t:2 | assign<3>(t.0<3>, IntegralCast<3>(1<0>)) | IntegralCast<0>(LValueToRValue<3>(t.0<3>))", "GN2")
+    t |> equal(cir_of("# 1 \"/lib/t.h\" 1\nint T1(void);\n# 2 \"t.c\" 2\nstruct T \{ char c; \} gt; int f(void)\{ struct T \{ int a; \} t; t.a = 1; return t.a; \}\n", false, "/lib/"), "struct T 1/1 \{c:1@0\}; int:8:false:char; int:32:true:int; func:2::false; struct T1 4/4 \{a:2@0\} | record 0 2:8 | gt:0 | record 4 2:46 | t:4 | assign<2>(t.0<2>, 1<2>) | LValueToRValue<2>(t.0<2>)", "GN3")
+    t |> equal(cir_of("# 1 \"/lib/t.h\" 1\nstatic int T1(void) \{ return 0; \}\n# 2 \"t.c\" 2\nstruct T \{ char c; \} gt; int f(void)\{ struct T \{ int a; \} t; t.a = 1; return t.a; \}\n", false, "/lib/"), "struct T 1/1 \{c:1@0\}; int:8:false:char; int:32:true:int; func:2::false; struct T1 4/4 \{a:2@0\} | record 0 2:8 | gt:0 | record 4 2:46 | t:4 | assign<2>(t.0<2>, 1<2>) | LValueToRValue<2>(t.0<2>)", "GN4")
+}
+
+[test(description = "a record the look-ahead built early is incomplete before its definition, as clang reads it: its size and a member access there are invalid C; a record defined before, or reached only through a pointer, is not")]
+def test_complete_only_past_definition(t : T?) {
+    t |> equal(cir_of("int f(void) \{ return ((struct S *)0)->a; \} struct S \{ int a; \};"), "error: t.c:1:22: a member access of a struct or union defined only after it is invalid C, which clang rejects")
+    t |> equal(cir_of("int n = sizeof(struct S); struct S \{ int a; \};"), "error: t.c:1:9: sizeof of a struct or union defined only after it is invalid C, which clang rejects")
+    t |> equal(cir_of("struct S *p; int n = sizeof(struct S[2]); struct S \{ int a; \};"), "error: t.c:1:22: sizeof of a struct or union defined only after it is invalid C, which clang rejects")
+    t |> equal(cir_of("typedef struct P P; struct Q \{ P *p; \}; int n = sizeof(struct Q); struct P \{ int a; \}; P gp;"), "struct P 4/4 \{a:1@0\}; int:32:true:int; typedef:P:0; struct Q 8/8 \{p:4@0\}; ptr:0; int:64:false:unsigned long | record 3 1:28 | n:1 | record 0 1:74 | gp:0")
+}
+
+[test(description = "a tag used as one kind whose one definition is of another is invalid C, through the look-ahead too")]
+def test_tag_kind_mismatch(t : T?) {
+    t |> equal(cir_of("union U; struct U \{ int a; \}; union U gu;"), "error: t.c:1:1: a union tag whose definition is of another kind is invalid C, which clang rejects")
+    t |> equal(cir_of("struct U *p; union U \{ int a; \};"), "error: t.c:1:1: a struct tag whose definition is of another kind is invalid C, which clang rejects")
+}
+
+[test(description = "a tag declared in a block before its definition there is refused, as Dumper A refuses it")]
+def test_block_forward_definition(t : T?) {
+    t |> equal(cir_of("int f(void)\{ struct S; struct S \{ int a; \} s; s.a = 1; return s.a; \}"), "error: t.c:1:24: a struct declared in its block before its definition there, a new incomplete type Dumper A does not lower, is not typed yet")
+}

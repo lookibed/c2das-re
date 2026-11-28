@@ -77,6 +77,7 @@ struct CTypes {
     tag_defs : table<int; int>              //!< a tag's symbol to its one file-scope definition, built at the tag's first use
     tag_built : table<int; int>             //!< a record or enum specifier with a body to the pool type it defines
     tag_pending : array<int2>               //!< (definition, pool record) a use reached before the definition, not built yet
+    complete_from : table<int; int>         //!< a record or enum built before its definition, to its definition's token: complete only past it
     layouts : table<int; CRecordLayout>     //!< a complete pool record to its layout
     library_tags : table<int; bool>         //!< the pool records and enums an own header defines, anchored where the unit first uses them
     anchored : table<int; bool>             //!< the pool records and enums a `record` or `enumdef` anchor names
@@ -116,6 +117,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.tag_defs |> clear()
     b.tag_built |> clear()
     b.tag_pending |> clear()
+    b.complete_from |> clear()
     b.layouts |> clear()
     b.library_tags |> clear()
     b.anchored |> clear()
@@ -369,8 +371,6 @@ def c_type_align(b : CTypes; t : int) : int {
     let k = b.pool[u].k
     if (k == "array") {
         return c_type_align(b, b.pool[u].elem)
-    } elif (k == "void") {
-        return -1
     }
     var align = int(c_type_size(b, u))
     if (k == "struct" || k == "union") {
@@ -489,7 +489,7 @@ def private named_type(var b : CTypes; var p : CParser; at : int) : int {
     if (n.kind == CNode.SPEC_TYPEOF_TYPE) {
         return c_type_name_type(b, p, n.a)
     } elif (n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) {
-        let tagged = b.tag_type != null ? invoke(b.tag_type, b, p, at) : -1
+        let tagged = invoke(b.tag_type, b, p, at)
         if (tagged < 0) {
             refuse(b, p, n.tok, n.kind == CNode.SPEC_ENUM ? "an enum type" : "a {c_kind_name(n.op)} type")
         }
@@ -497,7 +497,7 @@ def private named_type(var b : CTypes; var p : CParser; at : int) : int {
     }
     var named = b.typedefs?[n.a] ?? -1
     let ahead = b.typedef_defs?[n.a] ?? int2(-1, -1)
-    if (named < 0 && b.defining > 0 && ahead.x >= 0 && !key_exists(b.untyped, n.a)) {
+    if (named < 0 && ahead.x >= 0 && !key_exists(b.untyped, n.a)) {
         named = c_declarator_type(b, p, c_specifier_type(b, p, p.ast.nodes[ahead.x].a), ahead.y, false)
         return named if (named >= 0 || !empty(b.err))
     }

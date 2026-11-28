@@ -34,7 +34,7 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   typedef; `decl_order.c`, declarations whose expressions bring no type first; `expr_first.c`, an
   expression's type used before a declaration uses it; `differs.c`, a unit whose table, C-IR and
   census differ (clang gives `strlen` its builtin's `size_t` result); `aggregate.c`, a record whose initializer the
-  builder refuses (A.3); `refused.c`, a scalar-only unit the builder refuses (a wide string literal).
+  builder refuses (A.3); `aligned_record.c`, an aligned record byte for byte; `refused.c`, a scalar-only unit the builder refuses (a wide string literal).
 - The tests are `compare/tests/test_types_compare.das`.
 
 ## 2. What is compared {#compared}
