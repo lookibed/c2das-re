@@ -231,8 +231,11 @@ reports nothing in it - so a bad byte, or an unterminated comment, in `#if 0` is
 unit, and a reader that refuses a unit with a lexer diagnostic passes over a `skipped` one. The
 token after a directive's line is read before the directive is done (section 5) and consumed after
 it, so it is marked by the group the directive opens or closes: the line after `#if 0` is skipped,
-the line after its `#else` is not. An `#elif` line that is evaluated is read as an active group's, as clang
-lexes the expression it evaluates. A token of a directive's line marks its bad byte `directive`, since clang diagnoses
+the line after its `#else` is not. A conditional directive's own line is read as the group that is
+active while clang reads it: an `#elif` line that is evaluated, or an `#else` line that opens its
+group, as the group it opens, and an `#elif` or `#else` line ending an active group as that group's,
+since clang lexes both off raw mode; only the line of one ending a skipped group, or met inside one,
+is skipped. A token of a directive's line marks its bad byte `directive`, since clang diagnoses
 invalid UTF-8 only outside a directive; an unterminated comment there is still clang's error. A
 diagnostic met in a group an undecided conditional chose, skipped or read, is marked `undecided`
 (section 11): clang may choose the group otherwise. The same mark places the diagnostic at its
@@ -256,17 +259,19 @@ the same file, came first.
 ## 54. Poisoned identifiers and pragma messages {#pp-poison}
 
 `#pragma GCC poison` - or `clang poison` - poisons the names after it (`pp.poisoned`), as clang
-does: from then on each use of one is clang's error "attempt to use a poisoned identifier" at it.
-A use is a name consumed outside a skipped group (`consumed`, the moment section 53 marks a lexer
+does: from then on each use of one is clang's error "attempt to use a poisoned identifier" at it. A
+use is a name consumed outside a skipped group (`consumed`, the moment section 53 marks a lexer
 diagnostic): in the text, a macro argument, a `#define`'s name and body, `#ifdef`, `#undef`,
-`defined`'s operand, an `#elif` line that is evaluated - its line is read as an active group's,
-as clang lexes the expression it evaluates - and another pragma's line, which its pragma checks
-(`pp_pragma_line`, a `_Pragma` operand's too) since the poison line itself names them unchecked; a
-name `##` forms is checked as it is pasted (`pp_poisoned`). A macro body read before the poison
-expands to the name with no error, as clang's does: its tokens were read before. A name poisoned
-again is passed over; a defined macro, a builtin name among them, is poisoned with clang's warning
-"poisoning existing macro"; a token that is no name is clang's error "can only poison identifier
-tokens" and ends the list.
+`defined`'s operand, an `#elif` or `#else` line read as an active group's (section 53), and another
+pragma's line, which its pragma checks (`pp_pragma_line`, a `_Pragma` operand's too) since the
+poison line itself names them unchecked. A `#pragma`, `#error` or `#warning` line is read raw
+(`read_raw_line`), as clang reads it, so a poisoned name in a message is text; a name `##` forms is
+checked as it is pasted (`pp_poisoned`). A macro body read before the poison expands to the name
+with no error, as clang's does: its tokens were read before. A name poisoned again is passed over,
+and so are `__VA_ARGS__` and `__VA_OPT__`, which clang keeps poisoned outside a variadic body with
+diagnostics of their own; a defined macro, a builtin name among them, is poisoned with clang's
+warning "poisoning existing macro"; a token that is no name is clang's error "can only poison
+identifier tokens" and ends the list.
 
 `#pragma GCC error` and `#pragma GCC warning` raise an error and a warning at the pragma's kind
 token whose text is the value of the plain string literals after it, joined, `\` escapes read as

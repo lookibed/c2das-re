@@ -390,7 +390,7 @@ struct Preprocessor {
     eval : PpEval                       //!< the `#if` evaluator: its line, target, feature table (the caller's to set) and last diagnostics
     lexer_diags_seen : int              //!< the entries of `lx.diags` whose token was consumed, and so marked
     poisoned : table<int; bool>         //!< the names `#pragma GCC poison` poisoned: any later use is an error
-    reading_pragma : bool               //!< a `#pragma` line is being read: its pragma, not the read, checks its poisoned names
+    reading_raw : bool                  //!< a `#pragma`, `#error` or `#warning` line is being read: a poisoned name in it is no use the read reports
     sym_gcc : int
     sym_clang : int
     sym_poison : int
@@ -607,11 +607,11 @@ def private mark_lexer_diags(var pp : Preprocessor; upto : int) {
 }
 
 //! the current token consumed: its lexer diagnostics marked, and a poisoned name read outside a
-//! skipped group and a `#pragma` line an error
+//! skipped group and a raw line an error
 [arch(at="ARCHITECTURE_PP.md#pp-poison")]
 def private consumed(var pp : Preprocessor) {
     mark_lexer_diags(pp, length(pp.lx.diags))
-    if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && !pp.reading_pragma && key_exists(pp.poisoned, pp.lx.tok.sym) && !skipping(pp)) {
+    if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && !pp.reading_raw && key_exists(pp.poisoned, pp.lx.tok.sym) && !skipping(pp)) {
         diagnose(pp, PpSeverity.error, "attempt to use a poisoned identifier")
     }
 }
@@ -694,6 +694,15 @@ def private read_line(var pp : Preprocessor; from_current : bool) {
     while (next_on_line(pp)) {
         hold(pp, pp.line, pp.line_text)
     }
+}
+
+//! the rest of a `#pragma`, `#error` or `#warning` line into `pp.line`, read as clang reads it, with
+//! no poisoned name reported
+[arch(at="ARCHITECTURE_PP.md#pp-poison")]
+def private read_raw_line(var pp : Preprocessor) {
+    pp.reading_raw = true
+    read_line(pp, false)
+    pp.reading_raw = false
 }
 
 //! The spelling of a held token of `text`.
@@ -1045,8 +1054,8 @@ def private do_elif(var pp : Preprocessor; at : PpToken; d : PpDirective) {
         diagnose_at(pp, PpSeverity.error, at, "#{name} after #else")
     }
     if (pp.conds[top].taken) {
-        pp.conds[top].active = false
         skip_rest(pp)
+        pp.conds[top].active = false
         return
     }
     pp.conds[top].active = true
@@ -1077,14 +1086,16 @@ def private do_else(var pp : Preprocessor; at : PpToken) {
     if (pp.conds[top].seen_else) {
         diagnose_at(pp, PpSeverity.error, at, "#else after #else")
     }
-    pp.conds[top].active = !pp.conds[top].taken
-    pp.conds[top].taken = true
-    pp.conds[top].seen_else = true
+    let opens = !pp.conds[top].taken
+    pp.conds[top].active = !was_skipped
     if (was_skipped) {
         skip_rest(pp)
     } else {
         extra_tokens(pp, "else")
     }
+    pp.conds[top].active = opens
+    pp.conds[top].taken = true
+    pp.conds[top].seen_else = true
 }
 
 def private do_endif(var pp : Preprocessor; at : PpToken) {
@@ -1737,9 +1748,7 @@ def private push_pop_macro(var pp : Preprocessor) : bool {
 }
 
 def private do_pragma(var pp : Preprocessor; at : PpToken) {
-    pp.reading_pragma = true
-    read_line(pp, false)
-    pp.reading_pragma = false
+    read_raw_line(pp)
     pp_pragma_line(pp, at)
 }
 
@@ -1754,7 +1763,7 @@ def private poison(var pp : Preprocessor) {
             diagnose_held(pp, PpSeverity.error, h, "can only poison identifier tokens")
             return
         }
-        continue if (key_exists(pp.poisoned, h.sym))
+        continue if (key_exists(pp.poisoned, h.sym) || h.sym == pp.sym_va_args || h.sym == pp.sym_va_opt)
         if (pp_is_defined(pp, h.sym)) {
             diagnose_held(pp, PpSeverity.warning, h, "poisoning existing macro")
         }
@@ -1929,7 +1938,7 @@ def private active_directive(var pp : Preprocessor; at : PpToken; d : PpDirectiv
     } elif (d == PpDirective.line) {
         do_line(pp, at, false)
     } elif (d == PpDirective.error || d == PpDirective.warning) {
-        read_line(pp, false)
+        read_raw_line(pp)
         let what = "#{d == PpDirective.error ? "error" : "warning"} {held_text(pp.line, pp.line_text)}"
         diagnose_at(pp, d == PpDirective.error ? PpSeverity.error : PpSeverity.warning, at, what)
     } elif (d == PpDirective.pragma) {

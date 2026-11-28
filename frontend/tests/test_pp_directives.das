@@ -843,6 +843,25 @@ def private lexer_marks(pp : Preprocessor) : string {
     return join(parts, " | ")
 }
 
+[test(description = "an #elif or #else line ending an active group is read as that group's, as clang reads it: a poisoned name on it is an error and its bad byte is not skipped; the line of one ending a skipped group or met in one stays quiet")]
+def test_elif_else_after_active_group_read_active(t : T?) {
+    var pp <- started([("main.c", ("#pragma GCC poison zap\n#if 1\n#elif zap \xff\n#endif\n#if 1\n#else zap \xff\n#endif\n#if 0\n#elif 1\n#else zap\n#endif\n" +
+                                   "#if 1\n#elif 1\n#else zap \xff\n#endif\n#if 0\n#if 1\n#else zap\n#endif\n#endif\n"))])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), ("E 3:7 attempt to use a poisoned identifier | E 6:7 attempt to use a poisoned identifier | " +
+                                 "W 6:7 extra tokens at end of #else directive | E 10:7 attempt to use a poisoned identifier | " +
+                                 "W 10:7 extra tokens at end of #else directive"))
+    t |> equal(lexer_marks(pp), ("3:11 invalid UTF-8: byte 255 directive | 6:11 invalid UTF-8: byte 255 directive | " +
+                                 "14:11 invalid UTF-8: byte 255 skipped directive"))
+}
+
+[test(description = "an #error or #warning line is read raw, as clang reads it: a poisoned name in its message is no error")]
+def test_error_warning_lines_raw(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison zap\n#warning zap here\n#error zap\nzap\n")])
+    t |> equal(stream(pp), "zap")
+    t |> equal(diagnostics(pp), "W 2:2 #warning zap here | E 3:2 #error zap | E 4:1 attempt to use a poisoned identifier")
+}
+
 [test(description = "a bad byte on an active directive's line is marked directive, as clang does not diagnose it; one in the text is not, and an unterminated comment on a directive's line is no directive mark")]
 def test_lexer_diag_directive_mark(t : T?) {
     var pp <- started([("main.c", "#define X 1 \xff\n#pragma foo \xff\n#include \xff\n\xff y\n#define Y /* open\n")])
@@ -868,6 +887,13 @@ def test_lexer_diag_undecided_mark(t : T?) {
     var pp <- started([("main.c", "#define N 1\n#if N\n\xff a\n#endif\n\xff b\n")])
     stream(pp)
     t |> equal(lexer_marks(pp), "3:1 invalid UTF-8: byte 255 skipped undecided | 5:1 invalid UTF-8: byte 255")
+}
+
+[test(description = "#pragma GCC poison passes over __VA_ARGS__ and __VA_OPT__, as clang does: a variadic body using them is no error")]
+def test_poison_va_args_passed_over(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison __VA_ARGS__ __VA_OPT__\n#define F(...) __VA_OPT__(,) __VA_ARGS__\nF(x)\n")])
+    t |> equal(stream(pp), "F ( x )")
+    t |> equal(diagnostics(pp), "")
 }
 
 [test(description = "#pragma GCC error and GCC warning are an error and a warning at the pragma's kind with the value of their plain string literals, joined, parenthesized or not; any other form is clang's error at clang's token; #pragma clang warning stays a ledger entry")]
