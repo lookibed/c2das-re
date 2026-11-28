@@ -303,9 +303,9 @@ def private number_base(ev : PpEval; i : int) : int2 {
 
 // a pp-number as clang's NumericLiteralParser reads an integer constant (C11 6.4.4.1): decimal,
 // octal after `0` or `0o`, hex and the binary `0b` clang takes under gnu17; a floating constant
-// is an error
+// is an error; a decimal one read as unsigned warns only when `live`
 [arch(at="ARCHITECTURE_EVAL.md#pp-eval-literals")]
-def private number_value(var ev : PpEval; i : int; var v : PpValue) : bool {
+def private number_value(var ev : PpEval; i : int; var v : PpValue; live : bool) : bool {
     let n = ev.toks[i].len
     let base = number_base(ev, i)
     let radix = base.x
@@ -351,7 +351,7 @@ def private number_value(var ev : PpEval; i : int; var v : PpValue) : bool {
     }
     v = PpValue(bits = value, unsigned = suffix.unsigned || too_large)
     if (!v.unsigned && (value & SIGN_BIT) != 0ul) {
-        if (radix == 10) {
+        if (radix == 10 && live) {
             warn(ev, i, "integer literal is too large to be represented in a signed integer type, interpreting as unsigned")
         }
         v.unsigned = true
@@ -603,8 +603,8 @@ def private normalized(name : string) : string {
 }
 
 // `__has_include ( "name" )` or `( < ... > )`, and `__has_embed`'s same operand: the
-// directive layer searches the file. A wrong token in place of the name or the `)` is clang's error
-// that answers 0 and consumes that token, the condition standing
+// directive layer searches the file. A wrong token in place of the name or the `)`, or an empty
+// name, is clang's error that answers 0, the condition standing
 [arch(at="ARCHITECTURE_EVAL.md#pp-eval-queries")]
 def private include_query(var ev : PpEval; q : string; name_at : int; var v : PpValue;
                           ask : block<(what : PpEvalAsk; sym, first, last : int) : int>) : bool {
@@ -638,7 +638,13 @@ def private include_query(var ev : PpEval; q : string; name_at : int; var v : Pp
         }
         return at_end(ev) ? fail(ev, -1, "missing ')' after '{q}'") : query_token_error(ev, v, "missing ')' after '{q}'")
     }
+    let close = ev.pos
     ev.pos++
+    if (last == first + 1 || (last == first && ev.toks[first].len == 2)) {
+        ev.diags |> push(PpEvalDiag(error = true, token = q == "__has_embed" ? first : close, what = "empty filename"))
+        v = signed_value(0l)
+        return true
+    }
     let what = q == "__has_include" ? PpEvalAsk.has_include : q == "__has_include_next" ? PpEvalAsk.has_include_next : PpEvalAsk.has_embed
     v = signed_value(int64(invoke(ask, what, -1, first, last)))
     return true
@@ -817,7 +823,7 @@ def private eval_value(var ev : PpEval; var v : PpValue; live : bool; ask : bloc
         }
         return true
     } elif (kind == int(PpTok.PP_NUMBER)) {
-        return number_value(ev, i, v)
+        return number_value(ev, i, v, live)
     } elif (kind == int(PpTok.CHAR_CONSTANT)) {
         return char_value(ev, i, v)
     } elif (kind == int(PpTok.LPAREN)) {

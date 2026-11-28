@@ -825,6 +825,20 @@ def private next_search_from(pp : Preprocessor) : tuple<from : int; why : string
     return (from = found_at + 1, why = "")
 }
 
+//! the file `__has_embed`'s `name` names, looked up as clang's `LookupEmbedFile` with no
+//! `--embed-dir`: an absolute name as it stands, a `"..."` one also from the working directory and
+//! the includer's directory; "" when none has it
+[arch(at="ARCHITECTURE_EVAL.md#pp-eval-queries")]
+def private embed_file(var pp : Preprocessor; name : string; angled : bool) : string {
+    let as_named = normalized_path(name)
+    let absolute = starts_with(name, "/")
+    return "" if (angled && !absolute)
+    return as_named if (pp.provider->exists(as_named))
+    return "" if (absolute)
+    let local = normalized_path(path_join(pp.state.dir, name))
+    return pp.provider->exists(local) ? local : ""
+}
+
 //! the answer of `__has_include` (`next`: `__has_include_next`) for the header name of
 //! `pp.line`'s tokens `first` to `last`: 1 when the search finds a file; `embed`: `__has_embed`'s,
 //! 0 for none, 2 for an empty file, 1 for another
@@ -833,12 +847,14 @@ def private include_answer(var pp : Preprocessor; first, last : int; next, embed
     let spelled = line_header_name(pp, first, last)
     let name = slice(spelled, 1, length(spelled) - 1)
     return 0 if (empty(name))
-    var tried : array<string>
-    let found = search_file(pp, name, first_character(spelled) == '<', next ? next_search_from(pp).from : 0, tried)
-    return 0 if (empty(found._0))
-    return 1 if (!embed)
+    let angled = first_character(spelled) == '<'
+    if (!embed) {
+        var tried : array<string>
+        return empty(search_file(pp, name, angled, next ? next_search_from(pp).from : 0, tried)._0) ? 0 : 1
+    }
+    let found = embed_file(pp, name, angled)
     var bytes : array<uint8>
-    return 0 if (!pp.provider->read(found._0, bytes))
+    return 0 if (empty(found) || !pp.provider->read(found, bytes))
     return empty(bytes) ? 2 : 1
 }
 

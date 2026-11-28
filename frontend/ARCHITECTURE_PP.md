@@ -157,7 +157,8 @@ with `defined`'s operands left as written (`expand_condition`), and ask `eval_co
 hands the line to the evaluator of `ARCHITECTURE_EVAL.md` (`pp.eval`) and answers its questions:
 `defined` and `#ifdef` by `pp_is_defined` (a macro, or a builtin name the expansion still has),
 `__has_include` and `__has_include_next` by the search of section 8 (`include_answer`, the header
-name built as `#include` builds it, `line_header_name`), `__has_embed` by reading the file found.
+name built as `#include` builds it, `line_header_name`), `__has_embed` by reading the file clang's
+embed lookup finds (`embed_file`, `ARCHITECTURE_EVAL.md`).
 Every condition is decided: an error the evaluator reports skips the group, as clang skips it, and
 stands in `pp.diags` at its token. With no expansion set (`pp_start` alone) a macro in the line is
 a name worth 0, the queries are answered, and no builtin name is defined. A conditional line that

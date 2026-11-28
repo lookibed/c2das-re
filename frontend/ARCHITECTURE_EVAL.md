@@ -83,7 +83,8 @@ constant"; an 8 or 9 in an octal constant, a 2 to 9 in a binary one, and a lette
 other than an exponent after any constant but a hex one is "invalid digit '...' in <base>
 constant". `wb` is clang's warning "'_BitInt' suffix for literals is a C23 extension"; `z` is its
 error "'size_t' suffix for literals is a C++23 feature" with the value standing. `u` makes the
-constant unsigned, and so does a value with bit 63 set, a decimal one with clang's warning; a
+constant unsigned, and so does a value with bit 63 set, a decimal one with clang's warning when
+its value is live; a
 value past 64 bits is the error "integer literal is too large to be represented in any integer
 type" and keeps its low 64 bits. C17 has no digit separator: `1'000` lexes as `1` and an
 unterminated character constant.
@@ -124,7 +125,12 @@ unexpanded by PP.3 and joined as `#include` joins it, or a macro that expands to
 directive layer searches as for `#include` and `#include_next` (`ARCHITECTURE_PP.md` section 8)
 and answers 1 when a file is found. `__has_embed` takes the same operand and answers 0 for no
 file, 2 for an empty one and 1 for another, clang's `__STDC_EMBED_*` values; its parameters are
-not read and fail the condition.
+not read and fail the condition. Its file is looked up as clang's `LookupEmbedFile` looks it up,
+never through the include path: an absolute name as it stands, a `"..."` one also from the
+working directory and the includer's directory, and the `--embed-dir` folders, which the dumper
+does not pass, so an angled relative name answers 0. An empty name in any of the three is clang's
+error "empty filename", at the `)` of `__has_include` and at the name of `__has_embed`, answering
+0 with the condition standing.
 
 Every other query - `__has_builtin`, `__has_constexpr_builtin`, `__has_feature`,
 `__has_extension`, `__has_attribute`, `__has_c_attribute`, `__has_declspec_attribute`,

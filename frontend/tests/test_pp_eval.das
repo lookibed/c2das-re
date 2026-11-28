@@ -285,6 +285,11 @@ def test_dead_sign_conversion_silent(t : T?) {
     t |> equal(run_text("#if 0 && -1 > 0u\n#endif\n#if 1 || -1 > 0u\n#endif\n").diags, "")
 }
 
+[test(description = "clang warns that a decimal constant past INTMAX_MAX is read as unsigned only when its value is live: inside 0 && ... or a skipped ?: arm it is silent")]
+def test_dead_big_decimal_silent(t : T?) {
+    t |> equal(run_text("#if 0 && 9223372036854775808\n#endif\n#if 1 ? 0 : 9223372036854775808\n#endif\n").diags, "")
+}
+
 [test(description = "a hex or binary constant past INTMAX_MAX is unsigned without a warning; a constant past UINTMAX_MAX is clang's error, yet its truncated value decides the group")]
 def test_literal_range_diagnostics(t : T?) {
     t |> equal(run_text("#if 0xFFFFFFFFFFFFFFFF\n#endif\n#if 0b1000000000000000000000000000000000000000000000000000000000000000\n#endif\n").diags, "")
@@ -347,4 +352,33 @@ def test_elifdef_builtin(t : T?) {
 def test_query_operand_verdicts(t : T?) {
     t |> equal(run_text("#define c_atomic nope\n#if __has_feature(c_atomic)\nyes\n#endif\n").out, "yes")
     t |> equal(run_text("#define B __builtin_expect\n#if __has_builtin(B)\nyes\n#else\nno\n#endif\n").out, "no")
+}
+
+[test(description = "__has_include or __has_embed of an empty name answers 0 with clang's 'empty filename' error, at the ) for __has_include and at the name for __has_embed; the condition stands")]
+def test_has_include_empty_name(t : T?) {
+    let r = run_text("#if __has_include(<>)\nyes\n#else\nno\n#endif\n#if __has_include(\"\")\nyes2\n#else\nno2\n#endif\n#if 1 || __has_embed(<>)\nlive\n#endif\n")
+    t |> equal(r.out, "no no2 live")
+    t |> equal(r.diags, "E 1:21 empty filename | E 6:21 empty filename | E 11:22 empty filename")
+}
+
+[test(description = "clang's __has_embed searches the --embed-dir folders, not the -I include path, and the dumper passes none: an angled __has_embed answers 0 for a header the include path holds, a quoted one finds only the includer's folder")]
+def test_has_embed_angled_ignores_include_path(t : T?) {
+    let files <- [("inc/there.h", "x\n"), ("local.h", "x\n")]
+    t |> equal(verdict("__has_include(<there.h>)", files), "YES")
+    t |> equal(verdict("__has_embed(<there.h>)", files), "NO")
+    t |> equal(verdict("__has_include(\"there.h\") && !__has_embed(\"there.h\")", files), "YES")
+    t |> equal(verdict("__has_embed(\"local.h\") == 1", files), "YES")
+}
+
+[test(description = "__has_embed finds a quoted name in the includer's folder and in the working directory, and an absolute name in either form, as clang's embed lookup does")]
+def test_has_embed_lookup(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#include <h.h>\n")
+    mem->add("inc/h.h", "#if __has_embed(\"sib.h\") && __has_embed(\"top.h\") && __has_embed(</abs/e.h>) && __has_embed(\"/abs/e.h\")\nfound\n#endif\n#if __has_embed(</abs/none.h>) || __has_embed(\"/abs/none.h\") || __has_embed(<sib.h>)\nwrong\n#endif\n")
+    mem->add("inc/sib.h", "x\n")
+    mem->add("top.h", "x\n")
+    mem->add("/abs/e.h", "x\n")
+    var pp : Preprocessor
+    pp_expand_start(pp, mem, "main.c", array<string>(), array<string>("inc"), 1000000000l)
+    t |> equal(stream(pp), "found")
 }
