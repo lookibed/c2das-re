@@ -6,11 +6,17 @@ doc: `ARCHITECTURE.md`.
 **Never weaken `REVIEW.das` - fix what it flags instead.**
 
 **A diff that makes a `.das` file under this folder require a module that has no `<name>.das`
-beside that file, other than a daslib module and `crt`, reads that module's source: a module that
+beside that file, other than a daslib module, reads that module's source: a module that
 requires `cbind`, or names `popen`, `popen_binary`, `popen_timeout`, `popen_argv`,
 `popen_argv_pipe`, `spawn_process`, `spawn_argv`, `with_process`, `run_and_capture`,
 `executable_on_path` or `system`, is never required here - do the work in das
 instead.** `REVIEW.das` follows only a `require` that names a file.
+
+**A diff to a `.das` file under this folder, outside the own headers' tests (`include/tests/`),
+never requires a native module - `crt`, `c_runtime` or one of its modules - directly or through
+what it requires; the frontend needs none, and a floating constant or anything else the C library
+would compute is computed in das.** Dumper C runs inside a daslang compile and in a web page,
+where no native module loads; `REVIEW.das` reports such a `require`.
 
 **A diff that adds a file under this folder adds a `.das`, a `.h` or a `.md` file, or a `.defs`
 table under `predefined/`, and writes
