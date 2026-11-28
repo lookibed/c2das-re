@@ -1028,3 +1028,13 @@ def test_macro_uses_callee_shapes(t : T?) {
     // K(0)(x continues outside the body and K returns TWICE: unknown
     t |> equal(macro_uses("#define TWICE(a) a+a\n#define K(a) TWICE\n#define M(x) K(0)(x\n"), "TWICE=2 K=0 M=-1")
 }
+
+[test(description = "a _Pragma written in a macro's replacement is placed at the expansion location, the outermost call's name, as the pinned clang places it: its diagnostic and its ledger entry; one written in a call's argument stays at its own place, as clang's diagnostic shows it")]
+def test_pragma_from_a_body_placed_at_the_call(t : T?) {
+    let text = ("#define W(x) x _Pragma(\"GCC warning \\\"x\\\"\")\n#define O(y) W(y)\nint a;\n\n  int b = O(1);\n"
+        + "#define P(z) _Pragma(\"listing\") z\n  P(2)\n#define T(v) v\nint c = T(1\n+ _Pragma(\"GCC warning \\\"a\\\"\") 2);\n")
+    var pp <- started([("main.c", text)])
+    stream(pp)
+    t |> equal(diagnostics(pp), "W 5:11 x | W 10:3 a")
+    t |> equal(join([for (p in pp.pragmas); "{p.line}:{p.col} {p.text}"], " / "), "7:3 listing")
+}

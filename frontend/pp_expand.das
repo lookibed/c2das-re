@@ -1166,7 +1166,8 @@ def private open_destringized(var ex : PpExpander; var pp : Preprocessor; str : 
 //! `_Pragma ( string-literal )` read after the name `t` (C11 6.10.9), its operand read with
 //! expansion as clang reads it. In an argument being macro-expanded the operand is given back and
 //! `_Pragma` handed out, to be done at the rescan (6.10.3.4p3); else the destringized text is lexed
-//! and done as a `#pragma` line, and the next token starts a line, as after the directive.
+//! and done as a `#pragma` line - placed at the outermost call's name when the `_Pragma` is a
+//! replacement's - and the next token starts a line, as after the directive.
 //! Malformed, it is clang's error, and the token read where another was expected is handed out in
 //! `t`, as clang recovers
 [arch(at="ARCHITECTURE_EXPAND.md#pp-builtins")]
@@ -1216,6 +1217,7 @@ def private do_pragma_operator(var ex : PpExpander; var pp : Preprocessor; var t
         push_context(ex, operand, -1, false)
         return PragmaRead.token
     }
+    let place = name.spelled == PpSpelled.body && name.call >= 0 ? ex.calls[ex.calls[name.call].outer].name : name.tok
     pp.line |> clear()
     pp.line_text |> clear()
     open_destringized(ex, pp, str)
@@ -1228,10 +1230,10 @@ def private do_pragma_operator(var ex : PpExpander; var pp : Preprocessor; var t
         }
         let st & = unsafe(ex.scratch.tok)
         let sym = st.kind == int(PpTok.IDENTIFIER) ? interned_bytes(pp, pp.line_text, at) : -1
-        pp.line |> push(PpHeld(kind = st.kind, sym = sym, file = name.tok.file, offset = name.tok.offset, line = name.tok.line, col = name.tok.col,
+        pp.line |> push(PpHeld(kind = st.kind, sym = sym, file = place.file, offset = place.offset, line = place.line, col = place.col,
                                at = at, len = span.len, has_space = st.has_space))
     }
-    pp_pragma_line(pp, name.tok)
+    pp_pragma_line(pp, place)
     ex.carry_bol = true
     return PragmaRead.done
 }

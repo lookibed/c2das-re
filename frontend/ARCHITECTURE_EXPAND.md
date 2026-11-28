@@ -204,8 +204,11 @@ calls `PpExpansion.macro_changed`).
 `_Pragma(STRINGIFY(...))` are pragmas. The literal's prefix and quotes are taken off, `\"` and
 `\\` read as one character each, into the scratch lexer's buffer, and the text is lexed and done
 as a `#pragma` line (`pp_pragma_line`) - into the pragma or pack ledger at the tokens handed out
-before it, or `once`, `push_macro`, `pop_macro`. The token after it starts a line, as after the
-directive. While an argument is pre-expanded (section 32) a `_Pragma` is not done: its operand is
+before it, or `once`, `push_macro`, `pop_macro`. A `_Pragma` written in a macro's replacement
+takes its place - the ledger entry's and its diagnostics' - from the expansion location, the
+outermost call's name (section 55), where clang places it; one written in the source, a call's
+argument included, keeps its own place, where clang's diagnostic shows it. The token after it
+starts a line, as after the directive. While an argument is pre-expanded (section 32) a `_Pragma` is not done: its operand is
 checked, given back unexpanded and handed out after the name, so the pragma is done at the
 rescan, once for each use of the argument and at its place among the tokens, as clang delays it
 (6.10.3.4p3): `TWICE(_Pragma("pack(8)"))` is two pragmas, and the pack of
