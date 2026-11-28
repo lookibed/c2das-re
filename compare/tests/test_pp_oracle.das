@@ -249,9 +249,11 @@ def test_run_oracle(t : T?) {
     t |> equal(run_oracle(raw), 1)
 }
 
-[test(description = "the #pragma and #ident lines of clang's -E output are counted, a blank after the # included, and no other line")]
+[test(description = "the #pragma and #ident lines of clang's -E output are counted, a blank after the # included, and no other line: a #pragma GCC warning or GCC error line is a diagnostic of PP.2's, not a ledger entry, its kind matched as a whole word")]
 def test_pragma_lines(t : T?) {
     t |> equal(pragma_lines("int x;\n#pragma pack(1)\n  #  pragma weak w\n# 3 \"a.c\"\npragma;\n#ident \"v\"\nident;\n"), 3)
+    t |> equal(pragma_lines("#pragma GCC warning \"w\"\n#pragma GCC error \"e\"\n#pragma GCC diagnostic push\n#pragma clang warning \"k\"\n"), 2)
+    t |> equal(pragma_lines("#pragma GCC warningfoo\n#pragma GCC errors x\n#pragma GCC warning \"p\"\n#pragma GCC error\n"), 2)
 }
 
 // clang-side tokens of `spellings`, a blank between them, each an identifier
@@ -756,6 +758,86 @@ def test_errors_in_chosen_groups(t : T?) {
     t |> equal(join(rl.errors, " | "), "6:3 pasting formed '+/', an invalid preprocessing token")
 }
 
+[test(description = "a bad byte and an unterminated character constant in a skipped group are no error, as clang reads nothing there: the unit is clean against clang; a bad byte outside one is an error of the preprocessor's own", timeout = 1200)]
+def test_lexer_diag_in_skipped_group(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp_skipped_lexer")
+    mkdir_rec(work)
+    let skipped = unit_file("skipped_bad_byte.c", "int a;\n#if 0\nx \xff y\nchar c = 'ab\n#endif\nint b;\n")
+    let r <- compare_unit_pp2(skipped, work, flags, setup.entries, setup.search, 5, true)
+    t |> equal(r.error, "")
+    t |> equal(join(r.errors, " | "), "")
+    t |> equal(r.cls, Pp2Class.clean, "{r.shown}")
+    let active = unit_file("active_bad_byte.c", "int a \xff;\n")
+    var ra = Pp2Result(unit = active, expanded = true)
+    pp2_tokens(active, setup.entries, setup.search, ra)
+    t |> equal(join(ra.errors, " | "), "1:7 invalid UTF-8: byte 255")
+    t |> equal(pp2_class(ra), Pp2Class.differs)
+}
+
+[test(description = "a bad byte on a directive's line is no error, as clang does not diagnose it there: the unit is clean against clang; an unterminated comment on a directive's line is one", timeout = 1200)]
+def test_lexer_diag_on_directive_line(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp_directive_lexer")
+    mkdir_rec(work)
+    let unit = unit_file("directive_bad_byte.c", "#define X 1 \xff\n#pragma foo \xff\nint a;\n")
+    let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5, true)
+    t |> equal(r.error, "")
+    t |> equal(join(r.errors, " | "), "")
+    t |> equal(r.cls, Pp2Class.clean, "{r.shown}")
+    let unclosed = unit_file("directive_open_comment.c", "int a;\n#define Y /* open\n")
+    var ro = Pp2Result(unit = unclosed, expanded = true)
+    pp2_tokens(unclosed, setup.entries, setup.search, ro)
+    t |> equal(join(ro.errors, " | "), "2:11 unterminated /* comment")
+}
+
+[test(description = "a bad byte in a group an undecided conditional chose is left to PP.3, as an undecided directive error is, not an error of the preprocessor's own; one after the #endif is")]
+def test_lexer_diag_in_undecided_group(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let unit = unit_file("undecided_bad_byte.c", "#define N 1\n#if N\n\xff a\n#endif\nint b;\n")
+    var r = Pp2Result(unit = unit)
+    pp2_tokens(unit, setup.entries, setup.search, r)
+    t |> equal(join(r.errors, " | "), "")
+    t |> equal(length(r.pp3_at), 1)
+    let after = unit_file("decided_bad_byte.c", "#define N 1\n#if N\n#endif\n\xff\n")
+    var ra = Pp2Result(unit = after)
+    pp2_tokens(after, setup.entries, setup.search, ra)
+    t |> equal(join(ra.errors, " | "), "4:1 invalid UTF-8: byte 255")
+}
+
+[test(description = "#pragma GCC poison and GCC warning are no ledger entries, as clang's -E prints no poison line and PP.2 raises the warning: a unit with both, and a pragma kept, is clean against clang", timeout = 1200)]
+def test_poison_and_gcc_warning_against_clang(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp_poison")
+    mkdir_rec(work)
+    let unit = unit_file("poison_warning.c", "#define CAT(a,b) a##b\n#pragma GCC poison zap\n#pragma GCC warning \"careful\"\n#pragma weird x\nint CAT(za,q);\n")
+    let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5, true)
+    t |> equal(r.error, "")
+    t |> equal(join(r.errors, " | "), "")
+    t |> equal(r.pp_pragmas, 1)
+    t |> equal(r.cls, Pp2Class.clean, "{r.shown}")
+    let used = unit_file("poison_used.c", "#pragma GCC poison zap\nint zap;\n")
+    let ru <- compare_unit_pp2(used, work, flags, setup.entries, setup.search, 5, true)
+    t |> success(starts_with(ru.error, "clang -E: "), ru.error)
+    var ours = Pp2Result(unit = used, expanded = true)
+    pp2_tokens(used, setup.entries, setup.search, ours)
+    t |> equal(join(ours.errors, " | "), "2:5 attempt to use a poisoned identifier")
+}
+
 [test(description = "the place of a #pragma or #ident line of clang's output is the count of its tokens on the lines before it")]
 def test_pragma_places(t : T?) {
     let clang <- [for (line in [1, 1, 3, 5]); OracleToken(kind = int(PpTok.IDENTIFIER), spelling = "a", line = line)]
@@ -807,4 +889,16 @@ def test_feature_tables_match_clang(t : T?) {
     bad = ""
     read_features(path_join(work, "missing.defs"), bad)
     t |> equal(bad, "{path_join(work, "missing.defs")}: no such feature-query table")
+}
+
+[test(description = "a bad byte in the group an #else takes, or in the group a true #if takes, is an error of the preprocessor's own: the unit differs; one in the group the #if skips is none", timeout = 1200)]
+def test_lexer_diag_live_inside_a_conditional(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let unit = unit_file("live_in_else.c", "#if 0\nint s \xff;\n#else\nint a \xff;\n#endif\n#if 1\nint b \xff;\n#endif\n")
+    var r = Pp2Result(unit = unit, expanded = true)
+    pp2_tokens(unit, setup.entries, setup.search, r)
+    t |> equal(join(r.errors, " | "), "4:7 invalid UTF-8: byte 255 | 7:7 invalid UTF-8: byte 255")
+    t |> equal(pp2_class(r), Pp2Class.differs)
 }

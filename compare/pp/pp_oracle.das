@@ -507,9 +507,26 @@ def pp2_setup(var error : string&) : tuple<entries : array<string>; search : arr
 
 //! The `#pragma` and `#ident` lines of clang's `-E` output `text`: clang prints each pragma it
 //! keeps and each `#ident` as a line, and its token dump of that output takes them as directives,
-//! not tokens, as PP.2 keeps them in its pragma and pack ledgers instead of its stream.
+//! not tokens, as PP.2 keeps them in its pragma and pack ledgers instead of its stream. A
+//! `#pragma GCC warning` or `GCC error` line is none: PP.2 makes it a diagnostic, not an entry.
 [arch(at="ARCHITECTURE.md#pp2")]
 def pragma_lines(text : string) : int => length(pragma_line_numbers(text))
+
+// whether the directive text after a `#` is a `pragma GCC warning` or `pragma GCC error`, which
+// PP.2 raises as a diagnostic (`frontend/ARCHITECTURE_PP.md#pp-poison`)
+def private is_pragma_message(directive : string) : bool {
+    return false if (!starts_with(directive, "pragma"))
+    let rest = strip(slice(directive, 6))
+    return false if (!starts_with(rest, "GCC "))
+    let kind = strip(slice(rest, 3))
+    for (word in ["warning", "error"]) {
+        if (starts_with(kind, word)) {
+            let after = slice(kind, length(word), length(word) + 1)
+            return empty(after) || after == " "
+        }
+    }
+    return false
+}
 
 // the numbers, from 1, of the `#pragma` and `#ident` lines of `text`
 def private pragma_line_numbers(text : string) : array<int> {
@@ -518,6 +535,7 @@ def private pragma_line_numbers(text : string) : array<int> {
         let s = strip(line)
         if (starts_with(s, "#")) {
             let directive = strip(slice(s, 1))
+            continue if (is_pragma_message(directive))
             if (starts_with(directive, "pragma") || starts_with(directive, "ident")) {
                 numbers |> push(n)
             }
@@ -545,7 +563,10 @@ def pragma_places(text : string; clang : array<OracleToken>) : array<int> {
 
 //! The tokens PP.2 hands out for `unit` read through `fio`, the `linux` feature table answering
 //! the `#if` queries, and what it left to PP.3, into `result`. A diagnostic is placed at the tokens
-//! handed out before it; an error counts as the preprocessor's own unless it names PP.3. With
+//! handed out before it; an error counts as the preprocessor's own unless it names PP.3, and so does
+//! a lexer diagnostic met outside a skipped group, except a bad byte on a directive's line, which
+//! clang does not diagnose, and one in a group an undecided conditional chose, skipped or read,
+//! left to PP.3. With
 //! `result.expanded`, PP.3's expanded tokens, the time builtins at `ORACLE_EPOCH`, none marked as
 //! a macro's.
 [arch(at="ARCHITECTURE.md#pp2")]
@@ -564,6 +585,7 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
         result.errors |> push(table_error)
     }
     var seen = 0
+    var lexer_seen = 0
     var more = true
     var called = false
     var depth = 0
@@ -578,6 +600,17 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
             }
         }
         seen = length(pp.diags)
+        for (i in range(lexer_seen, length(pp.lx.diags))) {
+            let d & = unsafe(pp.lx.diags[i])
+            if (d.directive) {
+                continue
+            } elif (d.undecided) {
+                result.pp3_at |> push(length(tokens))
+            } elif (!d.skipped) {
+                result.errors |> push("{d.line}:{d.col} {d.what}")
+            }
+        }
+        lexer_seen = length(pp.lx.diags)
         if (more) {
             let kind = pp.tok.tok.kind
             let macro = !result.expanded && kind == int(PpTok.IDENTIFIER) && pp_defined(pp, pp.tok.tok.sym)

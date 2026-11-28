@@ -31,7 +31,7 @@ token's bytes, `pp_spelling_of` a string of them, `pp_token_span` and `pp_token_
 current token's. A token reader that keeps tokens - the C tokens - keeps that range, not a copy.
 The unit holds every file's text this way, which is what clang holds too. Directive
 diagnostics (`pp.diags`) carry the physical place and the presumed one; the lexer's own
-diagnostics stay in `pp.lx.diags`. An error never stops the preprocessor: `#error` and a
+diagnostics stay in `pp.lx.diags` (section 53). An error never stops the preprocessor: `#error` and a
 malformed directive are recorded, and reading goes on, as clang reports every error of a unit. A
 fatal one does: an `#include` that finds no file, or one it cannot read, is clang's fatal error,
 and `pp.fatal` ends the unit there, as clang's compile ends; clang's `-E` alone reads on with its
@@ -210,11 +210,78 @@ places it among the declarations for the layout phase. The form is clang's gramm
 the end of the line; N is 1, 2, 4, 8 or 16. Any other form gets clang's warning at clang's token
 (`missing ')'`, `missing '('`, `unknown action`, `expected integer or identifier`, `extra
 tokens`, the alignment's) and is ignored; a `pop` on an empty stack warns and is still an entry.
-Every other pragma (`#pragma warning(...)`, `#pragma GCC ...`, `#pragma` alone) is a `PpPragma` in
-`pp.pragmas`: its place, the tokens handed out before it, and its tokens spelled with a blank where
+`#pragma GCC poison` and `clang poison`, `#pragma GCC error` and `GCC warning` are done as
+section 54 says and are no entry: clang's `-E` prints no poison line, and a message is a
+diagnostic. Every other pragma (`#pragma warning(...)`, `#pragma GCC ...`, `#pragma` alone) is a
+`PpPragma` in `pp.pragmas`: its place, the tokens handed out before it, and its tokens spelled with a blank where
 the source had space, for the C-IR's ledger.
 
 `#ident "text"` and `#sccs "text"` are directives clang's `-E` passes through as a line
 `#ident "text"`. PP.2 keeps each as a `PpPragma` with `ident` set and `text` its string literal, so
 an `-E`-style printer writes `#ident <text>` where `emitted` places it, and the C-IR's ledger sees
 it among the pragmas. Anything but a plain or wide string literal after it is clang's error.
+
+## 53. Diagnostics {#pp-diags}
+
+The lexer raises its diagnostics (`PpDiag`, `ARCHITECTURE.md` section 4) as it reads a token, with
+no knowledge of groups; the directive layer marks each when it consumes the token it came with
+(`consumed`): `skipped` when that token falls in a skipped group. A skipped group is only scanned
+for its conditional directives, which is all clang does with one - it lexes the group raw and
+reports nothing in it - so a bad byte, or an unterminated comment, in `#if 0` is no error of the
+unit, and a reader that refuses a unit with a lexer diagnostic passes over a `skipped` one. The
+token after a directive's line is read before the directive is done (section 5) and consumed after
+it, so it is marked by the group the directive opens or closes: the line after `#if 0` is skipped,
+the line after its `#else` is not. A conditional directive's own line is read as the group that is
+active while clang reads it: an `#elif` line that is evaluated, or an `#else` line that opens its
+group, as the group it opens, and an `#elif` or `#else` line ending an active group as that group's,
+since clang lexes both off raw mode; only the line of one ending a skipped group, or met inside one,
+is skipped. A token of a directive's line marks its bad byte `directive`, since clang diagnoses
+invalid UTF-8 only outside a directive; an unterminated comment there is still clang's error. A
+diagnostic met in a group an undecided conditional chose, skipped or read, is marked `undecided`
+(section 11): clang may choose the group otherwise. The same mark places the diagnostic at its
+presumed line and file (`pline`, `pname`, as a directive diagnostic and a token carry them): every
+token is consumed while its file is the one read - the end of a file before the file closes, the
+token after an `#include` line before the included file opens - so a diagnostic keeps its file's
+`#line` though the read that met it goes on past the file's end into its includer. A diagnostic met
+past a directive's last token on its line, an unterminated comment opening there, is marked as the
+line's when the line ends (`mark_line_end_diags`), before the directive opens or closes a group or a
+`#line` moves the presumed place (section 10): clang reads that comment with the line.
+
+A directive or expansion diagnostic (`PpDiagnostic`) is placed where its trouble is and carries
+apart from that where the reader stood when it raised it (`raised`, `pp_reader_place`): the
+lexer's current token, or past the last byte of its file once the lexer met the end. The two
+differ for what only the end of the input settles - an unterminated function-like macro call is
+placed at its name, an unterminated conditional at its `#if`, and both are raised at the end of
+the unit or file, or, for a call in a directive line, at the token after that line. The lexer
+raises its own diagnostics as it reads the token they come with, so the raise position orders the
+two lists by reading: a lexer diagnostic at or before a directive diagnostic's `raised` place, in
+the same file, came first.
+
+## 54. Poisoned identifiers and pragma messages {#pp-poison}
+
+`#pragma GCC poison` - or `clang poison` - poisons the names after it (`pp.poisoned`), as clang
+does: from then on each use of one is clang's error "attempt to use a poisoned identifier" at it. A
+use is a name consumed outside a skipped group (`consumed`, the moment section 53 marks a lexer
+diagnostic): in the text, a macro argument, a `#define`'s name and body, `#ifdef`, `#undef`,
+`defined`'s operand, an `#elif` or `#else` line read as an active group's (section 53), and another
+pragma's line, which its pragma checks (`pp_pragma_line`, a `_Pragma` operand's too) since the
+poison line itself names them unchecked. A `#pragma`, `#error` or `#warning` line is read raw
+(`read_raw_line`), as clang reads it, so a poisoned name in a message is text; a name `##` forms is
+checked as it is pasted (`pp_poisoned`). A macro body read before the poison expands to the name
+with no error, as clang's does: its tokens were read before. A name poisoned again is passed over,
+and so are `__VA_ARGS__` and `__VA_OPT__`, which clang keeps poisoned outside a variadic body with
+diagnostics of their own; a defined macro, a builtin name among them, is poisoned with clang's
+warning "poisoning existing macro"; a token that is no name is clang's error "can only poison
+identifier tokens" and ends the list.
+
+`#pragma GCC error` and `#pragma GCC warning` raise an error and a warning at the pragma's kind
+token whose text is the value of the plain string literals after it, joined, `\` escapes read as
+a `#line` name's (section 10), with or without parentheses around them. Any other form is clang's
+error at clang's token: no string at all is "pragma error requires parenthesized string" at the
+kind, no string after `(` "expected string literal in pragma error" at the token met, a missing
+`)` or a token after the message the first message at that token, or just past the line's end.
+`#pragma clang error` and `clang warning` are no such pragma in clang and stay ledger entries. The
+message is read as written: clang expands a macro naming the string, which a pragma line, read
+before any expansion, does not. A message ends at an escaped NUL, where clang prints it on, and an
+unknown escape such as `\q` is read as its character without clang's warning. A spliced last
+token puts "just past the line's end" at its length without the splices, which places it early.

@@ -625,3 +625,61 @@ def test_builtin_undef(t : T?) {
     t |> equal(d.diags, "W 1:9 redefining builtin macro | W 5:9 redefining builtin macro | W 6:8 undefining builtin macro")
 }
 
+
+// every diagnostic, `<line>:<col> raised <file>:<offset>:<line>:<col> <what>`, a `|` between them
+def private raised(pp : Preprocessor) : string {
+    let parts <- [for (d in pp.diags); "{d.line}:{d.col} raised {d.raised.file}:{d.raised.offset}:{d.raised.line}:{d.raised.col} {d.what}"]
+    return join(parts, " | ")
+}
+
+[test(description = "an unterminated call is placed at its name and raised where the reader gave up: past the last byte of the unit, through a line splice, or at the token after the directive line that ends it; a diagnostic the reader meets at once is raised at the token read, the call's )")]
+def test_unterminated_call_raised_at_end(t : T?) {
+    var at_end <- started([("main.c", "#define f(x) x\na f(1,\n 2")])
+    stream(at_end)
+    t |> equal(raised(at_end), "2:3 raised 0:24:3:3 unterminated function-like macro invocation")
+    var spliced <- started([("main.c", "#define f(x) x\nf(1\\\n2\n")])
+    stream(spliced)
+    t |> equal(raised(spliced), "2:1 raised 0:22:4:1 unterminated function-like macro invocation")
+    var splice_line <- started([("main.c", "#define f(x) x\nf(1\\\n2")])
+    stream(splice_line)
+    t |> equal(raised(splice_line), "2:1 raised 0:21:3:2 unterminated function-like macro invocation")
+    var in_line <- started([("main.c", "#define f(x) x\n#line f(\n7)\nz\n")])
+    stream(in_line)
+    t |> equal(raised(in_line), ("2:7 raised 0:24:3:1 unterminated function-like macro invocation | " +
+                                 "2:2 raised 0:24:3:1 #line directive requires a positive integer argument"))
+    var at_once <- started([("main.c", "#define z() Z\nz(1) after\n")])
+    stream(at_once)
+    t |> equal(raised(at_once), "2:1 raised 0:17:2:4 too many arguments provided to function-like macro invocation")
+}
+
+[test(description = "a poisoned name pasted is clang's error, and an argument's poisoned name is too; a macro defined before the poison expands to the name with none, _Pragma poisons as #pragma does, and poisoning a builtin name warns")]
+def test_poison_through_expansion(t : T?) {
+    let r = expanded("#define CAT(a,b) a##b\n#define BEFORE foo + 1\n#define F(x) x\n#pragma GCC poison foo __LINE__\nBEFORE CAT(fo,o) F(foo)\n_Pragma(\"GCC poison q\") q\n")
+    t |> equal(r.out, "foo + 1 foo foo | q")
+    t |> equal(r.diags, ("W 4:24 poisoning existing macro | E 5:12 attempt to use a poisoned identifier | " +
+                         "E 5:20 attempt to use a poisoned identifier | E 6:25 attempt to use a poisoned identifier"))
+}
+
+[test(description = "a call records the physical line and column of the ) that closes it, past a line break; a call closed by a ) of a replacement takes the end of the call that handed it out; an object-like macro's end is its name")]
+def test_call_end_column(t : T?) {
+    var pp <- started([("main.c", "#define g(a) [a]\n#define f(x, y) g(x) y\n#define N 1\nf(ab,\n  cd e  ) N\n")])
+    t |> equal(stream(pp), "[ ab ] cd e 1")
+    let ends <- [for (c in pp.expansion.calls); "{pp_name(pp, pp.macros[c.macro].name)} {c.end_line}:{c.end_col}/{int64(c.end_pline)}"]
+    t |> equal(join(ends, " "), "f 5:9/5 g 5:9/5 N 5:11/5")
+}
+
+[test(description = "a _Pragma operand naming a poisoned identifier is clang's error at the _Pragma, as a #pragma line's is at the name")]
+def test_poison_in_pragma_operand(t : T?) {
+    let r = expanded("#pragma GCC poison foo\n_Pragma(\"weird foo\")\nfoo\n")
+    t |> equal(r.diags, "E 2:1 attempt to use a poisoned identifier | E 3:1 attempt to use a poisoned identifier")
+}
+
+[test(description = "a diagnostic placed at a held token is raised where the reader stood: past a #pragma GCC warning line at the next line's first token, and past the last byte at the end of the unit")]
+def test_held_diagnostic_raised(t : T?) {
+    var next <- started([("main.c", "#pragma GCC warning \"w\"\nz\n")])
+    stream(next)
+    t |> equal(raised(next), "1:13 raised 0:24:2:1 w")
+    var last <- started([("main.c", "#pragma GCC warning \"w\"")])
+    stream(last)
+    t |> equal(raised(last), "1:13 raised 0:23:1:24 w")
+}

@@ -527,13 +527,11 @@ def private kept(var unit : CUnit; kind : int) : CToken {
     return tok
 }
 
-//! The pragmas the C-IR may pass by, as the text after `pragma` starts: a diagnostic's, a message's
-//! and a warning's, which change no C-IR; `#ident` too. Any other pragma the preprocessor records is
-//! refused, `pack` until the record layout reads `pp.packs`.
-let PASSED_PRAGMAS <- fixed_array("GCC diagnostic", "clang diagnostic", "message", "GCC warning")
-
-//! the two diagnostics the preprocessor places at a construct's start but meets at its file's end
-let private MET_AT_END <- fixed_array("unterminated function-like macro invocation", "unterminated conditional directive")
+//! The pragmas the C-IR may pass by, as the text after `pragma` starts: a diagnostic's and a
+//! message's, which change no C-IR; `#ident` too. Any other pragma the preprocessor records is
+//! refused, `pack` until the record layout reads `pp.packs`; `GCC error`, `GCC warning` and
+//! `GCC poison` the preprocessor does itself and records none.
+let PASSED_PRAGMAS <- fixed_array("GCC diagnostic", "clang diagnostic", "message")
 
 //! how far the read took each record the preprocessor fills
 struct private ReadMarks {
@@ -543,12 +541,11 @@ struct private ReadMarks {
     packs : int
 }
 
-//! an error the read met: where it met it in the file as read, and its text
+//! an error the read met: where the read stood when it met it in the file as read, and its text
 struct private Met {
     file : int
     line : int
     col : int
-    at_end : bool       //!< placed at its construct, met at its file's end
     text : string
 }
 
@@ -571,9 +568,8 @@ def private met_at(unit : CUnit; file, line, col : int; what : string) : Met {
     return Met(file = file, line = line, col = col, text = "{unit.pp.names[at.name]}:{at.line}:{col}: {what}")
 }
 
-// whether place `a` of a file comes before place `b` of the same file in reading order: the earlier
-// line and column, a construct met at the file's end after every place
-def private before(a, b : Met) : bool => a.at_end != b.at_end ? b.at_end : a.line < b.line || (a.line == b.line && a.col < b.col)
+// whether place `a` of a file comes before place `b` of the same file: the earlier line and column
+def private before(a, b : Met) : bool => a.line < b.line || (a.line == b.line && a.col < b.col)
 
 // the places that lead the read to error `m`: from the file read first, each `#include` that entered
 // the next file on the way (its last entry), then `m` itself
@@ -608,7 +604,7 @@ def private met_first(unit : CUnit; m, best : Met) : bool {
     let b <- reading_path(unit, best)
     return false if (a[0].file != b[0].file)
     for (x, y in a, b) {
-        return before(x, y) if (x.file != y.file || x.line != y.line || x.col != y.col || x.at_end != y.at_end)
+        return before(x, y) if (x.file != y.file || x.line != y.line || x.col != y.col)
     }
     return length(a) < length(b)
 }
@@ -626,13 +622,15 @@ def private pragma_refusal(pr : PpPragma) : string {
     for (passed in PASSED_PRAGMAS) {
         return "" if (pr.text == passed || starts_with(pr.text, "{passed} ") || starts_with(pr.text, "{passed}("))
     }
-    return pr.text == "GCC error" || starts_with(pr.text, "GCC error ") ? "#pragma {pr.text}" : "the pragma '#pragma {pr.text}' is not parsed"
+    return "the pragma '#pragma {pr.text}' is not parsed"
 }
 
 //! the first error the read met past `marks`, into `unit.err`: the preprocessor's (a warning is
-//! none), the lexer's, a pragma's the C-IR does not pass by
+//! none) where the read stood when it raised it, the lexer's of a token consumed (`done`: every
+//! one, the read over) that clang diagnoses - none in a skipped group or of a directive's line -,
+//! a pragma's the C-IR does not pass by
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
-def private diagnosed(var unit : CUnit; var marks : ReadMarks&) : bool {
+def private diagnosed(var unit : CUnit; var marks : ReadMarks&; done : bool) : bool {
     var best : Met
     for (k in range(marks.diags, length(unit.pp.diags))) {
         let d & = unsafe(unit.pp.diags[k])
@@ -640,13 +638,19 @@ def private diagnosed(var unit : CUnit; var marks : ReadMarks&) : bool {
         if (d.line == 0) {
             earliest(unit, best, Met(file = -1, text = d.what))
         } else {
-            earliest(unit, best, Met(file = d.file, line = d.line, col = d.col, at_end = has_value(MET_AT_END, d.what),
-                               text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
+            earliest(unit, best, Met(file = d.raised.file, line = d.raised.line, col = d.raised.col,
+                                     text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
         }
     }
-    for (k in range(marks.lexer, length(unit.pp.lx.diags))) {
+    let consumed = done ? length(unit.pp.lx.diags) : unit.pp.lexer_diags_seen
+    for (k in range(marks.lexer, consumed)) {
         let d & = unsafe(unit.pp.lx.diags[k])
-        earliest(unit, best, met_at(unit, d.file, d.line, d.col, d.what))
+        continue if (d.skipped || d.directive)
+        if (d.pline != 0u) {
+            earliest(unit, best, Met(file = d.file, line = d.line, col = d.col, text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
+        } else {
+            earliest(unit, best, met_at(unit, d.file, d.line, d.col, d.what))
+        }
     }
     for (k in range(marks.pragmas, length(unit.pp.pragmas))) {
         let pr & = unsafe(unit.pp.pragmas[k])
@@ -659,7 +663,7 @@ def private diagnosed(var unit : CUnit; var marks : ReadMarks&) : bool {
         let pk & = unsafe(unit.pp.packs[k])
         earliest(unit, best, met_at(unit, pk.file, pk.line, pk.col, "the pragma '#pragma pack' is not parsed (the record layout does not read it yet)"))
     }
-    marks = ReadMarks(diags = length(unit.pp.diags), lexer = length(unit.pp.lx.diags), pragmas = length(unit.pp.pragmas), packs = length(unit.pp.packs))
+    marks = ReadMarks(diags = length(unit.pp.diags), lexer = max(marks.lexer, consumed), pragmas = length(unit.pp.pragmas), packs = length(unit.pp.packs))
     unit.err = best.text
     return !empty(unit.err)
 }
@@ -683,7 +687,7 @@ def c_tokens_read(var unit : CUnit) : bool {
     var marks : ReadMarks
     while (true) {
         let more = pp_next_token(unit.pp)
-        break if (diagnosed(unit, marks) || !more)
+        break if (diagnosed(unit, marks, !more) || !more)
         let pk = unit.pp.tok.tok.kind
         let kind = c_kind_of(unit)
         if (pk == int(PpTok.COLONCOLON)) {
