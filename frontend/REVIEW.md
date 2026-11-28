@@ -90,3 +90,18 @@ converted operand is the trap every hand-written evaluator falls into (`L'\0' - 
 to it is the output of `das compare/pp/run.das -- --features` (`ARCHITECTURE_EVAL.md#pp-eval-features`).**
 A hand-written answer is a guess about clang that no oracle can see, since the query's answer
 changes which group a unit reads.
+
+**A diff to `pp_record.das` or to the record in `pp_expand.das` keeps every reader allocation-free
+for a token, a call and an argument - a text goes into the caller's buffer, a place or a copy is
+read in place, and a view in place is given only of bytes that live for the whole unit - and never
+loosens `tests/test_pp_expand.das`'s `test_record_readers_allocate_nothing`; the diff's author
+runs the record's oracle (`das compare/pp/run.das -- --pp5 --corpus fixtures --list
+compare/pp/fixtures/pp5/lua.txt`) and states the counts in the pull request.** Dumper C reads
+the record once per token of a unit while the unit is still read, so a view into a pool that grows
+dangles; and Dumper A's marks are the only outside check of what the record says.
+
+**A macro fact Dumper C writes into the C-IR - a site, an argument's text, a copy, a `macros`
+entry - is read from the expansion record (`ARCHITECTURE_EXPAND.md#pp-record`), never derived
+again by matching spellings or re-reading a `#define`.** A second derivation would be a second
+answer to the question the record already answers exactly, the way Dumper A has to match.
+

@@ -384,9 +384,11 @@ struct OracleArgs {
     pp3 : bool
     @clarg_doc = "compare the whole preprocessor, the #if evaluator included, with clang: the expansion oracle under its PP.4 name (corpus pp4 is the fixture set)"
     pp4 : bool
+    @clarg_doc = "compare the expansion record, frontend/pp_record.das, with Dumper A's marks of function-like expansions (corpus fixtures is the converter's test units)"
+    pp5 : bool
     @clarg_doc = "regenerate the feature-query tables of frontend/predefined/ from the pinned clang, then exit"
     features : bool
-    @clarg_doc = "a corpus list for --pp2, --pp3 and --pp4: a unit a line, its path then its -I, -D and -x flags (repeatable)"
+    @clarg_doc = "a corpus list for --pp2, --pp3, --pp4 and --pp5: a unit a line, its path then its -I, -D and -x flags (repeatable)"
     list : array<string>
     @clarg_positional
     @clarg_doc = "units compared besides the corpora"

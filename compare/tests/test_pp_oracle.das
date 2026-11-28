@@ -6,9 +6,11 @@ require daslib/fio
 require daslib/strings_boost
 require ../pp/pp_oracle.das
 require ../pp/pp_features.das
+require ../pp/pp_macros.das
 require ../../frontend/c_defines.das
 require ../../frontend/pp_lexer.das
 require ../../frontend/pp_directives.das
+require ../../frontend/pp_record.das
 require ../../converter/tiers.das
 require ../../converter/dumper_a.das
 
@@ -901,4 +903,161 @@ def test_lexer_diag_live_inside_a_conditional(t : T?) {
     pp2_tokens(unit, setup.entries, setup.search, r)
     t |> equal(join(r.errors, " | "), "4:7 invalid UTF-8: byte 255 | 7:7 invalid UTF-8: byte 255")
     t |> equal(pp2_class(r), Pp2Class.differs)
+}
+
+[test(description = "the record oracle's text normalization takes out only spellings: line splices, comments and runs of blanks become one blank, none at either end; tokens stay apart or joined as written")]
+def test_pp5_normalized(t : T?) {
+    t |> equal(pp5_normalized("  a\\\n+  b/* c */(x)\n\t"), "a+ b (x)")
+    t |> equal(pp5_normalized("a/**/b"), "a b")
+    t |> equal(pp5_normalized("ab"), "ab")
+    t |> equal(pp5_normalized("a\\\r\n+b"), "a+b")
+}
+
+[test(description = "the record oracle's macro text: the record's #define agrees with Dumper A's when the only difference is a blank Dumper A writes at a line splice, at most one per splice; any other difference disagrees")]
+def test_pp5_macro_text_agrees(t : T?) {
+    t |> success(pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a+x", 0))
+    t |> success(pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a +x", 1))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a +x", 0))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a + x", 1))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a +x", "#define G(x) a+x", 1))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a+y", 1))
+}
+
+[test(description = "the record oracle fails a run that compared nothing - every unit refused by Dumper A or in error - as it fails one with a disagreement or an error")]
+def test_pp5_exit_code(t : T?) {
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, refused = 1)), 0)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, refused = 2)), 1)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, refused = 1, errors = 1)), 1)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 0)), 1)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, differing = 1)), 1)
+}
+
+[test(description = "Dumper A's macro fixture through the record oracle: every site Dumper A marks is a call of the record at the same outermost place with the same macro and argument texts, every argument copy a copy the record holds, every macros entry the record's - and the record marks more calls", timeout = 1200)]
+def test_pp5_fixture(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let r <- compare_unit_pp5(OracleUnit(path = "converter/tests/fixtures/p9_fn_macros.c"), setup.entries, setup.search)
+    t |> equal("{r.error}{r.refused}", "")
+    t |> equal(join(r.shown, "\n"), "")
+    t |> equal("sites {r.matched}/{r.sites} copies {r.copies_matched}/{r.copies} macros {r.macros_equal}/{r.macros}", "sites 50/50 copies 85/85 macros 26/26")
+    t |> success(pp5_agrees(r))
+    t |> success(r.candidates > r.marked && r.marked > 0, "{r.marked} of {r.candidates}")
+    t |> equal(length(r.record_calls), r.candidates - r.marked)
+    t |> equal(r.copies_stray, 0)
+    t |> equal(length(r.record_copies), r.copies_record_only)
+    t |> equal(join(r.known, "; "), "BIGGER uses[0] = 2, Dumper A -1; BIGGER uses[1] = 2, Dumper A -1")
+    let copies <- compare_unit_pp5(OracleUnit(path = "compare/pp/fixtures/pp5/copies.c"), setup.entries, setup.search)
+    t |> equal("{copies.error}{copies.refused}{join(copies.shown, "; ")}", "")
+    t |> equal("sites {copies.matched}/{copies.sites} copies {copies.copies_matched}/{copies.copies} stray {copies.copies_stray}", "sites 3/3 copies 4/4 stray 0")
+    let flagged <- compare_unit_pp5(OracleUnit(path = "converter/tests/fixtures/p9_fn_macros.c", flags <- ["-std=c99"]), setup.entries, setup.search)
+    t |> equal(flagged.error, "unsupported unit flag -std=c99")
+}
+
+// the oracle's predefines plus `more`, which only the record reads: the two sides then read a
+// different macro on purpose
+def private record_setup(more : array<string>) : tuple<entries : array<string>; search : array<string>> {
+    var error : string
+    var setup <- pp2_setup(error)
+    setup.entries |> push_from(more)
+    return <- setup
+}
+
+[test(description = "the record oracle fails closed on a missing call and a missing macro: a site Dumper A marks that no call of the record is, and a Dumper A macro the record has no definition of, are shown and the unit disagrees", timeout = 1200)]
+def test_pp5_record_missing_a_site(t : T?) {
+    let setup <- record_setup(["REC"])
+    let unit = unit_file("pp5_missing.c", "#ifdef REC\n#define W(x) (x)\n#endif\n#ifndef REC\n#define W(x) x\n#endif\nint f(int a) \{ return W(a); \}\n")
+    let r <- compare_unit_pp5(OracleUnit(path = unit), setup.entries, setup.search)
+    t |> equal("{r.error}{r.refused}", "")
+    t |> equal("sites {r.matched}/{r.sites} macros {r.macros_equal}/{r.macros}", "sites 0/1 macros 0/1")
+    let shown = join(r.shown, "\n")
+    t |> success(find(shown, "no call of the record") >= 0, shown)
+    t |> success(find(shown, "no definition of the record") >= 0, shown)
+    t |> success(!pp5_agrees(r))
+}
+
+[test(description = "the record oracle fails closed on a missing copy: an argument copy Dumper A marks on a matched site that the record holds no token of is shown and the unit disagrees", timeout = 1200)]
+def test_pp5_record_missing_a_copy(t : T?) {
+    let setup <- record_setup(["BODY(x)=0"])
+    let unit = unit_file("pp5_copyless.c", "#define W(x) BODY(x)\nint BODY(int);\nint g(int a) \{ return W(a); \}\n")
+    let r <- compare_unit_pp5(OracleUnit(path = unit), setup.entries, setup.search)
+    t |> equal("{r.error}{r.refused}", "")
+    t |> equal("sites {r.matched}/{r.sites} copies {r.copies_matched}/{r.copies}", "sites 1/1 copies 0/1")
+    let shown = join(r.shown, "\n")
+    t |> success(find(shown, "the record has no token copied") >= 0, shown)
+    t |> success(!pp5_agrees(r))
+}
+
+[test(description = "the record oracle's candidates leave out a directive line's calls; a definition over a line splice agrees with Dumper A's blank at the splice; a unit's -D flag reaches both sides (a unit that #errors without it is refused)", timeout = 1200)]
+def test_pp5_candidates_splices_and_flags(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let lines = unit_file("pp5_in_line.c", "#define W(x) x\n#if W(1)\n#endif\nint f(int a) \{ return W(a); \}\n")
+    let r <- compare_unit_pp5(OracleUnit(path = lines), setup.entries, setup.search)
+    t |> equal("{r.error}{r.refused}{join(r.shown, "; ")}", "")
+    t |> equal("candidates {r.candidates} marked {r.marked} listed {length(r.record_calls)}", "candidates 1 marked 1 listed 0")
+    let spliced = unit_file("pp5_spliced.c", "#define G(x) (x\\\n+1)\nint f(int v) \{ return G(v); \}\n")
+    let s <- compare_unit_pp5(OracleUnit(path = spliced), setup.entries, setup.search)
+    t |> equal("{s.error}{s.refused}{join(s.shown, "; ")}", "")
+    t |> equal("macros {s.macros_equal}/{s.macros}", "macros 1/1")
+    let flagged = unit_file("pp5_flagged.c", "#ifndef KNOB\n#error KNOB missing\n#endif\n#define W(x) x\nint f(int a) \{ return W(a); \}\n")
+    let d <- compare_unit_pp5(OracleUnit(path = flagged, flags <- ["-DKNOB"]), setup.entries, setup.search)
+    t |> equal("{d.error}{d.refused}{join(d.shown, "; ")}", "")
+    t |> equal("sites {d.matched}/{d.sites}", "sites 1/1")
+}
+
+[test(description = "run.das --pp5 runs the record oracle: a unit that agrees exits 0 under the pp5 heading; a run whose every unit Dumper A refuses says it compared nothing and exits 1; the fixtures corpus holds Dumper A's macro fixture", timeout = 1200)]
+def test_run_pp5_command_line(t : T?) {
+    var argv <- daslang_cmd(["dasCRuntime", "c_runtime", "fetch/dasFlex"])
+    argv |> push_from(["compare/pp/run.das", "--", "--pp5", "compare/pp/fixtures/pp5/copies.c"])
+    var out : string
+    let rc = run_and_capture(argv, out, 600.0)
+    t |> equal(rc, 0, out)
+    t |> success(find(out, "units (pp5): 1 units, 0 refused by Dumper A, 0 errors, 0 differ; sites 3/3") >= 0, out)
+    var refused <- daslang_cmd(["dasCRuntime", "c_runtime", "fetch/dasFlex"])
+    refused |> push_from(["compare/pp/run.das", "--", "--pp5", unit_file("pp5_refused.c", "int f( \{\n")])
+    let rc_refused = run_and_capture(refused, out, 600.0)
+    t |> equal(rc_refused, 1, out)
+    t |> success(find(out, "1 units, 1 refused by Dumper A") >= 0 && find(out, "total (pp5): nothing compared") >= 0, out)
+    var error : string
+    let fixtures <- pp5_corpus_units(getcwd(), "fixtures", error)
+    t |> equal(error, "")
+    t |> success(has_value([for (u in fixtures); base_name(u)], "p9_fn_macros.c"), "{length(fixtures)} fixture units")
+}
+
+// the stray copies among the copies the handed-out token is in
+def private stray_copies(var pp : Preprocessor) : int {
+    var stray = 0
+    pp_each_copy(pp, pp.tok.copy) $(call, k) {
+        stray += pp5_stray_copy(pp, call, k) ? 1 : 0
+    }
+    return stray
+}
+
+[test(description = "a stray copy is a source token outside the stretch of the argument it is a copy of: a token of the argument is none; a source token after the call carrying the argument's copy is one, after an argument a directive splits too; a token of a macro body is none")]
+def test_pp5_stray_copy(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#define W(x) x\n#define B(y) [y]\nW(a) b\nW(c\n#define N\nd) e B(f)\n")
+    var pp : Preprocessor
+    t |> success(pp_expand_start(pp, mem, "main.c", array<string>(), array<string>(), 1000000000l))
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "a")
+    t |> success(pp_is_copy_of(pp, pp.tok.copy, 0, 0))
+    t |> equal(stray_copies(pp), 0)
+    let copy_of_a = pp.tok.copy
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "b")
+    t |> equal(stray_copies(pp), 0)
+    pp.tok.copy = copy_of_a
+    t |> equal(stray_copies(pp), 1)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "c")
+    let copy_of_c = pp.tok.copy
+    t |> equal(stray_copies(pp), 0)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "d")
+    t |> equal(stray_copies(pp), 0)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "e")
+    pp.tok.copy = copy_of_c
+    t |> equal(stray_copies(pp), 1)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "[")
+    pp.tok.copy = copy_of_a
+    t |> equal(stray_copies(pp), 0)
 }
