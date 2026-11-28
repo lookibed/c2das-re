@@ -412,9 +412,10 @@ def private static_assertion(var r : CIr; var p : CParser; n : CNodeRec) : bool 
 }
 
 // typedef declaration `sym` (`name`) of pool type `t` at `at`: the name bound in its scope, so a
-// record its type reached first sees it, then its type, its entry by the name and its declaration
-def private typedef_declaration(var r : CIr; var p : CParser; sym : int; name : string; t : int; at : CirLoc) : bool {
-    c_types_bind(r, sym, t)
+// record its type reached first sees it, with what an `aligned` typedef makes of `t` (`aligns`), then
+// its type, its entry by the name and its declaration
+def private typedef_declaration(var r : CIr; var p : CParser; sym : int; name : string; t : int; aligns : int2; at : CirLoc) : bool {
+    c_types_bind(r, sym, t, aligns)
     return false if (!c_tag_complete(r, p))
     var td = CirType(k = "typedef", name = name, to = c_types_use(r, t))
     let entry = c_types_intern_typedef(r, td)
@@ -523,7 +524,9 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         return false if (t < 0)
         r.anchor_at = at
         if (typedef_decl) {
-            return false if (!typedef_declaration(r, p, sym, name, t, at))
+            // an `aligned` the builder refuses has set the unit's error, which ends it
+            let own = c_typedef_aligned(r, p, n.a, p.ast.nodes[id].d)
+            return false if (!typedef_declaration(r, p, sym, name, t, c_typedef_alignment(r, p, n.a, base, t, own), at))
             continue
         }
         return false if (!c_tag_complete(r, p))
@@ -922,8 +925,10 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
     while (id >= 0) {
         let d = p.ast.nodes[id].a
         let sym = c_declarator_name(p.ast, d)
-        let t = c_plain_attributes(r, p, p.ast.nodes[id].d) ? c_declarator_type(r, p, c_specifier_type(r, p, n.a), d, false) : -1
-        if (t < 0) {
+        let base = c_plain_attributes(r, p, p.ast.nodes[id].d) ? c_specifier_type(r, p, n.a) : -1
+        let t = base >= 0 ? c_declarator_type(r, p, base, d, false) : -1
+        let own = typedef_decl && t >= 0 ? c_typedef_aligned(r, p, n.a, p.ast.nodes[id].d) : 0
+        if (t < 0 || own < 0) {
             if (typedef_decl) {
                 r.untyped[sym] = r.err
             } else {
@@ -931,7 +936,7 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
             }
             r.err = ""
         } elif (typedef_decl) {
-            c_types_bind(r, sym, t)
+            c_types_bind(r, sym, t, c_typedef_alignment(r, p, n.a, base, t, own))
         } elif (r.pool[t].k == "func") {
             r.declared[sym] = true
             r.library_functions[sym] = int2(decl, is_def ? n.b : id)

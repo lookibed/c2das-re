@@ -174,15 +174,91 @@ def private required_align(b : CTypes; t : int) : int {
     return req
 }
 
+// whether pool type `t` is linux's x87 `long double` or an array of them, whose `long double` is
+// 16 bytes aligned to 16 in a record, where the C-IR's type and `sizeof` have 8
+def private is_x87(b : CTypes; t : int) : bool {
+    var u = b.unqualified[t]
+    while (b.pool[u].k == "array") {
+        u = b.unqualified[b.pool[u].elem]
+    }
+    return !is_msvc(b.tu.target) && b.pool[u].k == "float" && b.pool[u].spell == "long double"
+}
+
+// the bytes clang lays a member of pool type `t` out in: an x87 `long double`'s 16
+def private member_size(b : CTypes; t : int) : int64 {
+    let size = c_type_size(b, t)
+    return is_x87(b, t) && size > 0l ? size * 2l : size
+}
+
+// the alignment clang gives a member of pool type `t` below any `aligned` typedef: an x87 `long
+// double`'s 16
+def private member_align(b : CTypes; t : int) : int => is_x87(b, t) ? 16 : max(c_type_align(b, t), 1)
+
+//! The `aligned` value a typedef declaration's specifier list `specs` and its init-declarator's
+//! attribute list `attrs` give it, 0 for none; -1 with the error set for one the builder refuses.
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]
+def c_typedef_aligned(var b : CTypes; var p : CParser; specs, attrs : int) : int {
+    var packed = false
+    var aligned = 0
+    return -1 if (!c_layout_attributes(b, p, specs, packed, aligned) || !c_layout_attributes(b, p, attrs, packed, aligned))
+    return aligned
+}
+
+//! What an `aligned` typedef makes of pool type `t`, declared over specifier list `specs` of pool
+//! type `base`, with the `aligned` value `own` of a typedef declaring it (0 for none): `x` the
+//! alignment clang gives `t` (0 when no `aligned` typedef names it through arrays and typedefs:
+//! the outermost one's value, which can lower the type's), `y` the alignment of `t` below its own
+//! typedef names, by which msvc lays out a member of it.
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]
+def c_typedef_alignment(var b : CTypes; var p : CParser; specs, base, t, own : int) : int2 {
+    var named = int2(0, 0)
+    var at = specs
+    while (at >= 0) {
+        if (p.ast.nodes[at].kind == CNode.SPEC_TYPEDEF_NAME) {
+            named = typedef_name_alignment(b, p, p.ast.nodes[at].a)
+        }
+        at = p.ast.nodes[at].next
+    }
+    let ub = b.unqualified[base]
+    var elem = b.unqualified[t]
+    while (elem != ub && b.pool[elem].k == "array") {
+        elem = b.unqualified[b.pool[elem].elem]
+    }
+    // the base's `aligned` typedef reaches `t` when only arrays lie between them
+    let reaches = elem == ub && named.x > 0
+    let under = !reaches ? member_align(b, t) : b.unqualified[t] == ub ? named.y : named.x
+    return int2(own > 0 ? own : reaches ? named.x : 0, under)
+}
+
+// `c_typedef_alignment`'s answer for typedef name `sym`: its binding's, or for one a use reaches
+// before its declaration binds it, its declaration's
+def private typedef_name_alignment(var b : CTypes; var p : CParser; sym : int) : int2 {
+    return b.typedef_aligns?[sym] ?? int2(0, 0) if (key_exists(b.typedefs, sym))
+    let ahead = b.typedef_defs?[sym] ?? int2(-1, -1)
+    return int2(0, 0) if (ahead.x < 0)
+    let specs = p.ast.nodes[ahead.x].a
+    var id = p.ast.nodes[ahead.x].b
+    while (id >= 0 && p.ast.nodes[id].a != ahead.y) {
+        id = p.ast.nodes[id].next
+    }
+    let own = c_typedef_aligned(b, p, specs, id >= 0 ? p.ast.nodes[id].d : -1)
+    let base = own >= 0 ? c_specifier_type(b, p, specs) : -1
+    let t = base >= 0 ? c_declarator_type(b, p, base, ahead.y, false) : -1
+    return t < 0 ? int2(0, 0) : c_typedef_alignment(b, p, specs, base, t, own)
+}
+
 // the field and the layout member of one member of type `t`, named `name` ("" for an unnamed
 // bitfield and an anonymous member), of bit width `width` (-1 for no bitfield), declared at
-// token `tok` with the attributes `packed` and `aligned`
+// token `tok` with the attributes `packed` and `aligned`, what an `aligned` typedef makes of `t`
+// `aligns` (`c_typedef_alignment`): linux lays the member out by its alignment, msvc by the type's
+// below the typedefs and keeps it as a requirement
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]
-def private add_member(var b : CTypes; var p : CParser; t : int; name : string; width, tok : int; packed : bool; aligned : int; var dims : array<CirDim>; var fields : array<CirField>; var rec : CLayoutRecord) {
+def private add_member(var b : CTypes; var p : CParser; t : int; name : string; width, tok : int; packed : bool; aligned : int; aligns : int2; var dims : array<CirDim>; var fields : array<CirField>; var rec : CLayoutRecord) {
     c_tag_complete(b, p)
     let u = b.unqualified[t]
     let flexible = width < 0 && b.pool[u].k == "array" && b.pool[u].count < 0
-    var m = CLayoutMember(name = name, size = c_type_size(b, t), align = max(c_type_align(b, t), 1), is_bitfield = width >= 0, width = max(width, 0), is_flexible = flexible, packed = packed, aligned = aligned, required_align = required_align(b, t), at = c_where(p.unit, tok))
+    let align = aligns.x <= 0 ? member_align(b, t) : is_msvc(b.tu.target) ? aligns.y : aligns.x
+    var m = CLayoutMember(name = name, size = member_size(b, t), align = align, is_bitfield = width >= 0, width = max(width, 0), is_flexible = flexible, packed = packed, aligned = aligned, required_align = max(required_align(b, t), aligns.x), at = c_where(p.unit, tok))
     rec.members |> push(m)
     var f = CirField(name = name, t = t, is_bitfield = width >= 0, bit_w = max(width, 0))
     f.dims <- dims
@@ -211,7 +287,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
             return false
         }
         var none : array<CirDim>
-        add_member(b, p, base, "", -1, md.tok, packed, aligned, none, fields, rec)
+        add_member(b, p, base, "", -1, md.tok, packed, aligned, int2(0, 0), none, fields, rec)
         return true
     }
     var x = md.b
@@ -238,7 +314,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
         let sym = node.a >= 0 ? c_declarator_name(p.ast, node.a) : -1
         let name = sym >= 0 ? c_symbol_text(p.unit, sym) : ""
         var dims <- node.a >= 0 ? c_dims(b, p, node.a, t) : array<CirDim>()
-        add_member(b, p, t, name, width, node.tok, own_packed, own_aligned, dims, fields, rec)
+        add_member(b, p, t, name, width, node.tok, own_packed, own_aligned, c_typedef_alignment(b, p, md.a, base, t, 0), dims, fields, rec)
         x = node.next
     }
     return true

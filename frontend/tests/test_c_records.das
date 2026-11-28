@@ -170,6 +170,38 @@ def test_attributes(t : T?) {
                "struct P1 5/1 packed \{c:1@0 i:2@1\}; int:8:false:char; int:32:true:int; struct P2 32/16 packed \{c:1@0 i:2@16\}; struct P4 16/16 packed \{c:1@0\}; struct F 4/4 \{n:2@0 d:6@4\}; array:2:-1 | record 0 1:8 | record 3 1:62 | record 4 1:121 | record 5 1:169")
 }
 
+[test(description = "a linux `long double` member is 16 bytes aligned to 16, in an array, a union, a nested record and a flexible member too, while sizeof keeps the C-IR's 8; under msvc it is 8 aligned to 8")]
+def test_long_double_members(t : T?) {
+    t |> equal(cir_of("struct LD \{ char c; long double x; \}; struct LA \{ char c; long double x[2]; \}; union U \{ char c; long double x; \}; struct H \{ char c; union U u; \}; struct G \{ char c; long double fl[]; \};"),
+               "struct LD 32/16 packed \{c:1@0 x:2@16\}; int:8:false:char; float:64:long double; struct LA 48/16 packed \{c:1@0 x:4@16\}; array:2:2; union U 16/16 packed \{c:1@0 x:2@0\}; struct H 32/16 \{c:1@0 u:5@16\}; struct G 16/16 packed \{c:1@0 fl:8@16\}; array:2:-1 | record 0 1:8 | record 3 1:46 | record 5 1:86 | record 6 1:123 | record 7 1:156")
+    t |> equal(cir_of("struct LD \{ char c; long double x; \}; unsigned long n = sizeof(long double);"), "struct LD 32/16 packed \{c:1@0 x:2@16\}; int:8:false:char; float:64:long double; int:64:false:unsigned long | record 0 1:8 | n:3")
+    t |> equal(cir_of("struct LD \{ char c; long double x; \}; struct LA \{ char c; long double x[2]; \};", true), "struct LD 16/8 \{c:1@0 x:2@8\}; int:8:false:char; float:64:long double; struct LA 24/8 \{c:1@0 x:4@8\}; array:2:2 | record 0 1:8 | record 3 1:46")
+}
+
+[test(description = "an `aligned` typedef naming a member's type, through arrays and typedefs, sets the member's alignment under linux, lowering it too; under msvc the member is laid out by the type below the typedef, which it requires; a pointer to it is plain")]
+def test_aligned_typedef_members(t : T?) {
+    let decls = "typedef int aint __attribute__((aligned(16))); typedef int a1 __attribute__((aligned(1))); typedef a1 a1b; typedef int a2 __attribute__((aligned(2))); typedef a2 a2arr[2]; typedef int __attribute__((aligned(16))) a16s; "
+    let recs = "struct B \{ char c; aint x; \}; struct C \{ char c; a1 x; char d; a1b y; \}; struct D \{ char c; a2arr z; char e; a2 *p; a2 w[3]; \}; struct M \{ char c; a16s x; \};"
+    t |> equal(cir_of(decls + recs), "int:32:true:int; typedef:aint:0; typedef:a1:0; typedef:a1b:0; typedef:a2:0; array:0:2; typedef:a2arr:5; typedef:a16s:0; struct B 32/16 packed \{c:9@0 x:0@16\}; int:8:false:char; struct C 10/1 packed \{c:9@0 x:0@1 d:9@5 y:0@6\}; struct D 40/8 packed \{c:9@0 z:5@2 e:9@10 p:12@16 w:13@24\}; ptr:0; array:0:3; struct M 32/16 packed \{c:9@0 x:0@16\} | record 8 1:227 | record 10 1:257 | record 11 1:300 | record 14 1:355")
+    t |> equal(cir_of(decls + recs, true), "int:32:true:int; typedef:aint:0; typedef:a1:0; typedef:a1b:0; typedef:a2:0; array:0:2; typedef:a2arr:5; typedef:a16s:0; struct B 32/16 packed \{c:9@0 x:0@16\}; int:8:false:char; struct C 16/4 \{c:9@0 x:0@4 d:9@8 y:0@12\}; struct D 40/8 packed \{c:9@0 z:5@2 e:9@10 p:12@16 w:13@24\}; ptr:0; array:0:3; struct M 32/16 packed \{c:9@0 x:0@16\} | record 8 1:227 | record 10 1:257 | record 11 1:300 | record 14 1:355")
+}
+
+[test(description = "an `aligned` typedef's alignment follows the typedef name's scope: a block's plain typedef shadows it and the block's end restores it; one a record reaches before its declaration binds it is read from its declaration")]
+def test_aligned_typedef_scope(t : T?) {
+    t |> equal(cir_of("typedef int T __attribute__((aligned(16))); void f(void) \{ typedef int T; struct S \{ char c; T x; \} s; \} struct R \{ char c; T x; \} r;"), "int:32:true:int; typedef:T:0; void; func:2::false; struct S 8/4 \{c:5@0 x:0@4\}; int:8:false:char; struct R 32/16 packed \{c:5@0 x:0@16\} | record 4 1:82 | s:4 | record 6 1:113 | r:6")
+    t |> equal(cir_of("typedef int T; void f(void) \{ typedef int T __attribute__((aligned(8))); struct S \{ char c; T x; \} s; \} struct R \{ char c; T x; \} r;"), "int:32:true:int; typedef:T:0; void; func:2::false; struct S 16/8 packed \{c:5@0 x:0@8\}; int:8:false:char; struct R 8/4 \{c:5@0 x:0@4\} | record 4 1:81 | s:4 | record 6 1:112 | r:6")
+    t |> equal(cir_of("typedef struct P P; typedef int ai __attribute__((aligned(8))); struct P \{ char c; ai b; \};"), "struct P 16/8 packed \{c:1@0 b:2@8\}; int:8:false:char; int:32:true:int; typedef:P:0; typedef:ai:2 | record 0 1:72")
+    t |> equal(cir_of("typedef int T; int f(void)\{ typedef int T __attribute__((aligned(8))); struct S *p = 0; struct Q \{ char c; T x; \} q; return p == 0; \} struct S \{ char c; T x; \}; struct S gs;"), "int:32:true:int; typedef:T:0; func:0::false; struct S 8/4 \{c:4@0 x:0@4\}; int:8:false:char; ptr:3; struct Q 16/8 packed \{c:4@0 x:0@8\} | record 6 1:96 | p:5=NullToPointer<5>(0<0>) | q:6 | eq<0>(LValueToRValue<5>(p), NullToPointer<5>(0<0>)) | record 3 1:142 | gs:3")
+    t |> equal(cir_of("typedef int T; int f(void)\{ typedef int T __attribute__((aligned(8))); struct S *p = 0; return p == 0; \} struct S \{ char c; T x; \}; struct S gs;"), "int:32:true:int; typedef:T:0; func:0::false; struct S 8/4 \{c:4@0 x:0@4\}; int:8:false:char; ptr:3 | p:5=NullToPointer<5>(0<0>) | eq<0>(LValueToRValue<5>(p), NullToPointer<5>(0<0>)) | record 3 1:113 | gs:3")
+}
+
+[test(description = "an own header's `aligned` typedef reaches a member of the unit; one whose `aligned` is no integer literal is a typedef the builder does not type")]
+def test_library_aligned_typedef(t : T?) {
+    let lib = "# 1 \"/lib/a.h\" 1\ntypedef int la __attribute__((aligned(8)));\ntypedef int lb __attribute__((aligned(sizeof(int))));\n# 2 \"t.c\" 2\n"
+    t |> equal(cir_of(lib + "struct S \{ char c; la x; \};\n", false, "/lib/"), "struct S 16/8 packed \{c:1@0 x:2@8\}; int:8:false:char; int:32:true:int | record 0 2:8")
+    t |> equal(cir_of(lib + "struct S \{ char c; lb x; \};\n", false, "/lib/"), "error: t.c:2:20: the typedef name 'lb' is not typed yet: /lib/a.h:2:31: an `aligned` attribute of other than an integer literal is not typed yet")
+}
+
 [test(description = "a tag defined again in another scope takes the first free numbered name, the first definition keeping the tag")]
 def test_tag_renamed(t : T?) {
     t |> equal(cir_of("int f(void) \{ union D \{ double d; \} a; return 0; \} int g(void) \{ union D \{ long u; \} b; return 0; \}"), "int:32:true:int; func:0::false; union D 8/8 \{d:3@0\}; float:64:double; union D1 8/8 \{u:5@0\}; int:64:true:long | record 2 1:21 | a:2 | 0<0> | record 4 1:72 | b:4 | 0<0>")
@@ -218,6 +250,7 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("struct S \{ int a; \}; struct S a[] = \{ 1, 2 \};"), "error: t.c:1:39: an unsized array of records initialized with elided braces is not typed yet")
     t |> equal(cir_of("int n; struct S \{ int f : n; \};"), "error: t.c:1:27: a bit-field width other than an integer constant from 0 to 64 is not typed yet")
     t |> equal(cir_of("struct S \{ int a; \} __attribute__((aligned(sizeof(int))));"), "error: t.c:1:36: an `aligned` attribute of other than an integer literal is not typed yet")
+    t |> equal(cir_of("typedef int T __attribute__((aligned(sizeof(int))));"), "error: t.c:1:30: an `aligned` attribute of other than an integer literal is not typed yet")
     t |> equal(cir_of("enum E \{ A \} __attribute__((packed));"), "error: t.c:1:1: a packed or aligned enum is not typed yet")
     t |> equal(cir_of("int n; enum E \{ A = n \};"), "error: t.c:1:21: an enumerator value other than an integer constant expression is not typed yet")
     t |> equal(cir_of("enum E \{ A = -1, B = 0x80000000u \};"), "error: t.c:1:1: an enum whose values no 32-bit type holds is not typed yet")

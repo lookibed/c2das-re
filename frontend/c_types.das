@@ -43,7 +43,8 @@ struct CTypes {
     unqualified : array<int>        //!< per pool type, the pool type without its own qualifiers
     typedefs : table<int; int>      //!< a typedef name's symbol to the pool type it names
     untyped : table<int; string>    //!< a library typedef name the builder does not type, and why
-    undo : array<tuple<sym : int; was : int>>   //!< the bindings a block's end restores
+    typedef_aligns : table<int; int2>   //!< a typedef name whose type an `aligned` typedef names to `c_typedef_alignment`'s answer for it
+    undo : array<tuple<sym : int; was : int; was_aligns : int2>>   //!< the bindings a block's end restores
     marks : array<int>
     declared : table<int; bool>     //!< the function names declared so far
     library_dir : string            //!< the own libc headers' folder, whose declarations add no type
@@ -106,6 +107,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.quals |> clear()
     b.unqualified |> clear()
     b.typedefs |> clear()
+    b.typedef_aligns |> clear()
     b.untyped |> clear()
     b.undo |> clear()
     b.marks |> clear()
@@ -803,10 +805,21 @@ def c_type_name_type(var b : CTypes; var p : CParser; t : int) : int {
     return typed
 }
 
-//! Bind typedef name `sym` to pool type `t` in the innermost scope.
-def c_types_bind(var b : CTypes; sym, t : int) {
-    b.undo |> push((sym = sym, was = b.typedefs?[sym] ?? -1))
+//! Bind typedef name `sym` to pool type `t` in the innermost scope, with what an `aligned` typedef
+//! makes of `t` (`c_typedef_alignment`; `x` 0 for none).
+def c_types_bind(var b : CTypes; sym, t : int; aligns : int2 = int2(0, 0)) {
+    b.undo |> push((sym = sym, was = b.typedefs?[sym] ?? -1, was_aligns = b.typedef_aligns?[sym] ?? int2(0, 0)))
     b.typedefs[sym] = t
+    set_aligns(b, sym, aligns)
+}
+
+// typedef name `sym`'s `c_typedef_alignment` answer set to `aligns`, none when its `x` is 0
+def private set_aligns(var b : CTypes; sym : int; aligns : int2) {
+    if (aligns.x > 0) {
+        b.typedef_aligns[sym] = aligns
+    } else {
+        b.typedef_aligns |> erase(sym)
+    }
 }
 
 //! Open a scope of typedef names.
@@ -842,6 +855,7 @@ def c_types_scope_close(var b : CTypes) {
         } else {
             b.typedefs[entry.sym] = entry.was
         }
+        set_aligns(b, entry.sym, entry.was_aligns)
         at--
     }
     b.undo |> resize(mark)
@@ -865,6 +879,7 @@ def c_types_scope_close(var b : CTypes) {
 //! file-scope definition a use in a block reached is built in the scope of its definition.
 def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
     var typedefs_now, tags_now : table<int; int>
+    var aligns_now : table<int; int2>
     var ids_now : table<int; CId>
     var ids_had : table<int; bool>
     if (!empty(b.marks)) {
@@ -873,12 +888,14 @@ def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
             let entry = b.undo[at]
             if (!key_exists(typedefs_now, entry.sym)) {
                 typedefs_now[entry.sym] = b.typedefs?[entry.sym] ?? -1
+                aligns_now[entry.sym] = b.typedef_aligns?[entry.sym] ?? int2(0, 0)
             }
             if (entry.was < 0) {
                 b.typedefs |> erase(entry.sym)
             } else {
                 b.typedefs[entry.sym] = entry.was
             }
+            set_aligns(b, entry.sym, entry.was_aligns)
             at--
         }
     }
@@ -920,6 +937,7 @@ def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
         } else {
             b.typedefs[sym] = t
         }
+        set_aligns(b, sym, aligns_now?[sym] ?? int2(0, 0))
     }
     for (sym, t in keys(tags_now), values(tags_now)) {
         if (t < 0) {

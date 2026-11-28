@@ -70,7 +70,14 @@ no tag, and any other declaration that declares no member is refused. An array o
 a flexible member. Each member is described to the layout by its type's size and alignment, its
 bit width, its own `packed` and `aligned`, and under msvc the layout requirement of a record it
 holds (through arrays); the layout refuses what it does not lay out, a member of incomplete type
-among them.
+among them. Under linux a `long double` there is 16 bytes aligned to 16, in an array too, while the
+C-IR's type and `sizeof` keep Dumper A's 8. A typedef's `aligned` (in its specifiers or after its
+declarator, bound with the name in its scope) sets the alignment of the types it names through
+arrays and later typedefs, lowering it too, the outermost such typedef's value winning
+(`c_typedef_alignment`): linux lays the member out by it, msvc by the alignment of the type below
+the member's typedef names, and requires it (`ARCHITECTURE_LAYOUT_MSVC.md`). A pointer to such a
+type is plain. An own header's typedef whose `aligned` the builder refuses is a typedef it does not
+type.
 
 ## 64. Layout attributes {#c-records-attributes}
 
