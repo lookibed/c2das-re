@@ -280,6 +280,8 @@ def test_invalid_c(t : T?) {
     t |> equal(ir_of("void g(int *p, long *q) \{ p - q; \}"), "error: t.c:1:27: a difference of pointers to incompatible types is invalid C, which clang rejects")
     t |> equal(ir_of("void f(void); void g(void) \{ f(1); \}"), "error: t.c:1:30: a call with 1 arguments of a function whose prototype has 0 is invalid C, which clang rejects")
     t |> equal(ir_of("void f(double); void g(void) \{ f(); \}"), "error: t.c:1:32: a call with 0 arguments of a function whose prototype has 1 is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(int (*fp)(double)) \{ fp(); \}"), "error: t.c:1:29: a call with 0 arguments of a function whose prototype has 1 is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(int (*fp)(double)) \{ fp(1, 2); \}"), "error: t.c:1:29: a call with 2 arguments of a function whose prototype has 1 is invalid C, which clang rejects")
     t |> equal(ir_of("int pr(const char *, ...); void g(void) \{ pr(); \}"), "error: t.c:1:43: a call with 0 arguments of a function whose prototype has 1 is invalid C, which clang rejects")
     t |> equal(ir_of("int h(); void g(void) \{ h(1, 2); \}"), "expr call<int>(FunctionToPointerDecay<func*>(h); 1<int>, 2<int>)")
     t |> equal(ir_of("void g(void) \{ _Static_assert(0, \"bad\"); \}"), "error: t.c:1:16: a _Static_assert whose condition is 0 is invalid C, which clang rejects")

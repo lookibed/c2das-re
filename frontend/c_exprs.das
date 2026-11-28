@@ -842,12 +842,14 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : 
     var old_style = -1
     var proto = true
     var builtin = -1
+    var named_function = false
     if (fn.e == "ref" && fn.name != "") {
         let sym = c_symbol(p.unit, fn.name)
         let id = r.ids?[sym] ?? CId(t = -1, old_style = -1)
         old_style = id.old_style
         proto = id.proto
         builtin = id.builtin ? id.t : -1
+        named_function = id.is_function || id.builtin
     }
     var callee = builtin >= 0 ? cast_node(fn, c_pointer(r.b, builtin), "FunctionToPointerDecay") : c_rvalue(r, fn)
     let target = is_ptr(r, callee.t) ? r.b.pool[callee.t].to : -1
@@ -858,9 +860,10 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : 
     let shape = old_style >= 0 ? old_style : unq(r, target)
     let params := r.b.pool[shape].params
     let typed = old_style >= 0 || proto || !empty(params) || r.b.pool[shape].variadic
-    // a prototype fixes the count of arguments: a call to a declared one, or through a type with
-    // parameters (a type of no parameter may be `()`, which fixes none)
-    let fixed = old_style < 0 && (fn.e == "ref" && fn.name != "" ? proto : !empty(params) || r.b.pool[shape].variadic)
+    // a prototype fixes the count of arguments: a call to a declared function with one, or through
+    // a type with parameters - a pointer variable's (a type of no parameter may be `()`, which
+    // fixes none)
+    let fixed = old_style < 0 && (named_function ? proto : !empty(params) || r.b.pool[shape].variadic)
     var given = 0
     var counted = n_args
     while (counted >= 0) {
