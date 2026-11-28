@@ -158,9 +158,9 @@ kinds as above, `ToVoid`, `NullToPointer` for a null pointer constant integer to
 ## 43. Literals {#c-exprs-literals}
 
 An integer literal takes the first type of its list that holds its value (6.4.4.1): decimal with no
-suffix `int`, `long`, `long long`; octal or hex with no suffix the signed and unsigned types of each
-rank in turn; `u`, `l`, `ll` and their combinations their own lists; the widths the dialect's. Its
-`v` is the decimal value. Under msvc an `ll` literal without `u` past `long long` is a `long long`
+suffix `int`, `long`, `long long`; octal, hex or GNU binary (`0b`, read in base 2) with no suffix
+the signed and unsigned types of each rank in turn; `u`, `l`, `ll` and their combinations their own
+lists; the widths the dialect's. Its `v` is the decimal value. Under msvc an `ll` literal without `u` past `long long` is a `long long`
 of the wrapped value, as clang's MSVC compatibility types it (`0xc000000080000000LL` is
 -4611686016279904256). A character constant is an `int` of the one byte it holds, read as plain
 `char` (unsigned under both dialects); with `L` the dialect's `wchar_t` (`int`, msvc's

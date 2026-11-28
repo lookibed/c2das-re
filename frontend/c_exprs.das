@@ -582,12 +582,13 @@ def private int_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
     }
     let digits = slice(spelled, 0, end)
     let hex = starts_with(digits, "0x")
-    let base = hex ? 16ul : starts_with(digits, "0") && length(digits) > 1 ? 8ul : 10ul
+    let binary = starts_with(digits, "0b")
+    let base = hex ? 16ul : binary ? 2ul : starts_with(digits, "0") && length(digits) > 1 ? 8ul : 10ul
     var value = 0ul
     var ok = true
-    for (ch in hex ? slice(digits, 2) : digits) {
+    for (ch in hex || binary ? slice(digits, 2) : digits) {
         let d = is_number(ch) ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : 99
-        ok &&= uint64(d) < base && value <= (0xFFFFFFFFFFFFFFFFul - uint64(d)) / base
+        ok &&= value <= (0xFFFFFFFFFFFFFFFFul - uint64(d)) / base
         value = value * base + uint64(d)
     }
     let decimal = base == 10ul

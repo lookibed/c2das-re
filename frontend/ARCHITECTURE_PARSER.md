@@ -68,9 +68,9 @@ until the record layout reads `pp.packs`; `#pragma GCC error "<text>"` is the er
 
 The first error ends the read, `file:line:col: what` in `unit.err`: a token's, a pragma's, the
 preprocessor's (`pp.diags`, a warning being none) or the lexer's (`pp.lx.diags`, placed in its own
-file by that file's `#line` state, else its path). Of those one read meets the first in reading
-order wins: in one file the earlier place, an unterminated call or conditional (placed at its start)
-counted at the file's end; across files the one recorded first.
+file by that file's `#line` state, else its path). The first in reading order wins: in one file
+the earlier place, an unterminated call or conditional (placed at its start) at the file's end;
+across files the one the `#include` lines that entered them (`pp.inclusions`) reach first.
 
 ## 15. The tree {#c-ast}
 

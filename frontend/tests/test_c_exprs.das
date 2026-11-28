@@ -605,3 +605,14 @@ def test_linkage_clash(t : T?) {
     t |> equal(ir_of("static int k = 1; extern int k; static int f(void); int f(void) \{ return k; \}", false, "u.c", true),
                "u__k=1<int> ; u__f() ; u__f() ; return LValueToRValue<int>(u__k)")
 }
+
+[test(description = "a GNU binary literal is read in base 2 and typed as a hexadecimal or octal one is, past `int` into `unsigned int`; its suffixes as any literal's")]
+def test_binary_literals(t : T?) {
+    t |> equal(ir_of("int x = 0b11; int y = 0B101; unsigned long z = 0b1ul; long long w = 0b11LL;"), "x=3<int> ; y=5<int> ; z=1<unsigned long> ; w=3<long long>")
+    t |> equal(ir_of("void g(void) \{ 0b10000000000000000000000000000000; 0b0; \}"), "expr 2147483648<unsigned int> ; expr 0<int>")
+    // a digit its base lacks never reaches the literal's value: the token reader refuses the number,
+    // on the -E path and the raw-C path alike, as clang does
+    for (bad in ["09", "08u", "0b12", "0b2", "0x1g"]) {
+        t |> equal(ir_of("int x = {bad};"), "parse error: t.c:1:9: invalid numeric constant '{bad}'", bad)
+    }
+}
