@@ -205,7 +205,7 @@ def test_line(t : T?) {
     t |> equal(join(placed, " "), "a:main.c:1/1 b:main.c:100/3 c:main.c:102/5 d:other.c:7/7 e:marked.c:40/9 h:h.h:1/1 f:marked.c:42/11")
     var bad <- started([("main.c", "#line 0x10\n#line 4294967296\n#line 5 L\"w\"\n#line\n#line 9 \"n\" z\n#line N\n# 4294967296 \"m\"\ny\n")])
     t |> equal(stream(bad), "y")
-    t |> equal(diagnostics(bad), "E 1:7 #line directive requires a simple digit sequence | E 2:7 #line directive requires a positive integer argument | E 3:9 invalid filename for #line directive | E 4:2 #line directive requires a positive integer argument | W 5:13 extra tokens at end of #line directive | E 6:2 #line of macro-expanded tokens needs PP.3: N | E 7:3 line marker directive requires a positive integer argument")
+    t |> equal(diagnostics(bad), "E 1:7 #line directive requires a simple digit sequence | E 2:7 #line directive requires a positive integer argument | E 3:9 invalid filename for #line directive | E 4:2 #line directive requires a positive integer argument | W 5:13 extra tokens at end of #line directive | E 6:7 #line directive requires a positive integer argument | E 7:3 line marker directive requires a positive integer argument")
     t |> equal(pp.diags |> length, 0)
 }
 
@@ -266,6 +266,34 @@ def test_if_hook(t : T?) {
     var pp <- started([("main.c", "#if X > 1\nno\n#elif 2 * 3 == 6\nyes\n#endif\n#if\n#endif\n")])
     t |> equal(stream(pp), "yes")
     t |> equal(diagnostics(pp), "E 6:2 expected value in expression")
+}
+
+[test(description = "a line marker and a #line read allocate nothing once their names are known: no string and no heap block per marker, a file name stored once")]
+def test_line_markers_allocate_nothing(t : T?) {
+    let markers = "# 5 \"a.c\"\nx\n# 7 \"b\\\\c.h\" 1\ny\n#line 9\nz\n# 3 \"a.c\" 2\nw\n#line 11 \"a.c\"\nv\n"
+    var pp <- started([("main.c", "first\n" + repeat(markers, 500))])
+    for (_ in range(6)) {
+        t |> success(pp_next_token(pp))
+    }
+    let strings = int(string_heap_allocation_count())
+    let heap = int(heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    let strings_used = int(string_heap_allocation_count()) - strings
+    let heap_used = int(heap_allocation_count()) - heap
+    t |> equal(count, 2495)
+    t |> equal(diagnostics(pp), "")
+    t |> equal("{strings_used} strings, {heap_used} heap blocks", "0 strings, 0 heap blocks")
+    t |> equal(join([for (n in pp.names); n], " "), "main.c <built-in> a.c b\\c.h")
+}
+
+[test(description = "with no expansion set, an #if, #elif or #line naming a macro outside defined's operand records the tokens handed out before it")]
+def test_unexpanded_lines(t : T?) {
+    var pp <- started([("main.c", "#define N 1\na\n#if defined N || defined(N)\nb\n#endif\n#if N\n#elif N\n#endif\nc\n#line N\nd\n")])
+    t |> equal(stream(pp), "a b c d")
+    t |> equal(join([for (p in pp.unexpanded); "{p}"], " "), "2 2 3")
 }
 
 [test(description = "#ifdef sees the predefined-macro table of the linux dialect, defined before the first line")]

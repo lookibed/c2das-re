@@ -370,6 +370,8 @@ struct Preprocessor {
     expansion : PpExpansion?            //!< the macro expansion `pp_next_token` hands out through; none: the directive layer's tokens
     buffer_data : array<uint8?>         //!< per buffer id, the first byte of a file's working buffer, valid for the unit's life
     closed : array<array<uint8>>        //!< the working buffers of the closed files, kept so their spellings outlive them
+    name_scratch : array<uint8>         //!< a `#line` name unescaped, zero-ended, looked up in place
+    unexpanded : array<int>             //!< with no expansion set: the tokens handed out before each `#if`, `#elif` or `#line` line that names a macro, which only PP.3 reads as clang does
     eval : PpEval                       //!< the `#if` evaluator: its line, target, feature table (the caller's to set) and last diagnostics
 }
 
@@ -694,6 +696,27 @@ def private if_guard_sym(pp : Preprocessor) : int {
     return -1
 }
 
+//! whether the condition in `pp.line` names a macro outside `defined`'s operand: with no expansion
+//! set it reads as 0, where clang reads the macro's value
+def private line_names_macro(pp : Preprocessor) : bool {
+    var operand = 0
+    for (h in pp.line) {
+        if (operand == 1 && h.kind == int(PpTok.LPAREN)) {
+            operand = 2
+            continue
+        }
+        let is_operand = operand > 0 && h.kind == int(PpTok.IDENTIFIER)
+        operand = 0
+        continue if (is_operand)
+        if (h.sym == pp.sym_defined) {
+            operand = 1
+        } elif (h.kind == int(PpTok.IDENTIFIER) && pp_defined(pp, h.sym)) {
+            return true
+        }
+    }
+    return false
+}
+
 //! Whether `sym` is defined: a macro, or a builtin name of the expansion (`__FILE__`, the `__has_*`
 //! family) that no `#undef` removed, as `defined` and `#ifdef` answer in clang.
 def pp_is_defined(var pp : Preprocessor; sym : int) : bool => pp_defined(pp, sym) || (pp.expansion != null && pp.expansion->is_builtin(pp, sym))
@@ -745,6 +768,9 @@ def private include_answer(var pp : Preprocessor; first, last : int; next, embed
 //! `pp.diags` at their tokens.
 [arch(at="ARCHITECTURE_PP.md#pp-if-hook")]
 def private eval_condition(var pp : Preprocessor; at : PpToken) : int {
+    if (pp.expansion == null && line_names_macro(pp)) {
+        pp.unexpanded |> push(pp.emitted)
+    }
     pp.eval.toks |> clear()
     pp.eval.toks |> reserve(length(pp.line))
     for (h in pp.line) {
@@ -1232,17 +1258,24 @@ def private include_expanded(var pp : Preprocessor; at : PpToken; d : PpDirectiv
 
 // #line
 
-//! the digits of a `#line` number as a value, -1 when it is no simple digit sequence, -2 when
-//! it is past 4294967295, clang's unsigned line
-def private line_number(text : string) : int64 {
+//! the digits `text[at .. at+len)` of a `#line` number as a value, read in place: -1 when they are no
+//! simple digit sequence, -2 when the value is past 4294967295, clang's unsigned line
+def private line_number(text : array<uint8>; at, len : int) : int64 {
     var value = 0l
-    for (c in text) {
+    for (i in range(at, at + len)) {
+        let c = int(text[i])
         return -1l if (!is_number(c))
         value = value * 10l + int64(c - '0')
         return -2l if (value > 4294967295l)
     }
-    return empty(text) ? -1l : value
+    return len == 0 ? -1l : value
 }
+
+//! the number the lexer's current token spells, as `line_number` reads it
+def private current_number(pp : Preprocessor) : int64 => line_number(pp.lx.flex.bytes, pp.lx.flex.tok.start, pp.lx.flex.tok.len)
+
+//! the number a held token of `pp.line` spells, as `line_number` reads it
+def private held_number(pp : Preprocessor; i : int) : int64 => line_number(pp.line_text, pp.line[i].at, pp.line[i].len)
 
 //! clang's error for a `#line` number of token kind `kind` that `line_number` read as `number`: no
 //! number at all or one past 4294967295 asks for a positive integer, any other a simple digit sequence
@@ -1251,19 +1284,30 @@ def private line_number_error(what : string; kind : int; number : int64) : strin
                                                          : "{what} directive requires a simple digit sequence")
 }
 
-//! the file name of a `#line` string literal: its quotes off, `\\` and `\"` read as one character
-def private line_file_name(spelled : string) : string {
-    return build_string() $(var out) {
-        var escaped = false
-        for (c in slice(spelled, 1, length(spelled) - 1)) {
-            if (c == '\\' && !escaped) {
-                escaped = true
-                continue
-            }
-            escaped = false
-            out |> write_char(c)
+//! the file name of the `#line` string literal `text[at .. at+len)`, its quotes off and `\\` and `\"`
+//! read as one character each, into `scratch` with a zero after it
+def private unescape_line_name(var scratch : array<uint8>; text : array<uint8>; at, len : int) {
+    scratch |> clear()
+    var escaped = false
+    for (i in range(at + 1, at + len - 1)) {
+        let c = text[i]
+        if (c == '\\'u8 && !escaped) {
+            escaped = true
+            continue
         }
+        escaped = false
+        scratch |> push(c)
     }
+    scratch |> push(0u8)
+}
+
+//! the presumed name `pp.name_scratch` holds (`unescape_line_name`), an index of `pp.names`: looked
+//! up in place, a string made only for a name the unit has not reported before
+def private scratch_name_id(var pp : Preprocessor) : int {
+    let view = unsafe(reinterpret<string>(unsafe(addr(pp.name_scratch[0]))))
+    let known = pp.name_of?[view] ?? -1
+    return known if (known >= 0)
+    return name_id(pp, clone_string(view))
 }
 
 //! `#line N "name"`, and the line marker `# N "name" flags...` (`marker`, the number already read):
@@ -1275,17 +1319,16 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
         diagnose_at(pp, PpSeverity.error, at, "#line directive requires a positive integer argument")
         return
     }
-    if (pp.lx.tok.kind == int(PpTok.IDENTIFIER)) {
+    if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && pp.expansion == null && pp_defined(pp, pp.lx.tok.sym)) {
+        pp.unexpanded |> push(pp.emitted)
+    }
+    if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && pp.expansion != null) {
         read_line(pp, true)
-        if (pp.expansion != null) {
-            pp.expansion->expand_line(pp, false)
-            line_expanded(pp, at)
-            return
-        }
-        diagnose_at(pp, PpSeverity.error, at, "#line of macro-expanded tokens needs PP.3: {held_text(pp.line, pp.line_text)}")
+        pp.expansion->expand_line(pp, false)
+        line_expanded(pp, at)
         return
     }
-    let number = line_number(pp_spelling(pp.lx))
+    let number = current_number(pp)
     if (pp.lx.tok.kind != int(PpTok.PP_NUMBER) || number < 0l) {
         diagnose(pp, PpSeverity.error, line_number_error(what, pp.lx.tok.kind, number))
         skip_rest(pp)
@@ -1293,13 +1336,15 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
     }
     var name = -1
     if (next_on_line(pp)) {
-        let spelled = pp_spelling(pp.lx)
-        if (pp.lx.tok.kind != int(PpTok.STRING_LITERAL) || first_character(spelled) != '"') {
+        let start = pp.lx.flex.tok.start
+        let len = pp.lx.flex.tok.len
+        if (pp.lx.tok.kind != int(PpTok.STRING_LITERAL) || pp.lx.flex.bytes[start] != '"'u8) {
             diagnose(pp, PpSeverity.error, "invalid filename for {what} directive")
             skip_rest(pp)
             return
         }
-        name = name_id(pp, line_file_name(spelled))
+        unescape_line_name(pp.name_scratch, pp.lx.flex.bytes, start, len)
+        name = scratch_name_id(pp)
         if (marker) {
             return if (!marker_flags(pp))
         } else {
@@ -1330,25 +1375,25 @@ def private marker_flags(var pp : Preprocessor) : bool {
     return true
 }
 
-def private current_is_number(pp : Preprocessor; digits : string) : bool => pp.lx.tok.kind == int(PpTok.PP_NUMBER) && pp_spelling(pp.lx) == digits
+def private current_is_number(pp : Preprocessor; digits : string) : bool => pp.lx.tok.kind == int(PpTok.PP_NUMBER) && pp_spelling_is(pp.lx, digits)
 
 //! `#line` of the macro-expanded tokens in `pp.line`: a number, then a file name or nothing
 [arch(at="ARCHITECTURE_PP.md#pp-line")]
 def private line_expanded(var pp : Preprocessor; at : PpToken) {
     let n = length(pp.line)
-    let number = n >= 1 ? line_number(held_spelling(pp.line[0], pp.line_text)) : -1l
+    let number = n >= 1 ? held_number(pp, 0) : -1l
     if (n == 0 || pp.line[0].kind != int(PpTok.PP_NUMBER) || number < 0l) {
         diagnose_at(pp, PpSeverity.error, at, line_number_error("#line", n == 0 ? int(PpTok.EOF) : pp.line[0].kind, number))
         return
     }
     var name = -1
     if (n >= 2) {
-        let spelled = held_spelling(pp.line[1], pp.line_text)
-        if (pp.line[1].kind != int(PpTok.STRING_LITERAL) || first_character(spelled) != '"') {
+        if (pp.line[1].kind != int(PpTok.STRING_LITERAL) || pp.line_text[pp.line[1].at] != '"'u8) {
             diagnose_at(pp, PpSeverity.error, at, "invalid filename for #line directive")
             return
         }
-        name = name_id(pp, line_file_name(spelled))
+        unescape_line_name(pp.name_scratch, pp.line_text, pp.line[1].at, pp.line[1].len)
+        name = scratch_name_id(pp)
         if (n > 2) {
             diagnose_at(pp, PpSeverity.warning, at, "extra tokens at end of #line directive")
         }
@@ -1388,7 +1433,7 @@ def private read_pack(var pp : Preprocessor; at : PpToken) : bool {
     var i = 2
     if (line_is(pp, i, PpTok.PP_NUMBER)) {
         entry.action = PpPackAction.set
-        entry.value = int(line_number(held_spelling(pp.line[i], pp.line_text)))
+        entry.value = int(held_number(pp, i))
         i++
     } elif (line_is(pp, i, PpTok.IDENTIFIER)) {
         let sym = pp.line[i].sym
@@ -1403,11 +1448,11 @@ def private read_pack(var pp : Preprocessor; at : PpToken) : bool {
                 if (line_is(pp, i, PpTok.COMMA)) {
                     i++
                     return pack_ignored(pp, i, malformed) if (!line_is(pp, i, PpTok.PP_NUMBER))
-                    entry.value = int(line_number(held_spelling(pp.line[i], pp.line_text)))
+                    entry.value = int(held_number(pp, i))
                     i++
                 }
             } elif (line_is(pp, i, PpTok.PP_NUMBER)) {
-                entry.value = int(line_number(held_spelling(pp.line[i], pp.line_text)))
+                entry.value = int(held_number(pp, i))
                 i++
             } else {
                 return pack_ignored(pp, i, malformed)

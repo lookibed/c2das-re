@@ -568,6 +568,13 @@ def test_guard_from_macro(t : T?) {
     t |> equal(expanded(main, [("g.h", header)]).out, "five ++ ;")
 }
 
+[test(description = "a #line whose number and name come from macros, a function-like one among them, is expanded first as clang does; the name's escapes are read once")]
+def test_line_operands_from_macros(t : T?) {
+    let r = expanded("#define LN(n) n\n#define NAME \"d\\\\x.c\"\n#line LN(7) NAME\n__LINE__ __FILE__\n")
+    t |> equal(r.out, "7 \"d\\\\x.c\"")
+    t |> equal(r.diags, "")
+}
+
 [test(description = "an argument in an #if line is pre-expanded before defined reads it, as clang does: F(defined X) of a defined X hands the evaluator defined 1, clang's error there")]
 def test_defined_in_argument(t : T?) {
     let r = expanded("#define X 1\n#define F(x) x\n#if F(defined X)\nyes\n#endif\nend\n")

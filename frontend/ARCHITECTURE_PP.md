@@ -109,7 +109,8 @@ as clang marks it.
 naming the header - makes the directive's tokens a line in `pp.line`, which the expansion expands
 in place (`ARCHITECTURE_EXPAND.md` section 33); `include_expanded` then reads the name from it. With
 no expansion set the inclusion is recorded with `needs_expansion` and an error names PP.3. `#line`
-whose number is a name is expanded the same way, or left with an error.
+whose number is a name is expanded the same way; with no expansion set the name is no number, clang's
+"requires a positive integer argument".
 
 Before a found file is opened, two checks skip it with no read: it said `#pragma once` and was
 entered before, or its include guard (section 9) is a defined macro. Each `#include` of an active
@@ -159,7 +160,9 @@ hands the line to the evaluator of `ARCHITECTURE_EVAL.md` (`pp.eval`) and answer
 name built as `#include` builds it, `line_header_name`), `__has_embed` by reading the file found.
 Every condition is decided: an error the evaluator reports skips the group, as clang skips it, and
 stands in `pp.diags` at its token. With no expansion set (`pp_start` alone) a macro in the line is
-a name worth 0, the queries are answered, and no builtin name is defined. The dialect's char and
+a name worth 0, the queries are answered, and no builtin name is defined; each `#if`, `#elif` or
+`#line` line that names a macro outside `defined`'s operand records the tokens handed out before
+it (`pp.unexpanded`), the place past which PP.2 alone may read another group than clang. The dialect's char and
 `wchar_t` facts come from the predefined entries (`pp_eval_target`); the feature table is the
 caller's to load into `pp.eval.features` (`read_features`), else every feature query answers 0. An
 `#elif` whose conditional already took a group evaluates nothing, and a conditional opened in a
