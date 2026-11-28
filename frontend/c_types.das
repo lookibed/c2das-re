@@ -19,7 +19,6 @@ struct CTypes {
     index : table<string; int>      //!< a table entry's key to its index
     pool : array<CirType>           //!< every type met, referring to other pool types
     pool_index : table<string; int> //!< a pool type's key to its index
-    used : array<int>               //!< per pool type, its table index; -1 while no use reached it
     quals : array<int>              //!< per pool type, its own qualifiers (`C_CONST`, `C_VOLATILE`, `C_RESTRICT`)
     unqualified : array<int>        //!< per pool type, the pool type without its own qualifiers
     typedefs : table<int; int>      //!< a typedef name's symbol to the pool type it names
@@ -46,7 +45,6 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.index |> clear()
     b.pool |> clear()
     b.pool_index |> clear()
-    b.used |> clear()
     b.quals |> clear()
     b.unqualified |> clear()
     b.typedefs |> clear()
@@ -110,7 +108,6 @@ def private pooled(var b : CTypes; var t : CirType) : int {
     let idx = length(b.pool)
     b.pool |> emplace(t)
     b.pool_index[key] = idx
-    b.used |> push(-1)
     b.quals |> push(0)
     b.unqualified |> push(idx)
     return idx
@@ -149,7 +146,6 @@ def c_qualified(var b : CTypes; t, q : int) : int {
     var copy := b.pool[base]
     b.pool |> emplace(copy)
     b.pool_index[key] = idx
-    b.used |> push(-1)
     b.quals |> push(all)
     b.unqualified |> push(base)
     return idx
@@ -185,7 +181,6 @@ def private intern(var b : CTypes; key : string; var t : CirType) : int {
 [arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
 def c_types_use(var b : CTypes; pt : int) : int {
     return -1 if (pt < 0)
-    return b.used[pt] if (b.used[pt] >= 0)
     var t := b.pool[pt]
     if (t.k == "ptr") {
         t.to = c_types_use(b, t.to)
@@ -200,7 +195,6 @@ def c_types_use(var b : CTypes; pt : int) : int {
     let key = c_type_key(t)
     t.name = ""
     let idx = intern(b, key, t)
-    b.used[pt] = idx
     return idx
 }
 
@@ -292,11 +286,11 @@ def private builtin_type(var b : CTypes; set : int) : int {
         }
         let target = b.tu.target
         let w = entry.w == -1 ? target.int_w : entry.w == -2 ? target.long_w : entry.w == -3 ? target.llong_w : entry.w == -4 ? 8 : entry.w
-        let sign = entry.w == -4 ? target.char_signed : entry.sign && !has_unsigned
+        let sign = entry.w != -4 && entry.sign && !has_unsigned
         let spell = has_unsigned && entry.w != 8 && entry.w != -4 ? "unsigned {entry.spell}" : entry.spell
         return int_type(b, w, sign, spell)
     }
-    return -1
+    panic("a builtin specifier set the parser admits has no type")
 }
 
 // the attribute words that change the type they stand on
@@ -366,11 +360,7 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
         at = n.next
     }
     return -1 if (!c_plain_attributes(b, p, specs))
-    let t = named >= 0 ? named : builtin_type(b, set)
-    if (t < 0) {
-        refuse(b, p, p.ast.nodes[specs].tok, "this specifier list")
-    }
-    return c_qualified(b, t, qualifiers_of(p, specs))
+    return c_qualified(b, named >= 0 ? named : builtin_type(b, set), qualifiers_of(p, specs))
 }
 
 // false with the error set when list `at` holds `_Atomic`
@@ -756,8 +746,9 @@ def c_has_prototype(p : CParser; f : int) : bool => f >= 0 && (p.ast.nodes[f].b 
 
 //! The pool type a declaration of `sym` with pool type `t` (function declarator `f`, -1 for none)
 //! has after the declarations of the name before it (C11 6.2.7p4, the composite type): a function
-//! declared with no prototype keeps the earlier prototype, an array of unknown size the earlier
-//! size; any other pair of different types is refused at token `tok`, as its composite waits for
+//! declared with no prototype keeps the earlier prototype, a prototype or an old-style definition
+//! after a declaration with none keeps its own type (Dumper A's), an array of unknown size the
+//! earlier size; any other pair of different types is refused at token `tok`, as its composite waits for
 //! the Aggregates phase. A function only the own headers declared before is the header's type.
 [arch(at="ARCHITECTURE_TYPES.md#c-types-redeclarations")]
 def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
@@ -768,10 +759,10 @@ def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
         let lib = b.library_functions?[sym] ?? int2(-1, -1)
         let lib_base = c_specifier_type(b, p, p.ast.nodes[lib.x].a)
         prev = c_declarator_type(b, p, lib_base, p.ast.nodes[lib.y].a, false)
-        return -1 if (prev < 0)
         prev_proto = c_has_prototype(p, c_name_function(p.ast, p.ast.nodes[lib.y].a))
     }
     let proto = c_has_prototype(p, f)
+    let old_style = f >= 0 && p.ast.nodes[f].op == 2
     var result = t
     if (prev >= 0 && b.unqualified[prev] != u) {
         assume a = b.pool[b.unqualified[prev]]
@@ -780,7 +771,7 @@ def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
         let arrays = a.k == "array" && n.k == "array" && b.unqualified[a.elem] == b.unqualified[n.elem]
         if ((functions && !proto && prev_proto) || (arrays && n.count < 0)) {
             result = prev
-        } elif (!(functions && proto && !prev_proto) && !(arrays && a.count < 0)) {
+        } elif (!(functions && (proto || old_style) && !prev_proto) && !(arrays && a.count < 0)) {
             refuse(b, p, tok, "a redeclaration of '{pp_symbol_text(p.unit.lx, sym)}' whose type differs from the earlier one's", " (its composite type waits for the Aggregates phase)")
             return -1
         }

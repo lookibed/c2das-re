@@ -585,7 +585,6 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
         let t = c_plain_attributes(r.b, p, p.ast.nodes[id].d) ? c_declarator_type(r.b, p, c_specifier_type(r.b, p, n.a), d, false) : -1
         if (t < 0) {
             if (typedef_decl) {
-                r.b.typedefs |> erase(sym)
                 r.b.untyped[sym] = r.b.err
             } else {
                 r.ids |> erase(sym)
@@ -593,7 +592,6 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
             r.b.err = ""
         } elif (typedef_decl) {
             c_types_bind(r.b, sym, t)
-            r.b.untyped |> erase(sym)
         } elif (r.b.pool[t].k == "func") {
             r.b.declared[sym] = true
             r.b.library_functions[sym] = int2(decl, is_def ? n.b : id)

@@ -778,7 +778,7 @@ def private char_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
     literal_body(slice(spelled, quote), bytes)
     if (empty(prefix) && length(bytes) == 1) {
         let b = int(bytes[0])
-        let v = r.b.tu.target.char_signed && b >= 128 ? b - 256 : b
+        let v = b
         return new CirExpr(e = "int_lit", t = int_t(r), v = "{v}", is_char = true)
     }
     let units <- wide_units(slice(spelled, quote))

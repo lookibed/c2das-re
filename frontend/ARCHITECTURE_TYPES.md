@@ -43,7 +43,7 @@ only; the table grows by uses, in the order Dumper A's walk reaches the same dec
 - an old-style definition: its type as clang gives it, `R (P...)` with each parameter's type
   promoted (C11 6.5.2.2p6: an integer type narrower than `int` and `_Bool` to `int`, `float` to
   `double`), then each parameter's adjusted type from its declaration in the list, unpromoted, in
-  the identifier list's order (`int` for a name the list does not declare); an attribute on such a
+  the identifier list's order (the parser refuses a name the list does not declare); an attribute on such a
   declaration that changes a type is refused, as anywhere.
 
 A declaration's specifiers name one type, resolved once before its declarators: a typedef name
@@ -59,7 +59,7 @@ pool type it names for its scope: a block's bindings end with the block (`for` o
 The builtin type keywords of a specifier list form a set (a second `long` its own bit), which the
 parser has already checked to combine (`ARCHITECTURE_PARSER.md` section 17). `int` and `signed`
 fold into the set they qualify; each set is one type spelled as clang spells it, every width the
-dialect's (`CirTarget`): `char` (signed as the target says: unsigned under both dialects, as Dumper
+dialect's (`CirTarget`): `char` (unsigned under both dialects, as Dumper
 A passes `-funsigned-char`), `signed char`, `unsigned char`, `short`, `unsigned short`, `int`,
 `unsigned int`, `long`, `unsigned long`, `long long`, `unsigned long long`, `_Bool` (8 bits,
 unsigned), `float`, `double`, `long double` (64 bits under both dialects), `void`. Qualifiers,
@@ -133,7 +133,8 @@ and Dumper A reads that type. The builder keeps, per name declared at file scope
 it had a prototype, and gives a redeclaration (a definition included):
 
 - of a function with no prototype (`int f();`), after one with a prototype: the earlier type;
-- of a function with a prototype, after one with none: its own type;
+- of a function with a prototype, or an old-style definition (`int f(a) int a; {...}`), after one
+  with none: its own type, as Dumper A takes the definition's;
 - of an array of unknown size, after one with a size: the earlier type; of an array with a size,
   after one of unknown size: its own;
 - of the same type: that type.

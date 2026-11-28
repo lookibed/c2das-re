@@ -3,6 +3,7 @@ options stack = 262144
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
+require daslib/fio
 require ../types/types_compare.das
 require ../../converter/cir.das
 
@@ -118,14 +119,58 @@ def private compared(name, dialect : string) : string {
     return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR and the census; an aggregate and a constant array size refused", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR and the census; an aggregate and a constant array size refused; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
             t |> equal(compared("conversions.c", dialect), "true/true/true/false")
             t |> equal(compared("redeclared.c", dialect), "true/true/true/false")
+            t |> equal(compared("walk_bodies.c", dialect), "true/true/true/false")
+            t |> equal(compared("expr_only.c", dialect), "true/true/true/false")
+            t |> equal(compared("header.c", dialect), "true/true/true/false")
             t |> equal(compared("aggregate.c", dialect), "false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
             t |> equal(compared("refused.c", dialect), "false/false/false/false builder: {FIXTURES}/refused.c:2:11: an array size other than an integer literal is not typed yet")
         }
     }
 }
+
+[test(description = "has_aggregate takes a union and an enum")]
+def test_aggregate_kinds(t : T?) {
+    t |> success(has_aggregate([CirType(k = "union", name = "U")]))
+    t |> success(has_aggregate([CirType(k = "enum", name = "E")]))
+}
+
+[test(description = "the builder's C-IR refuses a unit the parser refuses and one clang -E refuses, each naming the step", timeout = 600)]
+def test_builder_refusals(t : T?) {
+    let dir = path_join(test_temp_dir(), "edges")
+    mkdir_rec(dir)
+    let generic = path_join(dir, "generic.c")
+    fwrite(generic, "int x = _Generic(1, int: 2, default: 3);\n")
+    var error : string
+    var tu : CirTu
+    builder_tu(generic, dir, target_lp64_linux(), tu, error)
+    t |> success(starts_with(error, "parser: "), error)
+    delete_tu(tu)
+    error = ""
+    var missing : CirTu
+    builder_tu(path_join(dir, "missing.c"), dir, target_lp64_linux(), missing, error)
+    t |> success(starts_with(error, "clang -E: "), error)
+    delete_tu(missing)
+}
+
+[test(description = "run_types: a unit that agrees passes, a refused one fails, no unit fails; the c-testsuite folder missing is an error; run.das as a child prints the totals", timeout = 600)]
+def test_run_types(t : T?) {
+    let work = path_join(test_temp_dir(), "work")
+    t |> equal(run_types(TypesArgs(work = work, dialect <- ["linux"], units <- ["{FIXTURES}/conversions.c"])), 0)
+    t |> equal(run_types(TypesArgs(work = work, dialect <- ["linux"], units <- ["{FIXTURES}/refused.c"])), 1)
+    t |> equal(run_types(TypesArgs(work = work)), 1)
+    var error : string
+    let units <- c_testsuite_units(test_temp_dir(), error)
+    t |> success(ends_with(error, "is missing (fetch it with suites/c_testsuite/fetch.sh)") && empty(units), error)
+    let argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
+                 "--work", work, "--dialect", "linux", "{FIXTURES}/conversions.c"]
+    var out : string
+    t |> equal(run_and_capture(argv, out, 600.0), 0)
+    t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 with aggregates, 1 scalar-only") >= 0, out)
+}
+
