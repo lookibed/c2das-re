@@ -52,7 +52,7 @@ costliest form at the bound.** Malformed input must end, and deep input must end
 a stack overflow.
 
 **A diff to `pp_expand.das` keeps rescanning on the context model (`ARCHITECTURE_EXPAND.md`
-section 25): a macro is disabled by the context of its replacement and a name read then is
+section 30): a macro is disabled by the context of its replacement and a name read then is
 painted - never a set of macros carried on each token (a Prosser hide set).** Per-token hide
 sets differ from clang and gcc on deferred recursion and grow without bound on Boost.PP.
 

@@ -3,13 +3,13 @@
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family
 (`ARCHITECTURE_PP.md` holds sections 5 to 13).
 
-## 24. The expansion over the directive layer {#pp-expansion}
+## 29. The expansion over the directive layer {#pp-expansion}
 
 `pp_expand.das` expands the macros of C11 6.10.3 between the directive layer and its caller.
 `pp_expand_start` starts a unit as `pp_start` does and sets `pp.expansion` to a `PpExpander`, a
 class of `PpExpansion`, the directive layer's interface for it; from then on `pp_next_token`
 hands out expanded tokens, and `#include`, `#line`, `#if` and `#elif` lines are expanded before
-the directive reads them (section 28). A preprocessor started by `pp_start` alone expands nothing.
+the directive reads them (section 33). A preprocessor started by `pp_start` alone expands nothing.
 The directive layer's raw read is `pp_next_directive_token`; the expander calls it whenever its
 own contexts are empty, so a directive between the lines of a call's arguments is done when the
 arguments are read, as in clang.
@@ -24,7 +24,7 @@ the next `pp_next_token`: that read first leaves the contexts already read to th
 clears the pool when no context and no call is open, so back-to-back expansions keep it flat and a
 reader that keeps tokens copies those spellings.
 
-## 25. Rescanning: the context model {#pp-context}
+## 30. Rescanning: the context model {#pp-context}
 
 The expander keeps a stack of contexts, token lists it reads from before the source: a macro's
 replacement, a token read past and given back, an argument being expanded, a directive's line.
@@ -46,13 +46,13 @@ only when `(` comes next (`next_is_lparen` reads past exhausted contexts and giv
 token, and a `(` of the source read past a directive line, counted by `pp.directives_read`: clang's
 `-E` gives `g` then `(2)` for a directive between them); an object-like macro always does. The memory the expander holds is the open contexts and
 calls, each a token list from a pool of reused buffers, so a deep expansion keeps it flat; the
-call record (section 29) grows with the calls.
+call record (section 34) grows with the calls.
 
-The expander recurses once per argument expanded inside another (section 27), so a program that
+The expander recurses once per argument expanded inside another (section 32), so a program that
 runs it on deep macro libraries declares `options stack` of 1 MB in its main module, as the tests
 and the oracle do; daslang's default stack of 16 KB holds a few dozen nested arguments.
 
-## 26. Calls and their arguments {#pp-calls}
+## 31. Calls and their arguments {#pp-calls}
 
 The arguments of a call are read unexpanded up to the `)` that closes its `(`, split at commas
 outside parentheses, every comma after the named parameters belonging to the variadic one; a
@@ -69,13 +69,13 @@ parameters, is clang's error, and the name is handed out as itself and the call'
 dropped. A call's arguments live in an invocation slot (`PpInvocation`), one per
 nesting depth, reused.
 
-## 27. Substitution {#pp-substitute}
+## 32. Substitution {#pp-substitute}
 
 The replacement is built from the body in one pass (C11 6.10.3.1): a parameter that is an
 operand of neither `#` nor `##` is replaced by its argument fully expanded, alone, as a barrier
 context, with the called macro still enabled (it is disabled only when its replacement is
 pushed); an argument is expanded once, when first needed. An operand of `##` is the argument as
-written, and `#` stringifies it as written (section 30). `__VA_OPT__ ( ... )` in a variadic
+written, and `#` stringifies it as written (section 35). `__VA_OPT__ ( ... )` in a variadic
 macro is its content, replaced the same way, when the variadic argument expands to at least one
 token, as clang 22 decides under gnu17 (`F(EMPTY)` gives none), and it can be an operand of `#`
 and `##`. In a function-like macro that is not variadic (clang's warning at the `#define`)
@@ -91,7 +91,7 @@ next token read (`carry_bol`, `carry_space`), so `EMPTY x` at a line start leave
 it. Every token of the replacement gets the call's index and the presumed place of the outermost
 name (`pline`, `pname`), where clang's `-E` prints it.
 
-## 28. Directive lines {#pp-expand-line}
+## 33. Directive lines {#pp-expand-line}
 
 `expand_line` expands the tokens of `pp.line` in place, as a barrier context, so a call in the
 line cannot read past its end. `#include` then takes one `"..."` string literal, or the spellings
@@ -109,7 +109,7 @@ the line is done there, as clang does it, and the rest of the line read on: `#if
 takes its group; in an `#include` line it is done too and leaves nothing behind, which no header
 name can hold.
 
-## 29. The call record {#pp-record}
+## 34. The call record {#pp-record}
 
 Every expansion is a `PpCall` in `pp.expansion.calls`, in the order the calls are read: the
 macro, the name token's place, the call the name came from (`parent`, -1 for the source), the
@@ -121,10 +121,10 @@ the call whose replacement it is in; with its spelling place this tells a body t
 argument's (its place lies in the call's argument spans). This is what PP.5's expansion record
 builds on: it adds the expansion location of each token and the argument text.
 
-## 30. `#` and `##` {#pp-stringify}
+## 35. `#` and `##` {#pp-stringify}
 
 `#` makes a string literal of its argument as written (6.10.3.2): the tokens' spellings with one
-blank where a token has space (a newline in a call is one, section 26), none at either end, and
+blank where a token has space (a newline in a call is one, section 31), none at either end, and
 `\` and `"` escaped inside string and character literals; a final `\` left unescaped is dropped
 with clang's warning "invalid string literal, ignoring final '\'" (`q(\)` is `""`). The result is
 spelled in the `text` pool at the place of the `#`.
@@ -142,7 +142,7 @@ the placemarkers left are dropped when the replacement is done. A pasted name is
 expands on rescan unless its macro is disabled then. A name pasted for the first time is interned
 from the pool's bytes, read in place; a paste allocates no string.
 
-## 31. The builtin names {#pp-builtins}
+## 36. The builtin names {#pp-builtins}
 
 A name with no macro definition that the preprocessor answers itself becomes one token, not
 rescanned: `__LINE__` the presumed line of the end of its outermost call (the `)`, clang's rule
@@ -168,7 +168,7 @@ calls `PpExpansion.macro_changed`).
 `\\` read as one character each, into the scratch lexer's buffer, and the text is lexed and done
 as a `#pragma` line (`pp_pragma_line`) - into the pragma or pack ledger at the tokens handed out
 before it, or `once`, `push_macro`, `pop_macro`. The token after it starts a line, as after the
-directive. While an argument is pre-expanded (section 27) a `_Pragma` is not done: its operand is
+directive. While an argument is pre-expanded (section 32) a `_Pragma` is not done: its operand is
 checked, given back unexpanded and handed out after the name, so the pragma is done at the
 rescan, once for each use of the argument and at its place among the tokens, as clang delays it
 (6.10.3.4p3): `TWICE(_Pragma("pack(8)"))` is two pragmas, and the pack of
@@ -178,10 +178,10 @@ string literal", and the token read where the `(`, the string or the `)` was exp
 in its place - for a missing string after the tokens up to the `)` or a line start, the token
 after them - as clang recovers: `_Pragma("x" y) z` leaves `y ) z`.
 
-## 32. Known differences from clang
+## 37. Known differences from clang
 
 The expander recurses once per argument expanded inside another, which the 1 MB stack of section
-25 holds for the macro libraries the tests and the research corpus run; a deeper nesting
+30 holds for the macro libraries the tests and the research corpus run; a deeper nesting
 overflows it where clang's own stack still holds. A directive met while looking for a call's `(`
 is done before the name is handed out, so a `#pragma` there is placed one token earlier than
 clang's `-E` prints it. `defined` produced by a macro in an `#if` line is taken without clang's
