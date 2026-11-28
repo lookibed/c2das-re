@@ -54,7 +54,8 @@ the plan's PP.6 grows from it.
 - `fixtures/pp4/` - the whole preprocessor's units, the `#if` evaluator's cases as clang reads
   them: the sign trap of glibc's `bits/wchar.h` and its unsigned twins, arithmetic, constants,
   short-circuiting, `#elif` chains and nesting, `__COUNTER__` in a condition, `__has_include` by
-  name and by macro, each feature query, `defined` of builtin names.
+  name and by macro, each feature query, `defined` of builtin names; and an include guard a macro
+  produces, which is none (`guard_macro.c`, `guard_macro.h` the header it includes twice).
 - `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
   (section 3).
 - The tests are `compare/tests/test_pp_oracle.das`.

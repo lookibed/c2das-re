@@ -561,6 +561,13 @@ def test_query_operand_unexpanded(t : T?) {
     t |> equal(expanded("#define B __builtin_expect\n#if __has_builtin(B) || __has_builtin B\n#endif\n").diags, "E 2:25 missing '(' after '__has_builtin'")
 }
 
+[test(description = "an include guard is the #if !defined X a file writes: one a macro produces is no guard, so a second #include reads the file again as clang does")]
+def test_guard_from_macro(t : T?) {
+    let header = "#if NOT_DEFINED\n#ifdef VAR\nVAR++;\n#endif\n#endif\n"
+    let main = "#define NOT_DEFINED ! defined (guard)\n#include \"g.h\"\n#define guard\n#undef NOT_DEFINED\n#define NOT_DEFINED 1\n#define VAR five\n#include \"g.h\"\n"
+    t |> equal(expanded(main, [("g.h", header)]).out, "five ++ ;")
+}
+
 [test(description = "an argument in an #if line is pre-expanded before defined reads it, as clang does: F(defined X) of a defined X hands the evaluator defined 1, clang's error there")]
 def test_defined_in_argument(t : T?) {
     let r = expanded("#define X 1\n#define F(x) x\n#if F(defined X)\nyes\n#endif\nend\n")

@@ -93,7 +93,9 @@ def test_operators(t : T?) {
 
 [test(description = "short-circuiting: a division by zero in a branch not evaluated is no error")]
 def test_short_circuit(t : T?) {
-    pinned(t, [("0 && 1/0", "NO"), ("1 || 1/0", "YES"), ("0 ? 1/0 : 2", "YES"), ("1 ? 2 : 1/0", "YES")])
+    pinned(t, [("0 && 1/0", "NO"), ("1 || 1/0", "YES"), ("0 ? 1/0 : 2", "YES"), ("1 ? 2 : 1/0", "YES"),
+               ("(0 ? 0/0u : -1) < 0", "NO"), ("(0 ? 0u/0 : -1) < 0", "NO"), ("(1 ? -1 : 0/0u) < 0", "NO"), ("(1 ? -1 : 0/0) < 0", "YES"),
+               ("(0 ? 0 + 1U : -2) < 0", "NO")])
     t |> equal(run_text("#if 0 && 1/0\n#endif\n#if 1 || 1 << 64\n#endif\n").diags, "")
 }
 
@@ -116,7 +118,8 @@ def test_char_literals(t : T?) {
                ("'abcde' == 0x62636465", "YES"), ("'\\777' == 255", "YES"), ("'\\400' == 0", "YES"), ("'\\x100'", "NO"),
                ("L'a' == 97", "YES"), ("L'\\xffffffff' == -1", "YES"), ("L'\\xffffffff' < 0", "YES"), ("L'\\u00e9' == 0xe9", "YES"),
                ("u'x' - 'y' > 0", "YES"), ("U'\\U0001F600' == 0x1F600", "YES"), ("u'\\U0001F600'", "NO"), ("'\\u00e9' == 0xe9", "NO"),
-               ("L'ab'", "NO"), ("u8'a' == 97", "NO")])
+               ("L'ab'", "NO"), ("u8'a' == 97", "NO"), ("U'\\u\{1234\}' == U'\\u1234'", "YES"), ("U'\\x\{10fffd\}' == 0x10FFFD", "YES"),
+               ("U'\\o\{1234\}' == 0x29c", "YES"), ("'\\x\{41\}' == 65", "YES"), ("'\\u\{e9\}'", "NO"), ("'\\x\{\}'", "NO")])
     t |> equal(run_text("#if 'ab'\n#endif\n#if L'ab'\n#endif\n#if '\\777'\n#endif\n").diags,
                "W 1:5 multi-character character constant | E 3:5 wide character literals may not contain multiple characters | E 5:5 octal escape sequence out of range")
 }

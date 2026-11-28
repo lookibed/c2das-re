@@ -59,7 +59,7 @@ give a signed 0 or 1.
 Signed `+`, `-`, `*` and unary `-` wrap and warn "integer overflow in preprocessor expression"
 when the true result leaves intmax_t; `INT64_MIN / -1` is that overflow and gives `INT64_MIN`,
 `INT64_MIN % -1` gives 0, and `/` or `%` by zero is the error "division by zero in preprocessor
-expression". A shift keeps its left operand's type. `<<` by a count of 64 or more (a negative
+expression" - in a dead operand it is 0 of the converted type, so `(0 ? 0/0u : -1) < 0` is false. A shift keeps its left operand's type. `<<` by a count of 64 or more (a negative
 count is one, read as unsigned) gives 0 and warns; otherwise it warns when a set bit, or a signed
 value's sign, is shifted out. `>>` takes the count's low 32 bits as clang's `getLimitedValue`
 cast does; 64 or more shifts by 63 and warns; a signed value shifts arithmetically.
@@ -78,8 +78,9 @@ integer type" and keeps its low 64 bits. C17 has no digit separator: `1'000` lex
 unterminated character constant.
 
 A character constant is read as clang's `CharLiteralParser`: the simple escapes and GNU's `\e`,
-octal of up to three digits, hex of any length, `\u` and `\U`, an unknown escape being its
-character with a warning. A plain constant's character is one byte, and a UTF-8 code point past
+octal of up to three digits, hex of any length, `\u` and `\U`, the delimited `\x{...}`,
+`\o{...}` and `\u{...}` clang takes as an extension, an unknown escape being its character with a
+warning; a named `\N{...}` is not read and fails the condition. A plain constant's character is one byte, and a UTF-8 code point past
 ASCII or a UCN past 0x7F in it fails the condition ("character too large for enclosing character
 literal type"); an `L`, `u` or `U` constant takes the code point, and one past its type fails too.
 More than one character in a plain constant is a multi-character constant: each character's low

@@ -679,7 +679,8 @@ def private push_cond(var pp : Preprocessor; value : int; at : PpToken) {
                             line = at.line, col = at.col))
 }
 
-//! the guard pattern of `#if`'s line: `!defined X` or `!defined(X)`; the macro, -1 when not
+//! the guard pattern of `#if`'s line as written, before its macros expand: `!defined X` or
+//! `!defined(X)`; the macro, -1 when not. A pattern a macro produces is no guard, as in clang
 [arch(at="ARCHITECTURE_PP.md#pp-guards")]
 def private if_guard_sym(pp : Preprocessor) : int {
     let n = length(pp.line)
@@ -825,10 +826,11 @@ def private expand_condition(var pp : Preprocessor) {
 
 def private do_if(var pp : Preprocessor; at : PpToken) {
     read_line(pp, false)
+    let guard = if_guard_sym(pp)
     expand_condition(pp)
     let value = eval_condition(pp, at)
     push_cond(pp, value, at)
-    guard_opened(pp, if_guard_sym(pp))
+    guard_opened(pp, guard)
 }
 
 //! whether a `#elif`/`#else`/`#endif` has a conditional of this file to close

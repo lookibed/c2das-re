@@ -127,7 +127,8 @@ error and skipped.
 ## 9. Include guards {#pp-guards}
 
 A file whose every token and directive lies inside one conditional opened by `#ifndef X`, `#if
-!defined X` or `#if !defined(X)` - comments and blank lines aside - has the include guard `X`,
+!defined X` or `#if !defined(X)` as written - not produced by a macro, which clang does not take -
+comments and blank lines aside - has the include guard `X`,
 recorded on its `PpFile` at its end; a second `#include` of it is skipped unopened while `X` is
 defined, as clang and gcc skip it. The file's progress is a state: at the start, inside the guard's
 conditional, after its `#endif`, or no guard. A token, or a directive other than the guard's own

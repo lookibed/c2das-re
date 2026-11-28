@@ -42,3 +42,9 @@ int counted = __COUNTER__;
 #if 'ab' == 0x6162 && '\377' == 255 && 'abcd' == 0x61626364 && L'\xffffffff' < 0
 int chars;
 #endif
+#if (0 ? 0/0u : -1) < 0 || (1 ? -1 : 0u/0) < 0
+int dead_division_is_unsigned;
+#endif
+#if U'\u{1234}' == U'ሴ' && '\x{41}' == 65
+int delimited_escapes;
+#endif

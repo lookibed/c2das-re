@@ -316,6 +316,32 @@ def private utf8_at(ev : PpEval; i, j : int) : int2 {
     return int2(cp, j + count + 1)
 }
 
+// a delimited escape `\x{...}`, `\o{...}` or `\u{...}` from its first digit at byte `from`, clang's
+// extension under C17: the digits to the `}` in base 16, or 8 for `\o`; a `\u` past the type fails
+def private delimited_escape(var ev : PpEval; i, from, e : int; ordinary : bool; mask : uint64) : tuple<ok : bool; value : uint64; next : int> {
+    let n = ev.toks[i].len
+    let radix = e == 'o' ? 8 : 16
+    var j = from
+    var c = 0ul
+    var over = false
+    while (j < n - 1 && digit_value(byte_at(ev, i, j)) < radix) {
+        over ||= (c >> 60ul) != 0ul
+        c = c * uint64(radix) + uint64(digit_value(byte_at(ev, i, j)))
+        j++
+    }
+    if (j == from || byte_at(ev, i, j) != '}') {
+        return (ok = fail(ev, i, "delimited escape sequence is malformed"), value = 0ul, next = j)
+    }
+    j++
+    if (e == 'u' && ((ordinary && c >= 0x80ul) || c > mask || over)) {
+        return (ok = fail(ev, i, "character too large for enclosing character literal type"), value = 0ul, next = j)
+    }
+    if (e != 'u' && (over || (c & ~mask) != 0ul)) {
+        ev.diags |> push(PpEvalDiag(error = true, token = i, what = "{e == 'o' ? "octal" : "hex"} escape sequence out of range"))
+    }
+    return (ok = true, value = c, next = j)
+}
+
 // the escape sequence at byte `j` of the character constant `i` (C11 6.4.4.4): its value and the
 // byte after it; an octal or hex escape past the type is clang's error and keeps its low bits, a
 // UCN past it fails the constant
@@ -324,7 +350,11 @@ def private read_escape(var ev : PpEval; i, at : int; ordinary : bool; mask : ui
     let e = byte_at(ev, i, at + 1)
     var j = at + 2
     var c = 0ul
-    if (e >= '0' && e <= '7') {
+    if ((e == 'x' || e == 'o' || e == 'u') && byte_at(ev, i, j) == '{') {
+        return delimited_escape(ev, i, j + 1, e, ordinary, mask)
+    } elif (e == 'N' && byte_at(ev, i, j) == '{') {
+        return (ok = fail(ev, i, "named universal character escapes are not read"), value = 0ul, next = j)
+    } elif (e >= '0' && e <= '7') {
         c = uint64(e - '0')
         var k = 1
         while (k < 3 && byte_at(ev, i, j) >= '0' && byte_at(ev, i, j) <= '7' && j < n - 1) {
@@ -780,7 +810,10 @@ def private binary(var ev : PpEval; op, op_at : int; var lhs : PpValue; rhs : Pp
         }
     } elif (op == int(PpTok.SLASH) || op == int(PpTok.PERCENT)) {
         if (b == 0ul) {
-            return true if (!live)
+            if (!live) {
+                lhs = PpValue(bits = 0ul, unsigned = unsigned)
+                return true
+            }
             return fail(ev, op_at, "division by zero in preprocessor expression")
         }
         if (unsigned) {
