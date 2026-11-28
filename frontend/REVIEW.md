@@ -6,11 +6,17 @@ doc: `ARCHITECTURE.md`.
 **Never weaken `REVIEW.das` - fix what it flags instead.**
 
 **A diff that makes a `.das` file under this folder require a module that has no `<name>.das`
-beside that file, other than a daslib module and `crt`, reads that module's source: a module that
+beside that file, other than a daslib module, reads that module's source: a module that
 requires `cbind`, or names `popen`, `popen_binary`, `popen_timeout`, `popen_argv`,
 `popen_argv_pipe`, `spawn_process`, `spawn_argv`, `with_process`, `run_and_capture`,
 `executable_on_path` or `system`, is never required here - do the work in das
 instead.** `REVIEW.das` follows only a `require` that names a file.
+
+**A diff to a `.das` file under this folder, outside the own headers' tests (`include/tests/`),
+never requires a native module - `crt`, `c_runtime` or one of its modules - directly or through
+what it requires; the frontend needs none, and a floating constant or anything else the C library
+would compute is computed in das.** Dumper C runs inside a daslang compile and in a web page,
+where no native module loads; `REVIEW.das` reports such a `require`.
 
 **A diff that adds a file under this folder adds a `.das`, a `.h` or a `.md` file, or a `.defs`
 table under `predefined/`, and writes
@@ -50,3 +56,19 @@ error; one that adds a recursion a run of tokens can repeat makes it open a nest
 two levels re-measures that section's bytes per level and keeps `tests/test_c_parse_expr.das`'s
 costliest form at the bound.** Malformed input must end, and deep input must end in a refusal, not
 a stack overflow.
+
+**A diff to `pp_expand.das` keeps rescanning on the context model (`ARCHITECTURE_EXPAND.md`
+section 30): a macro is disabled by the context of its replacement and a name read then is
+painted - never a set of macros carried on each token (a Prosser hide set).** Per-token hide
+sets differ from clang and gcc on deferred recursion and grow without bound on Boost.PP.
+
+**A diff to `pp_expand.das` runs the expansion oracle (`das compare/pp/run.das -- --pp3 --corpus
+pp3`, and the corpus lists it touches) and states its class counts, and adds a case to
+`tests/test_pp_expand.das` for each expansion rule it changes.** The fixtures hold clang's
+answer; the unit tests hold the diagnostics and the call record no token stream shows.
+
+**A diff to `pp_expand.das` never allocates per token read or pasted, nor per call: tokens go in
+reused buffers, spellings - a builtin's value and a `_Pragma` operand among them - in the pools,
+and the call record grows geometrically; `tests/test_pp_expand.das`'s allocation tests are never
+loosened.** A string or an array made per token grows the das heap
+with the size of the expansion, which a macro library makes millions of tokens long.

@@ -5,13 +5,16 @@ holds the part of the converter that reads C with no clang behind it. Today that
 header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
 `converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
 sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token
-lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
-`#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
-C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
-statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and
-`ARCHITECTURE_STATEMENTS.md`, section 23) - and the record layout of `ARCHITECTURE_LAYOUT.md` and
+lexer of section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
+`#include`, the macro table, the ledgers) and the macro expansion of `ARCHITECTURE_EXPAND.md`
+(sections 29 to 36) - and the first part of Dumper C's parser, which reads the C tokens of a
+preprocessed unit, its expressions, type names, declarations, records, enums, statements and
+function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`,
+section 23), the type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to
+28 and 60), the expressions with their conversions and the unit's C-IR walk
+(`ARCHITECTURE_EXPRS.md`, sections 38 to 45) - and the record layout of `ARCHITECTURE_LAYOUT.md` and
 `ARCHITECTURE_LAYOUT_MSVC.md` (sections 50 to 56). No converter pass calls the preprocessor, the
-parser or the layout yet.
+parser, the C-IR builder or the layout yet.
 
 ## 1. File charters
 
@@ -26,9 +29,15 @@ parser or the layout yet.
 - `pp_directives.das` - the directive layer over the lexer (`ARCHITECTURE_PP.md`): the file
   providers, the `#include` stack and search, include guards, `#line`, the conditionals, the macro
   table, the pragma and pack ledgers, and the hook PP.4's `#if` evaluator fills. It expands no
-  macro.
+  macro; it holds the interface the expansion fills (`PpExpansion`) and the call record's types.
+- `pp_expand.das` - the macro expansion over the directive layer (`ARCHITECTURE_EXPAND.md`): the
+  context stack, calls and their arguments, substitution with `#` and `##`, the builtin names and
+  `_Pragma`, the expansion of directive lines, the call record.
 - `tests/test_pp_directives.das` - every directive over in-memory files, the predefined-macro table,
   and the own headers read through `fio`. The comparison with clang is `compare/pp/`'s `--pp2`.
+- `tests/test_pp_expand.das` - every expansion rule over in-memory files: the C11 6.10.3 examples,
+  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the call
+  record. The comparison with clang is `compare/pp/`'s `--pp3`.
 - `c_tokens.das` - the C tokens of a preprocessed unit over the pp-lexer: keywords by symbol,
   pp-numbers classified, line markers read (`ARCHITECTURE_PARSER.md` section 14).
 - `c_ast.das` - the tree in one node array and its one-line dump (section 15). No parsing.
@@ -36,6 +45,24 @@ parser or the layout yet.
   declarators, expressions, the errors and the nesting bound, declarations, records and enums,
   function definitions and the unit, statements (sections 16 to 23).
   One module, since the grammar's parts call each other.
+- `c_types.das` - the C-IR type table of a unit (`ARCHITECTURE_TYPES.md`): the pool of types met,
+  qualified ones apart, each use interning a type into `CirTu.types`, the specifiers, declarators
+  and initializer-sized arrays, the typedef scopes. It writes `converter/cir.das`'s structures and
+  requires no other converter module.
+- `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
+  constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 38 to 44).
+- `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
+  and the `%a` print (`ARCHITECTURE_EXPRS.md` section 45).
+- `c_ir.das` - the unit's C-IR: the walk over declarations, definitions and bodies in Dumper A's
+  order, initializers, statements, the own headers' declarations (`ARCHITECTURE_TYPES.md` sections
+  24 and 28, `ARCHITECTURE_EXPRS.md` sections 42 and 44).
+- `tests/test_c_exprs.das` - per conversion group its exact cast stream, the literals under both
+  dialects, `sizeof`, initializers, every statement form, the table order, every refusal with its
+  place. `tests/test_c_floats.das` - the hard floating constants against clang and the C library.
+- `tests/test_c_types.das` - per type form its entry and spelling under both dialects, a unit's
+  order through every statement form, typedefs, adjusted parameters, old-style definitions,
+  unsized arrays, the own headers' declarations, and every refusal with its place. The comparison
+  with Dumper A is `compare/types/`.
 - `tests/test_c_parse_decl.das` - every declaration specifier, declarator and init-declarator form
   as a dumped tree, the typedef table's scope cases, the refusals and malformed declarations, the
   declarator nesting bound, and the allocation probe over the preprocessed own headers.
@@ -81,6 +108,11 @@ that start a process: `popen`, `popen_binary`, `popen_timeout`, `popen_argv`, `p
 `spawn_process`, `spawn_argv`, `with_process`, `run_and_capture`, `executable_on_path` (all of
 `fio`; the last probes `PATH` through a shell) and `system` (of `fio` and of `crt`).
 
+Nor does it require a native module: `crt`, the C runtime, or `c_runtime` and its modules, which
+need it. Dumper C computes in das what the C library would (`ARCHITECTURE_EXPRS.md`'s floating
+constants). The own headers' tests under `include/tests/` are the one exception: they compile
+converted programs against the C runtime and are no part of Dumper C.
+
 The ban holds for what a file pulls in as well. `REVIEW.das` reads each `.das` file under the
 folder with its comments and the characters of its string and character literals blanked (the code
 inside a string's `{...}` stays: it runs), and reports, each with the file and line:
@@ -91,6 +123,7 @@ inside a string's `{...}` stays: it runs), and reports, each with the file and l
 - a line that holds the word `require` and the word `cbind` anywhere; and a line that holds
   `require` and is not `require <module>` or `require <module> public`, `<module>` spelled in
   letters, digits, `_`, `.`, `/` and `-`, since the gate cannot name the module of any other form;
+- a `require` of `crt`, of `c_runtime` or of one of its modules, outside `include/tests/`;
 - the word `include`: the gate follows no text include, so a file here has none.
 
 It follows every `require` that names a file, a path ending in `.das` or a module whose
@@ -167,7 +200,8 @@ end, and `pp_next_header_name` reads one token with a header name allowed, for t
 as they come. A token is its kind (`PpTok`), the file id, its byte offset and length in the file as
 read, its line and byte column (both from 1), `has_space`, `at_bol` and, for an identifier, its
 symbol. Its bytes are read on request: `pp_spelling` builds the string, `pp_spelling_is` compares
-in place.
+in place, and `pp_token_range` gives their offset and length in the working buffer (below) whose
+first byte is `pp_buffer_data`, for a reader that keeps a token as a byte range.
 
 The scanner is dasFlex's: `[flex(flags = true)]` builds the automaton when the module compiles and
 gives the two flags; dasFlex is fetched at its `VERSIONS.md` pin into `fetch/dasFlex/` and loaded

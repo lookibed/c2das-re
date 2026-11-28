@@ -65,13 +65,16 @@ daslang; this repository never builds it inside a test and never vendors it.
   over its fixtures and the units it writes through the pinned clang, over dumps it writes or
   mutates, and over `run.das` run as a child; `test_layout_oracle.das`, the layout oracle of
   `layout/` over dump text it writes and over the rule fixtures and units it writes, through the
-  pinned clang; `_common.das`, what they share.
+  pinned clang; `test_types_compare.das`, the C-IR oracle of `types/` over tables it builds and over
+  its fixtures through Dumper A and the builder; `_common.das`, what they share.
 - `pp/` - the pp-token oracle of Dumper C's lexer against clang (`pp/ARCHITECTURE.md`), not a part
   of the head-to-head: it lives here because it starts clang, which nothing under `frontend/` may.
 - `parse/` - the parse oracle of Dumper C's parser against clang's tree (`parse/ARCHITECTURE.md`),
   not a part of the head-to-head, here for the same reason.
 - `layout/` - the layout oracle of Dumper C's record layout against clang (`layout/ARCHITECTURE.md`),
   not a part of the head-to-head either, here for the same reason.
+- `types/` - the C-IR oracle of Dumper C's builder against Dumper A (`types/ARCHITECTURE.md`),
+  not a part of the head-to-head, here for the same reason.
 - `work/` - gitignored scratch: translations, compilation databases, the runs' builds and each
   case's folder `work/<suite>/<id>/` (the translation `das/`, the run's `run/`, a csmith
   program generated there, the `verdict`), and each perf kernel's `work/perf/<key>/` (the composed
