@@ -1,9 +1,9 @@
 # frontend Architecture - the `#if` evaluator
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family
-(`ARCHITECTURE.md` holds sections 1 to 4, `ARCHITECTURE_PP.md` 5 to 13, `ARCHITECTURE_PARSER.md`
-14 to 22, `ARCHITECTURE_STATEMENTS.md` 23, `ARCHITECTURE_TYPES.md` 24 to 28,
-`ARCHITECTURE_EXPAND.md` 29 to 37, `ARCHITECTURE_EXPRS.md` 38 to 45).
+(`ARCHITECTURE.md` holds sections 1 to 4, `ARCHITECTURE_PP.md` 5 to 13, 53 and 54,
+`ARCHITECTURE_PARSER.md` 14 to 22, `ARCHITECTURE_STATEMENTS.md` 23, `ARCHITECTURE_TYPES.md` 24 to
+28, `ARCHITECTURE_EXPAND.md` 29 to 37, `ARCHITECTURE_EXPRS.md` 38 to 45).
 
 ## 46. The evaluator {#pp-eval}
 

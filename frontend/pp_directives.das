@@ -84,6 +84,7 @@ enum PpSeverity {
 }
 
 //! A diagnostic of the directive layer, at a token's physical place and its presumed one (`#line`).
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
 struct PpDiagnostic {
     severity : PpSeverity
     file : int
@@ -94,6 +95,7 @@ struct PpDiagnostic {
     pline : uint
     what : string
     undecided : bool    //!< raised in a group an undecided conditional chose, or at a macro name of a condition PP.2 alone reads
+    raised : PpPlace    //!< where the reader stood when it raised it (`pp_reader_place`): past the place for a call or a conditional the end left open
 }
 
 //! A token kept past its lexer: its spelling is `len` bytes at `at` of the owner's text pool.
@@ -217,9 +219,10 @@ struct PpOutToken {
 }
 
 //! One macro call: the macro (an index of `Preprocessor.macros`), its name token's place and the
-//! call that token came from (-1: the source), the presumed place of the outermost name and the
-//! presumed line of its end (the `)`, or the name of an object-like macro), and its arguments,
-//! `arg_count` entries of the expansion's `call_args` from `first_arg`.
+//! call that token came from (-1: the source), the presumed place of the outermost name, the
+//! presumed line of its end (the `)`, or the name of an object-like macro) and that token's
+//! physical line and column, and its arguments, `arg_count` entries of the expansion's `call_args`
+//! from `first_arg`.
 struct PpCall {
     macro : int
     name : PpToken
@@ -227,6 +230,8 @@ struct PpCall {
     pline : uint
     pname : int
     end_pline : uint
+    end_line : int
+    end_col : int
     first_arg : int
     arg_count : int
 }
@@ -383,6 +388,14 @@ struct Preprocessor {
     unexpanded_query : table<int; bool> //!< the queries whose operand clang does not expand (`PP_UNEXPANDED_QUERIES`)
     expanded_builtin : table<int; bool> //!< the builtin names the expansion replaces (`PP_EXPANDED_BUILTINS`)
     eval : PpEval                       //!< the `#if` evaluator: its line, target, feature table (the caller's to set) and last diagnostics
+    lexer_diags_seen : int              //!< the entries of `lx.diags` whose token was consumed, and so marked
+    poisoned : table<int; bool>         //!< the names `#pragma GCC poison` poisoned: any later use is an error
+    reading_raw : bool                  //!< a `#pragma`, `#error` or `#warning` line is being read: a poisoned name in it is no use the read reports
+    sym_gcc : int
+    sym_clang : int
+    sym_poison : int
+    sym_error : int
+    sym_warning : int
 }
 
 def private intern_text(var pp : Preprocessor; text : string) : int => intern_name(pp.lx.flex.syms, text)
@@ -421,6 +434,11 @@ def private intern_directives(var pp : Preprocessor) {
     pp.sym_show = intern_text(pp, "show")
     pp.sym_push_macro = intern_text(pp, "push_macro")
     pp.sym_pop_macro = intern_text(pp, "pop_macro")
+    pp.sym_gcc = intern_text(pp, "GCC")
+    pp.sym_clang = intern_text(pp, "clang")
+    pp.sym_poison = intern_text(pp, "poison")
+    pp.sym_error = intern_text(pp, "error")
+    pp.sym_warning = intern_text(pp, "warning")
     pp.sym_has_include = intern_text(pp, "__has_include")
     pp.sym_has_include_next = intern_text(pp, "__has_include_next")
     pp.sym_has_embed = intern_text(pp, "__has_embed")
@@ -465,13 +483,13 @@ def pp_in_undecided_group(pp : Preprocessor) : bool {
 def private diagnose_at(var pp : Preprocessor; severity : PpSeverity; at : PpToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
                                   pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
-                                  undecided = pp_in_undecided_group(pp)))
+                                  undecided = pp_in_undecided_group(pp), raised = pp_reader_place(pp.lx)))
 }
 
 def private diagnose_held(var pp : Preprocessor; severity : PpSeverity; at : PpHeld; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
                                   pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
-                                  undecided = pp_in_undecided_group(pp)))
+                                  undecided = pp_in_undecided_group(pp), raised = pp_reader_place(pp.lx)))
 }
 
 def private diagnose(var pp : Preprocessor; severity : PpSeverity; what : string) {
@@ -508,8 +526,10 @@ def private open_file(var pp : Preprocessor; id : int; path : string; found_at :
     pp.buffer_data |> push(pp.lx.flex.data)
 }
 
-//! suspend the file being read, with its next token, and open file `id`
+//! suspend the file being read, with its next token, and open file `id`; the lexer diagnostics of
+//! that token are marked first, in the file that read it
 def private push_file(var pp : Preprocessor; id : int; path : string; found_at : int; var bytes : array<uint8>) {
+    mark_lexer_diags(pp, length(pp.lx.diags))
     var frame = PpFrame(lx <- pp.lx, state = pp.state, pending = pp.pending)
     pp.lx.flex.syms <- frame.lx.flex.syms
     pp.lx.diags <- frame.lx.diags
@@ -568,24 +588,84 @@ def pp_start(var pp : Preprocessor; var provider : PpFileProvider?; main : strin
 
 def private skipping(pp : Preprocessor) : bool => !empty(pp.conds) && !pp.conds[length(pp.conds) - 1].active
 
+//! the lexer diagnostics raised before entry `upto` marked with the group that takes their token,
+//! skipped, read or chosen by an undecided conditional - a token read past a directive's line is
+//! consumed after the directive - and placed at their presumed line and file while their file is
+//! still the one read
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+def private mark_lexer_diags(var pp : Preprocessor; upto : int) {
+    return if (pp.lexer_diags_seen >= upto)
+    let skipped = skipping(pp)
+    let undecided = pp_in_undecided_group(pp)
+    for (i in range(pp.lexer_diags_seen, upto)) {
+        pp.lx.diags[i].skipped = skipped
+        pp.lx.diags[i].undecided = undecided
+        pp.lx.diags[i].pname = pp.state.pname
+        pp.lx.diags[i].pline = presumed_line(pp, pp.lx.diags[i].line)
+    }
+    pp.lexer_diags_seen = upto
+}
+
+//! the current token consumed: its lexer diagnostics marked, and a poisoned name read outside a
+//! skipped group and a raw line an error
+[arch(at="ARCHITECTURE_PP.md#pp-poison")]
+def private consumed(var pp : Preprocessor) {
+    mark_lexer_diags(pp, length(pp.lx.diags))
+    if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && !pp.reading_raw && key_exists(pp.poisoned, pp.lx.tok.sym) && !skipping(pp)) {
+        diagnose(pp, PpSeverity.error, "attempt to use a poisoned identifier")
+    }
+}
+
+//! the lexer diagnostics met past a directive's last token up to its line's end - an unterminated
+//! comment opening there - marked while the line is read, before the directive opens or closes a
+//! group or moves the presumed place; the pending token's own stay for its consumption
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+def private mark_line_end_diags(var pp : Preprocessor) {
+    var upto = pp.lexer_diags_seen
+    while (upto < length(pp.lx.diags) && pp.lx.diags[upto].line <= pp.last_tok.line) {
+        upto++
+    }
+    mark_lexer_diags(pp, upto)
+}
+
+//! the current token, one of a directive's line, consumed and kept as the line's last: a bad byte
+//! in it is marked `directive`
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+def private consumed_on_line(var pp : Preprocessor) {
+    for (i in range(pp.lexer_diags_seen, length(pp.lx.diags))) {
+        pp.lx.diags[i].directive = true
+    }
+    consumed(pp)
+    pp.last_tok = pp.lx.tok
+}
+
+//! Whether `#pragma GCC poison` poisoned the name `sym`.
+def pp_poisoned(pp : Preprocessor; sym : int) : bool => key_exists(pp.poisoned, sym)
+
 //! the next raw token: the one a directive read past its line, or the lexer's next; false at the
 //! end of the file being read
 def private fetch(var pp : Preprocessor) : bool {
+    var got = false
     if (pp.pending) {
         pp.pending = false
-        return pp.lx.tok.kind != int(PpTok.EOF)
+        got = pp.lx.tok.kind != int(PpTok.EOF)
+    } else {
+        got = pp_next(pp.lx)
     }
-    return pp_next(pp.lx)
+    consumed(pp)
+    return got
 }
 
-//! the next token of the directive's line; false at its end, the token after it then pending
+//! the next token of the directive's line; false at its end, the token after it then pending and
+//! a lexer diagnostic met on the line before it marked as the line's
 def private next_on_line(var pp : Preprocessor) : bool {
     return false if (pp.pending)
     if (!pp_next(pp.lx) || pp.lx.tok.at_bol) {
         pp.pending = true
+        mark_line_end_diags(pp)
         return false
     }
-    pp.last_tok = pp.lx.tok
+    consumed_on_line(pp)
     return true
 }
 
@@ -628,6 +708,15 @@ def private read_line(var pp : Preprocessor; from_current : bool) {
     while (next_on_line(pp)) {
         hold(pp, pp.line, pp.line_text)
     }
+}
+
+//! the rest of a `#pragma`, `#error` or `#warning` line into `pp.line`, read as clang reads it, with
+//! no poisoned name reported
+[arch(at="ARCHITECTURE_PP.md#pp-poison")]
+def private read_raw_line(var pp : Preprocessor) {
+    pp.reading_raw = true
+    read_line(pp, false)
+    pp.reading_raw = false
 }
 
 //! The spelling of a held token of `text`.
@@ -979,10 +1068,11 @@ def private do_elif(var pp : Preprocessor; at : PpToken; d : PpDirective) {
         diagnose_at(pp, PpSeverity.error, at, "#{name} after #else")
     }
     if (pp.conds[top].taken) {
-        pp.conds[top].active = false
         skip_rest(pp)
+        pp.conds[top].active = false
         return
     }
+    pp.conds[top].active = true
     var value = false
     if (d == PpDirective.hash_elif) {
         read_line(pp, false)
@@ -1010,14 +1100,16 @@ def private do_else(var pp : Preprocessor; at : PpToken) {
     if (pp.conds[top].seen_else) {
         diagnose_at(pp, PpSeverity.error, at, "#else after #else")
     }
-    pp.conds[top].active = !pp.conds[top].taken
-    pp.conds[top].taken = true
-    pp.conds[top].seen_else = true
+    let opens = !pp.conds[top].taken
+    pp.conds[top].active = !was_skipped
     if (was_skipped) {
         skip_rest(pp)
     } else {
         extra_tokens(pp, "else")
     }
+    pp.conds[top].active = opens
+    pp.conds[top].taken = true
+    pp.conds[top].seen_else = true
 }
 
 def private do_endif(var pp : Preprocessor; at : PpToken) {
@@ -1301,7 +1393,7 @@ def private do_include(var pp : Preprocessor; at : PpToken; d : PpDirective) {
         diagnose_at(pp, PpSeverity.error, at, "expected \"FILENAME\" or <FILENAME>")
         return
     }
-    pp.last_tok = pp.lx.tok
+    consumed_on_line(pp)
     if (pp.lx.tok.kind != int(PpTok.HEADER_NAME)) {
         read_line(pp, true)
         if (pp.expansion != null) {
@@ -1477,10 +1569,7 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
             extra_tokens(pp, "line")
         }
     }
-    pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
-    if (name >= 0) {
-        pp.state.pname = name
-    }
+    line_applied(pp, number, name)
 }
 
 //! a line marker's flags: 1 enters a presumed file, 2 leaves one this file entered; false, the
@@ -1503,6 +1592,15 @@ def private marker_flags(var pp : Preprocessor) : bool {
 
 def private current_is_number(pp : Preprocessor; digits : string) : bool => pp.lx.tok.kind == int(PpTok.PP_NUMBER) && pp_spelling_is(pp.lx, digits)
 
+//! a `#line` or line marker's presumed line `number` and name, -1 for none, in force from the line
+//! after the directive
+def private line_applied(var pp : Preprocessor; number : int64; name : int) {
+    pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
+    if (name >= 0) {
+        pp.state.pname = name
+    }
+}
+
 //! `#line` of the macro-expanded tokens in `pp.line`: a number, then a file name or nothing
 [arch(at="ARCHITECTURE_PP.md#pp-line")]
 def private line_expanded(var pp : Preprocessor; at : PpToken) {
@@ -1524,10 +1622,7 @@ def private line_expanded(var pp : Preprocessor; at : PpToken) {
             diagnose_at(pp, PpSeverity.warning, at, "extra tokens at end of #line directive")
         }
     }
-    pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
-    if (name >= 0) {
-        pp.state.pname = name
-    }
+    line_applied(pp, number, name)
 }
 
 // #pragma
@@ -1660,8 +1755,82 @@ def private push_pop_macro(var pp : Preprocessor) : bool {
 }
 
 def private do_pragma(var pp : Preprocessor; at : PpToken) {
-    read_line(pp, false)
+    read_raw_line(pp)
     pp_pragma_line(pp, at)
+}
+
+//! `#pragma GCC poison` (or `clang poison`) of the names after `poison`, as clang does it: a later
+//! use of each is an error; a token that is no name is an error and ends the list, and poisoning a
+//! defined macro warns
+[arch(at="ARCHITECTURE_PP.md#pp-poison")]
+def private poison(var pp : Preprocessor) {
+    for (i in range(2, length(pp.line))) {
+        let h = pp.line[i]
+        if (h.kind != int(PpTok.IDENTIFIER)) {
+            diagnose_held(pp, PpSeverity.error, h, "can only poison identifier tokens")
+            return
+        }
+        continue if (key_exists(pp.poisoned, h.sym) || h.sym == pp.sym_va_args || h.sym == pp.sym_va_opt)
+        if (pp_is_defined(pp, h.sym)) {
+            diagnose_held(pp, PpSeverity.warning, h, "poisoning existing macro")
+        }
+        pp.poisoned |> insert(h.sym, true)
+    }
+}
+
+//! the place just past the last token of `pp.line`, where clang places what the line's end cut off
+def private line_end(pp : Preprocessor) : PpHeld {
+    var h = pp.line[length(pp.line) - 1]
+    h.offset += h.len
+    h.col += h.len
+    return h
+}
+
+// whether `pp.line[i]` is a plain string literal, the one kind clang's pragma message takes
+def private plain_string(pp : Preprocessor; i : int) : bool => line_is(pp, i, PpTok.STRING_LITERAL) && pp.line_text[pp.line[i].at] == '"'u8
+
+//! `#pragma GCC error` and `#pragma GCC warning`: an error or a warning whose text is the value of
+//! the plain string literals after it, joined, parenthesized or not; any other form is clang's
+//! error at clang's token
+[arch(at="ARCHITECTURE_PP.md#pp-poison")]
+def private pragma_message(var pp : Preprocessor) {
+    let is_error = pp.line[1].sym == pp.sym_error
+    let kind = is_error ? "error" : "warning"
+    let malformed = "pragma {kind} requires parenthesized string"
+    var i = 2
+    let paren = line_is(pp, i, PpTok.LPAREN)
+    if (paren) {
+        i++
+    }
+    if (!plain_string(pp, i)) {
+        if (!paren) {
+            diagnose_held(pp, PpSeverity.error, pp.line[1], malformed)
+        } else {
+            diagnose_held(pp, PpSeverity.error, i < length(pp.line) ? pp.line[i] : line_end(pp), "expected string literal in pragma {kind}")
+        }
+        return
+    }
+    var text : array<uint8>
+    while (plain_string(pp, i)) {
+        unescape_line_name(pp.name_scratch, pp.line_text, pp.line[i].at, pp.line[i].len)
+        text |> reserve(length(text) + length(pp.name_scratch))
+        for (k in range(length(pp.name_scratch) - 1)) {
+            text |> push(pp.name_scratch[k])
+        }
+        i++
+    }
+    if (paren && !line_is(pp, i, PpTok.RPAREN)) {
+        diagnose_held(pp, PpSeverity.error, i < length(pp.line) ? pp.line[i] : line_end(pp), malformed)
+        return
+    }
+    if (paren) {
+        i++
+    }
+    if (i < length(pp.line)) {
+        diagnose_held(pp, PpSeverity.error, pp.line[i], malformed)
+        return
+    }
+    diagnose_held(pp, is_error ? PpSeverity.error : PpSeverity.warning, pp.line[1], slice(text, 0, length(text)))
 }
 
 //! The pragma whose tokens after `pragma` are `pp.line`, at `at`: `#pragma`'s, or `_Pragma`'s
@@ -1669,6 +1838,20 @@ def private do_pragma(var pp : Preprocessor; at : PpToken) {
 [arch(at="ARCHITECTURE_PP.md#pp-pragmas")]
 def pp_pragma_line(var pp : Preprocessor; at : PpToken) {
     let n = length(pp.line)
+    let gcc = n >= 2 && pp.line[0].sym == pp.sym_gcc
+    if (n >= 2 && (gcc || pp.line[0].sym == pp.sym_clang) && pp.line[1].sym == pp.sym_poison) {
+        poison(pp)
+        return
+    }
+    for (h in pp.line) {
+        if (h.kind == int(PpTok.IDENTIFIER) && key_exists(pp.poisoned, h.sym)) {
+            diagnose_held(pp, PpSeverity.error, h, "attempt to use a poisoned identifier")
+        }
+    }
+    if (gcc && (pp.line[1].sym == pp.sym_error || pp.line[1].sym == pp.sym_warning)) {
+        pragma_message(pp)
+        return
+    }
     if (n >= 1 && pp.line[0].sym == pp.sym_once) {
         if (n > 1) {
             diagnose_at(pp, PpSeverity.warning, at, "extra tokens at end of #pragma once directive")
@@ -1762,7 +1945,7 @@ def private active_directive(var pp : Preprocessor; at : PpToken; d : PpDirectiv
     } elif (d == PpDirective.line) {
         do_line(pp, at, false)
     } elif (d == PpDirective.error || d == PpDirective.warning) {
-        read_line(pp, false)
+        read_raw_line(pp)
         let what = "#{d == PpDirective.error ? "error" : "warning"} {held_text(pp.line, pp.line_text)}"
         diagnose_at(pp, d == PpDirective.error ? PpSeverity.error : PpSeverity.warning, at, what)
     } elif (d == PpDirective.pragma) {
@@ -1783,7 +1966,8 @@ def private end_file(var pp : Preprocessor) : bool {
     while (length(pp.conds) > pp.state.cond_base) {
         let c = pp.conds[length(pp.conds) - 1]
         pp.diags |> push(PpDiagnostic(severity = PpSeverity.error, file = c.file, line = c.line, col = c.col, pname = pp.state.pname,
-                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive"))
+                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive",
+                                      raised = pp_reader_place(pp.lx)))
         pp.conds |> pop()
     }
     if (pp.state.guard == GuardState.closed) {

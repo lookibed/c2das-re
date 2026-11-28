@@ -109,7 +109,7 @@ class PpExpander : PpExpansion {
 
 def private diag(var pp : Preprocessor; severity : PpSeverity; t : PpOutToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = t.tok.file, offset = t.tok.offset, line = t.tok.line, col = t.tok.col,
-                                  pname = t.pname, pline = t.pline, what = what))
+                                  pname = t.pname, pline = t.pline, what = what, raised = pp_reader_place(pp.lx)))
 }
 
 // Spellings
@@ -436,14 +436,18 @@ def private call_function_like(var ex : PpExpander; var pp : Preprocessor; m : i
     return read
 }
 
-//! the call of `m` recorded: its name, the outermost name's presumed place, the presumed line of
-//! `last` (the `)`, or the name) and the spans of the arguments of slot `d` (none when -1)
+//! the call of `m` recorded: its name, the outermost name's presumed place, the presumed line and
+//! the physical place of `last` (the `)`, or the name) - of the call it came from, when it came
+//! from one - and the spans of the arguments of slot `d` (none when -1)
 [arch(at="ARCHITECTURE_EXPAND.md#pp-record")]
 def private record_call(var ex : PpExpander; m, d : int; name, last : PpOutToken) : int {
     let outer = name.call >= 0
+    let from_call = last.call >= 0
     var call = PpCall(macro = m, name = name.tok, parent = name.call, pline = outer ? ex.calls[name.call].pline : name.pline,
                       pname = outer ? ex.calls[name.call].pname : name.pname,
-                      end_pline = last.call >= 0 ? ex.calls[last.call].end_pline : last.pline, first_arg = length(ex.call_args))
+                      end_pline = from_call ? ex.calls[last.call].end_pline : last.pline,
+                      end_line = from_call ? ex.calls[last.call].end_line : last.tok.line,
+                      end_col = from_call ? ex.calls[last.call].end_col : last.tok.col, first_arg = length(ex.call_args))
     if (d >= 0) {
         call.arg_count = length(ex.inv[d].raw_at) - 1
         for (i in range(call.arg_count)) {
@@ -605,6 +609,9 @@ def private paste(var ex : PpExpander; var pp : Preprocessor; var out : array<Pp
         t.tok.sym = interned_bytes(pp, ex.text, at)
         t.spelled = PpSpelled.symbol
         ex.text |> resize(at)
+        if (pp_poisoned(pp, t.tok.sym)) {
+            diag(pp, PpSeverity.error, lhs, "attempt to use a poisoned identifier")
+        }
     }
     out[last] = t
 }

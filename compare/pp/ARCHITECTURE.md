@@ -113,7 +113,11 @@ it keeps, and each `#ident` or `#sccs`, as a `#pragma` or `#ident` line of its o
 token dump takes as a directive, not tokens; PP.2 keeps them in its ledgers, not its stream. So
 the oracle counts those lines of the `-E` output (`pragma_lines`) against PP.2's pragma and pack
 entries, and places each: a line's place is the count of clang's tokens on the lines before it
-(`pragma_places`), an entry's the tokens PP.2 handed out before it (`emitted`).
+(`pragma_places`), an entry's the tokens PP.2 handed out before it (`emitted`). Clang prints a
+`#pragma GCC warning` or `GCC error` too, which PP.2 raises as a diagnostic and keeps in no ledger
+(`frontend/ARCHITECTURE_PP.md#pp-poison`), so such a line is not counted: its kind is the whole
+word `warning` or `error`, ended by the line or a blank, as clang's `-E` prints the line with one
+blank between its tokens - `GCC warningfoo` is a pragma PP.2 keeps.
 
 A macro clang expands shifts every later token, so the two streams are aligned, not compared
 position by position: `pp2_differences` takes Myers' shortest edit script by kind, spelling and
@@ -137,7 +141,12 @@ does an error marked undecided. A difference wholly before the line - its last P
 them, handed out before the line was read - or past its `#endif`, and an error raised there, stay
 the preprocessor's own. A unit's class (`pp2_class`) is the latest its differences wait for,
 raised to needs PP.3 by a place left to PP.3 with no difference; it differs when one difference
-differs, when the preprocessor has an error of its own - one naming PP.3 is not -, when the pragma
+differs, when the preprocessor has an error of its own - one naming PP.3 is not; a lexer diagnostic
+met outside a skipped group is one, as clang's compile reports it, though its `-E` passes an
+invalid byte through; one in a skipped group is none, as clang reads nothing there, and nor is a
+bad byte on a directive's line, which clang does not diagnose, and one in a group an undecided
+conditional chose, skipped or read, needs PP.3, as an undecided error does
+(`frontend/ARCHITECTURE_PP.md#pp-diags`) -, when the pragma
 counts disagree with nothing left to PP.3 to explain them (clang has more: `_Pragma` in an
 expansion), or when the streams
 are equal and a pragma stands at another place than clang's. Each unit not clean prints its count

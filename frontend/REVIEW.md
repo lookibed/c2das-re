@@ -41,6 +41,11 @@ and never expands a macro outside the hooks PP.3 and PP.4 fill (`ARCHITECTURE_PP
 and 11).** A pragma lost there never reaches the C-IR's ledger, and an expansion here would be a
 second expander beside PP.3's.
 
+**A diff to `pp_directives.das` that reads a token from the lexer passes it through `consumed` -
+`fetch` and `next_on_line` do - when the directive layer takes it (`ARCHITECTURE_PP.md#pp-diags`).**
+A token taken past it leaves its lexer diagnostics unmarked, so a bad byte in `#if 0` refuses a
+valid unit, and a poisoned name in it unreported.
+
 **A diff to `c_tokens.das` or `c_parser.das` never makes a token or a node allocate on its own -
 the allocation tests of `tests/test_c_tokens.das` and `tests/test_c_parse_expr.das` are never
 loosened.**

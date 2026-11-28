@@ -348,8 +348,8 @@ def test_pragmas(t : T?) {
     t |> equal(expanded([("main.c", "int a;\n#pragma pack(1)\nint b;")]), "error: main.c:2:2: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
     t |> equal(expanded([("main.c", "int a;\n#pragma weak a\n")]), "error: main.c:2:2: the pragma '#pragma weak a' is not parsed")
     t |> equal(expanded([("main.c", "#pragma redefine_extname a b\nint a;")]), "error: main.c:1:2: the pragma '#pragma redefine_extname a b' is not parsed")
-    t |> equal(expanded([("main.c", "int a = 1;\n#pragma GCC error \"boom\"\nint x;")]), "error: main.c:2:2: #pragma GCC error \"boom\"")
-    t |> equal(expanded([("main.c", "_Pragma(\"GCC poison z\") int z;")]), "error: main.c:1:1: the pragma '#pragma GCC poison z' is not parsed")
+    t |> equal(expanded([("main.c", "int a = 1;\n#pragma GCC error \"boom\"\nint x;")]), "error: main.c:2:13: boom")
+    t |> equal(expanded([("main.c", "_Pragma(\"GCC poison z\") int z;")]), "error: main.c:1:29: attempt to use a poisoned identifier")
     t |> equal(expanded([("main.c", "#pragma STDC FP_CONTRACT ON\nint a;")]), "error: main.c:1:2: the pragma '#pragma STDC FP_CONTRACT ON' is not parsed")
     t |> equal(expanded([("main.c", "#pragma GCC diagnostic push\n#pragma clang diagnostic ignored \"-Wall\"\n#pragma message(\"hi\")\n#pragma GCC warning \"w\"\n#ident \"v1\"\nint a;")]),
                "int@main.c:6:1 a@main.c:6:5 ;@main.c:6:6 $@main.c:6:7")
@@ -451,7 +451,7 @@ def test_pragma_names(t : T?) {
     t |> equal(expanded([("main.c", "#pragma messagex\nint a;")]), "error: main.c:1:2: the pragma '#pragma messagex' is not parsed")
     t |> equal(expanded([("main.c", "#pragma GCC diagnosticx\nint a;")]), "error: main.c:1:2: the pragma '#pragma GCC diagnosticx' is not parsed")
     t |> equal(expanded([("main.c", "#pragma GCC errorx\nint a;")]), "error: main.c:1:2: the pragma '#pragma GCC errorx' is not parsed")
-    t |> equal(expanded([("main.c", "#pragma GCC error\nint a;")]), "error: main.c:1:2: #pragma GCC error")
+    t |> equal(expanded([("main.c", "#pragma GCC error\nint a;")]), "error: main.c:1:13: pragma error requires parenthesized string")
 }
 
 [test(description = "the first error in reading order: an unterminated conditional counts at its file's end, a placed error before a call met at the end, the earlier column of one line, a file the read left for an include placed by its own state, and across files the one the read reaches first through its includes")]
