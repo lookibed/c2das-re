@@ -129,11 +129,11 @@ def test_library(t : T?) {
 def test_refusals(t : T?) {
     t |> equal(types_of("_Complex double c;"), "error: t.c:1:1: a complex type is not typed yet")
     t |> equal(types_of("_Atomic int a;"), "error: t.c:1:1: an _Atomic type is not typed yet")
-    t |> equal(types_of("__builtin_va_list ap;"), "error: t.c:1:1: the typedef name '__builtin_va_list' is not typed yet")
+    t |> equal(types_of("__builtin_va_list ap;"), "int:64:false:unsigned long long array:0:3 tag:0")
     t |> equal(types_of("typeof(1) x;"), "int:32:true:int")
     t |> equal(types_of("typeof(y) x;"), "error: t.c:1:8: the identifier 'y', which names no variable or function the builder knows, is not typed yet")
     t |> equal(types_of("_Alignas(8) int x;"), "error: t.c:1:1: an _Alignas alignment is not typed yet")
-    t |> equal(types_of("int x __attribute__((mode(DI)));"), "error: t.c:1:22: the attribute 'mode', which changes a type, is not typed yet")
+    t |> equal(types_of("int x __attribute__((mode(DI)));"), "int:64:true:long")
     t |> equal(types_of("typedef int v4 __attribute__((__vector_size__(16)));"), "error: t.c:1:31: the attribute '__vector_size__', which changes a type, is not typed yet")
     t |> equal(types_of("int __attribute__((vector_size(8))) *p;"), "error: t.c:1:20: the attribute 'vector_size', which changes a type, is not typed yet")
     t |> equal(types_of("int * __attribute__((mode(DI))) p;"), "error: t.c:1:22: the attribute 'mode', which changes a type, is not typed yet")
@@ -208,7 +208,7 @@ def test_refusals_everywhere(t : T?) {
 
 [test(description = "the branches each unit reaches: the other spellings of a type-changing attribute, a parameter's parenthesised or abstract declarator, hex sizes, octal and UCN escapes by length, a designator of another kind, a size a later designator does not shrink, an unsized array inside a declarator, the boundaries of old-style promotion and of a void typedef list, a function typedef parameter")]
 def test_branch_inputs(t : T?) {
-    t |> equal(types_of("int x __attribute__((__mode__(DI)));"), "error: t.c:1:22: the attribute '__mode__', which changes a type, is not typed yet")
+    t |> equal(types_of("int x __attribute__((__mode__(DI)));"), "int:64:true:long")
     t |> equal(types_of("typedef int V __attribute__((ext_vector_type(4))); V a;"), "error: t.c:1:30: the attribute 'ext_vector_type', which changes a type, is not typed yet")
     t |> equal(types_of("void f(int (a)[3]);"), "void int:32:true:int ptr:1 func:0:2:false")
     t |> equal(types_of("void f(int []);"), "void int:32:true:int ptr:1 func:0:2:false")

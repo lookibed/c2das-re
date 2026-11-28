@@ -192,17 +192,15 @@ def test_constant_edges(t : T?) {
     t |> equal(consts_of("int a[4 >> -1];"), "error: t.c:1:7: an array size other than an integer constant expression is not typed yet")
 }
 
-[test(description = "a case value is clang's, refused where Dumper A's own fold (casts dropped, every step in 64 bits) gives another: a narrowing cast, an int overflow, a literal past 63 bits")]
+[test(description = "a case value is clang's, refused where Dumper A's own fold (casts dropped, every step in 64 bits) gives another: a narrowing cast, an int overflow, unsigned 64-bit arithmetic; a literal past 63 bits wrapped alike")]
 def test_case_values(t : T?) {
     t |> equal(consts_of("void g(int x) \{ switch (x) \{ case (char)200: case 1 < 2: case sizeof(int): case 1 ? 5 : 6: ; \} \}"), "case 200 ; case 1 ; case 4 ; case 5")
     t |> equal(consts_of("void g(int x) \{ switch (x) \{ case (signed char)255: ; \} \}"),
                "error: t.c:1:30: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
     t |> equal(consts_of("void g(int x) \{ switch (x) \{ case 1 << 31: ; \} \}"),
                "error: t.c:1:30: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
-    t |> equal(consts_of("void g(int x) \{ switch (x) \{ case (int)0xffffffffffffffffu: ; \} \}"),
-               "error: t.c:1:30: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
-    t |> equal(consts_of("void g(unsigned long x) \{ switch (x) \{ case 9223372036854775808u: ; \} \}"),
-               "error: t.c:1:40: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
+    t |> equal(consts_of("void g(int x) \{ switch (x) \{ case (int)0xffffffffffffffffu: ; \} \}"), "case -1")
+    t |> equal(consts_of("void g(unsigned long x) \{ switch (x) \{ case 9999999999999999999u: ; \} \}"), "case -8446744073709551617")
     t |> equal(consts_of("void g(unsigned long x) \{ switch (x) \{ case 0xffffffffffffffffu >> 60: ; \} \}"),
                "error: t.c:1:40: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
 }

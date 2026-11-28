@@ -86,8 +86,8 @@ def private has_word(p : CParser; at : int; word : string) : bool {
 //! (`aligned` alone is 16, x86-64's largest alignment). False with the error set for an `aligned`
 //! of other than an integer literal and for an attribute that changes a type.
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-attributes")]
-def c_layout_attributes(var b : CTypes; var p : CParser; at : int; var packed : bool&; var aligned : int&) : bool {
-    return false if (!c_plain_attributes(b, p, at))
+def c_layout_attributes(var b : CTypes; var p : CParser; at : int; var packed : bool&; var aligned : int&; mode_read : bool = false) : bool {
+    return false if (!c_plain_attributes(b, p, at, mode_read))
     var n = at
     while (n >= 0) {
         let node = p.ast.nodes[n]
@@ -198,7 +198,8 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
     return false if (base < 0)
     var packed = false
     var aligned = 0
-    return false if (!c_layout_attributes(b, p, md.a, packed, aligned))
+    // the specifiers' `mode` is read with them (`c_mode_type`)
+    return false if (!c_layout_attributes(b, p, md.a, packed, aligned, true))
     if (md.b < 0) {
         let u = b.unqualified[base]
         var spec = md.a
@@ -250,8 +251,10 @@ def private build_record(var b : CTypes; var p : CParser; n, pt : int) : bool {
     b.tag_built[n] = pt
     let node = p.ast.nodes[n]
     if (node.a >= 0 && c_symbol_text(p.unit, node.a) == "__jmp_buf_tag") {
-        c_refuse(b, p, node.tok, "glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`,")
-        return false
+        // glibc's buffer is the opaque `jmp_buf` record of one `int`, as Dumper A writes it
+        c_make_opaque(b, pt, "jmp_buf", 4, 4, "val", c_builtin(b, "int"))
+        b.jmp_record = pt
+        return true
     }
     if (in_library_file(b, p, node.tok)) {
         b.library_tags[pt] = true
@@ -683,9 +686,11 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; library : bo
                         m = p.ast.nodes[m].next
                     }
                 }
-                let idx = c_types_use(b, pt)
+                // glibc's `struct __jmp_buf_tag` defined here is the opaque `jmp_buf`, which Dumper A
+                // adds where a type names it and anchors nowhere
+                let idx = key_exists(b.opaque, pt) ? -1 : c_types_use(b, pt)
                 return false if (!empty(b.err))
-                if (!key_exists(b.anchored, pt)) {
+                if (idx >= 0 && !key_exists(b.anchored, pt)) {
                     b.anchored[pt] = true
                     let tok = tag_tok(p, at)
                     let place = p.unit.toks[tok]

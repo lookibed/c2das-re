@@ -224,9 +224,9 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("struct S; void f(struct S *s) \{ s->a; \}"), "error: t.c:1:33: a member access of other than a complete struct or union is not typed yet")
     t |> equal(cir_of("struct S; int n = sizeof(struct S);"), "error: t.c:1:19: sizeof of a type without a size is not typed yet")
     t |> equal(cir_of("struct S \{ struct T t; \};"), "error: t.c:1:21: member `t` has an incomplete type")
-    t |> equal(cir_of("struct S \{ int a; \} __attribute__((ms_struct));"), "error: t.c:1:1: an `ms_struct` record is not laid out")
+    t |> equal(cir_of("struct S \{ int a; \} __attribute__((ms_struct));"), "error: t.c:1:36: the attribute 'ms_struct' is not typed yet, which Dumper A neither drops nor reads")
     t |> equal(cir_of("int f(void) \{ enum E \{ A \} a; return 0; \} enum E \{ B \};"), "error: t.c:1:43: an enum tag defined again in another scope is not typed yet")
-    t |> equal(cir_of("struct __jmp_buf_tag \{ int a; \};"), "error: t.c:1:1: glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`, is not typed yet")
+    t |> equal(cir_of("struct __jmp_buf_tag \{ int a; \};"), "")
 }
 
 [test(description = "a record built at an earlier use in a block reads its members in its definition's file scope: the file's typedef, tag and enumerator, not the block's")]

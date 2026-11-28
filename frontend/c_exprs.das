@@ -21,7 +21,59 @@ let private PAREN_KEPT_OPS <- {"shl", "shr", "band", "bor", "bxor"}
 
 //! The builtin functions the builder types, each with its prototype's result and parameter
 //! spellings as clang declares it.
-let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["long", "long"]), (name = "__builtin_abort", ret = "void", params = array<string>())]
+//! The builtin functions the builder types, each with its prototype as the pinned clang declares
+//! it (`ARCHITECTURE_EXPRS.md` section 38): the result and parameter spellings `c_builtin` reads,
+//! besides `size_t`, `uint64` (the dialect's 64-bit `unsigned long` or `unsigned long long`), a
+//! leading `const` on the pointee, a trailing `*` and `restrict`; `custom` for one clang checks
+//! itself, whose arguments take no conversion but to a value.
+let BUILTIN_FUNCTIONS <- [
+    (name = "__builtin_expect", ret = "long", params = ["long", "long"], variadic = false, custom = false),
+    (name = "__builtin_abort", ret = "void", params = array<string>(), variadic = false, custom = false),
+    (name = "__builtin_trap", ret = "void", params = array<string>(), variadic = false, custom = false),
+    (name = "__builtin_unreachable", ret = "void", params = array<string>(), variadic = false, custom = false),
+    (name = "__builtin_memset", ret = "void*", params = ["void*", "int", "size_t"], variadic = false, custom = false),
+    (name = "__builtin_memcpy", ret = "void*", params = ["void*", "const void*", "size_t"], variadic = false, custom = false),
+    (name = "__builtin_memcmp", ret = "int", params = ["const void*", "const void*", "size_t"], variadic = false, custom = false),
+    (name = "__builtin_strcmp", ret = "int", params = ["const char*", "const char*"], variadic = false, custom = false),
+    (name = "__builtin_strlen", ret = "size_t", params = ["const char*"], variadic = false, custom = false),
+    (name = "__builtin_strcpy", ret = "char*", params = ["char*", "const char*"], variadic = false, custom = false),
+    (name = "__builtin_strncpy", ret = "char*", params = ["char*", "const char*", "size_t"], variadic = false, custom = false),
+    (name = "__builtin_strchr", ret = "char*", params = ["const char*", "int"], variadic = false, custom = false),
+    (name = "__builtin_printf", ret = "int", params = ["const char* restrict"], variadic = true, custom = false),
+    (name = "__builtin_sprintf", ret = "int", params = ["char* restrict", "const char* restrict"], variadic = true, custom = false),
+    (name = "__builtin_snprintf", ret = "int", params = ["char* restrict", "size_t", "const char* restrict"], variadic = true, custom = false),
+    (name = "__builtin_malloc", ret = "void*", params = ["size_t"], variadic = false, custom = false),
+    (name = "__builtin_alloca", ret = "void*", params = ["size_t"], variadic = false, custom = false),
+    (name = "__builtin_free", ret = "void", params = ["void*"], variadic = false, custom = false),
+    (name = "__builtin_prefetch", ret = "void", params = ["const void*"], variadic = true, custom = false),
+    (name = "__builtin_abs", ret = "int", params = ["int"], variadic = false, custom = false),
+    (name = "__builtin_copysign", ret = "double", params = ["double", "double"], variadic = false, custom = false),
+    (name = "__builtin_bswap16", ret = "unsigned short", params = ["unsigned short"], variadic = false, custom = false),
+    (name = "__builtin_bswap32", ret = "unsigned int", params = ["unsigned int"], variadic = false, custom = false),
+    (name = "__builtin_bswap64", ret = "uint64", params = ["uint64"], variadic = false, custom = false),
+    (name = "__builtin_ffs", ret = "int", params = ["int"], variadic = false, custom = false),
+    (name = "__builtin_clrsb", ret = "int", params = ["int"], variadic = false, custom = false),
+    (name = "__builtin_ctz", ret = "int", params = ["unsigned int"], variadic = false, custom = false),
+    (name = "__builtin_clz", ret = "int", params = ["unsigned int"], variadic = false, custom = false),
+    (name = "__builtin_popcount", ret = "int", params = ["unsigned int"], variadic = false, custom = false),
+    (name = "__builtin_parity", ret = "int", params = ["unsigned int"], variadic = false, custom = false),
+    (name = "__builtin_ffsl", ret = "int", params = ["long"], variadic = false, custom = false),
+    (name = "__builtin_clrsbl", ret = "int", params = ["long"], variadic = false, custom = false),
+    (name = "__builtin_ctzl", ret = "int", params = ["unsigned long"], variadic = false, custom = false),
+    (name = "__builtin_clzl", ret = "int", params = ["unsigned long"], variadic = false, custom = false),
+    (name = "__builtin_popcountl", ret = "int", params = ["unsigned long"], variadic = false, custom = false),
+    (name = "__builtin_parityl", ret = "int", params = ["unsigned long"], variadic = false, custom = false),
+    (name = "__builtin_ffsll", ret = "int", params = ["long long"], variadic = false, custom = false),
+    (name = "__builtin_clrsbll", ret = "int", params = ["long long"], variadic = false, custom = false),
+    (name = "__builtin_ctzll", ret = "int", params = ["unsigned long long"], variadic = false, custom = false),
+    (name = "__builtin_clzll", ret = "int", params = ["unsigned long long"], variadic = false, custom = false),
+    (name = "__builtin_popcountll", ret = "int", params = ["unsigned long long"], variadic = false, custom = false),
+    (name = "__builtin_parityll", ret = "int", params = ["unsigned long long"], variadic = false, custom = false),
+    (name = "__builtin_signbit", ret = "int", params = array<string>(), variadic = false, custom = true),
+    (name = "__builtin_add_overflow", ret = "_Bool", params = array<string>(), variadic = false, custom = true),
+    (name = "__builtin_sub_overflow", ret = "_Bool", params = array<string>(), variadic = false, custom = true),
+    (name = "__builtin_mul_overflow", ret = "_Bool", params = array<string>(), variadic = false, custom = true)
+]
 
 //! The state of a unit's expressions is the type builder's (`CTypes`): its types, the identifiers
 //! in scope and the return type of the function being read.
@@ -256,6 +308,9 @@ def private held_in(r : CIr; t : int; v : int64) : int64 {
     let low = v & ((1l << int64(w)) - 1l)
     return r.pool[t].is_signed && (low >> int64(w - 1)) != 0l ? low - (1l << int64(w)) : low
 }
+
+//! Value `v` held in integer pool type `t`: wrapped to its width, sign-extended when signed.
+def c_held_in(r : CIr; t : int; v : int64) : int64 => held_in(r, t, v)
 
 //! The value of integer constant expression `x` (C11 6.6) into `v`: literals, integer casts, the
 //! unary, binary, logical and conditional operators, `sizeof`; false for any other node.
@@ -904,6 +959,23 @@ def private sizeof_node(var r : CIr; var p : CParser; of_t : int; var operand : 
     return new CirExpr(e = "sizeof_v", t = c_size_t(r), trait_v = uint64(size), of_t = of_t, a = operand)
 }
 
+// argument `a` of a `va_list` builtin in a slot of pool type `slot` (-1 past the lists, where
+// `va_start`'s last named parameter stands as written): linux's list decays to the slot's pointer;
+// msvc's builtins take the list by reference, so it stands as written; null with the error set for
+// a list of another type
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-va")]
+def private va_list_argument(var r : CIr; p : CParser; var a : CirExpr?; slot, tok : int) : CirExpr? {
+    return a if (slot < 0)
+    if (is_ptr(r, slot)) {
+        return c_assigned(r, p, a, slot, tok)
+    } elif (unq(r, a.t) != unq(r, slot) || !is_lvalue(a)) {
+        delete_expr(a)
+        c_refuse(r, p, tok, "a `va_list` builtin's argument of other than a `va_list` object")
+        return null
+    }
+    return a
+}
+
 // a call of `fn`, by name the identifier `sym` (-1 for another callee), with the argument nodes
 // `n_args` (a list) at token `tok`: the callee read, each
 // argument converted to its parameter's type, or, past the parameters or with no prototype, by the
@@ -914,10 +986,14 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok, s
     var proto = true
     var builtin = -1
     var named_function = false
+    var custom = false
+    var va_lists = false
     if (sym >= 0) {
         let id = r.ids?[sym] ?? CId(t = -1, old_style = -1)
         old_style = id.old_style
         proto = id.proto
+        custom = id.custom
+        va_lists = id.va_builtin
         builtin = id.builtin ? id.t : -1
         named_function = id.is_function || id.builtin
     }
@@ -949,7 +1025,13 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok, s
         var a = c_expr(r, p, arg)
         return null if (a == null)
         let idx = length(x.args)
-        if (idx < length(params)) {
+        if (custom) {
+            // clang checks the operands itself and converts none but to a value
+            a = c_rvalue(r, a)
+        } elif (va_lists) {
+            a = va_list_argument(r, p, a, idx < length(params) ? params[idx] : -1, p.ast.nodes[arg].tok)
+            return null if (a == null)
+        } elif (idx < length(params)) {
             a = c_assigned(r, p, a, params[idx], p.ast.nodes[arg].tok)
             return null if (a == null)
         } else {
@@ -1086,16 +1168,29 @@ def private assignment(var r : CIr; p : CParser; k : int; var a, b : CirExpr?; t
     return new CirExpr(e = "assign", t = t, op = op, a = a, b = b)
 }
 
+// the `va_list` builtins and their count of list parameters (`__builtin_va_start` takes the last
+// named parameter after its list)
+let private VA_BUILTINS <- {"__builtin_va_start" => 1, "__builtin_va_end" => 1, "__builtin_va_copy" => 2}
+
 // a reference to identifier `sym` at token `tok`: the variable or function it names, its declared
 // type; a builtin of `BUILTIN_FUNCTIONS`, typed `<builtin fn type>`, only as a `callee`
 def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : bool = false) : CirExpr? {
     let name = c_symbol_text(p.unit, sym)
+    let va_count = VA_BUILTINS?[name] ?? -1
+    if (va_count >= 0 && !(r.ids?[sym] ?? CId(t = -1, old_style = -1)).builtin) {
+        // the list's type is the dialect's `va_list`, a pointer to linux's array of one record
+        let va = c_va_builtin(r)
+        let list = r.pool[unq(r, va)].k == "array" ? c_pointer(r, r.pool[unq(r, va)].elem) : va
+        var inscope params <- [for (_ in range(va_count)); list]
+        let proto = c_function(r, c_builtin(r, "void"), params, name == "__builtin_va_start")
+        r.ids[sym] = CId(t = proto, is_function = true, proto = true, old_style = -1, builtin = true, va_builtin = true)
+    }
     for (fn in BUILTIN_FUNCTIONS) {
         // a declaration of the name leaves it clang's builtin
         if (fn.name == name && !(r.ids?[sym] ?? CId(t = -1, old_style = -1)).builtin) {
-            var inscope params <- [for (x in fn.params); c_builtin(r, x)]
-            let proto = c_function(r, c_builtin(r, fn.ret), params, false)
-            r.ids[sym] = CId(t = proto, is_function = true, proto = true, old_style = -1, builtin = true)
+            var inscope params <- [for (x in fn.params); c_builtin_spelled(r, x)]
+            let proto = c_function(r, c_builtin_spelled(r, fn.ret), params, fn.variadic)
+            r.ids[sym] = CId(t = proto, is_function = true, proto = !fn.custom, old_style = -1, builtin = true, custom = fn.custom)
         }
     }
     if (!key_exists(r.ids, sym)) {
@@ -1252,6 +1347,91 @@ def private type_name_expr(var r : CIr; var p : CParser; node : CNodeRec; n : in
     return invoke(r.compound_literal, r, p, n)
 }
 
+// `va_arg(list, T)` of node `node`, Dumper A's `va_arg`: typed `T`, `arg_t` `T`, the list decayed
+// (or read, a pointer parameter's) under linux, as written under msvc; null with the error set for
+// a list of another type
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-va")]
+def private va_arg(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    var list = c_expr(r, p, node.a)
+    let t = list == null ? -1 : c_type_name_type(r, p, node.b)
+    if (t < 0) {
+        delete_expr(list)
+        return null
+    }
+    let va = r.va_record
+    if (!is_msvc(r.tu.target)) {
+        list = c_rvalue(r, list)
+    }
+    let listed = unq(r, list.t)
+    let fits = va >= 0 && (listed == va || (is_ptr(r, listed) && unq(r, r.pool[listed].to) == va))
+    if (!fits) {
+        delete_expr(list)
+        c_refuse(r, p, node.tok, "a `va_arg` of other than a `va_list`")
+        return null
+    }
+    return new CirExpr(e = "va_arg", t = unq(r, t), list = list, arg_t = unq(r, t))
+}
+
+// `__func__` or `__FUNCTION__` of node `node`: the string literal of the enclosing function's
+// name, typed `const char[N]` as clang's predefined array is; `__PRETTY_FUNCTION__`, whose text is
+// clang's spelling of the signature, and a name outside a function are refused
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-func-name")]
+def private function_name(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    let spelled = c_spelling(p.unit, node.a)
+    if (spelled == "__PRETTY_FUNCTION__" || empty(r.id_marks)) {
+        c_refuse(r, p, node.tok, "'{spelled}'", spelled == "__PRETTY_FUNCTION__" ? " (its text is clang's spelling of the signature)" : " outside a function")
+        return null
+    }
+    var x = new CirExpr(e = "str_lit")
+    peek_data(r.fn_name) $(text) {
+        for (ch in text) {
+            x.bytes |> push(ch)
+        }
+    }
+    x.bytes |> push(uint8(0))
+    x.t = c_array(r, c_qualified(r, c_builtin(r, "char"), C_CONST), length(x.bytes))
+    return x
+}
+
+let private CHOOSE_EXPR = "__builtin_choose_expr"
+
+// call node `node` (at `n`) typed: `__builtin_constant_p` and `__builtin_choose_expr` by their own
+// rules, any other call by the callee's prototype
+def private call_expr(var r : CIr; var p : CParser; node : CNodeRec; n : int) : CirExpr? {
+    let callee = p.ast.nodes[node.a]
+    let named = callee.kind == CNode.IDENT ? c_symbol_text(p.unit, callee.a) : ""
+    if (named == CONSTANT_P && !key_exists(r.ids, callee.a)) {
+        return invoke(r.constant_expr, r, p, n)
+    } elif (named == CHOOSE_EXPR && !key_exists(r.ids, callee.a)) {
+        return choose_expr(r, p, node)
+    }
+    var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
+    return fn == null ? null : call(r, p, fn, node.b, node.tok, callee.kind == CNode.IDENT ? callee.a : -1)
+}
+
+// `__builtin_choose_expr(c, a, b)` of call node `node`: the operand the integer constant `c`
+// chooses, as Dumper A writes clang's choice; the other operand typed, as clang checks it, and
+// dropped
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-builtins")]
+def private choose_expr(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    let c = node.b
+    let a = c >= 0 ? p.ast.nodes[c].next : -1
+    let b = a >= 0 ? p.ast.nodes[a].next : -1
+    if (b < 0 || p.ast.nodes[b].next >= 0) {
+        c_reject(r, p, node.tok, "a `__builtin_choose_expr` of other than three operands")
+        return null
+    }
+    var v = 0l
+    if (!c_fold_node(r, p, c, v)) {
+        c_refuse(r, p, node.tok, "a `__builtin_choose_expr` whose condition the builder cannot fold")
+        return null
+    }
+    var other = c_expr(r, p, v != 0l ? b : a)
+    return null if (other == null)
+    delete_expr(other)
+    return c_expr(r, p, v != 0l ? a : b)
+}
+
 //! The C-IR expression of parser expression node `n`, typed by pool types, with no conversion at
 //! its top; null with the error set at the first construct not typed yet.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-nodes")]
@@ -1279,18 +1459,17 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.UNARY || kind == CNode.POSTFIX || kind == CNode.BINARY || kind == CNode.ASSIGN || kind == CNode.COND) {
         return operator_expr(r, p, node)
     } elif (kind == CNode.CALL) {
-        let callee = p.ast.nodes[node.a]
-        if (callee.kind == CNode.IDENT && c_symbol_text(p.unit, callee.a) == CONSTANT_P && !key_exists(r.ids, callee.a)) {
-            return invoke(r.constant_expr, r, p, n)
-        }
-        var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
-        return fn == null ? null : call(r, p, fn, node.b, node.tok, callee.kind == CNode.IDENT ? callee.a : -1)
+        return call_expr(r, p, node, n)
     } elif (kind == CNode.INDEX) {
         return subscript(r, p, node)
     } elif (kind == CNode.MEMBER) {
         return member_access(r, p, node)
     } elif (kind == CNode.CAST || kind == CNode.SIZEOF_TYPE || kind == CNode.SIZEOF_EXPR || kind == CNode.COMPOUND_LITERAL) {
         return type_name_expr(r, p, node, n)
+    } elif (kind == CNode.VA_ARG) {
+        return va_arg(r, p, node)
+    } elif (kind == CNode.FUNC_NAME) {
+        return function_name(r, p, node)
     } elif (kind == CNode.OFFSETOF || kind == CNode.TYPES_COMPATIBLE || kind == CNode.ALIGNOF_TYPE || kind == CNode.ALIGNOF_EXPR) {
         return invoke(r.constant_expr, r, p, n)
     }
@@ -1320,6 +1499,11 @@ def c_exprs_use(var r : CIr; var x : CirExpr?) {
         } else {
             x.of_t = c_types_use(r, x.of_t)
         }
+        return
+    }
+    if (x.e == "va_arg") {
+        c_exprs_use(r, x.list)
+        x.arg_t = x.t
         return
     }
     if (x.e == "call") {

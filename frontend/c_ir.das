@@ -27,6 +27,9 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
     r.id_undo |> clear()
     r.id_marks |> clear()
     r.ret = -1
+    r.switch_t = -1
+    r.weak_names |> clear()
+    r.defined_names |> clear()
     r.fold = @@c_fold_node
     r.fold_type = @@c_fold_node_type
     r.tag_type = @@c_tag_type
@@ -262,6 +265,39 @@ def private collect_file_scope_names(var r : CIr; var p : CParser; u : int) {
     }
 }
 
+// the pool type init-declarator `id` declares over specifier type `base`: its declarator's, sized by
+// its initializer, then a `mode` after a declarator that is a name alone; -1 with the error set
+def private declared_type(var r : CIr; var p : CParser; id, base : int) : int {
+    let d = p.ast.nodes[id].a
+    let attrs = p.ast.nodes[id].d
+    return -1 if (!c_plain_attributes(r, p, attrs, true))
+    let init_node = p.ast.nodes[id].b
+    let t = c_sized_by_initializer(r, p, c_declarator_type(r, p, base, d, false, init_node), d, init_node)
+    if (t >= 0 && p.ast.nodes[d].kind == CNode.D_NAME) {
+        return c_mode_type(r, p, attrs, t)
+    }
+    return t >= 0 && c_plain_attributes(r, p, attrs) ? t : -1
+}
+
+// name `sym` declared at token `tok` noted `weak` when specifier list `specs` or attribute list
+// `attrs` spells it: Dumper A drops `weak` only on a name the unit defines
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-attributes")]
+def private note_weak(var r : CIr; p : CParser; sym, specs, attrs, tok : int) {
+    for (list in fixed_array(specs, attrs)) {
+        var at = list
+        while (at >= 0) {
+            if (p.ast.nodes[at].kind == CNode.ATTRIBUTE) {
+                for (named in c_attribute_names(p, at)) {
+                    if (named.name == "weak" && !key_exists(r.weak_names, sym)) {
+                        r.weak_names[sym] = tok
+                    }
+                }
+            }
+            at = p.ast.nodes[at].next
+        }
+    }
+}
+
 // function declaration `sym` of pool type `spelled` by function declarator `f` (-1 through a
 // typedef) at token `tok`, `local` in a block: its composite with the declarations of the name
 // before it (`c_linked`) bound in its scope, so a block prototype converts the calls there; its
@@ -281,6 +317,14 @@ def private function_declaration(var r : CIr; var p : CParser; sym, spelled, f :
     if (f >= 0 && !parameters(r, p, f, cd.params)) {
         delete_decl(cd)
         return false
+    }
+    if (empty(cd.params) && !c_has_prototype(p, f)) {
+        // a declaration with no prototype lists the composite type's parameters, unnamed, as
+        // Dumper A reads them off clang's type
+        cd.params |> reserve(length(r.pool[r.unqualified[t]].params))
+        for (q in r.pool[r.unqualified[t]].params) {
+            cd.params |> push(CirParam(name = "", t = c_types_use(r, q)))
+        }
     }
     r.tu.decls |> push(cd)
     return true
@@ -425,9 +469,11 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         let name = c_symbol_text(p.unit, sym)
         let f = c_name_function(p.ast, d)
         let at = loc_of(p, name_tok(p, d, p.ast.nodes[id].tok))
-        return false if (!c_plain_attributes(r, p, p.ast.nodes[id].d))
-        let init_node = p.ast.nodes[id].b
-        var t = c_sized_by_initializer(r, p, c_declarator_type(r, p, base, d, false, init_node), d, init_node)
+        note_weak(r, p, sym, n.a, p.ast.nodes[id].d, name_tok(p, d, p.ast.nodes[id].tok))
+        if (!typedef_decl && !is_extern && (empty(fn) || is_static) && f < 0 || p.ast.nodes[id].b >= 0) {
+            r.defined_names[sym] = true
+        }
+        var t = declared_type(r, p, id, base)
         return false if (t < 0)
         r.anchor_at = at
         if (typedef_decl) {
@@ -466,6 +512,26 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
     return true
 }
 
+// GNU case range `case lo ... hi:` of node `n` at `at` into `into`: both ends folded as a single
+// label's are (`c_case_value`) and held in the promoted controlling type, as clang converts them;
+// an empty range, `lo` above `hi` there, labels nothing and adds no marker
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-case-range")]
+def private case_range(var r : CIr; var p : CParser; n : CNodeRec; at : CirLoc; var into : array<CirStmt?>) : bool {
+    var lo, hi : int64
+    return false if (!c_case_value(r, p, n.a, n.tok, lo) || !c_case_value(r, p, n.b, n.tok, hi))
+    lo = c_held_in(r, r.switch_t, lo)
+    hi = c_held_in(r, r.switch_t, hi)
+    let wide_unsigned = !r.pool[r.switch_t].is_signed && r.pool[r.switch_t].w >= 64
+    let empty_range = wide_unsigned ? uint64(lo) > uint64(hi) : lo > hi
+    if (!empty_range) {
+        into |> push(new CirStmt(s = "case", v = lo, hi = hi, is_range = true, is_char = is_char_constant(p, n.a) && is_char_constant(p, n.b), loc = at))
+    }
+    if (n.c < 0) {
+        into |> push(new CirStmt(s = "null", loc = at))
+    }
+    return true
+}
+
 // statement node `s` as C-IR statements into `into`, in Dumper A's order: a block's declarations
 // as their statements, `case`, `default` and a label as a marker before the statement under them,
 // every expression with its conversions; false with the error set at a statement not built yet
@@ -486,8 +552,7 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
         } else {
             var v = 0l
             if (n.b >= 0) {
-                c_refuse(r, p, n.tok, "this case label")
-                return false
+                return case_range(r, p, n, at, into) && (n.c < 0 || statement(r, p, n.c, fn, into))
             }
             return false if (!c_case_value(r, p, n.a, n.tok, v))
             if (key_exists(r.cases, v)) {
@@ -522,6 +587,25 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
 }
 
 // a statement with no statement under it, or a block, into `st`: its kind and expressions
+// whether asm statement `n` is a compiler barrier, an empty template with no operand and at most
+// clobbers, which orders nothing a das run observes and is the empty statement, as Dumper A writes
+// it; false with the error set for any other asm, machine code or a register binding
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-asm")]
+def private asm_barrier(var r : CIr; var p : CParser; n : CNodeRec) : bool {
+    let lit = p.ast.nodes[n.a]
+    for (t in range(lit.a, lit.a + lit.b)) {
+        if (c_spelling(p.unit, t) != "\"\"") {
+            c_refuse(r, p, n.tok, "inline asm with template text", ", which is machine code")
+            return false
+        }
+    }
+    if (n.b >= 0 || n.c >= 0) {
+        c_refuse(r, p, n.tok, "inline asm with operands", ", which bind registers")
+        return false
+    }
+    return true
+}
+
 def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var st : CirStmt?) : bool {
     var ok = true
     if (n.kind == CNode.COMPOUND) {
@@ -540,6 +624,9 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.e = used(r, p, value_of(r, p, n.a))
         ok = st.e != null
     } elif (n.kind == CNode.NULL_STMT) {
+        st.s = "null"
+    } elif (n.kind == CNode.ASM) {
+        ok = asm_barrier(r, p, n)
         st.s = "null"
     } elif (n.kind == CNode.GOTO) {
         st.s = "goto"
@@ -589,9 +676,14 @@ def private branch(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
     } elif (n.kind == CNode.SWITCH) {
         st.s = "switch"
         var c = c_expr(r, p, n.a)
-        st.cond = c == null ? null : used(r, p, c_promote(r, c))
+        var promoted = c == null ? null : c_promote(r, c)
+        let controlling = promoted == null ? -1 : r.unqualified[promoted.t]
+        st.cond = promoted == null ? null : used(r, p, promoted)
         var outer <- r.cases
+        let outer_t = r.switch_t
+        r.switch_t = controlling
         ok = st.cond != null && one(r, p, n.b, fn, st.body_s)
+        r.switch_t = outer_t
         r.cases <- outer
     } else {
         st.s = "for"
@@ -721,6 +813,8 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     let d = p.ast.nodes[n.b].a
     let f = c_name_function(p.ast, d)
     let sym = c_declarator_name(p.ast, d)
+    note_weak(r, p, sym, n.a, p.ast.nodes[n.b].d, name_tok(p, d, n.tok))
+    r.defined_names[sym] = true
     let name = c_symbol_text(p.unit, sym)
     let old_style = p.ast.nodes[f].op == 2
     var typed : array<int>
@@ -875,6 +969,11 @@ def c_ir_unit(var r : CIr; var p : CParser; u : int) : bool {
             declaration(r, p, at, "", none)
         }
         at = p.ast.nodes[at].next
+    }
+    for (sym, tok in keys(r.weak_names), values(r.weak_names)) {
+        if (empty(r.err) && !key_exists(r.defined_names, sym)) {
+            c_refuse(r, p, tok, "`weak` on '{c_symbol_text(p.unit, sym)}', which the unit never defines,")
+        }
     }
     return empty(r.err)
 }

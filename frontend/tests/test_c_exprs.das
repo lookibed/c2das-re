@@ -341,8 +341,8 @@ def test_refusals(t : T?) {
     t |> equal(ir_of("void g(int x) \{ switch (x) \{ case x: ; \} \}"), "error: t.c:1:30: this case label is not typed yet")
     t |> equal(ir_of("int a[2] = \{[0 + x] = 1\};"), "error: t.c:1:18: the identifier 'x', which names no variable or function the builder knows, is not typed yet")
     t |> equal(ir_of("int n = \{1, 2\};"), "error: t.c:1:9: a braced scalar initializer of other than one value is not typed yet")
-    t |> equal(ir_of("void g(void) \{ __func__; \}"), "error: t.c:1:16: this expression is not typed yet")
-    t |> equal(ir_of("void g(void) \{ asm(\"nop\"); \}"), "error: t.c:1:16: this statement is not typed yet")
+    t |> equal(ir_of("void g(void) \{ __func__; \}"), "expr ArrayToPointerDecay<char*>(str<char[2]>)")
+    t |> equal(ir_of("void g(void) \{ asm(\"nop\"); \}"), "error: t.c:1:16: inline asm with template text is not typed yet, which is machine code")
 }
 
 [test(description = "names as Dumper A gives them: a file static's <stem>__<name>, a digit stem led by _, a later declaration without static keeping it; a hoisted static's <fn>_<name>, numbered past a file-scope name, a local and an earlier hoisted static; a parameter and a local renamed past a block-scope extern or prototype of their name; every reference bound to its declaration's name")]

@@ -37,5 +37,5 @@ once, a template, and up to three sections: outputs and inputs, each operand an 
 its constraint and its expression in parentheses, read as any expression, so an enumerator or a tag
 declared in it binds where clang binds it; then clobbers, string literals. The template, the
 constraints and the clobbers are unprefixed string literals, as an asm label's are (clang takes no
-wide or Unicode one in an asm). The checker judges the rest, as Dumper A fails every asm but a
-compiler barrier. `::` is two `:` tokens (section 14), as C17 has no `::`.
+wide or Unicode one in an asm). The builder takes a compiler barrier as the empty statement and
+refuses every other asm, as Dumper A does (`ARCHITECTURE_SUBSET.md` section 83). `::` is two `:` tokens (section 14), as C17 has no `::`.

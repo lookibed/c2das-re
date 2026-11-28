@@ -23,6 +23,8 @@ struct CId {
     enum_t : int = -1   //!< an enumerator: the pool enum type it belongs to; -1 for any other identifier
     enum_v : int64      //!< an enumerator's value
     automatic : bool    //!< a parameter or a block-scope object of automatic storage, whose address is no constant
+    va_builtin : bool   //!< `__builtin_va_start`, `__builtin_va_end` or `__builtin_va_copy`: its lists passed whole under msvc, decayed under linux, `va_start`'s last argument as written
+    custom : bool       //!< a builtin clang checks itself (`__builtin_signbit`, the overflow builtins): its arguments are only made values
 }
 
 //! The C-IR type table of one unit as Dumper A builds it (`ARCHITECTURE_TYPES.md`): every type a
@@ -53,6 +55,9 @@ struct CTypes {
     id_marks : array<int>
     ret : int                       //!< the pool result type of the function being read
     cases : table<int64; bool>      //!< the case values of the innermost switch read so far
+    switch_t : int                  //!< the promoted controlling type of the innermost switch, -1 outside one
+    weak_names : table<int; int>    //!< a name a declaration marks `weak`, to the token of its first such declaration
+    defined_names : table<int; bool>    //!< a name the unit defines: a function with a body, an object not `extern` or with an initializer
     tu_prefix : string              //!< the unit's file stem as an identifier, a file static's prefix
     linkage_names : table<string; string>   //!< a name with internal linkage to its C-IR name
     file_scope_names : table<string>        //!< every name declared at file scope or by a block-scope `extern` or prototype
@@ -72,6 +77,9 @@ struct CTypes {
     compound_literal : function<(var b : CTypes; var p : CParser; n : int) : CirExpr?> //!< a compound literal's C-IR (`c_inits.das`); null for none
     expr_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< the pool type of an expression, which no conversion reaches (`typeof`); null for none
     constant_expr : function<(var b : CTypes; var p : CParser; n : int) : CirExpr?> //!< an `offsetof`, an alignment, a type trait or a `__builtin_constant_p` call's C-IR (`c_consts.das`); null for none
+    opaque : table<int; bool>               //!< the opaque records Dumper A writes for a `va_list` and glibc's `jmp_buf`, their field types interned first
+    va_record : int                         //!< the opaque `va_list` record, -1 until the unit names `__builtin_va_list`
+    jmp_record : int                        //!< the opaque `jmp_buf` record glibc's `struct __jmp_buf_tag` is, -1 until it is built
     aligned_spelled : int                   //!< 1 when the unit spells an `aligned` attribute or `_Alignas`, 0 when not, -1 before the unit is scanned
     tags : table<int; int>                  //!< a tag's symbol to its pool record or enum type
     tag_undo : array<tuple<sym : int; was : int>>   //!< the tag bindings a block's end restores
@@ -135,6 +143,9 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.library_functions |> clear()
     b.unit_items = -1
     b.aligned_spelled = -1
+    b.opaque |> clear()
+    b.va_record = -1
+    b.jmp_record = -1
     b.err = ""
 }
 
@@ -272,6 +283,12 @@ def private intern(var b : CTypes; key : string; var t : CirType) : int {
 def c_types_use(var b : CTypes; pt : int) : int {
     return -1 if (pt < 0)
     return b.used[pt] if (b.used[pt] >= 0)
+    let opaque = opaque_spelling(b, pt)
+    if (opaque >= 0) {
+        let idx = c_types_use(b, opaque)
+        b.used[pt] = idx
+        return idx
+    }
     if (c_is_tag_kind(b.pool[pt])) {
         let idx = tag_use(b, b.unqualified[pt])
         b.used[pt] = idx
@@ -294,6 +311,99 @@ def c_types_use(var b : CTypes; pt : int) : int {
     return idx
 }
 
+// the pool type Dumper A reads pool type `pt`'s spelling as, where the spelling carries an opaque
+// record: a type holding glibc's `jmp_buf` record anywhere is that record, or a pointer to it when
+// its spelling ends in `*` or holds `(*)` (a pointer, or a type with a pointer to a function or an
+// array among its parts); linux's `va_list`, the array of
+// one record, is that record. -1 for any other type, the record itself included
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-spellings")]
+def private opaque_spelling(var b : CTypes; pt : int) : int {
+    let u = b.unqualified[pt]
+    if (b.jmp_record >= 0 && u != b.jmp_record && holds_tag(b, u, b.jmp_record)) {
+        let spelled = b.pool[u].k == "ptr" || spells_paren_star(b, u) ? c_pointer(b, b.jmp_record) : b.jmp_record
+        return spelled == u ? -1 : spelled
+    }
+    let va = b.va_record
+    if (va >= 0 && b.pool[u].k == "array" && b.unqualified[b.pool[u].elem] == va && b.pool[u].count == 1) {
+        return va
+    }
+    return -1
+}
+
+// whether clang's spelling of pool type `t` holds `(*)`: a pointer to a function or an array
+// anywhere among its parts
+def private spells_paren_star(b : CTypes; t : int) : bool {
+    let u = b.unqualified[t]
+    let k = b.pool[u].k
+    if (k == "ptr") {
+        let to = b.pool[b.unqualified[b.pool[u].to]].k
+        return to == "func" || to == "array" || spells_paren_star(b, b.pool[u].to)
+    } elif (k == "array") {
+        return spells_paren_star(b, b.pool[u].elem)
+    } elif (k != "func") {
+        return false
+    }
+    return true if (spells_paren_star(b, b.pool[u].ret))
+    for (q in b.pool[u].params) {
+        return true if (spells_paren_star(b, q))
+    }
+    return false
+}
+
+// whether pool type `t` holds record `tag` through its pointers, arrays and functions' parts
+def private holds_tag(b : CTypes; t, tag : int) : bool {
+    let u = b.unqualified[t]
+    let k = b.pool[u].k
+    if (u == tag) {
+        return true
+    } elif (k == "ptr") {
+        return holds_tag(b, b.pool[u].to, tag)
+    } elif (k == "array") {
+        return holds_tag(b, b.pool[u].elem, tag)
+    } elif (k != "func") {
+        return false
+    }
+    return true if (holds_tag(b, b.pool[u].ret, tag))
+    for (q in b.pool[u].params) {
+        return true if (holds_tag(b, q, tag))
+    }
+    return false
+}
+
+//! Pool record `pt` made the opaque record `name` Dumper A writes (`converter/ARCHITECTURE.md`
+//! section 2): one field `field` of pool type `field_t`, of size `size` and alignment `align`.
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-opaque")]
+def c_make_opaque(var b : CTypes; pt : int; name : string; size, align : int; field : string; field_t : int) {
+    b.pool[pt].name = name
+    b.pool[pt].fields |> clear()
+    b.pool[pt].fields |> emplace(CirField(name = field, t = field_t))
+    b.pool[pt].size = size
+    b.pool[pt].align = align
+    var layout = CRecordLayout(size = int64(size), align = align, required_align = align)
+    layout.offsets |> push(0l)
+    b.layouts[pt] <- layout
+    b.opaque[pt] = true
+}
+
+//! The pool type clang's `__builtin_va_list` names (`va_builtin`).
+def c_va_builtin(var b : CTypes) : int => va_builtin(b)
+
+// the pool type clang's `__builtin_va_list` names: the opaque `va_list` record of `unsigned long
+// long words[3]` (24 bytes) under linux, where the type is `struct __va_list_tag[1]` and so an
+// array of one record, and of `words[1]` (8 bytes) under msvc, where it is a `char *` held whole
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-va")]
+def private va_builtin(var b : CTypes) : int {
+    let msvc = b.tu.target.long_w != 64
+    if (b.va_record < 0) {
+        var t = CirType(k = "struct", name = "va_list", count = b.next_tag, size = -1, align = -1, w = 32)
+        b.next_tag++
+        b.va_record = pooled(b, t)
+        let words = array_of(b, c_builtin(b, "unsigned long long"), msvc ? 1 : 3)
+        c_make_opaque(b, b.va_record, "va_list", msvc ? 8 : 24, 8, "words", words)
+    }
+    return msvc ? b.va_record : array_of(b, b.va_record, 1)
+}
+
 // the table index of unqualified pool record or enum `pt`: its own slot first, so a pointer to it
 // among its fields resolves, then each field's type in order and the field's `dims` enums, then
 // its layout with the `packed` verdict; a record no definition completes is size and alignment -1.
@@ -301,6 +411,10 @@ def c_types_use(var b : CTypes; pt : int) : int {
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-order")]
 def private tag_use(var b : CTypes; pt : int) : int {
     return b.used[pt] if (b.used[pt] >= 0)
+    if (key_exists(b.opaque, pt)) {
+        // Dumper A builds an opaque record from its field's type, which it interns first
+        c_types_use(b, b.pool[pt].fields[0].t)
+    }
     var slot := b.pool[pt]
     slot.fields |> clear()
     let idx = intern(b, c_type_key(slot), slot)
@@ -389,6 +503,56 @@ def c_type_align(b : CTypes; t : int) : int {
     return align
 }
 
+// the C library functions clang declares itself, with the prototypes it gives them (the pinned
+// clang's), in `c_builtin_spelled`'s spellings
+let private LIBRARY_BUILTINS <- {
+    "exit" => ("void", ["int"]),
+    "abort" => ("void", array<string>()),
+    "strlen" => ("size_t", ["const char*"]),
+    "strcmp" => ("int", ["const char*", "const char*"]),
+    "memcmp" => ("int", ["const void*", "const void*", "size_t"]),
+    "memcpy" => ("void*", ["void*", "const void*", "size_t"]),
+    "memset" => ("void*", ["void*", "int", "size_t"]),
+    "malloc" => ("void*", ["size_t"]),
+    "free" => ("void", ["void*"]),
+    "abs" => ("int", ["int"])
+}
+
+// the pool function type clang gives C library function `name`, -1 for a name it does not know
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-library")]
+def private library_builtin(var b : CTypes; name : string) : int {
+    var t = -1
+    get(LIBRARY_BUILTINS, name) $(proto) {
+        var params <- [for (q in proto._1); c_builtin_spelled(b, q)]
+        t = function_of(b, c_builtin_spelled(b, proto._0), params, false)
+    }
+    return t
+}
+
+//! The pool type of a builtin prototype's spelling `s`: a spelling `c_builtin` reads, `size_t`,
+//! `uint64` (the dialect's 64-bit `unsigned long` or `unsigned long long`), a leading `const` on
+//! the pointee, a trailing `*` and `restrict`.
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-builtins")]
+def c_builtin_spelled(var b : CTypes; s : string) : int {
+    var rest = s
+    var quals = 0
+    if (ends_with(rest, " restrict")) {
+        rest = slice(rest, 0, length(rest) - length(" restrict"))
+        quals = C_RESTRICT
+    }
+    if (ends_with(rest, "*")) {
+        let to = c_builtin_spelled(b, slice(rest, 0, length(rest) - 1))
+        return c_qualified(b, c_pointer(b, to), quals)
+    }
+    if (starts_with(rest, "const ")) {
+        return c_qualified(b, c_builtin_spelled(b, slice(rest, length("const "))), C_CONST)
+    }
+    if (rest == "size_t" || rest == "uint64") {
+        return c_builtin(b, b.tu.target.long_w == 64 ? "unsigned long" : "unsigned long long")
+    }
+    return c_builtin(b, rest)
+}
+
 //! The pool type of a pointer to pool type `to`.
 def c_pointer(var b : CTypes; to : int) : int => pointer(b, to)
 
@@ -472,13 +636,57 @@ def private builtin_type(var b : CTypes; set : int) : int {
 // the attribute words that change the type they stand on
 let private TYPE_ATTRIBUTES <- ["mode", "__mode__", "vector_size", "__vector_size__", "ext_vector_type", "__ext_vector_type__"]
 
-//! False with the error set when list `at` holds an attribute naming one of `TYPE_ATTRIBUTES`.
-def c_plain_attributes(var b : CTypes; var p : CParser; at : int) : bool {
+// the attributes Dumper A drops (they change nothing a das run observes), reads (`aligned`,
+// `packed`), accepts as a plain call (`musttail`), and those clang ignores, which reach no node
+// of its dump; any other fails closed, as Dumper A fails (`converter/ARCHITECTURE_DUMPER.md`)
+let private KNOWN_ATTRIBUTES <- {"noinline", "unused", "used", "const", "pure", "always_inline", "nothrow", "cold", "hot",
+    "visibility", "format", "nonnull", "malloc", "warn_unused_result", "deprecated", "weak", "may_alias", "section", "leaf",
+    "no_instrument_function", "alloc_size", "returns_nonnull", "nodebug", "fallthrough", "gnu_inline", "noreturn", "mode",
+    "aligned", "packed", "musttail", "noclone", "noipa", "optimize", "externally_visible", "scalar_storage_order",
+    "vector_size", "ext_vector_type"}
+
+//! The names attribute node `n` lists (`__attribute__((a, b(x)))` lists `a` and `b`), each with
+//! `__` around it removed.
+def c_attribute_names(p : CParser; n : int) : array<tuple<name : string; tok : int>> {
+    var names : array<tuple<name : string; tok : int>>
+    let node = p.ast.nodes[n]
+    var depth = 0
+    var expect_name = false
+    for (t in range(node.a + 1, node.b + 1)) {
+        let word = c_spelling(p.unit, t)
+        if (word == "(") {
+            depth++
+            expect_name = depth == 2
+        } elif (word == ")") {
+            depth--
+        } elif (word == "," && depth == 2) {
+            expect_name = true
+        } elif (expect_name && depth == 2) {
+            let bare = starts_with(word, "__") && ends_with(word, "__") && length(word) > 4 ? slice(word, 2, length(word) - 2) : word
+            names |> push((name = bare, tok = t))
+            expect_name = false
+        }
+    }
+    return <- names
+}
+
+//! False with the error set when list `at` holds an attribute naming one of `TYPE_ATTRIBUTES`, or
+//! one Dumper A neither drops nor reads (`KNOWN_ATTRIBUTES`); `mode_read` where the caller reads
+//! `mode` (`c_mode_type`).
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-attributes")]
+def c_plain_attributes(var b : CTypes; var p : CParser; at : int; mode_read : bool = false) : bool {
     var n = at
     while (n >= 0) {
         if (p.ast.nodes[n].kind == CNode.ATTRIBUTE) {
+            for (named in c_attribute_names(p, n)) {
+                if (!key_exists(KNOWN_ATTRIBUTES, named.name)) {
+                    refuse(b, p, named.tok, "the attribute '{named.name}'", ", which Dumper A neither drops nor reads")
+                    return false
+                }
+            }
             for (t in range(p.ast.nodes[n].a, p.ast.nodes[n].b + 1)) {
-                if (has_value(TYPE_ATTRIBUTES, c_spelling(p.unit, t))) {
+                let word = c_spelling(p.unit, t)
+                if (has_value(TYPE_ATTRIBUTES, word) && !(mode_read && (word == "mode" || word == "__mode__"))) {
                     refuse(b, p, t, "the attribute '{c_spelling(p.unit, t)}', which changes a type,")
                     return false
                 }
@@ -487,6 +695,58 @@ def c_plain_attributes(var b : CTypes; var p : CParser; at : int) : bool {
         n = p.ast.nodes[n].next
     }
     return true
+}
+
+// the integer modes GCC's `mode` attribute names, and their widths (`word` is x86-64's 64 bits)
+let private MODE_WIDTHS <- {"QI" => 8, "byte" => 8, "HI" => 16, "SI" => 32, "DI" => 64, "word" => 64}
+
+// the integer spellings clang gives a mode's width, signed and unsigned, before the 64-bit one
+let private MODE_SPELLINGS <- {8 => ("signed char", "unsigned char"), 16 => ("short", "unsigned short"), 32 => ("int", "unsigned int")}
+
+//! Pool type `t` with the `mode(M)` attribute of list `at` applied, as clang types it: an integer
+//! or an enum becomes the integer of `M`'s width and its own sign (`QI` and `byte` a `signed char`
+//! or `unsigned char`, `HI` a `short`, `SI` an `int`, `DI` and `word` the dialect's 64-bit
+//! `long` or `long long`); `t` when the list names no mode; -1 with the error set for another mode
+//! or another type (a pointer, a floating type, plain `char`, `_Bool`).
+[arch(at="ARCHITECTURE_SUBSET.md#c-subset-mode")]
+def c_mode_type(var b : CTypes; var p : CParser; at : int; t : int) : int {
+    var n = at
+    var typed = t
+    while (n >= 0) {
+        let node = p.ast.nodes[n]
+        if (node.kind == CNode.ATTRIBUTE) {
+            for (k in range(node.a, node.b + 1)) {
+                let word = c_spelling(p.unit, k)
+                if (word == "mode" || word == "__mode__") {
+                    typed = moded(b, p, k, node.b, typed)
+                    return -1 if (typed < 0)
+                }
+            }
+        }
+        n = node.next
+    }
+    return typed
+}
+
+// pool type `t` under the `mode` attribute whose word is token `k`, the attribute ending at token
+// `last`; -1 with the error set for one clang's answer the builder does not give
+def private moded(var b : CTypes; var p : CParser; at, last, t : int) : int {
+    var name = at + 3 <= last && c_spelling(p.unit, at + 1) == "(" && c_spelling(p.unit, at + 3) == ")" ? c_spelling(p.unit, at + 2) : ""
+    if (starts_with(name, "__") && ends_with(name, "__") && length(name) > 4) {
+        name = slice(name, 2, length(name) - 2)
+    }
+    let u = b.unqualified[t]
+    let k = b.pool[u].k
+    let integer = (k == "int" && b.pool[u].spell != "char" && b.pool[u].spell != "_Bool") || k == "enum"
+    let width = MODE_WIDTHS?[name] ?? 0
+    if (width == 0 || !integer) {
+        refuse(b, p, at, "the attribute 'mode({name})' on this type")
+        return -1
+    }
+    let spelled = width == 64 ? (b.tu.target.long_w == 64 ? ("long", "unsigned long") : ("long long", "unsigned long long")) : MODE_SPELLINGS?[width] ?? ("", "")
+    let quals = b.quals[t]
+    let moded_t = c_builtin(b, b.pool[u].is_signed ? spelled._0 : spelled._1)
+    return c_qualified(b, moded_t, quals)
 }
 
 // the pool type specifier `at` names, a typedef name's, a `typeof` type name's, a struct's, union's
@@ -503,6 +763,9 @@ def private named_type(var b : CTypes; var p : CParser; at : int) : int {
         return tagged
     }
     var named = b.typedefs?[n.a] ?? -1
+    if (named < 0 && c_symbol_text(p.unit, n.a) == "__builtin_va_list") {
+        return va_builtin(b)
+    }
     let ahead = b.typedef_defs?[n.a] ?? int2(-1, -1)
     if (named < 0 && b.defining > 0 && ahead.x >= 0 && !key_exists(b.untyped, n.a)) {
         named = c_declarator_type(b, p, c_specifier_type(b, p, p.ast.nodes[ahead.x].a), ahead.y, false)
@@ -551,8 +814,9 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
         }
         at = n.next
     }
-    return -1 if (!c_plain_attributes(b, p, specs))
-    return c_qualified(b, named >= 0 ? named : builtin_type(b, set), qualifiers_of(p, specs))
+    return -1 if (!c_plain_attributes(b, p, specs, true))
+    let base = c_mode_type(b, p, specs, named >= 0 ? named : builtin_type(b, set))
+    return base < 0 ? -1 : c_qualified(b, base, qualifiers_of(p, specs))
 }
 
 // false with the error set when list `at` holds `_Atomic`
@@ -1027,6 +1291,12 @@ def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
     }
     let proto = c_has_prototype(p, f)
     let old_style = f >= 0 && p.ast.nodes[f].op == 2
+    if (prev < 0 && b.pool[u].k == "func" && !proto && !old_style) {
+        // a declaration with no prototype of a C library function clang knows takes the
+        // library's prototype as its composite (`extern void exit();` is `void (int)`)
+        prev = library_builtin(b, c_symbol_text(p.unit, sym))
+        prev_proto = prev >= 0
+    }
     var result = t
     if (prev >= 0 && b.unqualified[prev] != u) {
         assume a = b.pool[b.unqualified[prev]]

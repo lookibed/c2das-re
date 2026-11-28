@@ -87,5 +87,6 @@ label's expression itself (`fold_constant`), through every cast, each step in 64
 and dumps no unit where it meets anything but literals, enumerators, the unary operators and
 the arithmetic, shift and bitwise binary operators. `c_case_value` runs that fold beside
 clang's and refuses a label the two fold apart - a narrowing cast (`(signed char)255`), an
-overflow of a narrower type (`1 << 31`), unsigned 64-bit arithmetic, a literal past 63 bits -
-since writing Dumper A's value would be wrong C and clang's is not Dumper A's C-IR.
+overflow of a narrower type (`1 << 31`), unsigned 64-bit arithmetic - since writing Dumper A's
+value would be wrong C and clang's is not Dumper A's C-IR. A literal past 63 bits is its 64 bits
+wrapped in both folds (`9999999999999999999` is -8446744073709551617).

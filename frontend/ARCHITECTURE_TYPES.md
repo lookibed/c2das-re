@@ -71,12 +71,13 @@ which clang declares there before the unit, is `unsigned long long`.
 A struct, union or enum specifier gives the type `c_records.das` builds for its tag
 (`ARCHITECTURE_RECORDS.md`), keyed by its identity. The builder refuses, with the place of the
 construct, `file:line:col: <construct> is not typed yet`:
-`_Complex`, `_Atomic`, `_Alignas`, an attribute naming `mode`,
-`vector_size` or `ext_vector_type` in either spelling (in the specifiers, on a pointer, around a
+`_Complex`, `_Atomic`, `_Alignas`, an attribute naming `mode` where `ARCHITECTURE_SUBSET.md`
+section 84 does not read it, `vector_size` or `ext_vector_type` in either spelling (in the specifiers, on a pointer, around a
 parenthesised declarator, after a declarator, a parameter, an old-style parameter's declaration
 or an own header's typedef), `_Atomic` on a pointer or in an array parameter's brackets, and a
 typedef name it has no type for - one clang
-predeclares (`__builtin_va_list`, `__builtin_ms_va_list`, `__NSConstantString`) or an own header's
+predeclares (`__builtin_ms_va_list`, `__NSConstantString`; `__builtin_va_list` is the opaque
+`va_list`, `ARCHITECTURE_SUBSET.md` section 80) or an own header's
 typedef it does not type, whose own refusal follows the message.
 
 ## 26. Declarators {#c-types-declarators}

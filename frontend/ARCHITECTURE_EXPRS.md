@@ -27,14 +27,14 @@ does, while its calls convert by the definition's promoted parameters (section 4
 with no prototype keeps the type and prototype of an earlier one of the name (clang's composite
 type), and a block declaration of a function declared before binds its prototype for the calls in
 its block, though it adds no declaration (`int f(); ... { int f(double); f(1); }` converts the
-argument to `double`). The builtin functions typed are `__builtin_expect` and `__builtin_abort`
-(`BUILTIN_FUNCTIONS`), only as callees: a reference has the type clang gives a builtin, `<builtin
-fn type>` (`c_builtin_fn_type`, in the table `void (...)`, keyed apart), and its decay is to a
-pointer to its prototype, `long (long, long)` and `void (void)`.
+argument to `double`). The builtin functions typed are those of `BUILTIN_FUNCTIONS`
+(`ARCHITECTURE_SUBSET.md` section 79), only as callees: a reference has the type clang gives a
+builtin, `<builtin fn type>` (`c_builtin_fn_type`, in the table `void (...)`, keyed apart), and its
+decay is to a pointer to its prototype (`__builtin_expect`'s `long (long, long)`).
 
 Refused, at the construct's place: an identifier no variable, function or enumerator in scope
 names, a builtin other than as a callee, GNU's `?:` with
-no middle operand, `va_arg`, `__func__`, a statement expression other than a statement block
+no middle operand, `__PRETTY_FUNCTION__`, a statement expression other than a statement block
 (section 44), a dereference,
 subscript or call of a value of the wrong type, a cast or a conditional of types clang refuses.
 

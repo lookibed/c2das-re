@@ -575,8 +575,7 @@ def c_case_value(var r : CIr; var p : CParser; n : int; tok : int; var v : int64
 
 // Dumper A's fold of a `case` label over typed `x` into `v` (`fold_constant` of
 // `converter/dumper_a.das`): 1 with its value, 0 where it fails (so it dumps no C-IR), -1 where
-// its value is not certain (a literal past 64 signed bits, a shift past 63, a 64-bit division
-// overflow)
+// its value is not certain (a shift past 63, a 64-bit division overflow)
 def private dumper_a_fold(r : CIr; x : CirExpr?; var v : int64&) : int {
     if (x.e == "int_lit") {
         return dumper_a_literal(x.v, v)
@@ -606,15 +605,15 @@ def private dumper_a_fold(r : CIr; x : CirExpr?; var v : int64&) : int {
 // the binary operators Dumper A's `case` fold takes
 let private DUMPER_A_BINARY <- {"add", "sub", "mul", "div", "rem", "shl", "shr", "band", "bor", "bxor"}
 
-// decimal literal text `digits` as Dumper A reads it into `v`: 1, or -1 past 63 bits
+// decimal literal text `digits` as Dumper A reads it into `v`: its 64 bits, a value past 63 bits
+// wrapped (`9999999999999999999` is -8446744073709551617, as Dumper A writes pr34154's range)
 def private dumper_a_literal(digits : string; var v : int64&) : int {
     var u = 0ul
     for (ch in digits) {
-        return -1 if (u > 0x0CCCCCCCCCCCCCCCul)
         u = u * 10ul + uint64(ch - '0')
     }
     v = int64(u)
-    return u > 0x7FFFFFFFFFFFFFFFul ? -1 : 1
+    return 1
 }
 
 // binary operator `op` of Dumper A's `case` fold over `a` and `b` into `v`, each step in 64
