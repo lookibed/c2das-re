@@ -6,9 +6,9 @@ holds the token oracles of Dumper C's preprocessor: of the pp-token lexer, `fron
 (`frontend/ARCHITECTURE_PP.md`), and of the macro expansion, `frontend/pp_expand.das`
 (`frontend/ARCHITECTURE_EXPAND.md`), with the `#if` evaluator, `frontend/pp_eval.das`
 (`frontend/ARCHITECTURE_EVAL.md`): one unit through clang and through the frontend, the two
-token streams compared token by token. It starts clang, so it lives outside `frontend/`, whose
-code starts no process (`frontend/ARCHITECTURE.md` section 2). The full preprocessor oracle of
-the plan's PP.6 grows from it.
+token streams compared token by token; and the token oracle of the whole preprocessor over every
+corpus, with gcc as the second reference (section 8). It starts clang and gcc, so it lives outside
+`frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` section 2).
 
 ## 1. File charters
 
@@ -30,13 +30,19 @@ the plan's PP.6 grows from it.
   clang (`generate_features`), under the dialect's dumper flags (`dialect_flags`). The clang it runs
   and its flags are Dumper A's (`default_clang`, `dumper_frontend_flags`, `DUMPER_FLAGS` of
   `converter/dumper_a.das`): the oracle preprocesses as the converter does.
+- `pp_token_oracle.das` - the token oracle of section 8: the corpora and sets (`Pp6Corpus`,
+  `pp6_corpus`, `pp6_set`), gcc's flags and answer (`gcc_flags`, `pinned_gcc`, `gcc_answer`), the
+  classes and the lists (`refusal_class`, `pp6_class`, `pp_answer`, `Pp6Lists`, `count_pp6`,
+  `Pp6Totals`, `pp6_exit_code`),
+  a corpus's run (`run_set_pp6`) and the command line's (`run_pp6`, `run_pp6_main`).
 - `run.das` - the command line's entry, its arguments parsed into `run_oracle`; from the repository
   root with `das`: `--corpus frontend` (every
   header of `frontend/include/`), `--corpus c-testsuite` (the fetched single-exec suite), `--corpus gcc-torture` (the fetched
   `execute` folder's own units), `--corpus pp2` and `--corpus pp3` (the directive and expansion
   fixtures), `--list <file>` (a corpus list, section 5), units named after the flags, `--raw`,
   `--pp2` (section 4), `--pp3` and `--pp4` (section 5), `--corpus pp4`, `--features` (section 6),
-  `--pp5` (section 7) with `--corpus fixtures` (the converter's test units),
+  `--pp5` (section 7) with `--corpus fixtures` (the converter's test units), `--pp6` with
+  `--fast` or `--full` (section 8),
   `--show N`, `--work <folder>` (default `compare/work/pp`, under
   the gitignored `compare/work/`). An unknown corpus, or one whose folder is missing - a suite not
   fetched - or a corpus list that is missing, is an error and exit 1, never an empty set. It prints each unit that differs with its
@@ -66,7 +72,14 @@ the plan's PP.6 grows from it.
 - `fixtures/pp5/copies.c` - a unit for `--pp5` whose calls end in an argument copy and are
   followed by source tokens and by another call, where a copy left on the next token shows.
 - `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
-  (section 3).
+  (section 3). `implementation_defined.txt` - the units clang and gcc disagree on, each with
+  their first difference and the preprocessor's; `known_differences.txt` - the units of a corpus
+  list where the preprocessor differs and gcc agrees with clang, each with its cause (section 8).
+- `corpus/` - the corpus lists of section 8's preprocessor-loading inputs, paths from the
+  repository root; `fetch.sh` fetches the outside ones into `compare/pp/fetch/` (gitignored) at
+  their `VERSIONS.md` pins. `fixtures/pp6/` - the inputs of those lists written here: the C11
+  6.10.3.5 examples and macro tricks (`std/`), the hide-set tests (`hideset/`, `hideset2/`), the
+  macro libraries' units (`macrolibs/`), and `impl_line.c`, a unit clang and gcc disagree on.
 - The tests are `compare/tests/test_pp_oracle.das`.
 
 ## 2. What is compared {#flags}
@@ -178,7 +191,10 @@ and `__TIMESTAMP__` compare exactly.
 
 A corpus list (`--list`, in either mode) names a unit a line, its path then its own flags:
 `-I<dir>` goes to clang and before PP.2's include path, `-D<entry>` to clang and after the table's
-entries, `-x <lang>` to clang alone; any other flag makes the unit a reference failure. The PP.6
+entries, `-x <lang>` and `-std=<standard>` to clang alone (`split_unit_flags`); `-include <file>`
+makes both read a wrapper in the work folder that includes each such file, then the unit by its
+full path (`forced_include_unit`), as the preprocessor has no forced include; any other flag makes
+the unit a reference failure. The PP.6
 corpus lists are of this form. Two kinds of unit cannot compare by re-lexing clang's output, and
 are reported, not mapped: a `#` that an empty macro leaves at a line start (clang prints `#
 define X` as text, its token dump reads it as a directive), and a name spelled with a UCN, which
@@ -243,3 +259,41 @@ lines - and how many of them have the key of some site of Dumper A, and lists th
 of them per unit). A unit disagrees when a site, a copy or a macro disagrees; the run exits 1 when
 one unit disagrees or one is in error, and when no unit was compared - every one refused by Dumper
 A or in error - since such a run has checked nothing (`pp5_exit_code`).
+
+## 8. The token oracle {#pp6}
+
+`--pp6` is the expansion oracle of section 5 over every corpus, with `gcc -E` as a second
+reference. `--fast` names the fixtures, the own headers and c-testsuite (`PP6_FAST`); `--full`
+adds gcc-torture, every project's units - Lua under its sidecar's defines, PureDOOM's units and
+host and chibicc's units under theirs, the Rust checkout's projects (each translation unit and its
+bench twin under `clang_args` and both sides' defines) - and every list of `corpus/`: mcpp's
+`n.*`, `e.*`, `i.*` and `u.*`, `gcc.dg/cpp` with `c-c++-common/cpp`, tcc's `tests/pp`, sqlite's
+amalgamation and shell, the 6.10.3.5 examples, the hide-set tests and ten macro-library units.
+csmith has no fixed input, so no csmith unit is in a corpus.
+
+A unit the preprocessor reads as clang does is clean. One it does not is read once more by
+`gcc-14 -E -P` under `gcc_flags` of clang's flags: every flag gcc spells the same is kept,
+`-std=gnu17` (clang's default C, written out) is added unless a standard is named, and `-target`
+with its triple, which gcc has no twin of, is dropped - the native gcc-14 is that target. gcc's
+output is token-dumped by clang and aligned with clang's stream as PP's is, its `#pragma` lines
+counted against clang's. When clang and gcc disagree, the unit is implementation-defined: the
+standard leaves the answer open and the preprocessor following clang there or not is no defect.
+When gcc agrees with clang, or refuses the unit, the unit differs. In a corpus list, a unit clang
+refuses is no reference failure: the preprocessor must refuse it too (`refusal_class`), else it
+differs, unless gcc accepts it, which makes it implementation-defined; one both refuse is counted
+apart, as nothing was compared. The suites and projects are `strict`: there a unit must be clean,
+and neither list excuses anything.
+
+`implementation_defined.txt` has `reference_failures.txt`'s shape - a path suffix, a tab, the
+first difference as clang and gcc give it and the preprocessor's (`pp_answer`) - and fails closed
+like it (`count_pp6`): an implementation-defined unit it does not name fails the run, printed with
+the line that names it. `known_differences.txt`, of the same shape with a cause, names the
+preprocessor's own differences on the corpus lists, its debt: a unit that differs passes only when
+named there. A unit either list names that is clean is printed so the line is dropped. The run prints each unit not
+clean with the preprocessor's differences, its errors and gcc's answer, a line per corpus (clean,
+refused by both, implementation-defined listed and unlisted, known differences, differ, reference
+failures, listed units clean) and
+the total; it exits 1 when a unit differs or a disagreement or a reference failure is unlisted
+(`pp6_exit_code`). gcc runs only on a unit that is not clean, and a `gcc-14` whose
+`-dumpfullversion` is not `VERSIONS.md`'s `gcc:` pin answers nothing there, so the unit differs.
+Preflight runs `--fast` as its `pp-oracle` gate and `--full` as its `pp-oracle-full` lane.

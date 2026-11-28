@@ -31,3 +31,21 @@ call or a copy only the record knows.** Dumper A's marks are the
 only outside check of the record; an oracle that forgives a mismatch passes a wrong record into
 the C-IR.
 
+
+**A diff to `implementation_defined.txt` adds a unit only as the `--pp6` run's own `list it:` line
+prints it - clang and gcc disagreeing, the corpus not strict -, a diff to `known_differences.txt`
+adds a unit only with the cause read from its differences, and either drops every line the run
+prints as clean; a diff to the token oracle's classes (`pp6_class`, `refusal_class`, `count_pp6`) never
+lets an unlisted disagreement, a unit gcc agrees with clang on, or any unit of a strict corpus
+pass.** The list is the only thing that turns a difference from clang into a pass; a line nobody
+re-derives from a run hides the preprocessor's defect behind the standard's latitude.
+
+**A diff to `gcc_flags` keeps every flag gcc spells as clang does and drops only a flag gcc has no
+twin of, which `ARCHITECTURE.md#pp6` names.** gcc under other flags than clang's is no second
+opinion on the same preprocessing.
+
+**A diff that adds a corpus names its inputs by paths from the repository root - files under
+`fixtures/pp6/`, or a fetch at a `VERSIONS.md` pin (`fetch.sh`, a suite's or a program's fetch) -
+never a machine path, and makes a suite's or a project's corpus strict.** A corpus only one machine
+holds checks nothing in CI, and a project unit excused as implementation-defined is a converter
+input read otherwise than clang reads it.
