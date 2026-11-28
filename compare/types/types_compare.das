@@ -377,6 +377,51 @@ def c_testsuite_units(root : string; var error : string&) : array<string> {
     return <- units
 }
 
+// suite unit `key`'s line against the ratchet `listed`: a byte-identical one into `identical`, and
+// reported when the list (`has_ratchet`) lacks it; 1 for a listed one no longer byte-identical
+def private ratchet_note(listed : table<string; bool>; key : string; bytes, has_ratchet : bool; var identical : array<string>) : int {
+    if (bytes) {
+        identical |> push(key)
+        if (has_ratchet && !key_exists(listed, key)) {
+            print("ratchet: {key} is byte-identical and not listed\n")
+        }
+    } elif (key_exists(listed, key)) {
+        print("ratchet: {key} is listed but no longer byte-identical\n")
+        return 1
+    }
+    return 0
+}
+
+// the ratchet after a run: over a whole suite each listed unit it no longer holds reported; with
+// `--update-ratchet` and no regression, the list written when it grew or lost such a unit
+def private ratchet_finish(args : TypesArgs; listed, seen : table<string; bool>; identical, dialects : array<string>; regressed : int) {
+    let whole_suite = (args.c_testsuite || args.gcc_torture) && empty(args.units)
+    let stale <- whole_suite ? ratchet_stale(listed, seen, dialects) : array<string>()
+    for (key in stale) {
+        print("ratchet: {key} is listed but the suite holds no such unit\n")
+    }
+    let grown = !empty(stale) || !empty([for (key in identical); key; where !key_exists(listed, key)])
+    if (args.update_ratchet && !empty(args.ratchet) && regressed == 0 && grown) {
+        fwrite(args.ratchet, ratchet_text(listed, identical, stale))
+    }
+}
+
+// `t`'s counts added to `total`
+def private add_totals(var total : TypesTotals; t : TypesTotals) {
+    total.units += t.units
+    total.dumper_failed += t.dumper_failed
+    total.aggregate += t.aggregate
+    total.scalar += t.scalar
+    total.refused += t.refused
+    total.whole += t.whole
+    total.cir += t.cir
+    total.census += t.census
+    total.bytes += t.bytes
+    total.core += t.core
+    total.core_bytes += t.core_bytes
+    total.differ += t.differ
+}
+
 //! The units `args` names compared under each dialect, from the repository root: each line that
 //! is not an agreement printed, then the totals; 0 when no scalar-only unit differs or is
 //! refused and Dumper A failed on none, else 1 (and for no unit named).
@@ -417,40 +462,13 @@ def run_types(args : TypesArgs) : int {
             continue if (k >= suite_units)
             let key = ratchet_key(dialect, unit)
             seen[key] = true
-            if (r.bytes) {
-                identical |> push(key)
-                if (!empty(args.ratchet) && !key_exists(listed, key)) {
-                    print("ratchet: {key} is byte-identical and not listed\n")
-                }
-            } elif (key_exists(listed, key)) {
-                print("ratchet: {key} is listed but no longer byte-identical\n")
-                regressed++
-            }
+            regressed += ratchet_note(listed, key, r.bytes, !empty(args.ratchet), identical)
         }
         print("{describe_types_totals(dialect, t)}\n")
-        total.units += t.units
-        total.dumper_failed += t.dumper_failed
-        total.aggregate += t.aggregate
-        total.scalar += t.scalar
-        total.refused += t.refused
-        total.whole += t.whole
-        total.cir += t.cir
-        total.census += t.census
-        total.bytes += t.bytes
-        total.core += t.core
-        total.core_bytes += t.core_bytes
-        total.differ += t.differ
+        add_totals(total, t)
     }
     print("{describe_types_totals("total", total)}\n")
-    let whole_suite = (args.c_testsuite || args.gcc_torture) && empty(args.units)
-    let stale <- whole_suite ? ratchet_stale(listed, seen, dialects) : array<string>()
-    for (key in stale) {
-        print("ratchet: {key} is listed but the suite holds no such unit\n")
-    }
-    let grown = !empty(stale) || length([for (key in identical); key; where !key_exists(listed, key)]) > 0
-    if (args.update_ratchet && !empty(args.ratchet) && regressed == 0 && grown) {
-        fwrite(args.ratchet, ratchet_text(listed, identical, stale))
-    }
+    ratchet_finish(args, listed, seen, identical, dialects, regressed)
     if (!empty(args.ratchet)) {
         return regressed == 0 ? 0 : 1
     }

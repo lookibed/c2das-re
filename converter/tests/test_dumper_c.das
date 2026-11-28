@@ -86,12 +86,14 @@ def test_main_dumper_c(t : T?) {
     let unit = path_join(dir, "plain.c")
     fwrite(unit, "static int g(int x) \{ return x * 2 + 1; \}\nint main(void) \{ return g(1) - 3; \}\n")
     var modules : array<string>
+    modules |> reserve(2)
     for (dumper in ["a", "c"]) {
         let out = path_join(dir, dumper)
-        var argv <- daslang_cmd(CONVERTED_MODULES)
+        var inscope argv <- daslang_cmd(CONVERTED_MODULES)
         argv |> push_from(["converter/main.das", "--", unit, "--out", out, "--target", "linux", "--dumper", dumper])
         var text : string
-        t |> equal(run_and_capture(argv, text, 300.0), 0, text)
+        let rc = run_and_capture(argv, text, 300.0)
+        t |> equal(rc, 0, text)
         modules |> push(fread(path_join(out, "plain.das")))
         let cir = fread(path_join(out, "plain.cir.json"))
         t |> success(find(cir, "\"producer\": \"c2das-dumper-{dumper} 0.1") >= 0, dumper)

@@ -744,8 +744,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     r.old_style |> clear()
     let t = spelled < 0 ? spelled : c_linked(r, p, spelled, sym, f, p.ast.nodes[n.b].tok)
     let ti = c_types_use(r, t)
-    return false if (ti < 0)
-    let linked = linkage_name(r, p, name, has_storage(p, n.a, CTok.STATIC), false, name_tok(p, d, n.tok))
+    let linked = ti < 0 ? "" : linkage_name(r, p, name, has_storage(p, n.a, CTok.STATIC), false, name_tok(p, d, n.tok))
     return false if (empty(linked))
     var cd = new CirDecl(k = "func", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), loc = loc_of(p, name_tok(p, d, n.tok)))
     r.declared[sym] = true
