@@ -1,0 +1,4 @@
+compare/pp/fetch/mcpp/test-t/i_32_3.t -x c -Icompare/pp/fetch/mcpp/test-t
+compare/pp/fetch/mcpp/test-t/i_35.t -x c -Icompare/pp/fetch/mcpp/test-t
+compare/pp/fetch/mcpp/test-t/i_35_3.t -x c -Icompare/pp/fetch/mcpp/test-t
+compare/pp/fetch/mcpp/test-t/i_mbident.t -x c -Icompare/pp/fetch/mcpp/test-t

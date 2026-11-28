@@ -56,3 +56,4 @@ Thumbs.db
 
 # fetched externals the frontend loads as module folders (scripts/fetch_dasflex.sh)
 /fetch/
+/compare/pp/fetch/

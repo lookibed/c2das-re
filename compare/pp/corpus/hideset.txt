@@ -1,0 +1,12 @@
+compare/pp/fixtures/pp6/hideset/h01_body_reenters.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h02_rparen_other_expansion.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h03_mutual_function_like.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h04_std_6_10_3_4.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h05_recursion_through_argument.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h06_self_reference_gnu_doc.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h07_painted_token_reused.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h08_name_then_paren_later.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h09_obstruct_defer.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h10_std_example3.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h11_name_only_vs_intersection.c -Icompare/pp/fixtures/pp6/hideset
+compare/pp/fixtures/pp6/hideset/h12_paint_kept.c -Icompare/pp/fixtures/pp6/hideset

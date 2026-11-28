@@ -1,0 +1,10 @@
+compare/pp/fixtures/pp6/macrolibs/ml01_map.c -Icompare/pp/fetch/macrolibs/map-macro
+compare/pp/fixtures/pp6/macrolibs/ml02_map_ud.c -Icompare/pp/fetch/macrolibs/map-macro
+compare/pp/fixtures/pp6/macrolibs/ml03_boost_repeat.c -Icompare/pp/fetch/macrolibs/preprocessor/include
+compare/pp/fixtures/pp6/macrolibs/ml04_boost_seq.c -Icompare/pp/fetch/macrolibs/preprocessor/include
+compare/pp/fixtures/pp6/macrolibs/ml05_boost_while.c -Icompare/pp/fetch/macrolibs/preprocessor/include
+compare/pp/fixtures/pp6/macrolibs/ml06_cloak.c -Icompare/pp/fetch/macrolibs/Cloak
+compare/pp/fixtures/pp6/macrolibs/ml07_metalang99.c -Icompare/pp/fetch/macrolibs/metalang99/include
+compare/pp/fixtures/pp6/macrolibs/ml08_p99.c -Icompare/pp/fetch/macrolibs/p99/p99
+compare/pp/fixtures/pp6/macrolibs/ml09_map_nested.c -Icompare/pp/fetch/macrolibs/map-macro
+compare/pp/fixtures/pp6/macrolibs/ml10_cloak_nested.c -Icompare/pp/fetch/macrolibs/Cloak

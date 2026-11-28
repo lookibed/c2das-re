@@ -1,0 +1,2 @@
+compare/pp/fetch/sqlite-amalgamation-3460000/sqlite3.c
+compare/pp/fetch/sqlite-amalgamation-3460000/shell.c

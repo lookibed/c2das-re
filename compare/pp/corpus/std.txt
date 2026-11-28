@@ -1,0 +1,11 @@
+compare/pp/fixtures/pp6/std/args.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/builtin.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/ex3.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/ex4.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/ex5.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/include.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/misc.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/paste.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/pragma.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/recursion.c -Icompare/pp/fixtures/pp6/std
+compare/pp/fixtures/pp6/std/vaopt.c -Icompare/pp/fixtures/pp6/std

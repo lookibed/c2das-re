@@ -1,0 +1,40 @@
+# Units of the corpus lists where the preprocessor differs from clang and gcc agrees with clang, each with its cause: <unit path suffix><TAB><cause>.
+# compare/pp/ARCHITECTURE.md#pp6; never a unit of a strict corpus (a suite, a project); the --pp6 run fails on an unlisted one and prints a listed one that is clean.
+c-c++-common/cpp/Winvalid-utf8-3.c	invalid UTF-8 outside a skipped group: the preprocessor raises the lexer's error, clang -E passes the byte through
+c-c++-common/cpp/file-name-1.c	__FILE__ in a header after a #line naming another file: the preprocessor gives an empty string
+c-c++-common/cpp/line-1.c	__FILE__ in a header after a #line naming another file: the preprocessor gives an empty string
+c-c++-common/cpp/named-universal-char-escape-1.c	a named UCN \N{...} in an identifier: clang reads it, the preprocessor leaves its tokens apart
+c-c++-common/cpp/pr93545-1.c	__has_include outside a directive: clang refuses it, the preprocessor hands it out as tokens
+c-c++-common/cpp/pr93545-2.c	__has_include outside a directive: clang refuses it, the preprocessor hands it out as tokens
+c-c++-common/cpp/pr93545-3.c	__has_include outside a directive: clang refuses it, the preprocessor hands it out as tokens
+c-c++-common/cpp/pr93545-4.c	__has_include outside a directive: clang refuses it, the preprocessor hands it out as tokens
+c-c++-common/cpp/pr96323.c	a raw string whose delimiter a newline ends: clang refuses it, the preprocessor accepts it
+c-c++-common/cpp/ucnid-2011-1.c	a name spelled with a UCN: clang prints it in UTF-8, the preprocessor keeps the UCN (ARCHITECTURE.md#pp3)
+c-c++-common/cpp/va-opt-3.c	__VA_OPT__ beside # or ##: the preprocessor joins tokens clang keeps apart (the placemarker rules of C23 6.10.5)
+c-c++-common/cpp/va-opt-5.c	__VA_OPT__ beside # or ##: the preprocessor joins tokens clang keeps apart (the placemarker rules of C23 6.10.5)
+c-c++-common/cpp/va-opt-7.c	__VA_OPT__ beside # or ##: the preprocessor joins tokens clang keeps apart (the placemarker rules of C23 6.10.5)
+c-c++-common/cpp/va-opt-error.c	__VA_OPT__ not followed by `(`: clang refuses it, the preprocessor accepts it
+c-c++-common/cpp/warning-zero-in-literals-1.c	a NUL byte inside a literal: clang -E prints no token there, the preprocessor hands out the literal
+gcc.dg/cpp/_Pragma3.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/cxxcom2.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/line9.c	#line whose operand a macro gives: the preprocessor raises an error, clang reads the line
+gcc.dg/cpp/pr28165.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/pr30805.c	a ## forming `1,` in a call's argument: the preprocessor raises an invalid-paste error, clang does not
+gcc.dg/cpp/pr32974.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/pr35322.c	_Pragma("GCC dependency") with no file name: clang refuses it, the preprocessor accepts it
+gcc.dg/cpp/pr60014-2.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/pr61854-3.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/strify2.c	invalid UTF-8 outside a skipped group: the preprocessor raises the lexer's error, clang -E passes the byte through
+gcc.dg/cpp/syshdr.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/syshdr3.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/sysmac1.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/sysmac2.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/sysmac3.c	pragmas: the preprocessor's ledger keeps a `#pragma GCC system_header` or `GCC dependency` that clang consumes and its -E output does not print
+gcc.dg/cpp/ucnid-1.c	a UCN and its UTF-8 spelling are one identifier to clang, two to the preprocessor (a macro defined in one spelling is not found in the other)
+gcc.dg/cpp/ucnid-12-utf8.c	a UCN and its UTF-8 spelling are one identifier to clang, two to the preprocessor (a macro defined in one spelling is not found in the other)
+gcc.dg/cpp/ucnid-12.c	a UCN and its UTF-8 spelling are one identifier to clang, two to the preprocessor (a macro defined in one spelling is not found in the other)
+gcc.dg/cpp/ucnid-4.c	a name spelled with a UCN: clang prints it in UTF-8, the preprocessor keeps the UCN (ARCHITECTURE.md#pp3)
+gcc.dg/cpp/ucnid-5.c	a name spelled with a UCN: clang prints it in UTF-8, the preprocessor keeps the UCN (ARCHITECTURE.md#pp3)
+gcc.dg/cpp/ucnid-7-utf8.c	invalid UTF-8 outside a skipped group: the preprocessor raises the lexer's error, clang -E passes the byte through
+mcpp/test-t/e_ucn.t	a UCN naming a control character in a macro name: clang refuses it, the preprocessor accepts it
+mcpp/test-t/e_vargs.t	__VA_ARGS__ in a non-variadic macro's body: the preprocessor raises an error clang -E does not

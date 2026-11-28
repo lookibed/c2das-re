@@ -1,0 +1,24 @@
+compare/pp/fetch/tcc/tests/pp/01.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/02.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/03.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/04.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/05.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/06.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/07.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/08.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/09.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/10.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/11.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/14.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/15.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/16.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/17.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/18.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/19.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/20.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/21.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/22.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/pp-counter.c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/12.S -x c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/13.S -x c -Icompare/pp/fetch/tcc/tests/pp
+compare/pp/fetch/tcc/tests/pp/23.S -x c -Icompare/pp/fetch/tcc/tests/pp

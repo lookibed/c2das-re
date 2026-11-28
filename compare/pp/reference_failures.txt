@@ -7,3 +7,5 @@ gcc.c-torture/execute/pr109938.c	a quoted include of a gcc.dg file outside the s
 gcc.c-torture/execute/pr109986.c	a quoted include of a gcc.dg file outside the sparse fetch
 gcc.c-torture/execute/pr30314.c	a quoted include of a gcc.dg file outside the sparse fetch
 gcc.c-torture/execute/pr98304-2.c	a quoted include of a gcc.dg file outside the sparse fetch
+gcc.dg/cpp/direct2s.c	clang's -E output prints a # at a line start that its token dump reads as a directive (ARCHITECTURE.md#pp3)
+hideset2/r08_empty_expansion_bol.c	clang's -E output prints a # at a line start that its token dump reads as a directive (ARCHITECTURE.md#pp3)

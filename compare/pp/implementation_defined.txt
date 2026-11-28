@@ -1,0 +1,36 @@
+# Units clang and gcc disagree on, where the preprocessor's stream is not clang's: <unit path suffix><TAB>clang's and gcc's first difference; the preprocessor's.
+# compare/pp/ARCHITECTURE.md#pp6; the --pp6 run fails on an unlisted one and prints a listed one that is clean.
+c-c++-common/cpp/delimited-escape-seq-2.c	clang [jalapeño] | gcc [jalape\U000000f1o]; pp [jalape \ u { f1 } ...]
+c-c++-common/cpp/named-universal-char-escape-2.c	clang [jalapeño] | gcc [jalape\U000000f1o]; pp [jalape \ N { LATIN SMALL ...]
+c-c++-common/cpp/named-universal-char-escape-5.c	clang refuses, gcc accepts; pp accepts it
+c-c++-common/cpp/named-universal-char-escape-6.c	clang refuses, gcc accepts; pp accepts it
+c-c++-common/cpp/named-universal-char-escape-7.c	clang refuses, gcc accepts; pp accepts it
+c-c++-common/cpp/normalize-3.c	clang [ª · གྷ aָֹֹֻb aָֹֹֻb ো ...] | gcc [\U000000aa \U000000b7 \U00000f43 a\U000005b8\U000005b9\U000005b9\U000005bbb a\U000005bb\U000005b9\U000005b8\U000005b9b \U000009cb ...]; pp [\u00AA \u00B7 \u0F43 a\u05B8\u05B9\u05B9\u05BBb a\u05BB\u05B9\u05B8\u05B9b \u09CB ...]
+c-c++-common/cpp/pr58844-1.c	clang refuses, gcc accepts; pp accepts it
+c-c++-common/cpp/pr58844-2.c	clang refuses, gcc accepts; pp accepts it
+c-c++-common/cpp/pr65238-1.c	clang [1] | gcc [1]; pp [__has_attribute ( unused )]
+c-c++-common/cpp/pr92296-2.c	clang ["Sun Sep  9 01:46:40 2001"] | gcc ["Sat Nov 28 20:41:30 2026"]; pp [__TIMESTAMP__]
+fixtures/pp6/impl_ucn.c	clang [é] | gcc [\U000000e9]; pp [\u00e9]
+fixtures/pp6/std/misc.c	clang [Ábc] | gcc [\U000000c1bc]; pp [# define NOT_A_DIRECTIVE]
+gcc.dg/cpp/avoidpaste1.c	clang [:: ::] | gcc []; pp []
+gcc.dg/cpp/avoidpaste2.c	clang [::] | gcc [: :]; pp [: :]
+gcc.dg/cpp/c23-scope-2.c	clang [::] | gcc [: :]; pp [: :]
+gcc.dg/cpp/c23-ucnid-1.c	clang [¨ À ÿÀ] | gcc [\U000000a8 A\U00000300 \U000000ffA\U00000300]; pp [\u00A8 A\u0300 \u00ffA\u0300]
+gcc.dg/cpp/normalize-1.c	clang [ª · གྷ aָֹֹֻb aָֹֹֻb ো ...] | gcc [\U000000aa \U000000b7 \U00000f43 a\U000005b8\U000005b9\U000005b9\U000005bbb a\U000005bb\U000005b9\U000005b8\U000005b9b \U000009cb ...]; pp [\u00AA \u00B7 \u0F43 a\u05B8\u05B9\u05B9\u05BBb a\u05BB\u05B9\u05B8\u05B9b \u09CB ...]
+gcc.dg/cpp/normalize-2.c	clang [ª · གྷ aָֹֹֻb aָֹֹֻb ো ...] | gcc [\U000000aa \U000000b7 \U00000f43 a\U000005b8\U000005b9\U000005b9\U000005bbb a\U000005bb\U000005b9\U000005b8\U000005b9b \U000009cb ...]; pp [\u00AA \u00B7 \u0F43 a\u05B8\u05B9\u05B9\u05BBb a\u05BB\u05B9\u05B8\u05B9b \u09CB ...]
+gcc.dg/cpp/normalize-4.c	clang [ª · གྷ aָֹֹֻb aָֹֹֻb ো ...] | gcc [\U000000aa \U000000b7 \U00000f43 a\U000005b8\U000005b9\U000005b9\U000005bbb a\U000005bb\U000005b9\U000005b8\U000005b9b \U000009cb ...]; pp [\u00AA \u00B7 \u0F43 a\u05B8\u05B9\u05B9\u05BBb a\u05BB\u05B9\u05B8\u05B9b \u09CB ...]
+gcc.dg/cpp/paste16.c	clang refuses, gcc accepts; pp accepts it
+gcc.dg/cpp/pr34692.c	clang refuses, gcc accepts; pp accepts it
+gcc.dg/cpp/pr60014-1.c	clang [7] | gcc [6]; pp: pragma lines 1, clang 0
+gcc.dg/cpp/pr60014-3.c	pragma lines: clang 0 | gcc 1; pp: pragma lines 2, clang 0
+gcc.dg/cpp/syshdr4.c	clang [17] | gcc [16]; pp: pragma lines 1, clang 0
+gcc.dg/cpp/syshdr5.c	clang [12] | gcc [11]; pp: pragma lines 1, clang 0
+gcc.dg/cpp/ucnid-3.c	clang [ªԱ] | gcc [\U000000aa\U00000531]; pp [\u00aa\u0531]
+gcc.dg/cpp/ucnid-6.c	clang [aª] | gcc [a\U000000aa]; pp [a\u00aa]
+gcc.dg/cpp/ucnid-9.c	clang [Ⅰ ↂ 〇 〡 〩] | gcc [\U00002160 \U00002182 \U00003007 \U00003021 \U00003029]; pp [\u2160 \u2182 \u3007 \u3021 \u3029]
+gcc.dg/cpp/warn-normalized-1.c	clang [གྷ] | gcc [\U00000f43]; pp [\u0F43]
+gcc.dg/cpp/warn-normalized-2.c	clang [ª] | gcc [\U000000aa]; pp [\u00AA]
+gcc.dg/cpp/warn-normalized-3.c	clang [གྷ] | gcc [\U00000f43]; pp [\u0F43]
+gcc.dg/cpp/warn-normalized-4-bytes.c	clang [before_གྷ_after] | gcc [before_\U00000f43_after]; pp [before_\u0F43_after]
+gcc.dg/cpp/warn-normalized-4-unicode.c	clang [before_གྷ_after] | gcc [before_\U00000f43_after]; pp [before_\u0F43_after]
+mcpp/test-t/n_ucn2.t	clang [abc1字] | gcc [abc1\U00005b57]; pp [abc1\u5B57]

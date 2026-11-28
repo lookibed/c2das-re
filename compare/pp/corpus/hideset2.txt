@@ -1,0 +1,13 @@
+compare/pp/fixtures/pp6/hideset2/r01_painted_through_arg.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r02_name_at_end_paren_from_source.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r03_rparen_from_expansion.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r04_redefine_in_args.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r05_va_opt.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r06_defer_obstruct.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r07_nested_same_macro_args.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r08_empty_expansion_bol.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r09a_if_self_ref.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r09b_if_defined_from_macro.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r10_paste_painted.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r11_va_opt_ops.c -Icompare/pp/fixtures/pp6/hideset2
+compare/pp/fixtures/pp6/hideset2/r12_include_next_cache.c -Icompare/pp/fixtures/pp6/hideset2/incnext/a -Icompare/pp/fixtures/pp6/hideset2/incnext/b -Icompare/pp/fixtures/pp6/hideset2/incnext/c
