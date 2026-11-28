@@ -372,17 +372,8 @@ def test_token_index(t : T?) {
 [test(description = "a lexer error takes its own file's place, a header's under the includer; one in a group the preprocessor skips is no error (clang lexes no skipped group's bytes as text)")]
 def test_lexer_error_places(t : T?) {
     t |> equal(expanded([("main.c", "a\n#include \"h.h\"\n\n\n\nb"), ("h.h", "x\ny /* oops")]), "error: h.h:2:3: unterminated /* comment")
-    let renamed = expanded([("main.c", "#include \"h.h\"\nb"), ("h.h", "#line 40 \"q.h\"\nx /* oops")])
-    if (renamed == "error: h.h:2:3: unterminated /* comment") {
-        t |> skip("ledger: a lexer diagnostic of a header closed in the same read loses the header's `#line`; requested from the PP session (the presumed place on PpDiag) - until then the header's own name and line")
-    } else {
-        t |> equal(renamed, "error: q.h:40:3: unterminated /* comment")
-    }
+    t |> equal(expanded([("main.c", "#include \"h.h\"\nb"), ("h.h", "#line 40 \"q.h\"\nx /* oops")]), "error: q.h:40:3: unterminated /* comment")
     let skipped = expanded([("main.c", "#if 0\n\xff\n#endif\nint x;")])
-    if (skipped == "error: main.c:2:1: invalid UTF-8: byte 255") {
-        t |> skip("ledger: a lexer diagnostic raised in a skipped group needs the preprocessor's mark (PpDiag in a skipped group); requested from the PP session - until then the raw path refuses the unit")
-        return
-    }
     t |> equal(skipped, "int@main.c:4:1 x@main.c:4:5 ;@main.c:4:6 $@main.c:4:7")
 }
 
@@ -454,15 +445,16 @@ def test_pragma_names(t : T?) {
     t |> equal(expanded([("main.c", "#pragma GCC error\nint a;")]), "error: main.c:1:13: pragma error requires parenthesized string")
 }
 
-[test(description = "the first error in reading order: an unterminated conditional counts at its file's end, a placed error before a call met at the end, the earlier column of one line, a file the read left for an include placed by its own state, and across files the one the read reaches first through its includes")]
+[test(description = "the first error in reading order: an unterminated conditional or call where the read stood at its file's end, the earlier column of one line, a bad byte on a directive's line no error, a file the read left for an include placed by its own state, and across files the one the read reaches first through its includes")]
 def test_error_order_more(t : T?) {
     t |> equal(expanded([("main.c", "#if 1\nx /* open\n")]), "error: main.c:2:3: unterminated /* comment")
     t |> equal(expanded([("main.c", "#define F(x) x\nF(a\n#error boom\n")]), "error: main.c:3:2: #error boom")
     t |> equal(expanded([("main.c", "_Pragma(\"weak a\") \xff")]), "error: main.c:1:1: the pragma '#pragma weak a' is not parsed")
     t |> equal(expanded([("main.c", "int a; _Pragma(\"weak a\") /* open")]), "error: main.c:1:8: the pragma '#pragma weak a' is not parsed")
     t |> equal(expanded([("main.c", "_Pragma(\"pack(1)\") \xff")]), "error: main.c:1:1: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
-    t |> equal(expanded([("main.c", "#line 30 \"m.c\"\n#define A \xff\n#include \"h.h\"\n"), ("h.h", "int x;")]), "error: m.c:30:11: invalid UTF-8: byte 255")
-    t |> equal(expanded([("main.c", "#include \"h.h\"\n#define A \xff\n"), ("h.h", "#if 1\nx\n")]), "error: h.h:1:2: unterminated conditional directive")
+    t |> equal(expanded([("main.c", "#line 30 \"m.c\"\n#define A \xff\n#include \"h.h\"\n"), ("h.h", "int x;")]), "int@h.h:1:1 x@h.h:1:5 ;@h.h:1:6 $@h.h:1:7")
+    t |> equal(expanded([("main.c", "#line 30 \"m.c\"\n#pragma pack(1)\n#include \"h.h\"\n"), ("h.h", "int x;")]), "error: m.c:30:2: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
+    t |> equal(expanded([("main.c", "#include \"h.h\"\nint y; \xff\n"), ("h.h", "#if 1\nx\n")]), "error: h.h:1:2: unterminated conditional directive")
     t |> equal(expanded([("main.c", "#include \"h.h\"\n#error m\n"), ("h.h", "x /* open")]), "error: h.h:1:3: unterminated /* comment")
 }
 
@@ -483,4 +475,9 @@ def test_range_two_files(t : T?) {
     t |> success(clean, unit.err)
     t |> equal(c_range_text(unit, 0, 2), "int a b")
     t |> equal(placed("# 4 \"y.h\"\n"), "$@t.c:1:1")
+}
+
+[test(description = "a _Pragma whose pragma the C-IR does not honour is refused at the operator, as a #pragma line is")]
+def test_pragma_operator_refused(t : T?) {
+    t |> equal(expanded([("main.c", "void f(void);\n_Pragma(\"weak f\")\nvoid f(void) \{\}\n")]), "error: main.c:2:1: the pragma '#pragma weak f' is not parsed")
 }
