@@ -14,8 +14,8 @@ expressions, type names, declarations, records, enums, statements and function d
 (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`, section 23), the
 type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60), the
 expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 38 to
-45), with the names and places it gives (`ARCHITECTURE_NAMES.md`, sections 86 to 88), and the byte
-diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 89). No converter pass calls them yet.
+45), names and places (`ARCHITECTURE_NAMES.md`, 86-88), the C-IR byte diff (`ARCHITECTURE_DIFF.md`,
+89) and the record layout (`ARCHITECTURE_LAYOUT*.md`, 79-85); no converter pass calls them yet.
 
 ## 1. File charters
 
@@ -68,10 +68,8 @@ diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 89). No converter pas
 - `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
   and the `%a` print (`ARCHITECTURE_EXPRS.md` section 45).
 - `c_ir.das` - the unit's C-IR: the walk over declarations, definitions and bodies in Dumper A's
-  order, initializers, statements, the own headers' declarations, the names (`ARCHITECTURE_TYPES.md`
-  sections 24 and 28, `ARCHITECTURE_EXPRS.md` sections 42 and 44, `ARCHITECTURE_NAMES.md`).
-- `diff.das` - the byte diff of two C-IR texts, macro fields and producer set aside
-  (`ARCHITECTURE_DIFF.md`); `tests/test_diff.das` holds each case.
+  order, initializers, statements, the own headers' declarations, the names (`ARCHITECTURE_TYPES.md` 24, 28; `ARCHITECTURE_EXPRS.md` 42, 44; `ARCHITECTURE_NAMES.md`).
+- `diff.das` - the byte diff of two C-IR texts (`ARCHITECTURE_DIFF.md`; `tests/test_diff.das`).
 - `tests/test_c_exprs.das` - per conversion group its exact cast stream, the literals under both
   dialects, `sizeof`, initializers, every statement form, the table order, every refusal with its
   place. `tests/test_c_floats.das` - the hard floating constants against clang and the C library.
@@ -86,6 +84,8 @@ diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 89). No converter pas
   tree, the tag and enumerator scopes, the old-style declaration list, a body's scope, the
   refusals and malformed input, the nesting bound of the record forms, a whole unit of headers
   and a program with its allocation probe, and a unit of C source with macros parsed with no clang.
+- `c_layout.das` - a record's layout in a dialect, written into a C-IR type (`ARCHITECTURE_LAYOUT.md`,
+  `ARCHITECTURE_LAYOUT_MSVC.md`); `tests/test_c_layout.das` and `compare/layout/` hold it to clang.
 - `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
   block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
   forms, and a unit with real bodies with its allocation probe.
