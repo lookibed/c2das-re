@@ -2,7 +2,8 @@
 
 `scripts/preflight.sh` runs the **fast tier** serially and stops at the first red:
 `env`, `native`, `untracked`, `format`, `lint`, `compile`, `ast-verify`, `md-ascii`,
-`review-md`, `criteria`. `--full` adds the **tests lane**: every dastest suite folder `suite_order` in the
+`review-md`, `pp-oracle`, `criteria`. `--full` adds the **tests lane** and the token oracle's
+**`pp-oracle-full` lane** after it. The tests lane is every dastest suite folder `suite_order` in the
 script lists, which `--list-gates` prints (`probes/`, `dasCRuntime/tests`, `c_runtime/tests`,
 `frontend/tests`, `frontend/include/tests`, `converter/tests`, `lua/tests`, `perf/tests`,
 `ports/tests`, `metrics/tests`, `compare/tests`, `doom/tests`, `tests/`; a folder that does not exist is skipped); a diff to that list changes this
@@ -32,6 +33,8 @@ lint gate with); a folder of house `.das` code outside that list is a defect of 
 | ast-verify | `daslang -dry-run --ast-verify` per changed `.das` outside `fixtures/` | an AST verify line or a crash: a bug in what built the node |
 | md-ascii | added lines of every `REVIEW*.md`, `ARCHITECTURE*.md`, `CLAUDE.md` and `AGENTS.md` in the tree and of `skills/internal/*.md` (`docs/` is never checked) | an em-dash, arrow or ellipsis in one of them |
 | review-md | `utils/internal/review-md/main.das -- --base <base>` | a `REVIEW.das` gate of a touched folder fired |
+| pp-oracle | `suites/c_testsuite/fetch.sh`, then `compare/pp/run.das -- --pp6 --fast` under a 600 s budget (`compare/pp/ARCHITECTURE.md#pp6`): the fixtures, the own headers and c-testsuite, about a minute | a unit differs from `clang -E`, a clang/gcc disagreement or a reference failure is unlisted (a unit that is not clean needs `gcc-14` at its `VERSIONS.md` pin to be classed at all) |
+| pp-oracle-full | under `--full` or `--only pp-oracle-full`: every corpus's fetch (c-testsuite, gcc-torture, Lua, PureDOOM, chibicc, `compare/pp/fetch.sh`), then `--pp6 --full` under a 1800 s budget | as `pp-oracle`, over every suite file, every project unit and every corpus list; a corpus list's unit that differs passes only as a line of `compare/pp/known_differences.txt` |
 | criteria | `metrics/criteria.das -- --report --delta-ref <base>`: prints the readability criteria table of the committed `metrics/criteria_linux.json`, its delta against the base's, and a `stale:` line per sample input that measures differently now | the capture is missing or unreadable; a stale sample or a fallen percentage is reported, never red: re-record with `scripts/run_criteria.sh` |
 | tests | `dastest -- --test <suite> --failures-only` per suite, `--jobs` suites at once, the isolated suites under `--isolated-mode`, a suite listed in `suite_timeouts` (`PREFLIGHT_SUITE_TIMEOUTS`, `suite=seconds`) under that whole-run `--timeout` instead of dastest's 1200 s - `compare/tests=3600`: its real-project conversions take 13 minutes alone on a loaded box and its files share a work folder, so it cannot run isolated; every suite runs before the lane fails | a suite is red: the failing test is fixed or its expectation corrected |
 

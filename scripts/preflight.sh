@@ -31,7 +31,9 @@ compile      fast   -compile-only of every .das outside fixtures/
 ast-verify   fast   -dry-run --ast-verify of every changed .das (a verify line or a crash fails)
 md-ascii     fast   no em-dash, arrow or ellipsis added to a rule document (docs/ is exempt: authored elsewhere)
 review-md    fast   the REVIEW.das gates of every folder the diff touches
+pp-oracle    fast   the token oracle's fast set, `compare/pp/run.das -- --pp6 --fast` (the fixtures, the own headers, c-testsuite, fetched by its fetch.sh): no unit differs from clang -E, every clang/gcc disagreement is listed in compare/pp/implementation_defined.txt
 criteria     fast   a report: the readability criteria of metrics/criteria_linux.json, the delta against the base's and the sample's freshness; red only when the capture is missing or unreadable
+pp-oracle-full lane the token oracle's full set, `--pp6 --full` (the fast set, gcc-torture, Lua, PureDOOM, chibicc, the Rust checkout's projects, every list of compare/pp/corpus/), each corpus fetched by its fetch.sh first; budget 1800 s
 tests        lane   every dastest suite, --jobs N at once (default 4): probes/, dasCRuntime/tests, c_runtime/tests, frontend/tests, frontend/include/tests, converter/tests, lua/tests, chibicc/tests, perf/tests, ports/tests, metrics/tests, compare/tests, doom/tests, tests/
 TABLE
             exit 0 ;;
@@ -117,6 +119,30 @@ gate_criteria() {
     out=$(das metrics/criteria.das -- --report --delta-ref "$base" 2>&1); rc=$?
     echo "$out"
     [ $rc = 0 ] && pass criteria || fail criteria "metrics/criteria_linux.json is missing or unreadable: run scripts/run_criteria.sh"
+}
+gate_pp_oracle() {
+    suites/c_testsuite/fetch.sh >/dev/null || { fail pp-oracle "suites/c_testsuite/fetch.sh cannot put c-testsuite at its pin"; return 1; }
+    pp_oracle_run pp-oracle 600 --fast
+}
+gate_pp_oracle_full() {
+    local f
+    for f in suites/c_testsuite/fetch.sh suites/gcc_torture/fetch.sh lua/fetch.sh doom/fetch.sh chibicc/fetch.sh compare/pp/fetch.sh; do
+        "$f" >/dev/null || { fail pp-oracle-full "$f cannot fetch its corpus at the VERSIONS.md pin"; return 1; }
+    done
+    pp_oracle_run pp-oracle-full 1800 --full
+}
+# the token oracle over a set under a time budget in seconds: each corpus's line and every unit
+# that is not clean printed, the whole output when the run is red
+pp_oracle_run() {
+    local name="$1" budget="$2" set="$3" out rc
+    out=$(timeout "$budget" bash -c '. scripts/env.sh; das compare/pp/run.das -- --pp6 "$1"' _ "$set" 2>&1); rc=$?
+    if [ $rc = 0 ]; then
+        echo "$out" | grep -E '\(pp6|^total \(pp6\)|drop its line'
+        pass "$name"
+    else
+        echo "$out" | tail -60
+        fail "$name" "a unit differs from clang -E, a clang/gcc disagreement or a reference failure is unlisted, or the run passed its $budget s budget (rc $rc)"
+    fi
 }
 # The tests lane. suite_order is the order the suites' output prints in. A test_groups entry is the
 # suites that run one after another because they write the same paths (the collision map,
@@ -209,7 +235,7 @@ gate_tests() {
     fi
     [ $tests_rc = 0 ] && pass tests || fail tests "a suite is red"
 }
-fast=(env native untracked format lint compile ast-verify md-ascii review-md criteria)
+fast=(env native untracked format lint compile ast-verify md-ascii review-md pp-oracle criteria)
 red=0
 for g in "${fast[@]}"; do
     wants "$g" || continue
@@ -217,5 +243,6 @@ for g in "${fast[@]}"; do
 done
 if [ $red = 0 ] && { [ $full = 1 ] || [ ${#only[@]} -gt 0 ]; }; then
     wants tests && { gate_tests || red=1; }
+    wants pp-oracle-full && { gate_pp_oracle_full || red=1; }
 fi
 [ $red = 0 ] && echo "preflight: green" || { echo "preflight: red"; exit 1; }
