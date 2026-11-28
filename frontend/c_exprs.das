@@ -266,7 +266,8 @@ def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
 def private fold_cast(r : CIr; x : CirExpr?; var v : int64&) : bool {
     var inner = 0l
     if (x.explicit_cast && x.a != null && x.a.e == "float_lit") {
-        return false if (!c_float_integer(x.a.v, inner))
+        // a floating constant's value the integer type does not hold is no integer constant (C11 6.3.1.4p1)
+        return false if (!c_float_integer(x.a.v, inner) || (!is_bool(r, x.t) && held_in(r, x.t, inner) != inner))
     } elif (x.a == null || !is_int(r, x.a.t) || !c_fold(r, x.a, inner)) {
         return false
     }
