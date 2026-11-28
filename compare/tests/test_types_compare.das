@@ -122,9 +122,7 @@ def test_declaration_difference(t : T?) {
     let none : table<string; bool>
     t |> equal(declaration_difference(agree, order, theirs, expression_only, none), "Dumper A long/64s, interned by a declaration the rebuilt walk does not reach")
     let theirs2 <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "long/64s", "int/32s"]
-    var both : table<string; bool>
-    both["long/64s"] = true
-    both["int/32s"] = true
+    var both <- {"long/64s" => true, "int/32s" => true}
     let extras_swapped <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "int/32s", "long/64s"]
     t |> equal(declaration_difference(extras_swapped, order, theirs2, none, both), "with the entries no rebuilt declaration names placed as Dumper A interned them, entry 4: builder int/32s, Dumper A long/64s")
     let theirs3 <- ["short/16s", "long/64s", "typedef(T=short/16s)", "void", "func(void;)"]
@@ -188,7 +186,7 @@ def test_run_types(t : T?) {
     var error : string
     let units <- c_testsuite_units(test_temp_dir(), error)
     t |> success(ends_with(error, "is missing (fetch it with suites/c_testsuite/fetch.sh)") && empty(units), error)
-    var argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
+    let argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
                  "--work", work, "--dialect", "linux", "{FIXTURES}/decl_order.c"]
     var out : string
     t |> equal(run_and_capture(argv, out, 600.0), 0)
