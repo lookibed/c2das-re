@@ -18,11 +18,21 @@ let FEATURE_QUERIES <- ["__has_attribute", "__has_builtin", "__has_c_attribute",
                         "__has_extension", "__has_feature", "__has_warning", "__is_identifier", "__is_target_arch", "__is_target_environment",
                         "__is_target_os", "__is_target_vendor"]
 
-// the target names a query of the triple's parts is asked of
-let private TARGET_NAMES <- {"__is_target_arch" => ["x86_64", "x86", "i386", "i686", "aarch64", "arm", "wasm32"],
-                             "__is_target_vendor" => ["pc", "unknown", "apple", "w64"],
-                             "__is_target_os" => ["linux", "windows", "win32", "darwin", "macos", "freebsd", "none"],
-                             "__is_target_environment" => ["gnu", "msvc", "musl", "android", "itanium"]}
+// the target names a query of the triple's parts is asked of, lower case as the evaluator asks:
+// the triple parser's names and aliases of each dialect's parts and of their neighbours
+let private TARGET_NAMES <- {"__is_target_arch" => ["x86_64", "amd64", "x86_64h", "x86", "i386", "i486", "i586", "i686", "aarch64", "arm64", "arm",
+                                                    "thumb", "wasm32", "wasm64", "riscv64"],
+                             "__is_target_vendor" => ["pc", "unknown", "apple", "w64", "scei", "suse"],
+                             "__is_target_os" => ["linux", "windows", "win32", "darwin", "macos", "macosx", "ios", "freebsd", "netbsd", "openbsd",
+                                                  "mingw32", "cygwin", "none", "unknown"],
+                             "__is_target_environment" => ["gnu", "gnueabi", "gnueabihf", "gnux32", "msvc", "musl", "android", "itanium", "cygnus",
+                                                           "coreclr", "simulator", "macabi", "unknown"]}
+
+// the builtin names that are keywords, not table entries: `__builtin_*`, `__is_*` and `__has_*`
+// keywords, which `__has_builtin` answers like a builtin, and the target queries
+let private KEYWORD_BUILTIN_PREFIXES <- ["__builtin_", "__is_", "__has_"]
+let private TARGET_QUERY_BUILTINS <- ["__is_target_arch", "__is_target_vendor", "__is_target_os", "__is_target_environment",
+                                      "__is_target_variant_os", "__is_target_variant_environment"]
 
 // every `<open>name<close>` of `text`, `name` of identifier characters only
 def private names_between(text, open, close : string; var into : table<string; bool>) {
@@ -107,6 +117,16 @@ def feature_candidates(headers : string; var error : string&) : table<string; ar
         }
     }
     sort(warnings)
+    for (k in keys(keywords)) {
+        for (prefix in KEYWORD_BUILTIN_PREFIXES) {
+            if (starts_with(k, prefix)) {
+                builtins |> insert(k, true)
+            }
+        }
+    }
+    for (name in TARGET_QUERY_BUILTINS) {
+        builtins |> insert(name, true)
+    }
     let builtin_names <- sorted_keys(builtins)
     let attr_names <- sorted_keys(attrs)
     out["__has_builtin"] <- clone_to_move(builtin_names)
