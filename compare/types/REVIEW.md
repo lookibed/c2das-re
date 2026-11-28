@@ -11,7 +11,7 @@ and fails the run.** A forgiving rule turns the oracle's zero into a claim nothi
 `default_clang`), never writes its own.** Another flag set compares the builder against a dump the
 converter never makes.
 
-**A diff to `declaration_order` reaches only what Dumper A's declarations and `decl` statements
-name, never an expression's type, and keeps the hoisted declarations at their places (section
-3).** An expression type there hides the interleave C.3 must reproduce, and a misplaced hoisted
-declaration reports a builder defect that is the reconstruction's.
+**A diff to the C-IR comparison (`cir_difference`, `stmt_difference`, `expr_difference`) sets
+aside only the fields section 2 names - linkage names, places, the macro fields and the source
+parentheses - never a type, a cast or a value.** Each field set aside is a difference the C-IR
+byte diff of C.6 will still see, and only those have an owner outside this item.

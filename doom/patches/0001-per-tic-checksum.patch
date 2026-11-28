@@ -11,6 +11,11 @@ produces are distributed under the same license, WITHOUT ANY WARRANTY.
 - d_main.c: with the define, D_DoomLoop prints one line per game tic once D_Display has drawn
   it, "tic=<gametic> cs=<8 hex digits> fb=<8 hex digits>", fb the same FNV-1a over the bytes of
   screens[0]. Without the define the build prints nothing more.
+- g_game.c, d_main.c: with -DDOOM_FINAL_CHECKSUM, the speed build's define, G_CheckDemoStatus
+  prints one line as a -timedemo run ends, "final tic=<the last tic run> cs=<8 hex digits>
+  fb=<8 hex digits>", the same two checksums of the state the last tic left and of the screen
+  D_Display drew for it: the reference log's last tic line after "final ". That build computes
+  no other checksum, so its replay is held to the reference at the cost of one frame's hash.
 - w_wad.c, r_data.c, i_video.c: a cached lump ends in 128 zero bytes, a composite texture is
   zeroed with the same slack, and the screen starts zeroed. A column drawer reads up to 127
   bytes past a column's start (a wall taller than its texture, a post's first row rounded to
@@ -21,14 +26,14 @@ produces are distributed under the same license, WITHOUT ANY WARRANTY.
   to the title loop (or, for a multiplayer demo, to G_InitNew), which replaced the demo.
 
 diff --git a/src/DOOM/d_main.c b/src/DOOM/d_main.c
-index 6cf98c8..806d465 100644
+index 6cf98c8..46ad39e 100644
 --- a/src/DOOM/d_main.c
 +++ b/src/DOOM/d_main.c
-@@ -331,6 +331,52 @@ void D_UpdateWipe(void)
+@@ -331,6 +331,73 @@ void D_UpdateWipe(void)
  }
  
  
-+#if defined(DOOM_TIC_CHECKSUM)
++#if defined(DOOM_TIC_CHECKSUM) || defined(DOOM_FINAL_CHECKSUM)
 +extern int tic_checksum_tic;
 +extern unsigned int tic_checksum_cs;
 +
@@ -46,6 +51,20 @@ index 6cf98c8..806d465 100644
 +    doom_print(digits);
 +}
 +
++// [c2das] The FNV-1a over the bytes of screens[0].
++static unsigned int D_FrameChecksum(void)
++{
++    unsigned int fb = 2166136261u;
++    int i;
++
++    for (i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
++    {
++        fb ^= screens[0][i];
++        fb *= 16777619u;
++    }
++    return fb;
++}
++
 +//
 +// D_TicChecksums
 +// [c2das] One line per game tic once D_Display has drawn it, "tic=<gametic> cs=<8 hex digits>
@@ -54,22 +73,29 @@ index 6cf98c8..806d465 100644
 +//
 +static void D_TicChecksums(void)
 +{
-+    unsigned int fb = 2166136261u;
-+    int i;
-+
 +    if (tic_checksum_tic < 0)
 +        return;
-+    for (i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++)
-+    {
-+        fb ^= screens[0][i];
-+        fb *= 16777619u;
-+    }
 +    doom_print("tic=");
 +    doom_print(doom_itoa(tic_checksum_tic, 10));
 +    D_PrintHex(" cs=", tic_checksum_cs);
-+    D_PrintHex(" fb=", fb);
++    D_PrintHex(" fb=", D_FrameChecksum());
 +    doom_print("\n");
 +    tic_checksum_tic = -1;
++}
++
++//
++// D_FinalChecksum
++// [c2das] The one line a -timedemo run of the speed build prints, as it ends: "final tic=<the
++// last tic run> cs=<8 hex digits> fb=<8 hex digits>", the checksums D_TicChecksums prints for
++// that tic, so it equals the reference log's last tic line after "final ".
++//
++void D_FinalChecksum(unsigned int cs)
++{
++    doom_print("final tic=");
++    doom_print(doom_itoa(gametic - 1, 10));
++    D_PrintHex(" cs=", cs);
++    D_PrintHex(" fb=", D_FrameChecksum());
++    doom_print("\n");
 +}
 +#endif
 +
@@ -77,7 +103,7 @@ index 6cf98c8..806d465 100644
  void D_DoomLoop(void)
  {
  #if 0 // [pd] Moved to D_DoomMain()
-@@ -375,6 +421,9 @@ void D_DoomLoop(void)
+@@ -375,6 +442,9 @@ void D_DoomLoop(void)
  
          // Update display, next frame, with current state.
          D_Display();
@@ -87,7 +113,7 @@ index 6cf98c8..806d465 100644
  
  #if 0 // [pd] Sound is queried by the application's audio thread.
          // Sound mixing for the buffer is snychronous.
-@@ -1196,14 +1245,20 @@ void D_DoomMain(void)
+@@ -1196,14 +1266,20 @@ void D_DoomMain(void)
      {
          singledemo = true;              // quit after one demo
          G_DeferedPlayDemo(myargv[p + 1]);
@@ -111,18 +137,21 @@ index 6cf98c8..806d465 100644
  
      p = M_CheckParm("-loadgame");
 diff --git a/src/DOOM/g_game.c b/src/DOOM/g_game.c
-index 01f68dd..2a0b634 100644
+index 01f68dd..bc4751d 100644
 --- a/src/DOOM/g_game.c
 +++ b/src/DOOM/g_game.c
-@@ -603,6 +603,42 @@ doom_boolean G_Responder(event_t* ev)
+@@ -603,6 +603,45 @@ doom_boolean G_Responder(event_t* ev)
  
  
  
-+#if defined(DOOM_TIC_CHECKSUM)
++#if defined(DOOM_TIC_CHECKSUM) || defined(DOOM_FINAL_CHECKSUM)
 +// [c2das] The tic G_Ticker ran last and its checksum, -1 until it runs one: D_DoomLoop prints
 +// them with the frame's checksum once D_Display has drawn the tic.
 +int tic_checksum_tic = -1;
 +unsigned int tic_checksum_cs;
++
++// [c2das] d_main.c: the line a -timedemo run of the speed build ends in, of the tic run last
++void D_FinalChecksum(unsigned int cs);
 +
 +//
 +// G_TicChecksum
@@ -157,7 +186,7 @@ index 01f68dd..2a0b634 100644
  //
  // G_Ticker
  // Make ticcmd_ts for the players.
-@@ -759,6 +795,10 @@ void G_Ticker(void)
+@@ -759,6 +798,10 @@ void G_Ticker(void)
              D_PageTicker();
              break;
      }
@@ -168,6 +197,17 @@ index 01f68dd..2a0b634 100644
  }
  
  
+@@ -1629,6 +1672,10 @@ doom_boolean G_CheckDemoStatus(void)
+ 
+     if (timingdemo)
+     {
++#if defined(DOOM_FINAL_CHECKSUM)
++        // [c2das] the speed build's one checksum line, of the last tic run
++        D_FinalChecksum(G_TicChecksum());
++#endif
+         endtime = I_GetTime();
+         //I_Error("Error: timed %i gametics in %i realtics", gametic
+         //        , endtime - starttime);
 diff --git a/src/DOOM/i_video.c b/src/DOOM/i_video.c
 index d1c2709..47127ae 100644
 --- a/src/DOOM/i_video.c

@@ -3,7 +3,7 @@ options stack = 262144
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
-require ../c_types.das
+require ../c_ir.das
 
 //! `frontend/c_types.das`: per type form its table entry and clang's spelling, under both dialects;
 //! the order a unit's declarations, definitions and bodies first use their types in; typedefs,
@@ -21,10 +21,15 @@ def private types_of(text : string; msvc : bool = false; library : string = "") 
     c_parser_open_text(p, text, "t.c", msvc)
     let u = c_unit(p)
     return "parse error: {p.err}" if (p.failed)
-    var b : CTypes
-    c_types_open(b, msvc ? target_llp64_msvc() : target_lp64_linux(), library)
-    return "error: {b.err}" if (!c_types_unit(b, p, u))
-    return join([for (t in b.tu.types); entry(t)], " ")
+    var r = new CIr
+    c_ir_open(*r, msvc ? target_llp64_msvc() : target_lp64_linux(), library)
+    let ok = c_ir_unit(*r, p, u)
+    let listed = ok ? join([for (t in r.b.tu.types); entry(t)], " ") : "error: {r.b.err}"
+    delete_tu(r.b.tu)
+    unsafe {
+        delete r
+    }
+    return listed
 }
 
 let SCALARS = "char a; signed char b; unsigned char c; short d; unsigned short e; int f; unsigned g; long h; unsigned long i; long long j; unsigned long long k; _Bool l; float m; double n; long double o; void q(void); short int d2; int signed f2; signed f3; long int h2; long unsigned int i2; long long int j2; unsigned char signed_twice; char unsigned c2; const volatile int cv;"
@@ -83,9 +88,9 @@ let BODY = "short g(long a, char *b) \{ unsigned x; \{ typedef double D; D y; \}
 def test_definition(t : T?) {
     t |> run("every statement form") @(t : T?) {
         t |> equal(types_of(BODY),
-                   "int:16:true:short int:64:true:long int:8:false:char ptr:2 func:0:1,3:false int:32:false:unsigned int float:64:double typedef:D:6 float:32 int:64:true:long long int:8:true:signed char int:16:false:unsigned short int:32:true:int func:12::false int:8:false:unsigned char int:8:false:_Bool float:64:long double int:64:false:unsigned long ptr:12")
+                   "int:16:true:short int:64:true:long int:8:false:char ptr:2 func:0:1,3:false int:32:false:unsigned int float:64:double typedef:D:6 float:32 int:32:true:int int:64:true:long long int:8:true:signed char int:16:false:unsigned short func:9::false int:8:false:unsigned char int:8:false:_Bool float:64:long double int:64:false:unsigned long ptr:9")
     }
-    t |> run("an old-style definition: its type with the parameters promoted, then each parameter's declared type in the identifier list's order") @(t : T?) {
+    t |> run("an old-style definition: R (P...) with its parameters promoted, then each parameter in the identifier list's order") @(t : T?) {
         t |> equal(types_of("int k(a, b, c) char b; double a; int c[2]; \{ return 0; \}"),
                    "int:32:true:int float:64:double ptr:0 func:0:1,0,2:false int:8:false:char")
         t |> equal(types_of("int k(a, b, c) float a; unsigned short b; _Bool c; \{ return 0; \}"),
@@ -101,7 +106,7 @@ def test_definition(t : T?) {
 [test(description = "an unsized array takes its count from its initializer: a string literal run's bytes, escapes and universal character names counted, a list's items with index designators, a braced string, braced rows, a pointer array's string item")]
 def test_unsized_arrays(t : T?) {
     t |> equal(types_of("char s[] = \"ab\\n\\x41\\101\\u00e9\" \"c\"; int v[] = \{1, 2, 3\}; char u[] = \{\"xy\"\}; int m[][2] = \{\{1, 2\}, \{3, 4\}, \{5\}\}; extern int e[]; char w[][3] = \{\"a\", \"b\"\}; int d[] = \{5, [2] = 2, 3\}; char *q[] = \{\"z\"\};"),
-               "int:8:false:char array:0:9 int:32:true:int array:2:3 array:0:3 array:2:2 array:5:3 array:2:-1 array:4:2 array:2:4 ptr:0 array:10:1")
+               "int:8:false:char array:0:9 int:32:true:int array:2:3 array:0:3 array:2:2 array:5:3 array:2:-1 array:4:2 array:2:4 ptr:0 array:10:1 array:0:2")
 }
 
 let LIBRARY = "# 1 \"/lib/h.h\" 1\ntypedef unsigned long size_t;\ntypedef struct F FILE;\nint puts(const char *);\nstatic int lib_def(void) \{ return 0; \}\n# 2 \"t.c\" 2\nsize_t n; int f(void) \{ int puts(const char *); int lib_def(void); return 0; \}\n"
@@ -142,7 +147,6 @@ def test_refusals(t : T?) {
     t |> equal(types_of("char s[] = L\"x\";"), "error: t.c:1:12: a prefixed string literal is not typed yet")
     t |> equal(types_of("int s[] = (\{ 1; \});"), "error: t.c:1:11: an unsized array initialized by this expression is not typed yet")
 }
-
 [test(description = "a declaration's specifiers name one type for all its declarators: a typedef one of them binds does not change the next")]
 def test_specifiers_once(t : T?) {
     t |> equal(types_of("typedef int T; void f(void) \{ typedef T T2, *T, T3; T3 x; \}"),
@@ -154,6 +158,9 @@ def test_redeclarations(t : T?) {
     t |> equal(types_of("int f(int); int f();"), "int:32:true:int func:0:0:false")
     t |> equal(types_of("int f(); int f(int x) \{ return x; \}"), "int:32:true:int func:0::false func:0:0:false")
     t |> equal(types_of("int f(); int f(a) int a; \{ return a; \}"), "int:32:true:int func:0::false func:0:0:false")
+    t |> equal(types_of("void f(const int x); void f(int x);"), "void int:32:true:int func:0:1:false")
+    t |> equal(types_of("int x; const int x;"), "error: t.c:1:18: a redeclaration of 'x' with other qualifiers is invalid C, which clang rejects")
+    t |> equal(types_of("extern const int a[]; const int a[2];"), "int:32:true:int array:0:-1 array:0:2")
     t |> equal(types_of("extern int a[3]; int a[];"), "int:32:true:int array:0:3")
     t |> equal(types_of("extern int a[]; int a[2];"), "int:32:true:int array:0:-1 array:0:2")
     t |> equal(types_of("int g(int); void h(void) \{ extern int g(); \}"), "int:32:true:int func:0:0:false void func:2::false")

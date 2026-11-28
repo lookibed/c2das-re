@@ -13,6 +13,15 @@ let private ROOT = "frontend"
 
 let CLANG_MODULE = "cbind"
 
+// the native modules: the C runtime and the c_runtime library over it, which neither a daslang
+// compile nor a web page loads
+let NATIVE_MODULE = "crt"
+let NATIVE_LIBRARY = "c_runtime"
+
+// the folder of the own headers' tests, which compile converted programs against the C runtime:
+// no part of Dumper C, the one place under the root a native module is required
+let HEADER_TESTS = "include/tests/"
+
 let private REQUIRE = "require"
 
 let INCLUDE = "include"
@@ -128,11 +137,17 @@ def private is_module_path(word : string) : bool {
     return !empty(word)
 }
 
+// whether module path `target` names a native module: `crt`, or `c_runtime` or one of its modules
+def private is_native(target : string) : bool {
+    let parts <- split(target, "/")
+    return target == NATIVE_MODULE || has_value(parts, NATIVE_LIBRARY)
+}
+
 //! Findings of the file `path` and of every file it requires by path or as a sibling module, each
 //! named with `via`, the file under `frontend/` the chain starts at. Outside comments and literals:
 //! the name of a function that starts a process, as a whole identifier, called or not; an
 //! `include`, since the gate follows no text include; and a line that holds `require` and names
-//! the clang binding in any word, or is not `require <module>` with an optional `public`.
+//! the clang binding in any word, or requires a native module, or is not `require <module>` with an optional `public`.
 def check_file(path, via : string; var checked : table<string>) {
     let canonical = get_full_file_name(path)
     if (key_exists(checked, canonical)) {
@@ -158,6 +173,8 @@ def check_file(path, via : string; var checked : table<string>) {
             && (length(parts) == 2 || (length(parts) == 3 && parts[2] == "public")))
         if (contains_word(line, CLANG_MODULE)) {
             gate_finding(path, line_no, "requires `{CLANG_MODULE}`{reached}: nothing under {ROOT}/ needs clang")
+        } elif (is_plain && is_native(parts[1]) && find(via, HEADER_TESTS) < 0) {
+            gate_finding(path, line_no, "requires `{parts[1]}`{reached}: nothing under {ROOT}/ needs a native module")
         } elif (!is_plain) {
             gate_finding(path, line_no, "has a `{REQUIRE}` line{reached} that is not `{REQUIRE} <module>` or `{REQUIRE} <module> public`: the gate cannot name its module")
         } else {

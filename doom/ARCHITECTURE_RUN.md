@@ -55,8 +55,17 @@ Two builds of the program serve the frame rate. The sync build is the one every 
 describes: under `DOOM_TIC_CHECKSUM` it hashes each tic's state and frame and prints the tic lines
 the reference log holds. The speed build is the same program without that define, natively
 (`work/native/doom-speed`) and converted (`work/<layout>-speed/`, under `work/doom-speed.c2das`,
-the sidecar with the define taken out): it hashes nothing and prints no tic line, so the timed
-window holds the game alone.
+the sidecar with `DOOM_FINAL_CHECKSUM` in its place, `harness.das`'s `speed_defines` and
+`speed_sidecar`): it prints no tic line and hashes once, as the demo ends, the last tic's state and
+frame into its `final` line (section 3), so the timed window holds the game and one frame's hash.
+The `final` line is the speed run's own proof of sync: `run_converted` holds it to the reference
+log's last tic line (`final_sync`), and the sync build's run beside it holds every tic. It does not
+cover what the speed run did on the way: `cs` is the player's position, angle and health and the
+random index at the end, `fb` the last frame alone, so a speed build that draws a middle frame
+wrong but ends in the same state and frame passes; the middle frames are held only by the sync
+build's run of the same lane, a conversion that differs in the define alone. A speed run that ends
+with no tic line and no `final` line comes from a speed build made before `DOOM_FINAL_CHECKSUM`:
+`run_converted` reports it as `rebuild needed`, an error, not a desync.
 
 The host times the playback (section 4): it reads `clock()`, the process CPU
 time, after `doom_init` returns and again at the end, and prints `host: timed <N> gametics in <S> s`.
@@ -64,7 +73,8 @@ time, after `doom_init` returns and again at the end, and prints `host: timed <N
 `perf/ARCHITECTURE.md` section 2), so the native build and every tier time themselves with the same
 clock. In the speed build's window: the demo's tics, their screen melts and their drawing. Outside
 it: the process start, the module load, the JIT compile, the wad load and `R_Init`; and, having no
-part in the speed build, the per-tic checksums and the tic lines.
+part in the speed build, the per-tic checksums and the tic lines. Inside it, once per run: the
+`final` line's two checksums.
 
 `run.das --run --fps` takes every demo (or `--demo`'s) natively and under each tier of `--tiers`
 (default `interp,jit,exe,aot`), each run its own process through `run_converted`, whose tier `native` runs
@@ -77,7 +87,10 @@ taken in rounds once every lane's sync run stood: a round runs each lane still s
 native first, the tiers in `--tiers` order in an even round and reversed in an odd one
 (`perf_lanes.das`'s `sample_order`), so a drift of the machine weighs on every tier alike:
 `run_converted` under `DemoSpec.speed` compares no tic line, and `in_sync` passes a speed run only
-when it ends in the demo's `timed N gametics` and prints no tic line. `fps.das`'s `run_problem`
+when it ends in the demo's `timed N gametics`, prints no tic line and its `final` line is the
+reference's last tic line; one whose `final` line differs is a desync. Each run logs
+its evidence line (`timed_evidence`, `ARCHITECTURE.md` section 1): the lane, demo and build, every
+tic hashed or one final hash inside the timed window, the tics the host timed, the seconds and fps, and what held it to the reference. `fps.das`'s `run_problem`
 also refuses a run without the host line, or whose host line times other tics than the reference's
 or no time; the first speed run refused ends the cell. A cell's fps is the median of the speed runs'
 `N / S`, its spread half their range over the median (`perf_lanes.das`'s `median_of` and
@@ -85,7 +98,10 @@ or no time; the first speed run refused ends the cell. A cell's fps is the media
 
 The capture is `results_linux.json` in this folder (`FpsCapture`): the c2das-re commit (`-dirty`
 with tracked changes), the command, the end of the run, the platform, the CPU model and its box
-(`perf/boxes.das`), clang's and daslang's version lines, the runs per cell, the clock, the lanes
+(`perf/boxes.das`), clang's and daslang's version lines, the runs per cell, the clock, how its
+speed runs were held to the reference (`speed_check`, `final line`, with `speed_patch`, patch 0001
+and its sha256; a capture without it was held to the demo's end alone, and `render_fps` says so),
+the lanes
 with the command one timed run of each is, the demos and one cell per demo and lane with every
 speed run's fps and seconds. `render_fps` turns a capture into the provenance line, the method line
 and one table, demo by lane, each das lane's native fps over its own after the fps columns, and one
