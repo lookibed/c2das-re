@@ -51,7 +51,7 @@ def private field_at_or_after(r : CIr; u, pos : int) : int {
 
 // the position after `pos` in object `fr`'s order
 [arch(at="ARCHITECTURE_INITS.md#c-inits-order")]
-def private after(r : CIr; fr : Frame; pos : int) : int => r.pool[fr.t].k == "array" ? pos + 1 : field_at_or_after(r, fr.t, pos + 1)
+def private after(r : CIr; fr : Frame; pos : int) : int => field_at_or_after(r, fr.t, pos + 1)
 
 // whether object `fr` has no position left for an item without a designator
 [arch(at="ARCHITECTURE_INITS.md#c-inits-order")]
@@ -60,6 +60,7 @@ def private exhausted(r : CIr; fr : Frame) : bool {
     if (k == "array") {
         return r.pool[fr.t].count >= 0 && fr.next >= r.pool[fr.t].count
     } elif (k == "union") {
+        // a union takes one member; an empty union's braced list takes none
         return fr.filled || fr.next >= length(r.pool[fr.t].fields)
     }
     return fr.next >= length(r.pool[fr.t].fields)
@@ -73,12 +74,21 @@ def private slot_type(r : CIr; fr : Frame; pos : int) : int => r.pool[fr.t].k ==
 // for an incomplete record or a flexible array member's list
 def private frame_of(var r : CIr; var p : CParser; t, tok : int; var fr : Frame&) : bool {
     let u = unq(r, t)
-    if (is_record(r, u) && (!c_tag_complete(r, p) || !key_exists(r.layouts, u))) {
+    // a record whose definition comes later is incomplete here, though a later use completes it
+    if (is_record(r, u) && !key_exists(r.layouts, u)) {
         c_refuse(r, p, tok, "an initializer of an incomplete record")
         return false
     }
-    fr = Frame(x = new CirExpr(e = "init_list", t = t), t = u, next = r.pool[u].k == "array" ? 0 : field_at_or_after(r, u, 0))
+    return false if (is_record(r, u) && !c_tag_complete(r, p))
+    fr = new_frame(r, t)
     return true
+}
+
+// a frame over a new empty list of pool type `t`, at its first position (an array's fields are
+// none, so its first position is 0)
+def private new_frame(r : CIr; t : int) : Frame {
+    let u = unq(r, t)
+    return Frame(x = new CirExpr(e = "init_list", t = t), t = u, next = field_at_or_after(r, u, 0))
 }
 
 // value `v` placed at position `pos` of object `fr`, replacing an earlier one there; a union keeps
@@ -119,7 +129,7 @@ def private string_of(p : CParser; n : int) : int {
 // the frame of the subobject at position `pos` of the top frame, its list made there or the one an
 // earlier item made; false with the error set when an earlier item gave it a value that is no list
 // (clang's designated update of such a value)
-def private open_subobject(var r : CIr; var p : CParser; var stack : array<Frame>; pos, tok : int) : bool {
+def private open_subobject(var r : CIr; p : CParser; var stack : array<Frame>; pos, tok : int) : bool {
     var top = stack[length(stack) - 1]
     let st = slot_type(r, top, pos)
     if (r.pool[unq(r, st)].k == "array" && r.pool[unq(r, st)].count < 0) {
@@ -130,17 +140,17 @@ def private open_subobject(var r : CIr; var p : CParser; var stack : array<Frame
     for (old in top.x.init_items) {
         if (old.pos == pos) {
             if (old.v.e != "init_list") {
-                c_refuse(r, p, tok, "a designator into a subobject an earlier initializer gave a whole value")
+                c_refuse(r, p, tok, "an initializer into a subobject an earlier one gave a whole value")
                 return false
             }
             // a union reopened holds the member an earlier item filled
             let u = unq(r, st)
-            stack |> push(Frame(x = old.v, t = u, next = r.pool[u].k == "array" ? 0 : field_at_or_after(r, u, 0), filled = r.pool[u].k == "union" && !empty(old.v.init_items)))
+            stack |> push(Frame(x = old.v, t = u, next = field_at_or_after(r, u, 0), filled = r.pool[u].k == "union" && !empty(old.v.init_items)))
             return true
         }
     }
-    var fr : Frame
-    return false if (!frame_of(r, p, st, tok, fr))
+    // a subobject's type is complete, its record laid out with the record holding it
+    var fr = new_frame(r, st)
     if (r.pool[top.t].k == "union") {
         // the member opened replaces the one an earlier item filled
         for (item in top.x.init_items) {
@@ -183,9 +193,22 @@ def private designator_path(var r : CIr; var p : CParser; dn : CNodeRec; top : F
         c_refuse(r, p, dn.tok, "an array index other than an integer constant expression")
         return <- path
     }
+    let hi = dn.b >= 0 ? w : v
+    if (v < 0l || hi < 0l) {
+        c_reject(r, p, dn.tok, "an array index below 0")
+        return <- path
+    }
     // a position past 2^31 - 2 leaves the array no count clang's 32-bit size holds
-    if (v >= 2147483647l || w >= 2147483647l) {
+    if (v >= 2147483647l || hi >= 2147483647l) {
         c_refuse(r, p, dn.tok, "an array sized past 2^31 - 1")
+        return <- path
+    }
+    let count = r.pool[top.t].count
+    if (count >= 0 && hi >= int64(count)) {
+        c_reject(r, p, dn.tok, "an array index past the array's bound")
+        return <- path
+    } elif (hi < v) {
+        c_reject(r, p, dn.tok, "an empty array index range")
         return <- path
     }
     path |> push(int(v))
@@ -255,6 +278,14 @@ def private place(var r : CIr; var p : CParser; var stack : array<Frame>; n : in
                 c_refuse(r, p, tok, "an initializer of a flexible array member")
                 return false
             }
+            var sub = new_frame(r, st)
+            let empty_aggregate = exhausted(r, sub)
+            delete_expr(sub.x)
+            if (empty_aggregate) {
+                delete_expr(typed)
+                c_reject(r, p, tok, "a value in an aggregate with no elements, whose braces clang requires,")
+                return false
+            }
             if (!open_subobject(r, p, stack, pos, tok)) {
                 delete_expr(typed)
                 return false
@@ -280,7 +311,8 @@ def private place(var r : CIr; var p : CParser; var stack : array<Frame>; n : in
 }
 
 // a GNU range's elements whose value opened elided braces: list `x`'s positions `first` to
-// `last - 1` take a copy of position `last`'s subobject once the frames from `depth` on close
+// `last - 1` take a copy of position `last`'s subobject when the stack drops below `depth` (a
+// designator or the list's end)
 struct Shared {
     x : CirExpr?
     first : int
@@ -310,7 +342,7 @@ def private clone_expr(var x : CirExpr?) : CirExpr? {
     return y
 }
 
-// the ranges of `ranges` whose frames closed, the stack now `depth` deep, copied to every element:
+// the ranges of `ranges` whose subobjects closed, the stack now `depth` deep, copied to every element:
 // the range's elements share one subobject, so the items after the range fill each (clang's
 // semantic form)
 [arch(at="ARCHITECTURE_INITS.md#c-inits-designators")]
@@ -386,7 +418,6 @@ def private aggregate_list(var r : CIr; var p : CParser; n, t : int) : CirExpr? 
                 stack |> pop()
                 stack[length(stack) - 1].next = after(r, stack[length(stack) - 1], stack[length(stack) - 1].next)
             }
-            close_shared(ranges, length(stack))
             if (!exhausted(r, stack[length(stack) - 1])) {
                 ok = place(r, p, stack, it.b, null, it.tok)
             }
@@ -527,7 +558,10 @@ def private compound_literal(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (is_aggregate(r, t)) {
         init = c_initializer(r, p, node.b, t)
     } else {
-        if (first >= 0 && (p.ast.nodes[first].next >= 0 || p.ast.nodes[first].a >= 0)) {
+        if (first >= 0 && p.ast.nodes[first].a >= 0) {
+            c_reject(r, p, node.tok, "a designated initializer of a scalar")
+            return null
+        } elif (first >= 0 && p.ast.nodes[first].next >= 0) {
             c_refuse(r, p, node.tok, "a scalar compound literal of other than one value")
             return null
         }
