@@ -605,6 +605,9 @@ def private paste(var ex : PpExpander; var pp : Preprocessor; var out : array<Pp
         t.tok.sym = interned_bytes(pp, ex.text, at)
         t.spelled = PpSpelled.symbol
         ex.text |> resize(at)
+        if (pp_poisoned(pp, t.tok.sym)) {
+            diag(pp, PpSeverity.error, lhs, "attempt to use a poisoned identifier")
+        }
     }
     out[last] = t
 }

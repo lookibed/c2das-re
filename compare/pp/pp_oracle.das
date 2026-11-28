@@ -507,9 +507,20 @@ def pp2_setup(var error : string&) : tuple<entries : array<string>; search : arr
 
 //! The `#pragma` and `#ident` lines of clang's `-E` output `text`: clang prints each pragma it
 //! keeps and each `#ident` as a line, and its token dump of that output takes them as directives,
-//! not tokens, as PP.2 keeps them in its pragma and pack ledgers instead of its stream.
+//! not tokens, as PP.2 keeps them in its pragma and pack ledgers instead of its stream. A
+//! `#pragma GCC warning` or `GCC error` line is none: PP.2 makes it a diagnostic, not an entry.
 [arch(at="ARCHITECTURE.md#pp2")]
 def pragma_lines(text : string) : int => length(pragma_line_numbers(text))
+
+// whether the directive text after a `#` is a `pragma GCC warning` or `pragma GCC error`, which
+// PP.2 raises as a diagnostic (`frontend/ARCHITECTURE_PP.md#pp-poison`)
+def private is_pragma_message(directive : string) : bool {
+    return false if (!starts_with(directive, "pragma"))
+    let rest = strip(slice(directive, 6))
+    return false if (!starts_with(rest, "GCC ") && !starts_with(rest, "GCC\t"))
+    let kind = strip(slice(rest, 3))
+    return starts_with(kind, "warning") || starts_with(kind, "error")
+}
 
 // the numbers, from 1, of the `#pragma` and `#ident` lines of `text`
 def private pragma_line_numbers(text : string) : array<int> {
@@ -518,6 +529,7 @@ def private pragma_line_numbers(text : string) : array<int> {
         let s = strip(line)
         if (starts_with(s, "#")) {
             let directive = strip(slice(s, 1))
+            continue if (is_pragma_message(directive))
             if (starts_with(directive, "pragma") || starts_with(directive, "ident")) {
                 numbers |> push(n)
             }

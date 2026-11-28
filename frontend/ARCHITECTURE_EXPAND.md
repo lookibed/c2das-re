@@ -1,7 +1,7 @@
 # frontend Architecture - macro expansion
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family
-(`ARCHITECTURE_PP.md` holds sections 5 to 13).
+(`ARCHITECTURE_PP.md` holds sections 5 to 13, 53 and 54).
 
 ## 29. The expansion over the directive layer {#pp-expansion}
 
@@ -142,7 +142,8 @@ is not OTHER. Otherwise
 the paste is clang's error "pasting formed 'X', an invalid preprocessing token", and both tokens
 stay. An empty operand is a placemarker: pasted with a token it is that token, two make one, and
 the placemarkers left are dropped when the replacement is done. A pasted name is a new name: it
-expands on rescan unless its macro is disabled then. A name pasted for the first time is interned
+expands on rescan unless its macro is disabled then, and a poisoned one is clang's error
+(`ARCHITECTURE_PP.md` section 54). A name pasted for the first time is interned
 from the pool's bytes, read in place; a paste allocates no string.
 
 ## 36. The builtin names {#pp-builtins}
@@ -189,4 +190,5 @@ The expander recurses once per argument expanded inside another, which the 1 MB 
 overflows it where clang's own stack still holds. A directive met while looking for a call's `(`
 is done before the name is handed out, so a `#pragma` there is placed one token earlier than
 clang's `-E` prints it. `defined` produced by a macro in an `#if` line is taken without clang's
-warning "macro expansion producing 'defined' has undefined behavior".
+warning "macro expansion producing 'defined' has undefined behavior". A poisoned name formed by `##` is
+reported at the left operand, where clang reports it at the macro call.

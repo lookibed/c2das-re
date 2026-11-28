@@ -113,7 +113,9 @@ it keeps, and each `#ident` or `#sccs`, as a `#pragma` or `#ident` line of its o
 token dump takes as a directive, not tokens; PP.2 keeps them in its ledgers, not its stream. So
 the oracle counts those lines of the `-E` output (`pragma_lines`) against PP.2's pragma and pack
 entries, and places each: a line's place is the count of clang's tokens on the lines before it
-(`pragma_places`), an entry's the tokens PP.2 handed out before it (`emitted`).
+(`pragma_places`), an entry's the tokens PP.2 handed out before it (`emitted`). Clang prints a
+`#pragma GCC warning` or `GCC error` too, which PP.2 raises as a diagnostic and keeps in no ledger
+(`frontend/ARCHITECTURE_PP.md#pp-poison`), so such a line is not counted.
 
 A macro clang expands shifts every later token, so the two streams are aligned, not compared
 position by position: `pp2_differences` takes Myers' shortest edit script by kind, spelling and

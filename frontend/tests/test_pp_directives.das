@@ -821,3 +821,31 @@ def test_unterminated_conditional_raised_at_end(t : T?) {
     stream(direct)
     t |> equal("{direct.diags[0].line}:{direct.diags[0].col} raised {direct.diags[0].raised.line}:{direct.diags[0].raised.col}", "1:2 raised 1:2")
 }
+
+[test(description = "#pragma GCC poison makes each later use of its names clang's error - in the text, a later macro body, #ifdef, defined, #undef, a #define's name, an #elif line evaluated and another pragma - but not in a skipped group or a repeated poison; a defined macro warns, a token that is no name is an error ending the list; no ledger entry")]
+def test_pragma_poison(t : T?) {
+    var pp <- started([("main.c", ("#define OLD foo\n#pragma GCC poison foo bar\nint foo;\n#define AFTER bar\n#ifdef foo\n#endif\n#if defined(bar)\n#endif\n" +
+                                   "#undef foo\n#define foo 1\n#if 0\nfoo\n#endif\n#pragma GCC poison foo\n#pragma GCC poison OLD\n#pragma GCC poison a \"s\" c\n" +
+                                   "c a\n#pragma weird foo\n#pragma GCC poison zz\n#if 0\n#elif defined(zz)\n#endif\n#pragma clang poison zed\nzed\n#pragma GCC poison\n"))])
+    t |> equal(stream(pp), "int foo ; c a zed")
+    t |> equal(diagnostics(pp), ("E 3:5 attempt to use a poisoned identifier | E 4:15 attempt to use a poisoned identifier | " +
+                                 "E 5:8 attempt to use a poisoned identifier | E 7:13 attempt to use a poisoned identifier | " +
+                                 "E 9:8 attempt to use a poisoned identifier | E 10:9 attempt to use a poisoned identifier | " +
+                                 "W 15:20 poisoning existing macro | E 16:22 can only poison identifier tokens | " +
+                                 "E 17:3 attempt to use a poisoned identifier | E 18:15 attempt to use a poisoned identifier | " +
+                                 "E 21:15 attempt to use a poisoned identifier | E 24:1 attempt to use a poisoned identifier"))
+    t |> equal(pragma_rows(pp), "18:2@5 weird foo")
+}
+
+[test(description = "#pragma GCC error and GCC warning are an error and a warning at the pragma's kind with the value of their plain string literals, joined, parenthesized or not; any other form is clang's error at clang's token; #pragma clang warning stays a ledger entry")]
+def test_pragma_gcc_message(t : T?) {
+    var pp <- started([("main.c", ("#pragma GCC error \"boom here\"\n#pragma GCC warning (\"x\\\"y\\tz\" \"!\")\n#pragma GCC error\n#pragma GCC warning L\"wide\"\n" +
+                                   "#pragma GCC error (\"a\" x)\n#pragma GCC warning \"a\" )\n#pragma GCC warning (\n#pragma GCC error (\"a\"\n" +
+                                   "#pragma GCC warning (42)\n#pragma clang warning \"kept\"\n#pragma GCC warning \"\\101\\x42\"\n"))])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), ("E 1:13 boom here | W 2:13 x\"y\tz! | E 3:13 pragma error requires parenthesized string | " +
+                                 "E 4:13 pragma warning requires parenthesized string | E 5:24 pragma error requires parenthesized string | " +
+                                 "E 6:25 pragma warning requires parenthesized string | E 7:22 expected string literal in pragma warning | " +
+                                 "E 8:23 pragma error requires parenthesized string | E 9:22 expected string literal in pragma warning | W 11:13 AB"))
+    t |> equal(pragma_rows(pp), "10:2@0 clang warning \"kept\"")
+}

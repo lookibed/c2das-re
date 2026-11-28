@@ -210,8 +210,10 @@ places it among the declarations for the layout phase. The form is clang's gramm
 the end of the line; N is 1, 2, 4, 8 or 16. Any other form gets clang's warning at clang's token
 (`missing ')'`, `missing '('`, `unknown action`, `expected integer or identifier`, `extra
 tokens`, the alignment's) and is ignored; a `pop` on an empty stack warns and is still an entry.
-Every other pragma (`#pragma warning(...)`, `#pragma GCC ...`, `#pragma` alone) is a `PpPragma` in
-`pp.pragmas`: its place, the tokens handed out before it, and its tokens spelled with a blank where
+`#pragma GCC poison` and `clang poison`, `#pragma GCC error` and `GCC warning` are done as
+section 54 says and are no entry: clang's `-E` prints no poison line, and a message is a
+diagnostic. Every other pragma (`#pragma warning(...)`, `#pragma GCC ...`, `#pragma` alone) is a
+`PpPragma` in `pp.pragmas`: its place, the tokens handed out before it, and its tokens spelled with a blank where
 the source had space, for the C-IR's ledger.
 
 `#ident "text"` and `#sccs "text"` are directives clang's `-E` passes through as a line
@@ -229,7 +231,8 @@ reports nothing in it - so a bad byte, or an unterminated comment, in `#if 0` is
 unit, and a reader that refuses a unit with a lexer diagnostic passes over a `skipped` one. The
 token after a directive's line is read before the directive is done (section 5) and consumed after
 it, so it is marked by the group the directive opens or closes: the line after `#if 0` is skipped,
-the line after its `#else` is not. The same mark places the diagnostic at its presumed line and
+the line after its `#else` is not, and an `#elif` line that is evaluated is read as an active
+group's, as clang lexes the expression it evaluates. The same mark places the diagnostic at its presumed line and
 file (`pline`, `pname`, as a directive diagnostic and a token carry them): every token is consumed
 while its file is the one read - the end of a file before the file closes, the token after an
 `#include` line before the included file opens - so a diagnostic keeps its file's `#line` though
@@ -244,3 +247,28 @@ the unit or file, or, for a call in a directive line, at the token after that li
 raises its own diagnostics as it reads the token they come with, so the raise position orders the
 two lists by reading: a lexer diagnostic at or before a directive diagnostic's `raised` place, in
 the same file, came first.
+
+## 54. Poisoned identifiers and pragma messages {#pp-poison}
+
+`#pragma GCC poison` - or `clang poison` - poisons the names after it (`pp.poisoned`), as clang
+does: from then on each use of one is clang's error "attempt to use a poisoned identifier" at it.
+A use is a name consumed outside a skipped group (`consumed`, the moment section 53 marks a lexer
+diagnostic): in the text, a macro argument, a `#define`'s name and body, `#ifdef`, `#undef`,
+`defined`'s operand, an `#elif` line that is evaluated - its line is read as an active group's,
+as clang lexes the expression it evaluates - and another pragma's line, which its pragma checks
+(`pp_pragma_line`, a `_Pragma` operand's too) since the poison line itself names them unchecked; a
+name `##` forms is checked as it is pasted (`pp_poisoned`). A macro body read before the poison
+expands to the name with no error, as clang's does: its tokens were read before. A name poisoned
+again is passed over; a defined macro, a builtin name among them, is poisoned with clang's warning
+"poisoning existing macro"; a token that is no name is clang's error "can only poison identifier
+tokens" and ends the list.
+
+`#pragma GCC error` and `#pragma GCC warning` raise an error and a warning at the pragma's kind
+token whose text is the value of the plain string literals after it, joined, `\` escapes read as
+a `#line` name's (section 10), with or without parentheses around them. Any other form is clang's
+error at clang's token: no string at all is "pragma error requires parenthesized string" at the
+kind, no string after `(` "expected string literal in pragma error" at the token met, a missing
+`)` or a token after the message the first message at that token, or just past the line's end.
+`#pragma clang error` and `clang warning` are no such pragma in clang and stay ledger entries. The
+message is read as written: clang expands a macro naming the string, which a pragma line, read
+before any expansion, does not.

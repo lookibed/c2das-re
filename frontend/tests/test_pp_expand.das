@@ -651,3 +651,11 @@ def test_unterminated_call_raised_at_end(t : T?) {
     stream(at_once)
     t |> equal(raised(at_once), "2:1 raised 0:17:2:4 too many arguments provided to function-like macro invocation")
 }
+
+[test(description = "a poisoned name pasted is clang's error, and an argument's poisoned name is too; a macro defined before the poison expands to the name with none, _Pragma poisons as #pragma does, and poisoning a builtin name warns")]
+def test_poison_through_expansion(t : T?) {
+    let r = expanded("#define CAT(a,b) a##b\n#define BEFORE foo + 1\n#define F(x) x\n#pragma GCC poison foo __LINE__\nBEFORE CAT(fo,o) F(foo)\n_Pragma(\"GCC poison q\") q\n")
+    t |> equal(r.out, "foo + 1 foo foo | q")
+    t |> equal(r.diags, ("W 4:24 poisoning existing macro | E 5:12 attempt to use a poisoned identifier | " +
+                         "E 5:20 attempt to use a poisoned identifier | E 6:25 attempt to use a poisoned identifier"))
+}
