@@ -7,8 +7,8 @@ header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` a
 sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token
 lexer of section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13, 53 and 54:
 directives, `#include`, the macro table, the ledgers, diagnostics), the macro expansion of
-`ARCHITECTURE_EXPAND.md` (sections 29 to 37) and the `#if` evaluator of `ARCHITECTURE_EVAL.md`
-(sections 46 to 52) - and the first part of Dumper C's parser, which reads the C tokens of a
+`ARCHITECTURE_EXPAND.md` (sections 29 to 37, and 55 to 57: the expansion record) and the `#if`
+evaluator of `ARCHITECTURE_EVAL.md` (sections 46 to 52) - and the first part of Dumper C's parser, which reads the C tokens of a
 preprocessed unit or of C source the preprocessor expands, its expressions, type names,
 declarations, records, enums, statements and
 function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`,
@@ -37,15 +37,19 @@ C-IR builder yet.
   macro; it holds the interface the expansion fills (`PpExpansion`) and the call record's types.
 - `pp_expand.das` - the macro expansion over the directive layer (`ARCHITECTURE_EXPAND.md`): the
   context stack, calls and their arguments, substitution with `#` and `##`, the builtin names and
-  `_Pragma`, the expansion of directive lines, the call record.
+  `_Pragma`, the expansion of directive lines, the expansion record's calls, argument texts and copies.
+- `pp_record.das` - the expansion record's readers (`ARCHITECTURE_EXPAND.md#pp-record`): a token's
+  expansion place and argument copies, an argument's text, a macro's one-line text, uses and
+  whether the C-IR marks it. What Dumper C writes the C-IR's macro fields from.
 - `pp_eval.das` - the `#if` evaluator (`ARCHITECTURE_EVAL.md`): intmax_t and uintmax_t arithmetic,
   the constants, `defined` and the queries, the feature-table reader. Below the directive layer: it
   knows no `Preprocessor` and asks the hook for what only that layer knows.
 - `tests/test_pp_directives.das` - every directive over in-memory files, the predefined-macro table,
   and the own headers read through `fio`. The comparison with clang is `compare/pp/`'s `--pp2`.
 - `tests/test_pp_expand.das` - every expansion rule over in-memory files: the C11 6.10.3 examples,
-  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the call
-  record. The comparison with clang is `compare/pp/`'s `--pp3`.
+  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the
+  expansion record and its readers. The comparison with clang is `compare/pp/`'s `--pp3`; with
+  Dumper A's macro marks, `--pp5`.
 - `tests/test_pp_eval.das` - every operator and conversion, the sign trap, every constant form,
   `defined`, each query, `__has_include` through the include path, the errors, `#elif` and nesting,
   each verdict pinned against clang. The comparison with clang is `compare/pp/`'s `--pp4`.

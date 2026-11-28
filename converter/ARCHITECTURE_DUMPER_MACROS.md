@@ -121,7 +121,9 @@ follow is left unmarked: variadic, `#` or `##` in its body, a site where two arg
 alike (no copy then tells them apart), and an expansion no node spells whole (`MUL2(i + 1)` of `x * 2`). A parameter the body calls (`op_arith_aux`'s `fop(L, n1, n2)`) expands to what
 its argument names: the pass resolves no end through it and counts its own uses and those of an
 argument passed to it as unknown, and follows the rest of the body. Each site records the text of
-its arguments as the call writes them, since an argument the expansion never uses has no node.
+its arguments as the call writes them, since an argument the expansion never uses has no node, and
+the canonical file and offset of its outermost call's name (`site_places`), by which `compare/pp/`'s
+`--pp5` finds the call of the frontend's expansion record it is.
 
 A node the dump collapses through its parentheses carries its own marks before its inner node's,
 so `fn_macro` stays outermost first (`#define OUTP(x) (ADD1(x))`).

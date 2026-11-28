@@ -1,7 +1,7 @@
 # frontend Architecture - macro expansion
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family
-(`ARCHITECTURE_PP.md` holds sections 5 to 13, 53 and 54).
+(`ARCHITECTURE_PP.md` holds sections 5 to 13, 53 and 54; this file 29 to 37 and 55 to 57).
 
 ## 29. The expansion over the directive layer {#pp-expansion}
 
@@ -15,7 +15,8 @@ own contexts are empty, so a directive between the lines of a call's arguments i
 arguments are read, as in clang.
 
 A handed-out token is a `PpOutToken`: the token in its spelling place (a macro body's token in its
-`#define`, an argument's token where it was written), its `call`, and where its spelling lies
+`#define`, an argument's token where it was written), its `call`, the argument copy it is in
+(`copy`, section 56), and where its spelling lies
 (`spelled`): its file's buffer, which the unit keeps (`ARCHITECTURE_PP.md` section 5), the macro
 body pool, its identifier's symbol, or the expansion's `text` pool for a pasted, stringified or
 directive-line token. A source token kept in a context, an argument or a lookahead needs no copy.
@@ -112,20 +113,48 @@ the line is done there, as clang does it, and the rest of the line read on: `#if
 takes its group; in an `#include` line it is done too and leaves nothing behind, which no header
 name can hold.
 
-## 34. The call record {#pp-record}
+## 34. The expansion record {#pp-record}
 
-Every expansion is a `PpCall` in `pp.expansion.calls`, in the order the calls are read: the
-macro, the name token's place, the call the name came from (`parent`, -1 for the source), the
-presumed place of the outermost name, its end - the presumed line, and the physical line and
-column, of the `)` that closes it, or of an object-like macro's name; of the call it came from
-when that token came from a replacement, as a `)` a macro hands out ends the outer call there -
-and its arguments as
-`PpCallArg` spans of `call_args` - the file and byte range from an argument's first token to the
-end of its last, -1 when it is empty or not one stretch of a file. Both arrays grow geometrically,
-so a unit of a million calls makes a few dozen heap blocks for its record. A token carries the index of
-the call whose replacement it is in; with its spelling place this tells a body token from an
-argument's (its place lies in the call's argument spans). This is what PP.5's expansion record
-builds on: it adds the expansion location of each token and the argument text.
+Every expansion is a `PpCall` in `pp.expansion.calls`, in the order the calls are read; its index
+is the C-IR's site id, unique in the unit. A call holds the macro, the name token's place, the call
+the name came from (`parent`, -1 for the source: the call is written in that call's body), the call
+whose argument `arg_k` was being macro-expanded when the name was read (`arg_of`, section 32), the
+outermost call through both links (`outer`, itself at the top), whether it stands in a directive's
+line (`in_line`: its tokens reach no reader, so no node is ever one), the presumed place of the
+outermost name, and its end - the presumed line, and the physical line and column, of the `)` that
+closes it, or of an object-like macro's name; of the call it came from when that token came from a
+replacement, as a `)` a macro hands out ends the outer call there. A body's call is reached by
+`parent` (`#define GET(i) CAST(int, i)`: `CAST`'s parent is `GET`, so a node both expand to lists
+them outermost first by walking `parent`), and a call an argument writes by `arg_of`.
+
+Its arguments are `PpCallArg` entries of `call_args`, each the file and byte range from its first
+token to the end of its last (-1 when it is empty or not one stretch of a file), and where its text
+as written lies (`text`), which `pp_call_arg_text` appends to a caller's buffer and
+`pp_call_arg_view` gives in place for a `source` argument alone, its bytes valid for the whole unit
+(a file buffer lives as long as the unit); for a `body` or `pooled` argument the view is null data,
+since the `arg_text` pool moves as later arguments grow it:
+
+- `source`: one stretch of a file buffer (`ARCHITECTURE_PP.md` section 5), when both ends are
+  tokens of the source in one buffer and no directive line was read inside the argument
+  (`PpInvocation.dirs`), nor inside the argument it is read in when an enclosing call's argument
+  is being macro-expanded (`arg_of`): that argument's tokens were read before, so a call nested in
+  it is a stretch only when the enclosing argument is one; the text is the file's, line splices
+  removed.
+- `body`: the call is written in one `#define` - its name and its `)` are tokens of the body of the
+  macro whose replacement they stand in, and that `(` closes at that `)` - and the body splits into
+  the arguments as read; the argument is a range of body tokens, the text their spellings with a
+  blank where one has space. So `B(x)` in `#define A(x) B(x)` has the text `x`, as the call writes
+  it, whatever argument `A` was given.
+- `pooled`: any other argument - one a directive splits, or one whose tokens came from different
+  places - spelled once, when the call is recorded, into the expansion's `arg_text` pool, a blank
+  where a token has space, as the C-IR's `text` rule joins tokens.
+
+The record's arrays grow geometrically, so a unit of a million calls makes a few dozen heap blocks
+for it, and its readers (`pp_record.das`) allocate nothing for a token or a call. It is the one
+source of macro facts Dumper C writes the C-IR's macro fields from (`docs/c-ir-spec.md` sections
+6.2 and 6.3): a token gives its call (`PpOutToken.call`), its expansion place (section 55) and the
+arguments it copies (section 56), a macro its `macros` entry (section 57). `compare/pp/`'s `--pp5`
+holds the record against Dumper A's marks (`compare/pp/ARCHITECTURE.md#pp5`).
 
 ## 35. `#` and `##` {#pp-stringify}
 
@@ -175,8 +204,11 @@ calls `PpExpansion.macro_changed`).
 `_Pragma(STRINGIFY(...))` are pragmas. The literal's prefix and quotes are taken off, `\"` and
 `\\` read as one character each, into the scratch lexer's buffer, and the text is lexed and done
 as a `#pragma` line (`pp_pragma_line`) - into the pragma or pack ledger at the tokens handed out
-before it, or `once`, `push_macro`, `pop_macro`. The token after it starts a line, as after the
-directive. While an argument is pre-expanded (section 32) a `_Pragma` is not done: its operand is
+before it, or `once`, `push_macro`, `pop_macro`. A `_Pragma` written in a macro's replacement
+takes its place - the ledger entry's and its diagnostics' - from the expansion location, the
+outermost call's name (section 55), where clang places it; one written in the source, a call's
+argument included, keeps its own place, where clang's diagnostic shows it. The token after it
+starts a line, as after the directive. While an argument is pre-expanded (section 32) a `_Pragma` is not done: its operand is
 checked, given back unexpanded and handed out after the name, so the pragma is done at the
 rescan, once for each use of the argument and at its place among the tokens, as clang delays it
 (6.10.3.4p3): `TWICE(_Pragma("pack(8)"))` is two pragmas, and the pack of
@@ -195,3 +227,60 @@ is done before the name is handed out, so a `#pragma` there is placed one token 
 clang's `-E` prints it. `defined` produced by a macro in an `#if` line is taken without clang's
 warning "macro expansion producing 'defined' has undefined behavior". A poisoned name formed by `##` is
 reported at the left operand, where clang reports it at the macro call.
+
+## 55. Expansion places {#pp-places}
+
+A token has two places, as clang's `SourceManager` gives them: its spelling place, `tok` - where
+its spelling was written, a body token in its `#define`, an argument's token in the call
+(`pp_spelling_place`) - and its expansion place, the place of the outermost call's name
+(`pp_expansion_place`): `calls[calls[call].outer].name`, two reads, or the token's own place for a
+token of the source. Every token of a replacement carries the call whose replacement it is in, the
+tokens of an expanded argument included, so `F(G(b))` hands out `G`'s tokens under `F`'s call and
+places them at `F`; and since `outer` follows `arg_of` as well as `parent`, `G`'s call itself has
+`F` as its outermost, as Dumper A nests a call its outermost call's arguments write. The presumed
+place of the same name is already on the token (`pline`, `pname`, section 32).
+
+## 56. Argument copies {#pp-copies}
+
+Substitution (section 32) marks each token it puts in for a parameter as a copy of that argument:
+`copy` is an index of the expansion's `copies`, a `PpArgCopy` of the call, the parameter and the
+copy the token was in before (`outer`), entry 0 standing for none. So a token keeps the chain of
+every argument it went through, the latest substitution first: with `#define B(y) [y y]` and
+`#define A(x) B(x) x`, each `t` of `A(t)` inside the brackets is in `B`'s argument 0 and then `A`'s,
+the last one in `A`'s alone, and the brackets in none; `A(B(t))` substitutes `t` into `B` during
+`A`'s prescan and the copy into `A` after, so its chain is `A`'s argument, then `B`'s. A token of
+the source carries no copy, whatever token was handed out before it. One entry covers a run of
+tokens that were in one copy before, and each use of a parameter makes its own run, so the entries
+grow with the substitutions, not the tokens, and geometrically. An operand of `##` kept whole is a
+copy too; a pasted token, a stringified one and a body token are none. `pp_each_copy` walks a chain
+and `pp_is_copy_of` asks for one call and parameter; which node is the topmost copy is Dumper C's to
+tell from its tree.
+
+## 57. Macro facts {#pp-macro-facts}
+
+The C-IR's `macros` table takes, for each macro a marked expansion uses, its name, parameters, file
+and line from `PpMacro`, its text and its uses. `pp_macro_markable` is the spec's rule for which
+macros those can be: function-like, not variadic, no `#` or `##` in the body. `pp_macro_text` spells
+the `#define` on one line from the working buffer's bytes of its line, from the name
+(`PpMacro.buffer`, `at`, `stop`): continuations are already joined there, so a splice is no
+separator (`a\` and `+x` on the next line give `a+x`, as the spec's "one blank between tokens the
+source separated" reads), and each comment or run of blanks between two tokens is one blank,
+literals kept, so `#define F(a,b ,c)` keeps its own spacing. `pp_macro_uses(m, k)` counts how many
+times the full expansion holds argument `k`: each use of the parameter in the body, and each
+argument of a function-like macro the body calls times that macro's own count for it; the name a
+body calls is its one definition among the definitions the unit has made when asked, and -1 when it
+made two that differ (`pp_same_definition`), and a call of the macro itself is a name, as its
+painted name is. The count is -1 - unknown - for a variadic macro, a parameter that is an operand of
+`#` or `##` or is called as a function, an argument passed to a callee whose own count is unknown,
+and a parameter inside parentheses that follow a callee whose replacement can end in a macro's name
+(its last token a macro's name, a `)`, or a parameter whose argument ends in a macro's name, a `)`
+or a parameter of the caller), since the rescan may call that name with them (`#define F TWICE` and
+`F(x)`, `K(0)(x)` with `#define K(a) TWICE`), the callee object-like or function-like;
+`ID(floor)(x)` with `#define ID(op) op` calls a function, and counts. A macro on a cycle of macros
+whose counts ask each other gives -1 for every parameter, whichever of them is asked first: the
+macros being computed are a stack (`uses_stack`), and a call that meets one of them marks it and
+every macro above it (`uses_cyclic`). Counts are kept (`uses_at`, `uses`) while the unit makes no
+definition (`uses_generation`): a `#define` drops them, an `#undef` keeps them, since every
+definition stays one the rule reads; so a count asked mid-unit is the count of the definitions made
+so far, and asked again after the unit, the count of all of them.
+
