@@ -1364,19 +1364,47 @@ def private line_number_error(what : string; kind : int; number : int64) : strin
                                                          : "{what} directive requires a simple digit sequence")
 }
 
-//! the file name of the `#line` string literal `text[at .. at+len)`, its quotes off and `\\` and `\"`
-//! read as one character each, into `scratch` with a zero after it
+// the value of the hex digit `c`, -1 for none
+def private hex_digit(c : int) : int {
+    return c - '0' if (is_number(c))
+    return c - 'a' + 10 if (c >= 'a' && c <= 'f')
+    return c - 'A' + 10 if (c >= 'A' && c <= 'F')
+    return -1
+}
+
+//! the file name of the `#line` string literal `text[at .. at+len)`, its quotes off and its escapes
+//! read as clang's string literal reads them - simple, octal of up to three digits, hex keeping the
+//! low byte, an unknown one its character - into `scratch` with a zero after it
 def private unescape_line_name(var scratch : array<uint8>; text : array<uint8>; at, len : int) {
     scratch |> clear()
-    var escaped = false
-    for (i in range(at + 1, at + len - 1)) {
-        let c = text[i]
-        if (c == '\\'u8 && !escaped) {
-            escaped = true
-            continue
+    let end = at + len - 1
+    var i = at + 1
+    while (i < end) {
+        var c = int(text[i])
+        i++
+        if (c == '\\' && i < end) {
+            let e = int(text[i])
+            i++
+            if (e >= '0' && e <= '7') {
+                c = e - '0'
+                for (_k in range(2)) {
+                    let d = i < end ? int(text[i]) - '0' : -1
+                    break if (d < 0 || d > 7)
+                    c = c * 8 + d
+                    i++
+                }
+            } elif (e == 'x') {
+                c = 0
+                while (i < end && hex_digit(int(text[i])) >= 0) {
+                    c = ((c << 4) | hex_digit(int(text[i]))) & 0xFF
+                    i++
+                }
+            } else {
+                let simple = pp_escape_value(e)
+                c = simple >= 0 ? simple : e
+            }
         }
-        escaped = false
-        scratch |> push(c)
+        scratch |> push(uint8(c & 0xFF))
     }
     scratch |> push(0u8)
 }

@@ -268,9 +268,9 @@ def test_if_hook(t : T?) {
     t |> equal(diagnostics(pp), "E 6:2 expected value in expression")
 }
 
-[test(description = "a line marker and a #line read allocate nothing once their names are known: no string and no heap block per marker, a file name stored once")]
+[test(description = "a line marker and a #line read allocate nothing once their names are known: no string and no heap block per marker, a file name stored once, its simple, octal and hex escapes read as clang reads them")]
 def test_line_markers_allocate_nothing(t : T?) {
-    let markers = "# 5 \"a.c\"\nx\n# 7 \"b\\\\c.h\" 1\ny\n#line 9\nz\n# 3 \"a.c\" 2\nw\n#line 11 \"a.c\"\nv\n"
+    let markers = "# 5 \"a.c\"\nx\n# 7 \"b\\\\c\\x41\\101\\t.h\" 1\ny\n#line 9\nz\n# 3 \"a.c\" 2\nw\n#line 11 \"a.c\"\nv\n"
     var pp <- started([("main.c", "first\n" + repeat(markers, 500))])
     for (_ in range(6)) {
         t |> success(pp_next_token(pp))
@@ -286,7 +286,7 @@ def test_line_markers_allocate_nothing(t : T?) {
     t |> equal(count, 2495)
     t |> equal(diagnostics(pp), "")
     t |> equal("{strings_used} strings, {heap_used} heap blocks", "0 strings, 0 heap blocks")
-    t |> equal(join([for (n in pp.names); n], " "), "main.c <built-in> a.c b\\c.h")
+    t |> equal(join([for (n in pp.names); n], " "), "main.c <built-in> a.c b\\cAA\t.h")
 }
 
 [test(description = "with no expansion set, an #if, #elif or #line naming a macro outside defined's operand records the tokens handed out before it")]
