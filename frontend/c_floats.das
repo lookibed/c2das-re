@@ -167,8 +167,15 @@ def private decimal_digits(text : string; var n : array<uint>; var fraction : in
     trimmed(n)
 }
 
-// the value `n * 10^e10` rounded as `rounded` says
-def private decimal_value(n : array<uint>; e10 : int; precision, emin, emax : int) : CBinary {
+// the decimal exponent past which every value of the types here (an x87 long double's at the
+// most, 10^4932 to 10^-4951) is infinity or zero: an exponent beyond it is clamped to it, which
+// gives the same rounding at once
+let private DECIMAL_REACH = 5200
+
+// the value `n * 10^exponent` rounded as `rounded` says
+def private decimal_value(n : array<uint>; exponent : int; precision, emin, emax : int) : CBinary {
+    let digits = bit_length(n) * 3 / 10 + 1
+    let e10 = clamp(exponent, -DECIMAL_REACH - digits, DECIMAL_REACH - digits)
     if (e10 >= 0) {
         var big := n
         for (_ in range(e10)) {

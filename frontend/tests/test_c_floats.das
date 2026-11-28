@@ -74,3 +74,10 @@ def test_float_integer(t : T?) {
     t |> success(!c_float_integer("0x1p+63", v))
     t |> success(!c_float_integer("inf", v))
 }
+
+[test(description = "a decimal constant whose exponent is far past any type's range saturates to inf or underflows to 0 at once, as clang gives it", timeout = 30)]
+def test_huge_exponents(t : T?) {
+    t |> equal(written("1e9999999999"), "inf")
+    t |> equal(written("1e-9999999999"), "0x0p+0")
+    t |> equal(written("1e9999999999L"), "inf")
+}
