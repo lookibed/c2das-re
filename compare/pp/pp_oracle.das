@@ -272,6 +272,15 @@ def run_set(name : string; units : array<string>; work : string; flags : array<s
     return totals
 }
 
+//! clang's `-dump-tokens` of the preprocessed file `preprocessed` into `dump`, under the triple,
+//! `-undef` and `DUMPER_FLAGS`, so no macro is left to expand (`ARCHITECTURE.md#flags`); clang's
+//! exit code.
+def clang_dump(preprocessed : string; var dump : string&) : int {
+    var argv <- [default_clang(), "-target", target_lp64_linux().triple, "-undef"]
+    argv |> push_from(DUMPER_FLAGS, ["-x", "c", "-fsyntax-only", "-Xclang", "-dump-tokens", preprocessed])
+    return run_and_capture(argv, dump, 300.0)
+}
+
 //! One unit through both sides: `clang -E -P` into `work`, then `-dump-tokens` and the pp lexer
 //! over that output; with `raw`, over the unit itself, which then holds no directive and names no
 //! macro, so clang's tokens are its lexer's: line splices, comments and a byte order mark reach both.
@@ -288,9 +297,7 @@ def compare_unit(unit, work : string; flags : array<string>; show : int; raw : b
         }
     }
     var dump : string
-    var dump_argv <- [default_clang(), "-target", target_lp64_linux().triple, "-undef"]
-    dump_argv |> push_from(DUMPER_FLAGS, ["-x", "c", "-fsyntax-only", "-Xclang", "-dump-tokens", preprocessed])
-    if (run_and_capture(dump_argv, dump, 300.0) != 0) {
+    if (clang_dump(preprocessed, dump) != 0) {
         result.error = "clang -dump-tokens: {slice(dump, 0, 400)}"
         return <- result
     }
@@ -386,6 +393,12 @@ struct OracleArgs {
     pp4 : bool
     @clarg_doc = "compare the expansion record, frontend/pp_record.das, with Dumper A's marks of function-like expansions (corpus fixtures is the converter's test units)"
     pp5 : bool
+    @clarg_doc = "the token oracle of the whole preprocessor: the expansion oracle with gcc -E as the second reference and the implementation-defined list (compare/pp/implementation_defined.txt)"
+    pp6 : bool
+    @clarg_doc = "with --pp6, the fast set: the fixtures, the own headers and c-testsuite"
+    fast : bool
+    @clarg_doc = "with --pp6, the full set: the fast set, gcc-torture, every project's units and every list of compare/pp/corpus/"
+    full : bool
     @clarg_doc = "regenerate the feature-query tables of frontend/predefined/ from the pinned clang, then exit"
     features : bool
     @clarg_doc = "a corpus list for --pp2, --pp3, --pp4 and --pp5: a unit a line, its path then its -I, -D and -x flags (repeatable)"
@@ -482,6 +495,10 @@ struct Pp2Result {
     error : string          //!< clang failed on the unit: nothing compared
     shown : array<string>
     cls : Pp2Class
+    read : string           //!< the file both sides read: the unit, or its forced-include wrapper (`forced_include_unit`)
+    clang_flags : array<string> //!< the flags clang preprocessed `read` under, the unit's own among them
+    preprocessed : string   //!< clang's `-E -P` output
+    clang_refused : bool    //!< `clang -E` refused the unit; the preprocessor read it all the same, its errors in `errors`
 }
 
 //! The edits the alignment of two streams searches before it gives up.
@@ -826,8 +843,8 @@ def pp2_class(r : Pp2Result) : Pp2Class {
     return cls
 }
 
-// the spellings of `count` tokens from `at`, at most six of them
-def private pp2_spellings(toks : array<OracleToken>; at, count : int) : string {
+//! The spellings of `count` tokens of `toks` from `at`, at most six of them.
+def oracle_spellings(toks : array<OracleToken>; at, count : int) : string {
     let parts <- [for (i in range(at, at + min(count, 6))); toks[i].spelling]
     return "{join(parts, " ")}{count > 6 ? " ..." : ""}"
 }
@@ -864,6 +881,61 @@ def list_units(list : string) : array<OracleUnit> {
     return <- units
 }
 
+//! A corpus unit's own flags sorted by the side they go to: `-I<dir>` to clang and to PP.2's
+//! include path, `-D<entry>` to clang and to the predefined entries, `-x <language>` and
+//! `-std=<standard>` to clang alone, `-include <file>` to the forced-include wrapper of both;
+//! `error` names any other flag.
+struct UnitFlags {
+    clang : array<string>
+    search : array<string>
+    entries : array<string>
+    includes : array<string>
+    error : string
+}
+
+//! The flags of `unit_flags` sorted as `UnitFlags` states.
+[arch(at="ARCHITECTURE.md#pp3")]
+def split_unit_flags(unit_flags : array<string>) : UnitFlags {
+    var own : UnitFlags
+    var i = 0
+    while (i < length(unit_flags)) {
+        let f = unit_flags[i]
+        let has_operand = i + 1 < length(unit_flags)
+        if (starts_with(f, "-I")) {
+            own.search |> push(slice(f, 2))
+            own.clang |> push(f)
+        } elif (starts_with(f, "-D")) {
+            own.entries |> push(slice(f, 2))
+            own.clang |> push(f)
+        } elif (starts_with(f, "-std=")) {
+            own.clang |> push(f)
+        } elif (f == "-x" && has_operand) {
+            own.clang |> push_from([f, unit_flags[i + 1]])
+            i++
+        } elif (f == "-include" && has_operand) {
+            own.includes |> push(unit_flags[i + 1])
+            i++
+        } else {
+            own.error = "unsupported unit flag {f}"
+            return <- own
+        }
+        i++
+    }
+    return <- own
+}
+
+//! The unit both sides read for `unit` with the forced includes `includes`: a file in `work`
+//! including each of them, then `unit` by its full path, as clang's `-include` reads them before
+//! the unit's first line; the preprocessor has no forced include, so both read the same wrapper.
+[arch(at="ARCHITECTURE.md#pp3")]
+def forced_include_unit(unit : string; includes : array<string>; work : string) : string {
+    let wrapper = path_join(work, "{base_name(unit)}.include.c")
+    var lines <- [for (f in includes); "#include \"{f}\""]
+    lines |> push("#include \"{get_full_file_name(unit)}\"")
+    fwrite(wrapper, join(lines, "\n") + "\n")
+    return wrapper
+}
+
 //! One unit through clang (`-E -P`, then `-dump-tokens` of its output, the `#pragma` and `#ident`
 //! lines counted apart) and through PP.2 with the same macros and include path; aligned by kind,
 //! spelling and `at_bol`, and every difference classed. Every difference that differs is shown,
@@ -873,40 +945,34 @@ def list_units(list : string) : array<OracleUnit> {
 def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search : array<string>; show : int; expand : bool = false;
                      unit_flags : array<string> = array<string>()) : Pp2Result {
     var result = Pp2Result(unit = unit, expanded = expand)
-    var our_search : array<string>
-    var our_entries := entries
-    var clang_flags := flags
-    var i = 0
-    while (i < length(unit_flags)) {
-        let f = unit_flags[i]
-        if (starts_with(f, "-I")) {
-            our_search |> push(slice(f, 2))
-        } elif (starts_with(f, "-D")) {
-            our_entries |> push(slice(f, 2))
-        } elif (f == "-x" && i + 1 < length(unit_flags)) {
-            clang_flags |> push(f)
-            i++
-        } else {
-            result.error = "unsupported unit flag {f}"
-            return <- result
-        }
-        clang_flags |> push(unit_flags[i])
-        i++
+    var own = split_unit_flags(unit_flags)
+    if (!empty(own.error)) {
+        result.error = own.error
+        return <- result
     }
+    var our_search <- own.search
+    var our_entries := entries
+    our_entries |> push_from(own.entries)
+    result.clang_flags := flags
+    result.clang_flags |> push_from(own.clang)
     our_search |> push_from(search)
+    result.read = unit
+    if (!empty(own.includes)) {
+        result.read = forced_include_unit(unit, own.includes, work)
+    }
     let preprocessed = path_join(work, "{base_name(unit)}.{expand ? "pp3" : "pp2"}.i")
     var argv <- [default_clang(), "-E", "-P"]
-    argv |> push_from(clang_flags, [unit, "-o", preprocessed])
+    argv |> push_from(result.clang_flags, [result.read, "-o", preprocessed])
     var out : string
     let env <- ["SOURCE_DATE_EPOCH={ORACLE_EPOCH}"]
     if (run_and_capture(argv, "", env, out, 300.0) != 0) {
         result.error = "clang -E: {out}"
+        result.clang_refused = true
+        result.pp_tokens = length(pp2_tokens(result.read, our_entries, our_search, result))
         return <- result
     }
     var dump : string
-    var dump_argv <- [default_clang(), "-target", target_lp64_linux().triple, "-undef"]
-    dump_argv |> push_from(DUMPER_FLAGS, ["-x", "c", "-fsyntax-only", "-Xclang", "-dump-tokens", preprocessed])
-    if (run_and_capture(dump_argv, dump, 300.0) != 0) {
+    if (clang_dump(preprocessed, dump) != 0) {
         result.error = "clang -dump-tokens: {slice(dump, 0, 400)}"
         return <- result
     }
@@ -914,7 +980,8 @@ def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search
     let text = fread(preprocessed)
     result.clang_pragmas = pragma_lines(text)
     result.clang_pragma_at <- pragma_places(text, clang)
-    let ours <- pp2_tokens(unit, our_entries, our_search, result)
+    let ours <- pp2_tokens(result.read, our_entries, our_search, result)
+    result.preprocessed = preprocessed
     result.clang_tokens = length(clang)
     result.pp_tokens = length(ours)
     result.differences <- pp2_differences(clang, ours, PP2_ALIGN_LIMIT, result.gave_up)
@@ -926,7 +993,7 @@ def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search
             d.cls = cls
             if (d.cls == Pp2Class.differs || shown_of[int(d.cls)] < show) {
                 shown_of[int(d.cls)]++
-                result.shown |> push("{d.cls} at pp #{d.pp_at}: clang [{pp2_spellings(clang, d.clang_at, d.clang_count)}] | pp [{pp2_spellings(pp_side, d.pp_at, d.pp_count)}]")
+                result.shown |> push("{d.cls} at pp #{d.pp_at}: clang [{oracle_spellings(clang, d.clang_at, d.clang_count)}] | pp [{oracle_spellings(pp_side, d.pp_at, d.pp_count)}]")
             }
         }
     }
