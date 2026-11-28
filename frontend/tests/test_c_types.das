@@ -158,6 +158,7 @@ def test_redeclarations(t : T?) {
     t |> equal(types_of("int f(int); int f();"), "int:32:true:int func:0:0:false")
     t |> equal(types_of("int f(); int f(int x) \{ return x; \}"), "int:32:true:int func:0::false func:0:0:false")
     t |> equal(types_of("int f(); int f(a) int a; \{ return a; \}"), "int:32:true:int func:0::false func:0:0:false")
+    t |> equal(types_of("void f(const int x); void f(int x);"), "void int:32:true:int func:0:1:false")
     t |> equal(types_of("int x; const int x;"), "error: t.c:1:18: a redeclaration of 'x' with other qualifiers is invalid C, which clang rejects")
     t |> equal(types_of("extern const int a[]; const int a[2];"), "int:32:true:int array:0:-1 array:0:2")
     t |> equal(types_of("extern int a[3]; int a[];"), "int:32:true:int array:0:3")

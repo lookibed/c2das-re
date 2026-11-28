@@ -101,7 +101,7 @@ def test_frontend_gate_requires(t : T?) {
             let found = findings_of(t, [(name = "a.das", text = "options gen2\n{line}\n")], "a.das")
             t |> equal(found, "a.das:2: requires `{CLANG_MODULE}`: nothing under frontend/ needs clang", line)
         }
-        for (line in fixed_array("require ?strings", "require strings fio", "require", "require strings private", "let a = 1; require strings", "require \"strings\"")) {
+        for (line in fixed_array("require ?strings", "require strings fio", "require", "require strings private", "let a = 1; require strings", "require \"strings\"", "require crt extra")) {
             let found = findings_of(t, [(name = "a.das", text = "options gen2\n{line}\n")], "a.das")
             t |> success(found |> starts_with("a.das:2: has a `require` line that is not ") && find(found, "\n") < 0, "{line}: {found}")
         }
