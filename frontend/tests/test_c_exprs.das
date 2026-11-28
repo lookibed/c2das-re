@@ -303,3 +303,30 @@ def test_long_double_literal(t : T?) {
     t |> equal(ir_of("long double x = 0x1.00000000000008001p0L;", true), "x=0x1.0000000000001p+0<long double>")
 }
 
+
+[test(description = "qualifiers below a pointer: a function type's parameters and result keep theirs, so such function pointers are incompatible; a data pointer's nested ones only warn (NoOp); ?: of pointers takes both pointees' qualifiers, or void * for incompatible ones, arrays of differently qualified elements among them")]
+def test_pointer_qualifiers(t : T?) {
+    t |> run("assignment and initialization") @(t : T?) {
+        t |> equal(ir_of("void g(char **pp) \{ const char **q = pp; char *const *r = pp; \}"), "q:char**=NoOp<char**>(LValueToRValue<char**>(pp)) ; r:char**=NoOp<char**>(LValueToRValue<char**>(pp))")
+        t |> equal(ir_of("void g(int (**p)[3], const int (**q)[3], int (*f)(const int), int (*h)(int)) \{ p = q; f = h; \}"), "expr assign<int[3]**>(p, NoOp<int[3]**>(LValueToRValue<int[3]**>(q))) ; expr assign<func*>(f, LValueToRValue<func*>(h))")
+        t |> equal(ir_of("void g(int (*f)(const int *), int (*h)(int *)) \{ f = h; \}"), "error: t.c:1:50: a value of this type in a slot of that type is invalid C, which clang rejects")
+        t |> equal(ir_of("void g(const int (*f)(void), int (*h)(void)) \{ f = h; \}"), "error: t.c:1:48: a value of this type in a slot of that type is invalid C, which clang rejects")
+        t |> equal(ir_of("void g(int (**f)(int *), int (**h)(const int *)) \{ f = h; \}"), "error: t.c:1:52: a value of this type in a slot of that type is invalid C, which clang rejects")
+        t |> equal(ir_of("void g(long *l) \{ long long *q = l; \}"), "error: t.c:1:34: a value of this type in a slot of that type is invalid C, which clang rejects")
+    }
+    t |> run("explicit casts and a pointer difference") @(t : T?) {
+        t |> equal(ir_of("void g(int (*h)(int *), int (*k)(void), char **pp) \{ (int (*)(const int *))h; (const int (*)(void))k; (const char **)pp; \}"), "expr BitCast!<func*>(LValueToRValue<func*>(h)) ; expr BitCast!<func*>(LValueToRValue<func*>(k)) ; expr NoOp!<char**>(LValueToRValue<char**>(pp))")
+        t |> equal(ir_of("void g(int (*p)[3], const int (*q)[3]) \{ p - q; \}"), "expr sub<long>(LValueToRValue<int[3]*>(p), LValueToRValue<int[3]*>(q))")
+        t |> equal(ir_of("void g(char **p, const char **q) \{ p - q; \}"), "error: t.c:1:36: a difference of pointers to incompatible types is invalid C, which clang rejects")
+    }
+    t |> run("?: of pointers") @(t : T?) {
+        t |> equal(ir_of("void g(int c, int (*p)[3], const int (*q)[3], int (*u)[], char **s, const char **cs) \{ c ? p : q; c ? q : u; c ? s : cs; \}"),
+                   "expr cond<void*>(LValueToRValue<int>(c), BitCast<void*>(LValueToRValue<int[3]*>(p)), BitCast<void*>(LValueToRValue<int[3]*>(q))) ; expr cond<void*>(LValueToRValue<int>(c), BitCast<void*>(LValueToRValue<int[3]*>(q)), BitCast<void*>(LValueToRValue<int[-1]*>(u))) ; expr cond<void*>(LValueToRValue<int>(c), BitCast<void*>(LValueToRValue<char**>(s)), BitCast<void*>(LValueToRValue<char**>(cs)))")
+        t |> equal(ir_of("void g(int c, int *p, const int *q, volatile int *v, char **s, char *const *cs) \{ c ? p : q; c ? v : q; c ? s : cs; \}"),
+                   "expr cond<int*>(LValueToRValue<int>(c), BitCast<int*>(LValueToRValue<int*>(p)), LValueToRValue<int*>(q)) ; expr cond<int*>(LValueToRValue<int>(c), BitCast<int*>(LValueToRValue<int*>(v)), BitCast<int*>(LValueToRValue<int*>(q))) ; expr cond<char**>(LValueToRValue<int>(c), BitCast<char**>(LValueToRValue<char**>(s)), LValueToRValue<char**>(cs))")
+        t |> equal(ir_of("void g(int c, void *v, const int *q, void *const *w) \{ c ? v : q; c ? v : w; \}"),
+                   "expr cond<void*>(LValueToRValue<int>(c), NoOp<void*>(LValueToRValue<void*>(v)), BitCast<void*>(LValueToRValue<int*>(q))) ; expr cond<void*>(LValueToRValue<int>(c), NoOp<void*>(LValueToRValue<void*>(v)), BitCast<void*>(LValueToRValue<void**>(w)))")
+        t |> equal(ir_of("void g(int c, int (*const **p)[3], int (*const **q)[]) \{ c ? p : q; \}"),
+                   "expr cond<int[3]***>(LValueToRValue<int>(c), LValueToRValue<int[3]***>(p), BitCast<int[3]***>(LValueToRValue<int[-1]***>(q)))")
+    }
+}

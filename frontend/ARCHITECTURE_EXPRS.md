@@ -84,11 +84,14 @@ rank. Rank follows the spelling (`long` above `int` at one width, `long long` ab
   the difference of two pointers the dialect's `ptrdiff_t` (`long`, msvc's `long long`).
 - `?:`: the condition promoted; arithmetic arms by the usual arithmetic conversions; else both
   values, two `void` arms `void`, a null pointer constant converted to the other arm's pointer type
-  (`NullToPointer`, also over an explicit `(void *)0`), a pointer to `void` taking the other arm by
-  `BitCast`, two pointers to compatible types their composite type (`c_composite`, C11 6.2.7p3: an
-  array of unknown size takes the other's size, so `int (*)[3]` and `int (*)[]` give `int (*)[3]`),
-  the arm of another type converted to it by `BitCast`, two pointers to incompatible types both made
-  `void *` by `BitCast`. Two pointers to functions one of which takes no parameter are refused: the
+  (`NullToPointer`, also over an explicit `(void *)0`). Two pointers of different types point at a
+  type qualified by both pointees' own qualifiers (`int *` and `const int *` give `const int *`): a
+  pointer to `void` when one arm points at `void`, that arm converted by `NoOp` and the other by
+  `BitCast`; two pointers to types compatible apart from those qualifiers their composite type
+  (`c_composite`, C11 6.2.7p3: an array of unknown size takes the other's size, so `int (*)[3]` and
+  `int (*)[]` give `int (*)[3]`), the arm of another type converted to it by `BitCast`; two pointers
+  to incompatible types both made `void *` by `BitCast` - an array's element qualifiers are no
+  pointee's own here, so `int (*)[3]` and `const int (*)[3]` give `void *`, as clang gives them. Two pointers to functions one of which takes no parameter are refused: the
   pool keeps no mark of a prototype, so `int (*)()`, whose composite with `int (*)(double)` is that
   type, and `int (*)(void)`, which is incompatible with it, are one type there.
 - `,`: both operands values; the right one's type. A `switch` controlling expression is promoted.
@@ -112,16 +115,19 @@ is refused.
 unqualified: the operand a value, then arithmetic to arithmetic by the pair's kind (`IntegralCast`,
 `IntegralToFloating`, `FloatingToIntegral`, `FloatingCast`, `IntegralToBoolean`,
 `FloatingToBoolean`); to a pointer `NullToPointer` from a null pointer constant, `NoOp` from a
-pointer whose type differs only in qualifiers (`char *` to `const char *`), `BitCast` from a pointer
-to a compatible type or from or to a pointer to `void`; a pointer to `_Bool` `PointerToBoolean`.
-Every other pair is invalid C clang rejects (section 29): an integer other than a null pointer
-constant to a pointer and a pointer to an integer other than `_Bool` (clang's `int-conversion`, an
-error by default), a pointer to an incompatible type (`incompatible-pointer-types`; a pointer to an
-integer type of one width but the other sign is no such type: clang warns, `pointer-sign`, and
-`BitCast`s it), a floating
-value to a pointer, a value of no scalar type to a scalar. Compatibility is the pool's
-(`c_composite`), in which a function with no parameter is compatible with any function of its
-result, `()` and `(void)` being one type there. A literal is converted, never retyped (`char c = 1`
+pointer whose type differs only in qualifiers at its pointer and array levels (`char *` to `const
+char *`, and `char **` to `const char **`, which clang takes with a warning), `BitCast` from a
+pointer to a compatible type or from or to a pointer to `void`; a pointer to `_Bool`
+`PointerToBoolean`. Every other pair is invalid C clang rejects (section 29): an integer other than
+a null pointer constant to a pointer and a pointer to an integer other than `_Bool` (clang's
+`int-conversion`, an error by default), a pointer to an incompatible type
+(`incompatible-pointer-types`; a pointer to an integer type of one rank but the other sign is no
+such type: clang warns, `pointer-sign`, and `BitCast`s it), a floating value to a pointer, a value
+of no scalar type to a scalar. Compatibility is the pool's (`c_composite`): the pointees' own
+qualifiers aside (an array's element's too), qualifiers match at every level, a function type's
+result and parameters included (`int (*)(const int *)` and `int (*)(int *)` are incompatible, an
+error in clang, though C11 6.7.6.3p15 drops a parameter's own qualifiers); a function with no
+parameter is compatible with any function of its result, `()` and `(void)` being one type there. A literal is converted, never retyped (`char c = 1`
 is an `IntegralCast` over `1`). The slots:
 
 - a scalar initializer, braced or not, and a list's items, each to its element type at its position
@@ -139,9 +145,10 @@ is an `IntegralCast` over `1`). The slots:
   to that definition's parameter types promoted, as clang does.
 
 An explicit cast takes its operand as a value (to `void` too) and its kind from the two types:
-`NoOp` when they differ in qualifiers at most, the arithmetic kinds as above, `ToVoid`,
-`NullToPointer` for a null pointer constant integer to a pointer, `IntegralToPointer`,
-`PointerToIntegral`, `PointerToBoolean`, `BitCast` between other pointers.
+`NoOp` when they differ in qualifiers at their pointer and array levels at most (a function type's
+own are part of it: `(const int (*)(void))` over `int (*)(void)` is a `BitCast`), the arithmetic
+kinds as above, `ToVoid`, `NullToPointer` for a null pointer constant integer to a pointer,
+`IntegralToPointer`, `PointerToIntegral`, `PointerToBoolean`, `BitCast` between other pointers.
 
 ## 34. Literals {#c-exprs-literals}
 
