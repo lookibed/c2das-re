@@ -99,6 +99,8 @@ struct PpDiag {
     col : int
     what : string
     skipped : bool      //!< met in a group the directive layer skips, which clang scans for directives alone and does not diagnose
+    directive : bool    //!< the bad byte of a token on a directive's line, which clang does not diagnose
+    undecided : bool    //!< met in a group an undecided conditional chose, which may not be clang's
     pname : int         //!< the presumed file name `#line` gives the place, an index of the directive layer's `names`
     pline : uint        //!< the presumed line; both the directive layer's to set, 0 under the lexer alone
 }

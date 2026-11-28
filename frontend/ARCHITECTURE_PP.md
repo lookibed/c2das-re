@@ -231,12 +231,17 @@ reports nothing in it - so a bad byte, or an unterminated comment, in `#if 0` is
 unit, and a reader that refuses a unit with a lexer diagnostic passes over a `skipped` one. The
 token after a directive's line is read before the directive is done (section 5) and consumed after
 it, so it is marked by the group the directive opens or closes: the line after `#if 0` is skipped,
-the line after its `#else` is not, and an `#elif` line that is evaluated is read as an active
-group's, as clang lexes the expression it evaluates. The same mark places the diagnostic at its presumed line and
-file (`pline`, `pname`, as a directive diagnostic and a token carry them): every token is consumed
-while its file is the one read - the end of a file before the file closes, the token after an
-`#include` line before the included file opens - so a diagnostic keeps its file's `#line` though
-the read that met it goes on past the file's end into its includer.
+the line after its `#else` is not. An `#elif` line that is evaluated is read as an active group's, as clang
+lexes the expression it evaluates. A token of a directive's line marks its bad byte `directive`, since clang diagnoses
+invalid UTF-8 only outside a directive; an unterminated comment there is still clang's error. A
+diagnostic met in a group an undecided conditional chose, skipped or read, is marked `undecided`
+(section 11): clang may choose the group otherwise. The same mark places the diagnostic at its
+presumed line and file (`pline`, `pname`, as a directive diagnostic and a token carry them): every
+token is consumed while its file is the one read - the end of a file before the file closes, the
+token after an `#include` line before the included file opens - so a diagnostic keeps its file's
+`#line` though the read that met it goes on past the file's end into its includer. A `#line` takes
+effect after its own line (section 10): a diagnostic met on that line, up to its last token's line,
+is placed before the new presumed place applies.
 
 A directive or expansion diagnostic (`PpDiagnostic`) is placed where its trouble is and carries
 apart from that where the reader stood when it raised it (`raised`, `pp_reader_place`): the

@@ -558,7 +558,9 @@ def pragma_places(text : string; clang : array<OracleToken>) : array<int> {
 //! The tokens PP.2 hands out for `unit` read through `fio`, the `linux` feature table answering
 //! the `#if` queries, and what it left to PP.3, into `result`. A diagnostic is placed at the tokens
 //! handed out before it; an error counts as the preprocessor's own unless it names PP.3, and so does
-//! a lexer diagnostic met outside a skipped group. With
+//! a lexer diagnostic met outside a skipped group, except a bad byte on a directive's line, which
+//! clang does not diagnose, and one in a group an undecided conditional chose, skipped or read,
+//! left to PP.3. With
 //! `result.expanded`, PP.3's expanded tokens, the time builtins at `ORACLE_EPOCH`, none marked as
 //! a macro's.
 [arch(at="ARCHITECTURE.md#pp2")]
@@ -594,7 +596,11 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
         seen = length(pp.diags)
         for (i in range(lexer_seen, length(pp.lx.diags))) {
             let d & = unsafe(pp.lx.diags[i])
-            if (!d.skipped) {
+            if (d.directive) {
+                continue
+            } elif (d.undecided) {
+                result.pp3_at |> push(length(tokens))
+            } elif (!d.skipped) {
                 result.errors |> push("{d.line}:{d.col} {d.what}")
             }
         }

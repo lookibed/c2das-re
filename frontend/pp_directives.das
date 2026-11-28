@@ -529,7 +529,7 @@ def private open_file(var pp : Preprocessor; id : int; path : string; found_at :
 //! suspend the file being read, with its next token, and open file `id`; the lexer diagnostics of
 //! that token are marked first, in the file that read it
 def private push_file(var pp : Preprocessor; id : int; path : string; found_at : int; var bytes : array<uint8>) {
-    mark_lexer_diags(pp)
+    mark_lexer_diags(pp, length(pp.lx.diags))
     var frame = PpFrame(lx <- pp.lx, state = pp.state, pending = pp.pending)
     pp.lx.flex.syms <- frame.lx.flex.syms
     pp.lx.diags <- frame.lx.diags
@@ -588,28 +588,43 @@ def pp_start(var pp : Preprocessor; var provider : PpFileProvider?; main : strin
 
 def private skipping(pp : Preprocessor) : bool => !empty(pp.conds) && !pp.conds[length(pp.conds) - 1].active
 
-//! the lexer diagnostics raised up to the current token marked with the group that takes it, skipped
-//! or read - a token read past a directive's line is consumed after the directive - and placed at
-//! their presumed line and file while their file is still the one read
+//! the lexer diagnostics raised before entry `upto` marked with the group that takes their token,
+//! skipped, read or chosen by an undecided conditional - a token read past a directive's line is
+//! consumed after the directive - and placed at their presumed line and file while their file is
+//! still the one read
 [arch(at="ARCHITECTURE_PP.md#pp-diags")]
-def private mark_lexer_diags(var pp : Preprocessor) {
+def private mark_lexer_diags(var pp : Preprocessor; upto : int) {
+    return if (pp.lexer_diags_seen >= upto)
     let skipped = skipping(pp)
-    for (i in range(pp.lexer_diags_seen, length(pp.lx.diags))) {
+    let undecided = pp_in_undecided_group(pp)
+    for (i in range(pp.lexer_diags_seen, upto)) {
         pp.lx.diags[i].skipped = skipped
+        pp.lx.diags[i].undecided = undecided
         pp.lx.diags[i].pname = pp.state.pname
         pp.lx.diags[i].pline = presumed_line(pp, pp.lx.diags[i].line)
     }
-    pp.lexer_diags_seen = length(pp.lx.diags)
+    pp.lexer_diags_seen = upto
 }
 
 //! the current token consumed: its lexer diagnostics marked, and a poisoned name read outside a
 //! skipped group and a `#pragma` line an error
 [arch(at="ARCHITECTURE_PP.md#pp-poison")]
 def private consumed(var pp : Preprocessor) {
-    mark_lexer_diags(pp)
+    mark_lexer_diags(pp, length(pp.lx.diags))
     if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && !pp.reading_pragma && key_exists(pp.poisoned, pp.lx.tok.sym) && !skipping(pp)) {
         diagnose(pp, PpSeverity.error, "attempt to use a poisoned identifier")
     }
+}
+
+//! the current token, one of a directive's line, consumed and kept as the line's last: a bad byte
+//! in it is marked `directive`
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+def private consumed_on_line(var pp : Preprocessor) {
+    for (i in range(pp.lexer_diags_seen, length(pp.lx.diags))) {
+        pp.lx.diags[i].directive = true
+    }
+    consumed(pp)
+    pp.last_tok = pp.lx.tok
 }
 
 //! Whether `#pragma GCC poison` poisoned the name `sym`.
@@ -636,8 +651,7 @@ def private next_on_line(var pp : Preprocessor) : bool {
         pp.pending = true
         return false
     }
-    consumed(pp)
-    pp.last_tok = pp.lx.tok
+    consumed_on_line(pp)
     return true
 }
 
@@ -1354,8 +1368,7 @@ def private do_include(var pp : Preprocessor; at : PpToken; d : PpDirective) {
         diagnose_at(pp, PpSeverity.error, at, "expected \"FILENAME\" or <FILENAME>")
         return
     }
-    consumed(pp)
-    pp.last_tok = pp.lx.tok
+    consumed_on_line(pp)
     if (pp.lx.tok.kind != int(PpTok.HEADER_NAME)) {
         read_line(pp, true)
         if (pp.expansion != null) {
@@ -1531,10 +1544,7 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
             extra_tokens(pp, "line")
         }
     }
-    pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
-    if (name >= 0) {
-        pp.state.pname = name
-    }
+    line_applied(pp, number, name)
 }
 
 //! a line marker's flags: 1 enters a presumed file, 2 leaves one this file entered; false, the
@@ -1557,6 +1567,22 @@ def private marker_flags(var pp : Preprocessor) : bool {
 
 def private current_is_number(pp : Preprocessor; digits : string) : bool => pp.lx.tok.kind == int(PpTok.PP_NUMBER) && pp_spelling_is(pp.lx, digits)
 
+//! a `#line` or line marker's presumed line `number` and name, -1 for none, in force from the line
+//! after the directive; a lexer diagnostic met on the directive's line - up to its last token's
+//! line - is placed first, at the place the line had
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+def private line_applied(var pp : Preprocessor; number : int64; name : int) {
+    var upto = pp.lexer_diags_seen
+    while (upto < length(pp.lx.diags) && pp.lx.diags[upto].line <= pp.last_tok.line) {
+        upto++
+    }
+    mark_lexer_diags(pp, upto)
+    pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
+    if (name >= 0) {
+        pp.state.pname = name
+    }
+}
+
 //! `#line` of the macro-expanded tokens in `pp.line`: a number, then a file name or nothing
 [arch(at="ARCHITECTURE_PP.md#pp-line")]
 def private line_expanded(var pp : Preprocessor; at : PpToken) {
@@ -1578,10 +1604,7 @@ def private line_expanded(var pp : Preprocessor; at : PpToken) {
             diagnose_at(pp, PpSeverity.warning, at, "extra tokens at end of #line directive")
         }
     }
-    pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
-    if (name >= 0) {
-        pp.state.pname = name
-    }
+    line_applied(pp, number, name)
 }
 
 // #pragma

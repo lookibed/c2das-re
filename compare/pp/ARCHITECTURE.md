@@ -141,7 +141,9 @@ the preprocessor's own. A unit's class (`pp2_class`) is the latest its differenc
 raised to needs PP.3 by a place left to PP.3 with no difference; it differs when one difference
 differs, when the preprocessor has an error of its own - one naming PP.3 is not; a lexer diagnostic
 met outside a skipped group is one, as clang's compile reports it, though its `-E` passes an
-invalid byte through, and one in a skipped group is none, as clang reads nothing there
+invalid byte through; one in a skipped group is none, as clang reads nothing there, and nor is a
+bad byte on a directive's line, which clang does not diagnose, and one in a group an undecided
+conditional chose, skipped or read, needs PP.3, as an undecided error does
 (`frontend/ARCHITECTURE_PP.md#pp-diags`) -, when the pragma
 counts disagree with nothing left to PP.3 to explain them (clang has more: `_Pragma` in an
 expansion), or when the streams

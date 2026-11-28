@@ -837,6 +837,39 @@ def test_pragma_poison(t : T?) {
     t |> equal(pragma_rows(pp), "18:2@5 weird foo")
 }
 
+// every lexer diagnostic, `<line>:<col> <what>` and its marks, `skipped`, `directive` and `undecided`, a `|` between them
+def private lexer_marks(pp : Preprocessor) : string {
+    let parts <- [for (d in pp.lx.diags); "{d.line}:{d.col} {d.what}{d.skipped ? " skipped" : ""}{d.directive ? " directive" : ""}{d.undecided ? " undecided" : ""}"]
+    return join(parts, " | ")
+}
+
+[test(description = "a bad byte on an active directive's line is marked directive, as clang does not diagnose it; one in the text is not, and an unterminated comment on a directive's line is no directive mark")]
+def test_lexer_diag_directive_mark(t : T?) {
+    var pp <- started([("main.c", "#define X 1 \xff\n#pragma foo \xff\n#include \xff\n\xff y\n#define Y /* open\n")])
+    t |> equal(stream(pp), "\xff y")
+    t |> equal(lexer_marks(pp), ("1:13 invalid UTF-8: byte 255 directive | 2:13 invalid UTF-8: byte 255 directive | " +
+                                 "3:10 invalid UTF-8: byte 255 directive | 4:1 invalid UTF-8: byte 255 | 5:11 unterminated /* comment"))
+}
+
+[test(description = "a lexer diagnostic met on a #line line keeps the presumed place the line had; the next line's takes the new one")]
+def test_lexer_diag_on_line_directive_old_place(t : T?) {
+    var pp <- started([("main.c", "int a;\n#line 100 \"z.c\" /* open\nmore\n")])
+    stream(pp)
+    let shown <- [for (d in pp.lx.diags); "{pp.names[d.pname]}:{int64(d.pline)} {d.line}:{d.col} {d.what}"]
+    t |> equal(join(shown, " | "), "main.c:2 2:17 unterminated /* comment")
+    var next <- started([("main.c", "#line 100 \"z.c\"\n\xff\n")])
+    stream(next)
+    let moved <- [for (d in next.lx.diags); "{next.names[d.pname]}:{int64(d.pline)} {d.line}:{d.col}"]
+    t |> equal(join(moved, " | "), "z.c:100 2:1")
+}
+
+[test(description = "a lexer diagnostic met in a group an undecided conditional chose is marked undecided, the skipped group too, since clang may read it; one after its #endif is not")]
+def test_lexer_diag_undecided_mark(t : T?) {
+    var pp <- started([("main.c", "#define N 1\n#if N\n\xff a\n#endif\n\xff b\n")])
+    stream(pp)
+    t |> equal(lexer_marks(pp), "3:1 invalid UTF-8: byte 255 skipped undecided | 5:1 invalid UTF-8: byte 255")
+}
+
 [test(description = "#pragma GCC error and GCC warning are an error and a warning at the pragma's kind with the value of their plain string literals, joined, parenthesized or not; any other form is clang's error at clang's token; #pragma clang warning stays a ledger entry")]
 def test_pragma_gcc_message(t : T?) {
     var pp <- started([("main.c", ("#pragma GCC error \"boom here\"\n#pragma GCC warning (\"x\\\"y\\tz\" \"!\")\n#pragma GCC error\n#pragma GCC warning L\"wide\"\n" +
