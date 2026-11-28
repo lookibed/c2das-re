@@ -81,8 +81,17 @@ def c_is_typedef(p : CParser; sym : int) : bool => sym >= 0 && sym < length(p.sc
 //! Linux): `__builtin_va_list`, `__builtin_ms_va_list`, `__int128_t`, `__uint128_t`,
 //! `__NSConstantString`, and under msvc `size_t`; false when the tokens hold an error, which `err`
 //! then holds.
-def c_parser_open_text(var p : CParser; text, name : string; msvc : bool = false) : bool {
-    let clean = c_tokens_of_text(p.unit, text, name)
+def c_parser_open_text(var p : CParser; text, name : string; msvc : bool = false) : bool =>
+    parser_reset(p, c_tokens_of_text(p.unit, text, name), msvc)
+
+//! Open the parser as `c_parser_open_text` does, over the C source `main` read through `provider`
+//! and preprocessed with macro expansion (`c_tokens_expand`).
+def c_parser_open_source(var p : CParser; var provider : PpFileProvider?; main : string; predefines, search : array<string>;
+                         msvc : bool = false; epoch : int64 = -1l) : bool =>
+    parser_reset(p, c_tokens_expand(p.unit, provider, main, predefines, search, epoch), msvc)
+
+//! the parser reset over the tokens just read, `clean` when they hold no error
+def private parser_reset(var p : CParser; clean, msvc : bool) : bool {
     p.ast.nodes |> clear()
     p.ast.nodes |> reserve(length(p.unit.toks))
     p.scopes.binding |> clear()
@@ -1216,7 +1225,7 @@ def private unprefixed_literal(var p : CParser; place : string) : int {
         return -1
     }
     let at = p.pos
-    while (kind(p) == int(CTok.STRING_LITERAL) && p.unit.lx.flex.bytes[p.unit.toks[p.pos].start] == uint8('"')) {
+    while (kind(p) == int(CTok.STRING_LITERAL) && c_byte(p.unit, p.pos, 0) == '"') {
         p.pos++
     }
     if (kind(p) == int(CTok.STRING_LITERAL)) {
@@ -1354,7 +1363,7 @@ def private definition(var p : CParser; at, extension, specs, id, f : int) : int
         var listed = p.ast.nodes[f].b
         while (!p.failed && listed >= 0) {
             if (p.ast.nodes[listed].b < 0) {
-                fail(p, "a declaration of parameter '{pp_symbol_text(p.unit.lx, p.ast.nodes[listed].a)}'")
+                fail(p, "a declaration of parameter '{c_symbol_text(p.unit, p.ast.nodes[listed].a)}'")
             }
             listed = p.ast.nodes[listed].next
         }
