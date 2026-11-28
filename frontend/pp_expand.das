@@ -109,7 +109,7 @@ class PpExpander : PpExpansion {
 
 def private diag(var pp : Preprocessor; severity : PpSeverity; t : PpOutToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = t.tok.file, offset = t.tok.offset, line = t.tok.line, col = t.tok.col,
-                                  pname = t.pname, pline = t.pline, what = what))
+                                  pname = t.pname, pline = t.pline, what = what, raised = pp_reader_place(pp.lx)))
 }
 
 // Spellings

@@ -806,3 +806,18 @@ def test_lexer_diag_presumed_place(t : T?) {
     let shown <- [for (d in pp.lx.diags); "{pp.names[d.pname]}:{int64(d.pline)} {d.line}:{d.col} {d.what}"]
     t |> equal(join(shown, " | "), "m.c:21 3:1 invalid UTF-8: byte 255 | p.h:51 3:1 unterminated /* comment")
 }
+
+[test(description = "an unterminated conditional is placed at its #if and raised past the last byte of the file that left it open, an included one too; an unterminated comment's end counted; a directive diagnostic is raised at the token the reader stands on")]
+def test_unterminated_conditional_raised_at_end(t : T?) {
+    var pp <- started([("main.c", "#include \"h.h\"\n#if 1\nx\n"), ("h.h", "#ifdef A\n#else\n\n")])
+    t |> equal(stream(pp), "x")
+    let shown <- [for (d in pp.diags); "{d.file}:{d.line}:{d.col} raised {d.raised.file}:{d.raised.offset}:{d.raised.line}:{d.raised.col} {d.what}"]
+    t |> equal(join(shown, " | "), ("2:1:2 raised 2:16:4:1 unterminated conditional directive | " +
+                                    "0:2:2 raised 0:23:4:1 unterminated conditional directive"))
+    var comment <- started([("main.c", "#if 1\n/* open\nmore")])
+    stream(comment)
+    t |> equal("{comment.diags[0].raised.offset}:{comment.diags[0].raised.line}:{comment.diags[0].raised.col}", "18:3:5")
+    var direct <- started([("main.c", "#bogus x\ny\n")])
+    stream(direct)
+    t |> equal("{direct.diags[0].line}:{direct.diags[0].col} raised {direct.diags[0].raised.line}:{direct.diags[0].raised.col}", "1:2 raised 1:2")
+}

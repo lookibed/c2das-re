@@ -234,3 +234,13 @@ file (`pline`, `pname`, as a directive diagnostic and a token carry them): every
 while its file is the one read - the end of a file before the file closes, the token after an
 `#include` line before the included file opens - so a diagnostic keeps its file's `#line` though
 the read that met it goes on past the file's end into its includer.
+
+A directive or expansion diagnostic (`PpDiagnostic`) is placed where its trouble is and carries
+apart from that where the reader stood when it raised it (`raised`, `pp_reader_place`): the
+lexer's current token, or past the last byte of its file once the lexer met the end. The two
+differ for what only the end of the input settles - an unterminated function-like macro call is
+placed at its name, an unterminated conditional at its `#if`, and both are raised at the end of
+the unit or file, or, for a call in a directive line, at the token after that line. The lexer
+raises its own diagnostics as it reads the token they come with, so the raise position orders the
+two lists by reading: a lexer diagnostic at or before a directive diagnostic's `raised` place, in
+the same file, came first.

@@ -625,3 +625,29 @@ def test_builtin_undef(t : T?) {
     t |> equal(d.diags, "W 1:9 redefining builtin macro | W 5:9 redefining builtin macro | W 6:8 undefining builtin macro")
 }
 
+
+// every diagnostic, `<line>:<col> raised <file>:<offset>:<line>:<col> <what>`, a `|` between them
+def private raised(pp : Preprocessor) : string {
+    let parts <- [for (d in pp.diags); "{d.line}:{d.col} raised {d.raised.file}:{d.raised.offset}:{d.raised.line}:{d.raised.col} {d.what}"]
+    return join(parts, " | ")
+}
+
+[test(description = "an unterminated call is placed at its name and raised where the reader gave up: past the last byte of the unit, through a line splice, or at the token after the directive line that ends it; a diagnostic the reader meets at once is raised at the token read, the call's )")]
+def test_unterminated_call_raised_at_end(t : T?) {
+    var at_end <- started([("main.c", "#define f(x) x\na f(1,\n 2")])
+    stream(at_end)
+    t |> equal(raised(at_end), "2:3 raised 0:24:3:3 unterminated function-like macro invocation")
+    var spliced <- started([("main.c", "#define f(x) x\nf(1\\\n2\n")])
+    stream(spliced)
+    t |> equal(raised(spliced), "2:1 raised 0:22:4:1 unterminated function-like macro invocation")
+    var splice_line <- started([("main.c", "#define f(x) x\nf(1\\\n2")])
+    stream(splice_line)
+    t |> equal(raised(splice_line), "2:1 raised 0:21:3:2 unterminated function-like macro invocation")
+    var in_line <- started([("main.c", "#define f(x) x\n#line f(\n7)\nz\n")])
+    stream(in_line)
+    t |> equal(raised(in_line), ("2:7 raised 0:24:3:1 unterminated function-like macro invocation | " +
+                                 "2:2 raised 0:24:3:1 #line directive requires a positive integer argument"))
+    var at_once <- started([("main.c", "#define z() Z\nz(1) after\n")])
+    stream(at_once)
+    t |> equal(raised(at_once), "2:1 raised 0:17:2:4 too many arguments provided to function-like macro invocation")
+}

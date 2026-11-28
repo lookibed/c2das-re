@@ -84,6 +84,7 @@ enum PpSeverity {
 }
 
 //! A diagnostic of the directive layer, at a token's physical place and its presumed one (`#line`).
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
 struct PpDiagnostic {
     severity : PpSeverity
     file : int
@@ -94,6 +95,7 @@ struct PpDiagnostic {
     pline : uint
     what : string
     undecided : bool    //!< raised in a group an undecided conditional chose, or at a macro name of a condition PP.2 alone reads
+    raised : PpPlace    //!< where the reader stood when it raised it (`pp_reader_place`): past the place for a call or a conditional the end left open
 }
 
 //! A token kept past its lexer: its spelling is `len` bytes at `at` of the owner's text pool.
@@ -466,13 +468,13 @@ def pp_in_undecided_group(pp : Preprocessor) : bool {
 def private diagnose_at(var pp : Preprocessor; severity : PpSeverity; at : PpToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
                                   pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
-                                  undecided = pp_in_undecided_group(pp)))
+                                  undecided = pp_in_undecided_group(pp), raised = pp_reader_place(pp.lx)))
 }
 
 def private diagnose_held(var pp : Preprocessor; severity : PpSeverity; at : PpHeld; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
                                   pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
-                                  undecided = pp_in_undecided_group(pp)))
+                                  undecided = pp_in_undecided_group(pp), raised = pp_reader_place(pp.lx)))
 }
 
 def private diagnose(var pp : Preprocessor; severity : PpSeverity; what : string) {
@@ -1806,7 +1808,8 @@ def private end_file(var pp : Preprocessor) : bool {
     while (length(pp.conds) > pp.state.cond_base) {
         let c = pp.conds[length(pp.conds) - 1]
         pp.diags |> push(PpDiagnostic(severity = PpSeverity.error, file = c.file, line = c.line, col = c.col, pname = pp.state.pname,
-                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive"))
+                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive",
+                                      raised = pp_reader_place(pp.lx)))
         pp.conds |> pop()
     }
     if (pp.state.guard == GuardState.closed) {
