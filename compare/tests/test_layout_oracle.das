@@ -96,6 +96,11 @@ def test_describe_record(t : T?) {
     rec.size = 4l
     dump.alignas_type = true
     t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on the record")
+    dump.members |> push(DumpMember(name = "extra"))
+    dump.alignas_type = false
+    t |> equal(describe_record(rec, dump, "linux", required, desc), "libclang and the dump count its members apart")
+    dump.members |> pop()
+    dump.alignas_type = true
     dump.alignas_type = false
     dump.members[0].alignas_type = true
     t |> equal(describe_record(rec, dump, "linux", required, desc), "an `_Alignas(type)` on a member")
@@ -117,26 +122,26 @@ def test_layout_differences(t : T?) {
     t |> equal(join(layout_differences(rec, layout), "; "), "size clang 4 ours 8; align clang 4 ours 8; a at bit clang 0 ours 32; (unnamed) at bit clang 0 ours 8")
 }
 
-[test(description = "the rule fixtures agree with clang on every record; a refused record, a header's record met twice and a unit clang rejects are counted apart", timeout = 1200)]
+[test(description = "the rule fixtures agree with clang on every record, the three one macro expansion defines and a typedef of an array under msvc among them; a refused record, an undescribed one (listed), a header's record met twice and a unit clang rejects are counted apart", timeout = 1200)]
 def test_units(t : T?) {
     var error : string
     let flags <- dumper_frontend_flags(target_lp64_linux(), error)
     t |> equal(error, "")
     var rules = LayoutTotals()
-    var seen : table<string; bool>
+    var seen : table<string; string>
     let corpus <- layout_corpus(".", "rules", "linux", error)
     for (unit in corpus.units) {
         compare_layout_unit(unit, "linux", flags, seen, rules)
     }
-    t |> equal(describe_layout_totals("rules", rules), "rules: 2 units (0 clang failures), 69 records: 69 agree, 0 differ, 0 refused, 0 undescribed []")
+    t |> equal(describe_layout_totals("rules", rules), "rules: 3 units (0 clang failures), 72 records (0 compared again under another description): 72 agree, 0 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records")
     let msvc_flags <- dumper_frontend_flags(target_llp64_msvc(), error)
     var msvc_rules = LayoutTotals()
-    var msvc_seen : table<string; bool>
+    var msvc_seen : table<string; string>
     let msvc_corpus <- layout_corpus(".", "rules", "msvc", error)
     for (unit in msvc_corpus.units) {
         compare_layout_unit(unit, "msvc", msvc_flags, msvc_seen, msvc_rules)
     }
-    t |> equal(describe_layout_totals("rules", msvc_rules), "rules: 3 units (0 clang failures), 95 records: 95 agree, 0 differ, 0 refused, 0 undescribed []")
+    t |> equal(describe_layout_totals("rules", msvc_rules), "rules: 5 units (0 clang failures), 100 records (0 compared again under another description): 100 agree, 0 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records")
     let dir = test_temp_dir()
     let header = path_join(dir, "shared.h")
     fwrite(header, "struct H \{ char c; int i; \};\n")
@@ -147,14 +152,14 @@ def test_units(t : T?) {
     let broken = path_join(dir, "broken.c")
     fwrite(broken, "int broken = ;\n")
     var totals = LayoutTotals()
-    var seen_here : table<string; bool>
+    var seen_here : table<string; string>
     var with_dir <- clone_to_move(flags)
     with_dir |> push("-I{dir}")
     for (unit in fixed_array(first, second, broken)) {
         compare_layout_unit(unit, "linux", with_dir, seen_here, totals)
     }
-    t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 8 records: 5 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]")
-    t |> success(length(totals.lines) == 1 && find(totals.lines[0], "broken.c: clang: ") >= 0, join(totals.lines, "\n"))
+    t |> equal(describe_layout_totals("set", totals), "set: 3 units (1 clang failures), 8 records (0 compared again under another description): 5 agree, 0 differ, 2 refused, 1 undescribed [1 an `ms_struct` record is not laid out; 1 an anonymous member that makes no name visible; 1 member `v` has a vector type, which the C-IR has no type for]; not compared: 1 units clang rejects, 1 undescribed records")
+    t |> success(length(totals.lines) == 2 && find(totals.lines[0], "undescribed: an anonymous member that makes no name visible") >= 0 && find(totals.lines[1], "broken.c: clang: ") >= 0, join(totals.lines, "\n"))
 }
 
 [test(description = "a corpus is known by name and found under the root, never empty by absence; a run over an unknown one fails")]
@@ -183,4 +188,103 @@ def test_corpora(t : T?) {
     t |> success(doom.extra[0] |> starts_with("-I") && length(doom.extra) == 7)
     t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["nothing"])), 1)
     t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"], dialect = "win")), 1)
+}
+
+[test(description = "a header's record is compared again in a unit whose defines or pack describe it otherwise, and only then", timeout = 1200)]
+def test_header_redescribed(t : T?) {
+    var error : string
+    let flags <- dumper_frontend_flags(target_lp64_linux(), error)
+    let dir = test_temp_dir()
+    fwrite(path_join(dir, "packed.h"), "struct P \{ char c; int i; \};\n")
+    let plain_unit = path_join(dir, "plain.c")
+    fwrite(plain_unit, "#include \"packed.h\"\n")
+    let again = path_join(dir, "again.c")
+    fwrite(again, "#include \"packed.h\"\n")
+    let packed_unit = path_join(dir, "packed.c")
+    fwrite(packed_unit, "#pragma pack(1)\n#include \"packed.h\"\n")
+    var with_dir <- clone_to_move(flags)
+    with_dir |> push("-I{dir}")
+    var seen : table<string; string>
+    var totals = LayoutTotals()
+    for (unit in fixed_array(plain_unit, again, packed_unit)) {
+        compare_layout_unit(unit, "linux", with_dir, seen, totals)
+    }
+    t |> equal("{totals.records} {totals.agreed} {totals.redescribed}", "2 2 1")
+}
+
+
+[test(description = "a field or a record named `implicit` is not clang's `implicit` flag, which stands before an anonymous member's type or a record's kind")]
+def test_implicit_names(t : T?) {
+    let named <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:26> col:8 struct K definition\n  `-FieldDecl 0x2 <col:12, col:16> col:16 implicit 'int'\n")
+    t |> equal(join([for (m in named[0].members); "<{m.name}>"], ""), "<implicit>")
+    let anonymous <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:40> col:8 struct N definition\n  |-RecordDecl 0x2 <col:12, col:30> col:12 union definition\n  | `-FieldDecl 0x3 <col:20, col:24> col:24 y 'int'\n  `-FieldDecl 0x4 <col:12> col:12 implicit 'union N::(anonymous at a.c:1:12)'\n")
+    t |> equal(join([for (m in anonymous[0].members); "<{m.name}>"], ""), "<>")
+    let record <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:26> col:8 struct implicit definition\n  `-FieldDecl 0x2 <col:21, col:25> col:25 a 'int'\n")
+    t |> equal(length(record), 1)
+}
+
+// Dumper A's clang flags for `dialect`
+def private flags_of(dialect : string) : array<string> {
+    var error : string
+    return <- dumper_frontend_flags(target_by_name(dialect), error)
+}
+
+// unit `text` written as `name` under a fresh folder and compared under `dialect` with `flags`:
+// the totals line, then each printed line
+def private compared(name, text, dialect : string; flags : array<string>) : string {
+    let unit = path_join(test_temp_dir(), name)
+    fwrite(unit, text)
+    var seen : table<string; string>
+    var totals = LayoutTotals()
+    compare_layout_unit(unit, dialect, flags, seen, totals)
+    let lines <- [for (line in totals.lines); slice(line, find(line, name))]
+    return join([describe_layout_totals(name, totals)], "") + (empty(lines) ? "" : " | " + join(lines, " | "))
+}
+
+[test(description = "the arms no fixture reaches: a differing record counted and printed, records named `implicit`, a nested anonymous member, 128-bit and ext-vector members refused, msvc requirements through arrays and typedefs, a unit libclang cannot open", timeout = 1200)]
+def test_unit_outcomes(t : T?) {
+    t |> run("msvc's numbers against the linux layout: one record differs, printed with each difference") @(t : T?) {
+        t |> equal(compared("mismatch.c", "struct MS \{ char a : 3; int b : 5; \};\n", "linux", flags_of("msvc")),
+                   "mismatch.c: 1 units (0 clang failures), 1 records (0 compared again under another description): 0 agree, 1 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records | mismatch.c:1:8: `struct MS`: size clang 8 ours 4; b at bit clang 32 ours 3")
+    }
+    t |> run("linux: `implicit` names, a nested anonymous member agree; __int128 and ext_vector_type refused") @(t : T?) {
+        t |> equal(compared("lin.c", "struct K \{ int implicit; \};\nstruct implicit \{ int a; \};\nstruct N \{ int a; union \{ struct \{ int y; \}; \}; \};\nstruct Wide128 \{ char c; __int128 w; \};\ntypedef float f4 __attribute__((ext_vector_type(4)));\nstruct Ext \{ f4 v; \};\n", "linux", flags_of("linux")),
+                   "lin.c: 1 units (0 clang failures), 7 records (0 compared again under another description): 5 agree, 0 differ, 2 refused, 0 undescribed [1 member `v` has a vector type, which the C-IR has no type for; 1 member `w` has a 128-bit integer type, which the C-IR has no type for]; not compared: 0 units clang rejects, 0 undescribed records")
+    }
+    t |> run("msvc under pack(1): a requirement through an array of a typedef, a typedef of a typedef and an array of a required record") @(t : T?) {
+        t |> equal(compared("ms.c", "typedef long long ll_a8 __attribute__((aligned(8)));\ntypedef int int_a8 __attribute__((aligned(8)));\ntypedef int_a8 wrap8;\nstruct __declspec(align(16)) Declspec \{ int a; \};\n#pragma pack(1)\nstruct ArrayOfTypedef \{ char c; ll_a8 x[2]; \};\nstruct Wrap \{ char c; wrap8 x; \};\nstruct ArrayOfRequired \{ char c; struct Declspec d[2]; \};\n#pragma pack()\n", "msvc", flags_of("msvc")),
+                   "ms.c: 1 units (0 clang failures), 4 records (0 compared again under another description): 4 agree, 0 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records")
+    }
+    t |> run("a unit libclang gives no translation unit for is a clang failure") @(t : T?) {
+        let missing = path_join(test_temp_dir(), "no_such_unit.c")
+        var seen : table<string; string>
+        var totals = LayoutTotals()
+        compare_layout_unit(missing, "linux", flags_of("linux"), seen, totals)
+        t |> equal(totals.clang_failures, 1)
+        t |> equal(join(totals.lines, "|"), "{missing}: clang: libclang gave no translation unit")
+    }
+}
+
+// `compare/layout/run.das` with `args` as a child process, `env` before it; its exit code, the output in `out`
+def private run_das(env : array<string>; args : array<string>; var out : string&) : int {
+    var argv <- ["env"]
+    argv |> push_from(env, [get_das_root() + "/bin/daslang", "-load_module", get_full_file_name("dasCRuntime"), "-load_module", get_full_file_name("c_runtime")])
+    if (stat("fetch/dasFlex").is_dir) {
+        argv |> push_from(["-load_module", get_full_file_name("fetch/dasFlex")])
+    }
+    argv |> push_from(["compare/layout/run.das", "--"], args)
+    return run_and_capture(argv, out, 600.0)
+}
+
+[test(description = "the run's exit code: 0 over the rule fixtures, 1 when a record differs (another --target than the layout's), 1 with CPATH set; run.das as a child prints the totals", timeout = 1200)]
+def test_run_exit(t : T?) {
+    t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"])), 0)
+    t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"], flag <- ["--target=x86_64-pc-windows-msvc"])), 1)
+    var out : string
+    let plain = run_das(array<string>(), ["--corpus", "rules"], out)
+    t |> equal(plain, 0, out)
+    t |> success(out |> contains("linux rules: 3 units (0 clang failures), 72 records"), out)
+    let with_cpath = run_das(["CPATH=/tmp"], ["--corpus", "rules"], out)
+    t |> equal(with_cpath, 1, out)
+    t |> success(out |> contains("the environment variable CPATH is set"), out)
 }

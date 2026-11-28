@@ -73,6 +73,7 @@ struct LayoutTotals {
     differ : int
     refused : int
     undescribed : int
+    redescribed : int       //!< records compared again in a later unit whose description of them differs
     reasons : table<string; int>
     lines : array<string>
 }
@@ -95,8 +96,10 @@ def private dump_node(line : string; var depth : int&) : string {
 }
 
 // a field's name in its text dump line: the words between its location and its quoted type are
-// clang's flags (`implicit`, then `used` or `referenced`) and the name; an implicit field, the
-// anonymous member, and an unnamed bitfield, which nothing can reference, have none
+// clang's flags (`implicit`, then `used` or `referenced`) and the name, the last of them; an
+// implicit field, the anonymous member, and an unnamed bitfield, which nothing can reference, have
+// none. A lone `implicit` is the flag only before an anonymous record's type (clang's anonymous
+// member), else a field of that name (`int implicit;`)
 def private dump_field_name(line : string) : string {
     let quote = find(line, " '")
     let head <- split(quote < 0 ? line : slice(line, 0, quote), " ")
@@ -106,10 +109,11 @@ def private dump_field_name(line : string) : string {
         tail |> push(head[at])
         at--
     }
-    if (empty(tail) || tail[length(tail) - 1] == "implicit") {
+    if (empty(tail)) {
         return ""
     }
-    return tail[0]
+    let flag = tail[length(tail) - 1] == "implicit" && (length(tail) > 1 || find(line, "(anonymous at ") >= 0)
+    return flag ? "" : tail[0]
 }
 
 // one open node of the walk: a record, a field or an `aligned` attribute waiting for its value
@@ -147,7 +151,7 @@ def dump_records(dump : string) : array<DumpRecord> {
         }
         let top = empty(open) ? OpenNode(depth = -1, rec = -1, member = -1) : open[length(open) - 1]
         if (kind == "RecordDecl") {
-            if (line |> ends_with(" definition") && find(line, " implicit ") < 0) {
+            if (line |> ends_with(" definition") && find(line, " implicit struct ") < 0 && find(line, " implicit union ") < 0) {
                 var inscope words <- split(line, " ")
                 let n = length(words)
                 let is_union = words[n - 2] == "union" || (n >= 3 && words[n - 3] == "union")
@@ -201,13 +205,20 @@ def dump_records(dump : string) : array<DumpRecord> {
     return <- records
 }
 
+// the place of cursor `c` as `file:line:col` of its expansion, and in `key` the record's identity
+// across units: its expansion file and offset with its spelling file and offset, which part the
+// records one macro expansion defines
 def private cursor_place(var c : CXCursor; var key : string&) : string {
-    var file : CXFile
-    var line, column, offset : uint
-    clang_getExpansionLocation(clang_getCursorLocation(c), safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    var file, spelled_file : CXFile
+    var line, column, offset, spelled_line, spelled_column, spelled : uint
+    var loc = clang_getCursorLocation(c)
+    clang_getExpansionLocation(loc, safe_addr(file), safe_addr(line), safe_addr(column), safe_addr(offset))
+    clang_getSpellingLocation(loc, safe_addr(spelled_file), safe_addr(spelled_line), safe_addr(spelled_column), safe_addr(spelled))
     let name = file == null ? "" : string(clang_getFileName(file))
     let full = empty(name) ? "" : get_full_file_name(name)
-    key = "{full}:{int(offset)}"
+    let spelled_name = spelled_file == null ? "" : string(clang_getFileName(spelled_file))
+    let spelled_full = empty(spelled_name) ? "" : get_full_file_name(spelled_name)
+    key = "{full}:{int(offset)}:{spelled_full}:{int(spelled)}"
     return "{name}:{int(line)}:{int(column)}"
 }
 
@@ -236,8 +247,6 @@ def private typedef_aligned(t : CXType) : bool {
     while (true) {
         if (at.kind == CXTypeKind.ConstantArray || at.kind == CXTypeKind.IncompleteArray) {
             at = clang_getArrayElementType(at)
-        } elif (at.kind == CXTypeKind.Elaborated) {
-            at = clang_Type_getNamedType(at)
         } elif (at.kind == CXTypeKind.Typedef) {
             var decl = clang_getTypeDeclaration(at)
             var found = false
@@ -272,7 +281,7 @@ def private record_key_of(var t : CXType) : string {
 
 def private member_of_field(var fc : CXCursor) : LaidMember {
     var declared = clang_getCursorType(fc)
-    var canonical = clang_getCanonicalType(declared)
+    let canonical = clang_getCanonicalType(declared)
     var m = LaidMember(name = string(clang_getCursorSpelling(fc)), off = clang_Cursor_getOffsetOfField(fc))
     m.is_bitfield = clang_Cursor_isBitField(fc) != 0u
     m.width = m.is_bitfield ? clang_getFieldDeclBitWidth(fc) : 0
@@ -291,12 +300,14 @@ def private member_of_field(var fc : CXCursor) : LaidMember {
     }
     m.typedef_required = typedef_aligned(declared)
     m.record_key = record_key_of(declared)
+    // the type below its top-level sugar alone, as clang's getUnqualifiedDesugaredType: a typedef of
+    // an array is the array, whose element keeps its own typedef
     var top = declared
-    while (top.kind == CXTypeKind.Elaborated) {
-        top = clang_Type_getNamedType(top)
+    while (top.kind == CXTypeKind.Typedef) {
+        top = clang_getTypedefDeclUnderlyingType(clang_getTypeDeclaration(top))
     }
-    let under_array = canonical.kind == CXTypeKind.ConstantArray || canonical.kind == CXTypeKind.IncompleteArray
-    m.desugared_align = top.kind == CXTypeKind.Typedef && !under_array ? int(clang_Type_getAlignOf(canonical)) : m.align
+    // an incomplete array's alignment is its element's, as the flexible member's own
+    m.desugared_align = int(clang_Type_getAlignOf(top))
     return m
 }
 
@@ -348,8 +359,8 @@ def clang_records(unit : string; flags : array<string>; var error : string&) : a
     }
     for (i in urange(clang_getNumDiagnostics(tu))) {
         var diag = clang_getDiagnostic(tu, i)
-        let severity = clang_getDiagnosticSeverity(diag)
-        if (empty(error) && (severity == CXDiagnosticSeverity.Error || severity == CXDiagnosticSeverity.Fatal)) {
+        // Dumper A's flags carry `-w`: every diagnostic left is an error
+        if (empty(error)) {
             error = string(clang_formatDiagnostic(diag, clang_defaultDiagnosticDisplayOptions()))
         }
         clang_disposeDiagnostic(diag)
@@ -410,6 +421,9 @@ def describe_record(rec : LaidRecord; dump : DumpRecord; dialect : string; requi
     if (dump.alignas_type) {
         return "an `_Alignas(type)` on the record"
     }
+    if (length(rec.members) != length(dump.members)) {
+        return "libclang and the dump count its members apart"
+    }
     var members : array<CLayoutMember>
     members |> reserve(length(rec.members))
     for (m, d in rec.members, dump.members) {
@@ -463,6 +477,14 @@ struct private Outcome {
     layout : CRecordLayout
     why : string
     refused : bool
+    described : string      // the description the module laid out, as text; `why` for none
+}
+
+// description `d` as one text: what a later unit's description of the record must equal to be the
+// same record under the same rules
+def private description_text(d : CLayoutRecord) : string {
+    let members = join([for (m in d.members); "{m.name}:{m.size}:{m.align}:{m.is_bitfield}:{m.width}:{m.is_flexible}:{m.packed}:{m.aligned}:{m.required_align}"], ",")
+    return "{d.is_union} {d.packed} {d.aligned} {d.pack} {d.ms_struct} [{members}]"
 }
 
 // record `i` of the unit laid out into `outcomes`, after every record its members' types are (by
@@ -480,25 +502,28 @@ def private lay_out(i : int; ours : array<LaidRecord>; theirs : array<DumpRecord
     outcomes[i].state = 2
     if (matched[i] < 0) {
         outcomes[i].why = "no dump record matches it"
+        outcomes[i].described = outcomes[i].why
         return
     }
     var desc : CLayoutRecord
     outcomes[i].why = describe_record(ours[i], theirs[matched[i]], dialect, required, desc)
+    outcomes[i].described = empty(outcomes[i].why) ? description_text(desc) : outcomes[i].why
     return if (!empty(outcomes[i].why))
     outcomes[i].layout <- c_record_layout(desc)
     if (outcomes[i].layout.failed) {
         let err = outcomes[i].layout.err
-        let colon = find(err, ": ")
-        outcomes[i].why = colon < 0 ? err : slice(err, colon + 2)
+        // every refusal text starts with the record's place, `name:line:col: `
+        outcomes[i].why = slice(err, find(err, ": ") + 2)
         outcomes[i].refused = true
         return
     }
     required[ours[i].key] = outcomes[i].layout.required_align
 }
 
-//! One unit through both sides under `dialect` into `totals`; a record met in an earlier unit
-//! (`seen`, by its place) is not counted again.
-def compare_layout_unit(unit, dialect : string; flags : array<string>; var seen : table<string; bool>; var totals : LayoutTotals) {
+//! One unit through both sides under `dialect` into `totals`; a record met in an earlier unit with
+//! the same description (`seen`, by its place: a header's record under the same defines and pack)
+//! is not counted again, one whose description differs is compared again.
+def compare_layout_unit(unit, dialect : string; flags : array<string>; var seen : table<string; string>; var totals : LayoutTotals) {
     totals.units++
     var error : string
     let ours <- clang_records(unit, flags, error)
@@ -525,19 +550,20 @@ def compare_layout_unit(unit, dialect : string; flags : array<string>; var seen 
         lay_out(i, ours, theirs, matched, dialect, by_key, required, outcomes)
     }
     for (rec, outcome in ours, outcomes) {
-        continue if (key_exists(seen, rec.key))
-        seen[rec.key] = true
+        continue if (key_exists(seen, rec.key) && (seen?[rec.key] ?? "") == outcome.described)
+        if (key_exists(seen, rec.key)) {
+            totals.redescribed++
+        }
+        seen[rec.key] = outcome.described
         totals.records++
         if (!empty(outcome.why)) {
             if (outcome.refused) {
                 totals.refused++
             } else {
                 totals.undescribed++
+                totals.lines |> push("{rec.at}: `{rec.spelling}`: undescribed: {outcome.why}")
             }
             totals.reasons[outcome.why]++
-            if (outcome.why == "no dump record matches it" || outcome.why == "a member's record has no layout of ours") {
-                totals.lines |> push("{rec.at}: `{rec.spelling}`: {outcome.why}")
-            }
             continue
         }
         var inscope diffs <- layout_differences(rec, outcome.layout)
@@ -617,7 +643,7 @@ def layout_corpus(root, name, dialect : string; var error : string&) : LayoutCor
 def describe_layout_totals(name : string; t : LayoutTotals) : string {
     var reasons <- [for (k, v in keys(t.reasons), values(t.reasons)); "{v} {k}"]
     sort(reasons)
-    return "{name}: {t.units} units ({t.clang_failures} clang failures), {t.records} records: {t.agreed} agree, {t.differ} differ, {t.refused} refused, {t.undescribed} undescribed [{join(reasons, "; ")}]"
+    return "{name}: {t.units} units ({t.clang_failures} clang failures), {t.records} records ({t.redescribed} compared again under another description): {t.agreed} agree, {t.differ} differ, {t.refused} refused, {t.undescribed} undescribed [{join(reasons, "; ")}]; not compared: {t.clang_failures} units clang rejects, {t.undescribed} undescribed records"
 }
 
 //! The command line of `run.das`.
@@ -629,6 +655,8 @@ struct LayoutArgs {
     root : string = "."
     //! the dialect: linux or msvc
     dialect : string = "linux"
+    //! a clang flag every unit is read under after the dialect's (repeatable)
+    flag : array<string>
 }
 
 //! Every corpus of `args` compared, its difference lines and totals printed; 0 when no record
@@ -653,8 +681,8 @@ def run_layout_oracle(args : LayoutArgs) : int {
             return 1
         }
         var inscope all_flags <- clone_to_move(flags)
-        all_flags |> push_from(corpus.extra)
-        var inscope seen : table<string; bool>
+        all_flags |> push_from(corpus.extra, args.flag)
+        var inscope seen : table<string; string>
         var totals : LayoutTotals
         for (unit in corpus.units) {
             compare_layout_unit(unit, args.dialect, all_flags, seen, totals)

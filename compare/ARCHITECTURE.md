@@ -71,6 +71,8 @@ daslang; this repository never builds it inside a test and never vendors it.
   of the head-to-head: it lives here because it starts clang, which nothing under `frontend/` may.
 - `parse/` - the parse oracle of Dumper C's parser against clang's tree (`parse/ARCHITECTURE.md`),
   not a part of the head-to-head, here for the same reason.
+- `layout/` - the layout oracle of Dumper C's record layout against clang (`layout/ARCHITECTURE.md`),
+  not a part of the head-to-head either, here for the same reason.
 - `types/` - the C-IR oracle of Dumper C's builder against Dumper A (`types/ARCHITECTURE.md`),
   not a part of the head-to-head, here for the same reason.
 - `layout/` - the layout oracle of Dumper C's record layout against clang (`layout/ARCHITECTURE.md`),
