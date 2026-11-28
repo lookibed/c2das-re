@@ -10,8 +10,10 @@ lexer of section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 1
 (sections 29 to 36) - and the first part of Dumper C's parser, which reads the C tokens of a
 preprocessed unit, its expressions, type names, declarations, records, enums, statements and
 function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`,
-section 23), and the type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24
-to 28 and 60). No converter pass calls the preprocessor, the parser or the type table yet.
+section 23), the type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to
+28 and 60), and the expressions with their conversions and the unit's C-IR walk
+(`ARCHITECTURE_EXPRS.md`, sections 38 to 45). No converter pass calls the preprocessor, the parser
+or the C-IR builder yet.
 
 ## 1. File charters
 
@@ -43,9 +45,19 @@ to 28 and 60). No converter pass calls the preprocessor, the parser or the type 
   function definitions and the unit, statements (sections 16 to 23).
   One module, since the grammar's parts call each other.
 - `c_types.das` - the C-IR type table of a unit (`ARCHITECTURE_TYPES.md`): the pool of types met,
-  each use interning a type into `CirTu.types` in Dumper A's order, the specifiers, declarators,
-  initializer-sized arrays, the walk over declarations, definitions and bodies, the own headers'
-  declarations. It writes `converter/cir.das`'s structures and requires no other converter module.
+  qualified ones apart, each use interning a type into `CirTu.types`, the specifiers, declarators
+  and initializer-sized arrays, the typedef scopes. It writes `converter/cir.das`'s structures and
+  requires no other converter module.
+- `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
+  constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 38 to 44).
+- `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
+  and the `%a` print (`ARCHITECTURE_EXPRS.md` section 45).
+- `c_ir.das` - the unit's C-IR: the walk over declarations, definitions and bodies in Dumper A's
+  order, initializers, statements, the own headers' declarations (`ARCHITECTURE_TYPES.md` sections
+  24 and 28, `ARCHITECTURE_EXPRS.md` sections 42 and 44).
+- `tests/test_c_exprs.das` - per conversion group its exact cast stream, the literals under both
+  dialects, `sizeof`, initializers, every statement form, the table order, every refusal with its
+  place. `tests/test_c_floats.das` - the hard floating constants against clang and the C library.
 - `tests/test_c_types.das` - per type form its entry and spelling under both dialects, a unit's
   order through every statement form, typedefs, adjusted parameters, old-style definitions,
   unsized arrays, the own headers' declarations, and every refusal with its place. The comparison
@@ -86,6 +98,11 @@ that start a process: `popen`, `popen_binary`, `popen_timeout`, `popen_argv`, `p
 `spawn_process`, `spawn_argv`, `with_process`, `run_and_capture`, `executable_on_path` (all of
 `fio`; the last probes `PATH` through a shell) and `system` (of `fio` and of `crt`).
 
+Nor does it require a native module: `crt`, the C runtime, or `c_runtime` and its modules, which
+need it. Dumper C computes in das what the C library would (`ARCHITECTURE_EXPRS.md`'s floating
+constants). The own headers' tests under `include/tests/` are the one exception: they compile
+converted programs against the C runtime and are no part of Dumper C.
+
 The ban holds for what a file pulls in as well. `REVIEW.das` reads each `.das` file under the
 folder with its comments and the characters of its string and character literals blanked (the code
 inside a string's `{...}` stays: it runs), and reports, each with the file and line:
@@ -96,6 +113,7 @@ inside a string's `{...}` stays: it runs), and reports, each with the file and l
 - a line that holds the word `require` and the word `cbind` anywhere; and a line that holds
   `require` and is not `require <module>` or `require <module> public`, `<module>` spelled in
   letters, digits, `_`, `.`, `/` and `-`, since the gate cannot name the module of any other form;
+- a `require` of `crt`, of `c_runtime` or of one of its modules, outside `include/tests/`;
 - the word `include`: the gate follows no text include, so a file here has none.
 
 It follows every `require` that names a file, a path ending in `.das` or a module whose
