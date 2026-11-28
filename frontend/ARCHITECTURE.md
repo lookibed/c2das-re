@@ -1,21 +1,21 @@
 # frontend Architecture
 
-Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
-holds the part of the converter that reads C with no clang behind it. Today that is the libc
-header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
-`converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
-sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token
-lexer of section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13, 53 and 54:
-directives, `#include`, the macro table, the ledgers, diagnostics), the macro expansion of
+Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder holds
+the part of the converter that reads C with no clang behind it. Today that is the libc header set
+under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
+`converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the sidecar
+reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token lexer of
+section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13, 53 and 54: directives,
+`#include`, the macro table, the ledgers, diagnostics), the macro expansion of
 `ARCHITECTURE_EXPAND.md` (sections 29 to 37, and 55 to 57: the expansion record) and the `#if`
-evaluator of `ARCHITECTURE_EVAL.md` (sections 46 to 52) - and the first part of Dumper C's parser, which reads the C tokens of a
-preprocessed unit or of C source the preprocessor expands, its expressions, type names,
-declarations, records, enums, statements and
-function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`,
-section 23), the type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to
-28 and 60), and the expressions with their conversions and the unit's C-IR walk
-(`ARCHITECTURE_EXPRS.md`, sections 38 to 45). No converter pass calls the preprocessor, the parser
-or the C-IR builder yet.
+evaluator of `ARCHITECTURE_EVAL.md` (sections 46 to 52) - and the first part of Dumper C's parser,
+which reads the C tokens of a preprocessed unit or of C source the preprocessor expands, its
+expressions, type names, declarations, records, enums, statements and function definitions
+(`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`, section 23), the
+type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60), the
+expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 38 to
+45) - and the record layout (`ARCHITECTURE_LAYOUT.md`, `ARCHITECTURE_LAYOUT_MSVC.md`, sections 79 to
+85). No converter pass calls any of them yet.
 
 ## 1. File charters
 
@@ -84,6 +84,8 @@ or the C-IR builder yet.
   tree, the tag and enumerator scopes, the old-style declaration list, a body's scope, the
   refusals and malformed input, the nesting bound of the record forms, a whole unit of headers
   and a program with its allocation probe, and a unit of C source with macros parsed with no clang.
+- `c_layout.das` - a record's layout in a dialect, written into a C-IR type (`ARCHITECTURE_LAYOUT.md`,
+  `ARCHITECTURE_LAYOUT_MSVC.md`); `tests/test_c_layout.das` and `compare/layout/` hold it to clang.
 - `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
   block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
   forms, and a unit with real bodies with its allocation probe.
