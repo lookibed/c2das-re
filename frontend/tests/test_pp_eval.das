@@ -12,17 +12,17 @@ require ../c_defines.das
 //! and nesting.
 
 // a preprocessor with expansion over `files` (path, text pairs), started at `main.c` with the
-// `linux` table's macros, its feature table, and the include path `inc`
-def private started(files : array<tuple<string; string>>) : Preprocessor {
+// `dialect` table's macros, its feature table, and the include path `inc`
+def private started(files : array<tuple<string; string>>; dialect : string = "linux") : Preprocessor {
     var mem = new PpMemoryProvider()
     for (f in files) {
         mem->add(f._0, f._1)
     }
     var error = ""
-    let entries <- read_predefined(predefined_path("linux"), error)
+    let entries <- read_predefined(predefined_path(dialect), error)
     var pp : Preprocessor
     pp_expand_start(pp, mem, "main.c", entries, array<string>("inc"), 1000000000l)
-    pp.eval.features <- read_features(features_path("linux"), error)
+    pp.eval.features <- read_features(features_path(dialect), error)
     return <- pp
 }
 
@@ -66,6 +66,14 @@ def private pinned(t : T?; cases : array<tuple<string; string>>) {
     }
 }
 
+// `pinned` under the msvc dialect
+def private pinned_msvc(t : T?; cases : array<tuple<string; string>>) {
+    for (c in cases) {
+        var pp <- started([("main.c", "#if {c._0}\nYES\n#else\nNO\n#endif\n")], "msvc")
+        t |> equal(stream(pp), c._1, c._0)
+    }
+}
+
 [test(description = "the sign trap of glibc's bits/wchar.h: L'\\0' is wchar_t, signed int here, so L'\\0' - 1 > 0 is false; an unsigned operand makes the operation unsigned")]
 def test_sign_trap(t : T?) {
     pinned(t, [("L'\\0' - 1 > 0", "NO"), ("L'\\0' - 1 < 0", "YES"), ("0u - 1 > 0", "YES"), ("-1 > 0u", "YES"), ("-1 < 0", "YES"),
@@ -87,7 +95,8 @@ def test_operators(t : T?) {
                ("1 ? 2, 3 : 4", "YES"), ("(1, 0)", "NO"), ("(0, 1)", "YES"), ("1 == 1L == 1", "YES"), ("~0u == 18446744073709551615u", "YES"),
                ("1ULL << 63 > 0", "YES"), ("1 << 63 < 0", "YES"), ("(-9223372036854775807-1) % -1 == 0", "YES"),
                ("(-9223372036854775807-1) / -1 < 0", "YES"), ("9223372036854775807 + 1 < 0", "YES"), ("1 << 64", "NO"), ("1 << -1", "NO"),
-               ("8 >> -1", "NO"), ("2 << 62", "YES")])
+               ("8 >> -1", "NO"), ("2 << 62", "YES"), ("-1 / 2u > 0", "YES"), ("-1 % 2u > 0", "YES"), ("-1 >> 1u < 0", "YES"),
+               ("(1u, -1) < 0", "YES"), ("(1u && 1) - 2 < 0", "YES")])
     t |> equal(run_text("#if 1 << 63\n#endif\n").diags, "W 1:7 integer overflow in preprocessor expression")
 }
 
@@ -104,10 +113,24 @@ def test_integer_literals(t : T?) {
     pinned(t, [("010 == 8", "YES"), ("0x10 == 16", "YES"), ("0X1f == 31", "YES"), ("0b101 == 5", "YES"), ("0B11 == 3", "YES"),
                ("1u == 1", "YES"), ("1U", "YES"), ("1l", "YES"), ("1L", "YES"), ("1ll", "YES"), ("1LL == 1", "YES"), ("1ul", "YES"),
                ("1lu", "YES"), ("1uLL", "YES"), ("1Lu", "YES"), ("1llu", "YES"), ("0", "NO"), ("00", "NO"), ("1lul", "NO"), ("1lL", "NO"),
-               ("1.0", "NO"), ("1e3", "NO"), ("0x1p3", "NO"), ("1i", "NO"), ("08", "NO"), ("0x", "NO"), ("1_000", "NO"), ("0b12", "NO")])
+               ("1.0", "NO"), ("1e3", "NO"), ("0x1p3", "NO"), ("1i", "NO"), ("08", "NO"), ("0x", "NO"), ("1_000", "NO"), ("0b12", "NO"),
+               ("1wb == 1", "YES"), ("1uwb - 2 > 0", "YES"), ("1WBU", "YES"), ("0x1wb", "YES"), ("1wB", "NO"), ("1lwb", "NO"), ("1uwbu", "NO"),
+               ("0o17 == 15", "YES"), ("0O17u == 15", "YES"), ("0o8", "NO"), ("1i64", "NO"), ("1z", "YES"), ("1uz - 2 > 0", "YES"),
+               ("1z - 2 < 0", "YES"), ("1zl", "NO"), ("0b2", "NO"), ("1b", "NO"), ("0a", "NO"), ("0x1p", "NO"), ("1e", "NO"),
+               ("18446744073709551616 - 1 > 0", "YES"), ("18446744073709551616 == 0", "YES")])
     t |> equal(run_text("#if 1.0\n#endif\n#if 08\n#endif\n#if 0x\n#endif\n#if 1lul\n#endif\n#if 0b12\n#endif\n").diags,
                "E 1:5 floating point literal in preprocessor expression | E 3:5 invalid digit '8' in octal constant | E 5:5 invalid suffix 'x' on integer constant | E 7:5 invalid suffix 'lul' on integer constant | E 9:5 invalid digit '2' in binary constant")
     t |> equal(run_text("#if 9223372036854775808\n#endif\n").diags, "W 1:5 integer literal is too large to be represented in a signed integer type, interpreting as unsigned")
+    t |> equal(run_text("#if 1wb\n#endif\n#if 1z\n#endif\n#if 0b2\n#endif\n#if 0x1p\n#endif\n#if 1b\n#endif\n#if 18446744073709551616\n#endif\n").diags,
+               "W 1:5 '_BitInt' suffix for literals is a C23 extension | E 3:5 'size_t' suffix for literals is a C++23 feature | E 5:5 invalid digit 'b' in octal constant | E 7:5 exponent has no digits | E 9:5 invalid digit 'b' in decimal constant | E 11:5 integer literal is too large to be represented in any integer type")
+}
+
+[test(description = "under the msvc dialect the Microsoft integer suffixes i8 to i128 end a constant, after a u alone; wchar_t is 16-bit unsigned and the target queries answer for the Windows triple")]
+def test_msvc_literals(t : T?) {
+    pinned_msvc(t, [("1i64 == 1", "YES"), ("0x1ui64 == 1", "YES"), ("1I64", "YES"), ("1i8 - 2 < 0", "YES"), ("1Ui64 - 2 > 0", "YES"),
+                    ("1i128", "YES"), ("1i16u", "NO"), ("1li64", "NO"), ("1i9", "NO"), ("1i", "NO"), ("1ui - 1", "NO"),
+                    ("L'\\xffff' > 0", "YES"), ("L'\\x10000' > 0", "NO"), ("__is_target_os(windows)", "YES"), ("__is_target_os(Win32)", "YES"),
+                    ("__is_target_vendor(PC)", "YES"), ("__is_target_environment(MSVC)", "YES"), ("__has_builtin(__builtin_offsetof)", "YES")])
 }
 
 [test(description = "character constants: escapes, multi-character, the L, u and U prefixes, with clang's values and signedness under -funsigned-char")]
@@ -119,9 +142,15 @@ def test_char_literals(t : T?) {
                ("L'a' == 97", "YES"), ("L'\\xffffffff' == -1", "YES"), ("L'\\xffffffff' < 0", "YES"), ("L'\\u00e9' == 0xe9", "YES"),
                ("u'x' - 'y' > 0", "YES"), ("U'\\U0001F600' == 0x1F600", "YES"), ("u'\\U0001F600'", "NO"), ("'\\u00e9' == 0xe9", "NO"),
                ("L'ab'", "NO"), ("u8'a' == 97", "NO"), ("U'\\u\{1234\}' == U'\\u1234'", "YES"), ("U'\\x\{10fffd\}' == 0x10FFFD", "YES"),
-               ("U'\\o\{1234\}' == 0x29c", "YES"), ("'\\x\{41\}' == 65", "YES"), ("'\\u\{e9\}'", "NO"), ("'\\x\{\}'", "NO")])
+               ("U'\\o\{1234\}' == 0x29c", "YES"), ("'\\x\{41\}' == 65", "YES"), ("'\\u\{e9\}'", "NO"), ("'\\x\{\}'", "NO"),
+               ("'\\x141' == 'A'", "NO"), ("1 || '\\x141'", "NO"), ("'\\o\{777\}' == 255", "NO"), ("u'\\x10041' == 0x41", "NO"),
+               ("U'\\x141' == 0x141", "YES"), ("L'\\x1FFFFFFFF' > 0", "NO"), ("U'\\U00110000' > 0", "NO"), ("u'\\uD800' > 0", "NO"),
+               ("U'\\u\{D800\}' > 0", "NO"), ("U'\\U0010FFFF' > 0", "YES"), ("U'\\u0041'", "NO"), ("U'\\u0024' == 36", "YES"),
+               ("U'\\u0010'", "NO"), ("U'\\u00A0' == 0xA0", "YES")])
     t |> equal(run_text("#if 'ab'\n#endif\n#if L'ab'\n#endif\n#if '\\777'\n#endif\n").diags,
                "W 1:5 multi-character character constant | E 3:5 wide character literals may not contain multiple characters | E 5:5 octal escape sequence out of range")
+    t |> equal(run_text("#if '\\x141'\n#endif\n#if U'\\U00110000'\n#endif\n#if U'\\u0041'\n#endif\n#if U'\\u0010'\n#endif\n").diags,
+               "E 1:5 hex escape sequence out of range | E 3:5 invalid universal character | E 5:5 character 'A' cannot be specified by a universal character name | E 7:5 universal character name refers to a control character")
 }
 
 [test(description = "defined X and defined(X), of a macro and of a builtin name; an identifier that names no macro is 0, true and false among them; a function-like use of one is an error")]
@@ -139,7 +168,10 @@ def test_defined(t : T?) {
 [test(description = "the errors: division by zero, unbalanced parentheses, a missing operand, an empty #if, a string, a comma at the top - the group is skipped, but tokens after a whole expression keep its value as clang does")]
 def test_errors(t : T?) {
     pinned(t, [("1/0", "NO"), ("1%0", "NO"), ("(1", "NO"), ("1 +", "NO"), ("", "NO"), ("\"s\"", "NO"), ("1)", "YES"), ("1, 2", "YES"),
-               ("1 2", "NO"), ("1 ? 2", "NO"), ("()", "NO"), ("1 = 1", "NO")])
+               ("1 2", "NO"), ("1 ? 2", "NO"), ("()", "NO"), ("1 = 1", "NO"), ("(1 : 2)", "NO"), ("1 : 2", "YES"), ("(1 ? 2 : 3 : 4)", "NO"),
+               ("1 ? 2 : 3", "YES")])
+    t |> equal(run_text("#if 1%0\n#endif\n#if ()\n#endif\n#if (1 : 2)\n#endif\n").diags,
+               "E 1:6 remainder by zero in preprocessor expression | E 3:6 expected value in expression | E 5:8 ':' without preceding '?'")
     t |> equal(run_text("#if 1/0\n#endif\n#if (1\n#endif\n#if 1 +\n#endif\n#if\n#endif\n#if \"s\"\n#endif\n#if 1, 2\n#endif\n").diags,
                "E 1:6 division by zero in preprocessor expression | E 3:6 expected ')' in preprocessor expression | E 5:7 expected value in expression | E 7:2 expected value in expression | E 9:5 invalid token at start of a preprocessor expression | E 11:6 expected end of line in preprocessor expression")
 }
@@ -156,7 +188,23 @@ def test_feature_queries(t : T?) {
                ("__is_identifier(int)", "NO"), ("__is_identifier(foo)", "YES"), ("__is_target_os(linux)", "YES"),
                ("__is_target_os(windows)", "NO"), ("__is_target_arch(x86_64)", "YES"), ("__building_module(x)", "NO"),
                ("__has_cpp_attribute(nodiscard)", "NO"), ("__has_feature", "NO"), ("__has_feature(1)", "NO"),
-               ("__has_attribute(gnu::packed)", "NO"), ("__has_warning(-Wunused)", "NO")])
+               ("__has_attribute(gnu::packed)", "NO"), ("__has_warning(-Wunused)", "NO"),
+               ("__has_builtin(__builtin_offsetof)", "YES"), ("__has_builtin(__builtin_va_arg)", "YES"),
+               ("__has_builtin(__builtin_types_compatible_p)", "YES"), ("__has_builtin(__builtin_choose_expr)", "YES"),
+               ("__has_builtin(__builtin_FILE)", "YES"), ("__has_builtin(__builtin_bit_cast)", "YES"), ("__has_builtin(__is_target_os)", "YES"),
+               ("__has_builtin(__is_target_variant_os)", "YES"), ("__has_builtin(__has_builtin)", "NO"), ("__is_target_arch(amd64)", "YES"),
+               ("__is_target_arch(X86_64)", "YES"), ("__is_target_arch(x86_64h)", "YES"), ("__is_target_os(Linux)", "YES"),
+               ("__is_target_vendor(UNKNOWN)", "YES"), ("__has_c_attribute(_Clang::NSObject)", "YES"),
+               ("__has_c_attribute(__clang__::NSObject)", "NO"), ("__has_c_attribute(__gnu__::packed)", "YES"), ("__has_attribute(____)", "NO")])
+}
+
+[test(description = "an error inside a feature query's parentheses reports and answers for the name read, an include query's wrong token answers 0: the condition stands, as clang's; the end of the line inside a query fails it")]
+def test_query_errors(t : T?) {
+    pinned(t, [("!__has_feature(a b)", "YES"), ("__has_feature(c_static_assert x) == 1", "YES"), ("!__has_feature(a, b)", "YES"),
+               ("!__has_feature()", "YES"), ("__has_feature((a)) + 5 == 5", "YES"), ("!__has_feature(1 x)", "YES"),
+               ("!__has_include(\"nope.h\" x)", "YES"), ("!__has_include(x)", "YES"), ("!__has_feature(a b", "NO"), ("__has_feature 1", "NO")])
+    t |> equal(run_text("#if __has_feature(a b)\n#endif\n#if __has_feature(a, b)\n#endif\n#if __has_feature()\n#endif\n#if __has_feature((a))\n#endif\n").diags,
+               "E 1:21 missing ')' after 'a' | E 3:20 too many arguments provided to function-like macro invocation | E 5:19 too few arguments provided to function-like macro invocation | E 7:19 nested parentheses not permitted in '__has_feature'")
 }
 
 [test(description = "__has_include and __has_include_next find a file through the include path, both name forms, and a macro naming the header")]
@@ -169,7 +217,7 @@ def test_has_include(t : T?) {
     t |> equal(verdict("__has_include(<nope.h>)", files), "NO")
     t |> equal(run_text("#define HDR <there.h>\n#define linux 1\n#if __has_include(HDR) && !__has_include(<linux/x.h>)\nyes\n#endif\n", files).out, "yes")
     t |> equal(run_text("#if __has_include\n#endif\n#if __has_include(there.h)\n#endif\n").diags,
-               "E 1:5 missing '(' after '__has_include' | E 3:19 expected \"FILENAME\" or <FILENAME>")
+               "E 1:5 missing '(' after '__has_include' | E 3:19 expected \"FILENAME\" or <FILENAME> | E 3:24 token is not a valid binary operator in a preprocessor subexpression")
     let next <- [("inc/a.h", "#if __has_include_next(<a.h>)\nnext\n#else\nnone\n#endif\n"), ("inc2/a.h", "")]
     var mem = new PpMemoryProvider()
     mem->add("main.c", "#include <a.h>\n")
