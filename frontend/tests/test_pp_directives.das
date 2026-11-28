@@ -720,3 +720,24 @@ def test_preprocessed_stream(t : T?) {
     t |> equal(join(placed, " "), "int@x.c:1:1 a@x.c:1:5 ;@x.c:1:6 long@h.h:5:1 b@h.h:5:7 ;@h.h:5:8 c@x.c:2:1")
     t |> equal(diagnostics(pp), "")
 }
+
+[test(description = "the directive layer follows clang's diagnostics: a #line operand that is no number asks for a positive integer, __VA_OPT__ in a macro that is not variadic warns")]
+def test_clang_directive_messages(t : T?) {
+    var line <- started([("main.c", "#line \"x\"\n#line 0x10\n")])
+    stream(line)
+    t |> equal(diagnostics(line), "E 1:7 #line directive requires a positive integer argument | E 2:7 #line directive requires a simple digit sequence")
+    var va_opt <- started([("main.c", "#define F(x) #__VA_OPT__(x) __VA_OPT__(y)\n#define G(...) __VA_OPT__(x)\n")])
+    stream(va_opt)
+    t |> equal(diagnostics(va_opt), "W 1:15 __VA_OPT__ can only appear in the expansion of a variadic macro")
+}
+
+[test(description = "a macro defined, and a diagnostic met, in a group chosen past an #if left to PP.4 are marked so; outside every such group, in the same read, they are not")]
+def test_undecided_marks(t : T?) {
+    var pp <- started([("main.c", "#define A 1\n#if X > 1\n#define B 2\n#else\n#define C 3\n#error in\n#endif\n#define D 4\n#error out\nz\n")])
+    t |> equal(stream(pp), "z")
+    t |> equal(join([for (m in pp.macros); "{pp_name(pp, m.name)}{m.undecided ? "?" : ""}"], " "), "A C? D")
+    t |> equal(join([for (d in pp.diags); "{d.what}{d.undecided ? "?" : ""}"], " | "), "#if expression needs the PP.4 evaluator: X > 1 | #error in? | #error out")
+    var counted <- started([("main.c", "#if 1\n#endif\n#define g(x) x\n#if 0\n#elif 1\n#endif\n")])
+    stream(counted)
+    t |> equal(counted.directives_read, 6)
+}

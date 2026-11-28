@@ -51,9 +51,12 @@ nothing, an include guard (section 9) included; a number after `#` is a GNU line
 `#line` (section 10). `#import` is an `#include` that marks its file once (section 8); `#ident
 "text"` and its `#sccs` spelling are a pragma ledger entry (section 13).
 
-These diagnostics of clang have no PP.2 counterpart: `#undef` or `#define` of a builtin macro
-(`__FILE__`, `__LINE__`, the `__has_*` family), which PP.3 owns. A bad predefined entry is
-reported with no place (file 0, line 0), since the entry has none in a file.
+A `#define` or `#undef` of a builtin name (`__FILE__`, `__LINE__`, `_Pragma`, the `__has_*`
+family) is clang's warning, which the expansion gives through `PpExpansion.macro_changed`
+(`ARCHITECTURE_EXPAND.md` section 31): PP.2 alone has no builtin names and gives none. A bad
+predefined entry is reported with no place (file 0, line 0), since the entry has none in a file.
+`pp.directives_read` counts the directive lines read, in skipped groups too, which tells the
+expansion that a directive stood between two tokens (`ARCHITECTURE_EXPAND.md` section 25).
 
 ## 6. Starting a unit and the file provider {#pp-start}
 
@@ -153,7 +156,8 @@ place PP.4's evaluator goes. Until then it answers `0`, `1`, `defined X` and `de
 under any number of `!`; any other expression is an error naming PP.4 and false, so the group is
 skipped, and the conditional is marked `undecided`: the group read may not be the one clang reads,
 which the directive oracle reads off to class a difference (`compare/pp/ARCHITECTURE.md` section
-4). An `#elif` whose conditional already took a group evaluates nothing. `#ifdef`, `#ifndef`,
+4). For the same reading a macro defined, and a diagnostic met, while such a conditional is open
+is marked `undecided` (`PpMacro`, `PpDiagnostic`). An `#elif` whose conditional already took a group evaluates nothing. `#ifdef`, `#ifndef`,
 `#elifdef` and `#elifndef` ask the macro table now.
 
 ## 12. The macro table {#pp-macros}
@@ -166,7 +170,8 @@ A function-like macro is a name followed by `(` with no space; its parameters ar
 variadic one's last parameter is `__VA_ARGS__`, or the name of a GNU `name...`. The definition
 is refused with an error for a missing or invalid name, `defined`, a malformed parameter list,
 `##` at either end of the body, and a `#` in a function-like body before no parameter
-(`__VA_OPT__` counts as one in a variadic macro). A
+(`__VA_OPT__` counts as one). `__VA_OPT__` in a macro that is not variadic is clang's warning at
+its place, once a definition (`ARCHITECTURE_EXPAND.md` section 27 reads it). A
 redefinition that differs in parameters, spellings or the presence of whitespace between tokens
 is a warning, and the new definition holds, as in clang.
 

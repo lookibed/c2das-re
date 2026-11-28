@@ -92,6 +92,7 @@ struct PpDiagnostic {
     pname : int     //!< the presumed file name, an index of `Preprocessor.names`
     pline : uint
     what : string
+    undecided : bool    //!< met in a group chosen past an `#if` left to PP.4
 }
 
 //! A token kept past its lexer: its spelling is `len` bytes at `at` of the owner's text pool.
@@ -119,6 +120,7 @@ struct PpMacro {
     file : int
     line : int
     col : int
+    undecided : bool    //!< defined in a group chosen past an `#if` left to PP.4
 }
 
 //! Why an `#include` read no file.
@@ -238,14 +240,18 @@ struct PpCallArg {
 
 //! The macro expansion over the directive layer, PP.3's (`pp_expand.das`): `next_token` hands out
 //! the next expanded token into `pp.tok`; `expand_line` expands the tokens of `pp.line` in place,
-//! leaving the operands of `defined` alone when `condition`. It keeps the call record and the pool
-//! of the spellings it made.
+//! leaving the operands of `defined` alone when `condition`; `macro_changed` hears of a `#define`
+//! of a name no macro defines and of every `#undef`, before the table changes. It keeps the call
+//! record and the pool of the spellings it made.
 class PpExpansion {
     calls : array<PpCall>
     call_args : array<PpCallArg>
     text : array<uint8>
     def abstract next_token(var pp : Preprocessor) : bool
     def abstract expand_line(var pp : Preprocessor; condition : bool) : void
+    def macro_changed(var pp : Preprocessor; name : PpToken; undef : bool) : void {
+        pass
+    }
 }
 
 //! An open conditional: `active` while its current group is read, `taken` once a group was (or
@@ -335,6 +341,7 @@ struct Preprocessor {
     name_of : table<string; int>
     tok : PpOutToken                    //!< the token `pp_next_token` read
     emitted : int                       //!< the tokens `pp_next_token` handed out
+    directives_read : int               //!< the directive lines read in active and skipped groups
     conds : array<PpCond>
     macros : array<PpMacro>             //!< every definition in order, an `#undef` leaves it here
     macro_of : table<int; int>          //!< a defined name's index in `macros`
@@ -421,14 +428,24 @@ def private register_file(var pp : Preprocessor; path, identity : string) : int 
 
 def private presumed_line(pp : Preprocessor; line : int) : uint => uint(line) + pp.state.line_delta
 
+//! Whether an open conditional chose its group past an `#if` left to PP.4.
+def pp_in_undecided_group(pp : Preprocessor) : bool {
+    for (c in pp.conds) {
+        return true if (c.undecided)
+    }
+    return false
+}
+
 def private diagnose_at(var pp : Preprocessor; severity : PpSeverity; at : PpToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
-                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
+                                  undecided = pp_in_undecided_group(pp)))
 }
 
 def private diagnose_held(var pp : Preprocessor; severity : PpSeverity; at : PpHeld; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
-                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
+                                  undecided = pp_in_undecided_group(pp)))
 }
 
 def private diagnose(var pp : Preprocessor; severity : PpSeverity; what : string) {
@@ -915,7 +932,7 @@ def private read_params(var pp : Preprocessor; var m : PpMacro) : bool {
 }
 
 //! the body's own errors: `##` at either end, and in a function-like macro a `#` before no parameter
-//! (`__VA_OPT__` is one in a variadic macro)
+//! (`__VA_OPT__` is one)
 [arch(at="ARCHITECTURE_PP.md#pp-macros")]
 def private body_error(pp : Preprocessor; m : PpMacro) : string {
     return "" if (m.count == 0)
@@ -926,7 +943,7 @@ def private body_error(pp : Preprocessor; m : PpMacro) : string {
     if (m.function_like) {
         for (i in range(m.first, last + 1)) {
             if (pp.macro_body[i].kind == int(PpTok.HASH) && (i == last || pp.macro_body[i + 1].kind != int(PpTok.IDENTIFIER)
-                    || (find_index(m.params, pp.macro_body[i + 1].sym) < 0 && !(m.variadic && pp.macro_body[i + 1].sym == pp.sym_va_opt)))) {
+                    || (find_index(m.params, pp.macro_body[i + 1].sym) < 0 && pp.macro_body[i + 1].sym != pp.sym_va_opt))) {
                 return "'#' is not followed by a macro parameter"
             }
         }
@@ -962,6 +979,7 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
         skip_rest(pp)
         return
     }
+    let name_at = pp.lx.tok
     var m = PpMacro(name = pp.lx.tok.sym, file = pp.lx.tok.file, line = pp.lx.tok.line, col = pp.lx.tok.col,
                     first = length(pp.macro_body))
     var more = next_on_line(pp)
@@ -985,10 +1003,21 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
         diagnose_at(pp, PpSeverity.error, at, error)
         return
     }
+    if (!m.variadic) {
+        for (i in range(m.first, m.first + m.count)) {
+            if (pp.macro_body[i].sym == pp.sym_va_opt) {
+                diagnose_held(pp, PpSeverity.warning, pp.macro_body[i], "__VA_OPT__ can only appear in the expansion of a variadic macro")
+                break
+            }
+        }
+    }
     let old = pp.macro_of?[m.name] ?? -1
     if (old >= 0 && !same_definition(pp, pp.macros[old], m)) {
         diagnose_at(pp, PpSeverity.warning, at, "'{pp_name(pp, m.name)}' macro redefined")
+    } elif (old < 0 && pp.expansion != null) {
+        pp.expansion->macro_changed(pp, name_at, false)
     }
+    m.undecided = pp_in_undecided_group(pp)
     pp.macro_of |> insert(m.name, length(pp.macros))
     pp.macros |> emplace(m)
 }
@@ -1002,6 +1031,9 @@ def private do_undef(var pp : Preprocessor; at : PpToken) {
         diagnose(pp, PpSeverity.error, pp.lx.tok.kind != int(PpTok.IDENTIFIER) ? "macro name must be an identifier" : "'defined' cannot be used as a macro name")
         skip_rest(pp)
         return
+    }
+    if (pp.expansion != null) {
+        pp.expansion->macro_changed(pp, pp.lx.tok, true)
     }
     pp.macro_of |> erase(pp.lx.tok.sym)
     extra_tokens(pp, "undef")
@@ -1151,6 +1183,10 @@ def private include_expanded(var pp : Preprocessor; at : PpToken; d : PpDirectiv
         while (close < n && pp.line[close].kind != int(PpTok.GREATER)) {
             close++
         }
+        if (close == n) {
+            diagnose_at(pp, PpSeverity.error, at, "expected '>'")
+            return
+        }
         if (close < n) {
             spelled = build_string() $(var out) {
                 out |> write("<")
@@ -1186,6 +1222,13 @@ def private line_number(text : string) : int64 {
         return -2l if (value > 4294967295l)
     }
     return empty(text) ? -1l : value
+}
+
+//! clang's error for a `#line` number of token kind `kind` that `line_number` read as `number`: no
+//! number at all or one past 4294967295 asks for a positive integer, any other a simple digit sequence
+def private line_number_error(what : string; kind : int; number : int64) : string {
+    return (kind != int(PpTok.PP_NUMBER) || number == -2l ? "{what} directive requires a positive integer argument"
+                                                         : "{what} directive requires a simple digit sequence")
 }
 
 //! the file name of a `#line` string literal: its quotes off, `\\` and `\"` read as one character
@@ -1224,7 +1267,7 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
     }
     let number = line_number(pp_spelling(pp.lx))
     if (pp.lx.tok.kind != int(PpTok.PP_NUMBER) || number < 0l) {
-        diagnose(pp, PpSeverity.error, number == -2l ? "{what} directive requires a positive integer argument" : "{what} directive requires a simple digit sequence")
+        diagnose(pp, PpSeverity.error, line_number_error(what, pp.lx.tok.kind, number))
         skip_rest(pp)
         return
     }
@@ -1275,7 +1318,7 @@ def private line_expanded(var pp : Preprocessor; at : PpToken) {
     let n = length(pp.line)
     let number = n >= 1 ? line_number(held_spelling(pp.line[0], pp.line_text)) : -1l
     if (n == 0 || pp.line[0].kind != int(PpTok.PP_NUMBER) || number < 0l) {
-        diagnose_at(pp, PpSeverity.error, at, number == -2l ? "#line directive requires a positive integer argument" : "#line directive requires a simple digit sequence")
+        diagnose_at(pp, PpSeverity.error, at, line_number_error("#line", n == 0 ? int(PpTok.EOF) : pp.line[0].kind, number))
         return
     }
     var name = -1
@@ -1480,6 +1523,7 @@ def private do_ident(var pp : Preprocessor; at : PpToken) {
 //! the directive whose `#` is the current token; in a skipped group only the conditionals count
 [arch(at="ARCHITECTURE_PP.md#pp-directives")]
 def private directive(var pp : Preprocessor) {
+    pp.directives_read++
     let skipped = skipping(pp)
     pp.last_tok = pp.lx.tok
     return if (!next_on_line(pp))
@@ -1548,7 +1592,8 @@ def private end_file(var pp : Preprocessor) : bool {
     while (length(pp.conds) > pp.state.cond_base) {
         let c = pp.conds[length(pp.conds) - 1]
         pp.diags |> push(PpDiagnostic(severity = PpSeverity.error, file = c.file, line = c.line, col = c.col, pname = pp.state.pname,
-                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive"))
+                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive",
+                                      undecided = pp_in_undecided_group(pp)))
         pp.conds |> pop()
     }
     if (pp.state.guard == GuardState.closed) {
