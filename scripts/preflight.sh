@@ -131,18 +131,23 @@ gate_pp_oracle_full() {
     done
     pp_oracle_run pp-oracle-full 1800 --full
 }
-# the token oracle over a set under a time budget in seconds: each corpus's line and every unit
-# that is not clean printed, the whole output when the run is red
+# the token oracle over a set under a time budget in seconds, each corpus in a das process of its
+# own (one process over every corpus holds each unit's heap to the end and passes 4 GB): each
+# corpus's line and every unit that is not clean printed, the whole output of a red corpus
 pp_oracle_run() {
-    local name="$1" budget="$2" set="$3" out rc
-    out=$(timeout "$budget" bash -c '. scripts/env.sh; das compare/pp/run.das -- --pp6 "$1"' _ "$set" 2>&1); rc=$?
-    if [ $rc = 0 ]; then
-        echo "$out" | grep -E '\(pp6|^total \(pp6\)|drop its line'
-        pass "$name"
-    else
-        echo "$out" | tail -60
-        fail "$name" "a unit differs from clang -E, a clang/gcc disagreement or a reference failure is unlisted, or the run passed its $budget s budget (rc $rc)"
-    fi
+    local name="$1" budget="$2" set="$3" corpora c out rc=0 crc
+    local deadline=$((SECONDS + budget))
+    corpora=$(das compare/pp/run.das -- --pp6 "$set" --print-corpora 2>/dev/null) || { fail "$name" "compare/pp/run.das cannot name the $set set"; return 1; }
+    for c in $corpora; do
+        [ $SECONDS -lt $deadline ] || { fail "$name" "the run passed its $budget s budget before corpus $c"; return 1; }
+        out=$(timeout $((deadline - SECONDS)) bash -c '. scripts/env.sh; das compare/pp/run.das -- --pp6 --corpus "$1"' _ "$c" 2>&1); crc=$?
+        if [ $crc = 0 ]; then
+            echo "$out" | grep -E '\(pp6|drop its line'
+        else
+            echo "$out" | tail -60; rc=1
+        fi
+    done
+    [ $rc = 0 ] && pass "$name" || fail "$name" "a unit differs from clang -E, a clang/gcc disagreement, a known difference or a reference failure is unlisted, or a corpus passed the $budget s budget"
 }
 # The tests lane. suite_order is the order the suites' output prints in. A test_groups entry is the
 # suites that run one after another because they write the same paths (the collision map,

@@ -296,4 +296,5 @@ failures, listed units clean) and
 the total; it exits 1 when a unit differs or a disagreement or a reference failure is unlisted
 (`pp6_exit_code`). gcc runs only on a unit that is not clean, and a `gcc-14` whose
 `-dumpfullversion` is not `VERSIONS.md`'s `gcc:` pin answers nothing there, so the unit differs.
-Preflight runs `--fast` as its `pp-oracle` gate and `--full` as its `pp-oracle-full` lane.
+Preflight runs the `--fast` set as its `pp-oracle` gate and the `--full` set as its
+`pp-oracle-full` lane, each corpus `--print-corpora` names in a process of its own.

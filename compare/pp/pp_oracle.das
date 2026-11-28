@@ -399,6 +399,8 @@ struct OracleArgs {
     fast : bool
     @clarg_doc = "with --pp6, the full set: the fast set, gcc-torture, every project's units and every list of compare/pp/corpus/"
     full : bool
+    @clarg_doc = "with --pp6 and --fast or --full, print the set's corpora one a line and exit: a caller runs each in a process of its own"
+    print_corpora : bool
     @clarg_doc = "regenerate the feature-query tables of frontend/predefined/ from the pinned clang, then exit"
     features : bool
     @clarg_doc = "a corpus list for --pp2, --pp3, --pp4 and --pp5: a unit a line, its path then its -I, -D and -x flags (repeatable)"
@@ -976,18 +978,18 @@ def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search
         result.error = "clang -dump-tokens: {slice(dump, 0, 400)}"
         return <- result
     }
-    let clang <- clang_tokens(dump)
+    var inscope clang <- clang_tokens(dump)
     let text = fread(preprocessed)
     result.clang_pragmas = pragma_lines(text)
     result.clang_pragma_at <- pragma_places(text, clang)
-    let ours <- pp2_tokens(result.read, our_entries, our_search, result)
+    var inscope ours <- pp2_tokens(result.read, our_entries, our_search, result)
     result.preprocessed = preprocessed
     result.clang_tokens = length(clang)
     result.pp_tokens = length(ours)
     result.differences <- pp2_differences(clang, ours, PP2_ALIGN_LIMIT, result.gave_up)
     if (!empty(result.differences)) {
-        let pp_side <- [for (o in ours); o.tok]
-        let classes <- [for (d in result.differences); pp2_difference_class(result, d, clang, ours)]
+        var inscope pp_side <- [for (o in ours); o.tok]
+        var inscope classes <- [for (d in result.differences); pp2_difference_class(result, d, clang, ours)]
         var shown_of <- [0, 0, 0]
         for (d, cls in result.differences, classes) {
             d.cls = cls

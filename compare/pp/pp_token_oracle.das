@@ -149,10 +149,10 @@ def gcc_answer(r : Pp2Result; work : string) : GccAnswer {
         answer.error = "clang -dump-tokens of the references' output failed"
         return answer
     }
-    let clang <- clang_tokens(clang_dump_text)
-    let gcc <- [for (t in clang_tokens(gcc_dump_text)); Pp2Token(tok = t)]
+    var inscope clang <- clang_tokens(clang_dump_text)
+    var inscope gcc <- [for (t in clang_tokens(gcc_dump_text)); Pp2Token(tok = t)]
     var gave_up = false
-    let differences <- pp2_differences(clang, gcc, PP2_ALIGN_LIMIT, gave_up)
+    var inscope differences <- pp2_differences(clang, gcc, PP2_ALIGN_LIMIT, gave_up)
     let gcc_pragmas = pragma_lines(fread(out_path))
     answer.disagrees = !empty(differences) || gcc_pragmas != r.clang_pragmas
     if (!empty(differences)) {
@@ -285,7 +285,7 @@ def run_set_pp6(corpus : Pp6Corpus; work : string; flags : array<string>; refs :
                 entries, search : array<string>; show : int) : Pp6Totals {
     var totals : Pp6Totals
     for (u in corpus.units) {
-        let r <- compare_unit_pp2(u.path, work, flags, entries, search, show, true, u.flags)
+        var inscope r <- compare_unit_pp2(u.path, work, flags, entries, search, show, true, u.flags)
         let both_read = !r.clang_refused || corpus.strict
         continue if (both_read && reference_failure(refs, u.path, r.error, totals.oracle))
         totals.oracle.tokens += r.clang_tokens
@@ -418,6 +418,12 @@ def run_pp6(args : OracleArgs; root : string; flags : array<string>; refs : arra
     let lists <- Pp6Lists(impl <- reference_failures(fread(IMPLEMENTATION_DEFINED)),
                           known <- reference_failures(fread(KNOWN_DIFFERENCES)))
     var names <- (args.fast || args.full) ? pp6_set(args.full) : array<string>()
+    if (args.print_corpora) {
+        for (name in names) {
+            print("{name}\n")
+        }
+        return 0
+    }
     names |> push_from(args.corpus, args.list)
     var total : Pp6Totals
     for (name in names) {

@@ -9,3 +9,13 @@ gcc.c-torture/execute/pr30314.c	a quoted include of a gcc.dg file outside the sp
 gcc.c-torture/execute/pr98304-2.c	a quoted include of a gcc.dg file outside the sparse fetch
 gcc.dg/cpp/direct2s.c	clang's -E output prints a # at a line start that its token dump reads as a directive (ARCHITECTURE.md#pp3)
 hideset2/r08_empty_expansion_bol.c	clang's -E output prints a # at a line start that its token dump reads as a directive (ARCHITECTURE.md#pp3)
+chibicc/fetch/chibicc/codegen.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/hashmap.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/parse.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/preprocess.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/strarray.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/tokenize.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/type.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/unicode.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/host.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
+chibicc/fetch/chibicc/main.c	<glob.h> and <libgen.h> through chibicc.h, absent from the own header set by decision
