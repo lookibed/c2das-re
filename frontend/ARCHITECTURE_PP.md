@@ -281,4 +281,6 @@ kind, no string after `(` "expected string literal in pragma error" at the token
 `)` or a token after the message the first message at that token, or just past the line's end.
 `#pragma clang error` and `clang warning` are no such pragma in clang and stay ledger entries. The
 message is read as written: clang expands a macro naming the string, which a pragma line, read
-before any expansion, does not.
+before any expansion, does not. A message ends at an escaped NUL, where clang prints it on, and an
+unknown escape such as `\q` is read as its character without clang's warning. A spliced last
+token puts "just past the line's end" at its length without the splices, which places it early.
