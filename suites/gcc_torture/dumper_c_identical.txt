@@ -506,12 +506,14 @@ linux alias-1
 linux alias-access-path-1
 linux alias-access-path-2
 linux align-1
+linux align-3
 linux anon-1
 linux arith-1
 linux arith-rand
 linux arith-rand-ll
 linux ashldi-1
 linux ashrdi-1
+linux bcp-1
 linux bf-layout-1
 linux bf-pack-1
 linux bf-sign-1
@@ -528,6 +530,8 @@ linux bitfld-9
 linux bitfld-signed1-1
 linux bitops-1
 linux bswap-2
+linux builtin-constant
+linux builtin-types-compatible-p
 linux call-trap-1
 linux compare-1
 linux compare-2
@@ -598,6 +602,7 @@ linux pr100453
 linux pr101188
 linux pr101335
 linux pr102134
+linux pr103255
 linux pr103417
 linux pr10352-1
 linux pr104196
@@ -685,6 +690,7 @@ linux pr29797-1
 linux pr29797-2
 linux pr29798
 linux pr30185
+linux pr30778
 linux pr31072
 linux pr31136
 linux pr31169
@@ -763,6 +769,7 @@ linux pr43835
 linux pr43987
 linux pr44164
 linux pr44202-1
+linux pr44468
 linux pr44828
 linux pr44858
 linux pr45034
@@ -1542,12 +1549,14 @@ msvc alias-1
 msvc alias-access-path-1
 msvc alias-access-path-2
 msvc align-1
+msvc align-3
 msvc anon-1
 msvc arith-1
 msvc arith-rand
 msvc arith-rand-ll
 msvc ashldi-1
 msvc ashrdi-1
+msvc bcp-1
 msvc bf-layout-1
 msvc bf-pack-1
 msvc bf-sign-1
@@ -1564,6 +1573,8 @@ msvc bitfld-9
 msvc bitfld-signed1-1
 msvc bitops-1
 msvc bswap-2
+msvc builtin-constant
+msvc builtin-types-compatible-p
 msvc call-trap-1
 msvc compare-1
 msvc compare-2
@@ -1634,6 +1645,7 @@ msvc pr100453
 msvc pr101188
 msvc pr101335
 msvc pr102134
+msvc pr103255
 msvc pr103417
 msvc pr10352-1
 msvc pr104196
@@ -1721,6 +1733,7 @@ msvc pr29797-1
 msvc pr29797-2
 msvc pr29798
 msvc pr30185
+msvc pr30778
 msvc pr31072
 msvc pr31136
 msvc pr31169
@@ -1799,6 +1812,7 @@ msvc pr43835
 msvc pr43987
 msvc pr44164
 msvc pr44202-1
+msvc pr44468
 msvc pr44828
 msvc pr44858
 msvc pr45034
