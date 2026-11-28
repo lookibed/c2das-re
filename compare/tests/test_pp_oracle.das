@@ -756,6 +756,27 @@ def test_errors_in_chosen_groups(t : T?) {
     t |> equal(join(rl.errors, " | "), "6:3 pasting formed '+/', an invalid preprocessing token")
 }
 
+[test(description = "a bad byte and an unterminated character constant in a skipped group are no error, as clang reads nothing there: the unit is clean against clang; a bad byte outside one is an error of the preprocessor's own", timeout = 1200)]
+def test_lexer_diag_in_skipped_group(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp_skipped_lexer")
+    mkdir_rec(work)
+    let skipped = unit_file("skipped_bad_byte.c", "int a;\n#if 0\nx \xff y\nchar c = 'ab\n#endif\nint b;\n")
+    let r <- compare_unit_pp2(skipped, work, flags, setup.entries, setup.search, 5, true)
+    t |> equal(r.error, "")
+    t |> equal(join(r.errors, " | "), "")
+    t |> equal(r.cls, Pp2Class.clean, "{r.shown}")
+    let active = unit_file("active_bad_byte.c", "int a \xff;\n")
+    var ra = Pp2Result(unit = active, expanded = true)
+    pp2_tokens(active, setup.entries, setup.search, ra)
+    t |> equal(join(ra.errors, " | "), "1:7 invalid UTF-8: byte 255")
+    t |> equal(pp2_class(ra), Pp2Class.differs)
+}
+
 [test(description = "the place of a #pragma or #ident line of clang's output is the count of its tokens on the lines before it")]
 def test_pragma_places(t : T?) {
     let clang <- [for (line in [1, 1, 3, 5]); OracleToken(kind = int(PpTok.IDENTIFIER), spelling = "a", line = line)]

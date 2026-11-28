@@ -383,6 +383,7 @@ struct Preprocessor {
     unexpanded_query : table<int; bool> //!< the queries whose operand clang does not expand (`PP_UNEXPANDED_QUERIES`)
     expanded_builtin : table<int; bool> //!< the builtin names the expansion replaces (`PP_EXPANDED_BUILTINS`)
     eval : PpEval                       //!< the `#if` evaluator: its line, target, feature table (the caller's to set) and last diagnostics
+    lexer_diags_seen : int              //!< the entries of `lx.diags` whose token was consumed, and so marked
 }
 
 def private intern_text(var pp : Preprocessor; text : string) : int => intern_name(pp.lx.flex.syms, text)
@@ -508,8 +509,10 @@ def private open_file(var pp : Preprocessor; id : int; path : string; found_at :
     pp.buffer_data |> push(pp.lx.flex.data)
 }
 
-//! suspend the file being read, with its next token, and open file `id`
+//! suspend the file being read, with its next token, and open file `id`; the lexer diagnostics of
+//! that token are marked first, in the file that read it
 def private push_file(var pp : Preprocessor; id : int; path : string; found_at : int; var bytes : array<uint8>) {
+    consumed(pp)
     var frame = PpFrame(lx <- pp.lx, state = pp.state, pending = pp.pending)
     pp.lx.flex.syms <- frame.lx.flex.syms
     pp.lx.diags <- frame.lx.diags
@@ -568,14 +571,29 @@ def pp_start(var pp : Preprocessor; var provider : PpFileProvider?; main : strin
 
 def private skipping(pp : Preprocessor) : bool => !empty(pp.conds) && !pp.conds[length(pp.conds) - 1].active
 
+//! the current token consumed: the lexer diagnostics raised up to it marked with the group that
+//! takes it, skipped or read - a token read past a directive's line is consumed after the directive
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+def private consumed(var pp : Preprocessor) {
+    let skipped = skipping(pp)
+    for (i in range(pp.lexer_diags_seen, length(pp.lx.diags))) {
+        pp.lx.diags[i].skipped = skipped
+    }
+    pp.lexer_diags_seen = length(pp.lx.diags)
+}
+
 //! the next raw token: the one a directive read past its line, or the lexer's next; false at the
 //! end of the file being read
 def private fetch(var pp : Preprocessor) : bool {
+    var got = false
     if (pp.pending) {
         pp.pending = false
-        return pp.lx.tok.kind != int(PpTok.EOF)
+        got = pp.lx.tok.kind != int(PpTok.EOF)
+    } else {
+        got = pp_next(pp.lx)
     }
-    return pp_next(pp.lx)
+    consumed(pp)
+    return got
 }
 
 //! the next token of the directive's line; false at its end, the token after it then pending
@@ -585,6 +603,7 @@ def private next_on_line(var pp : Preprocessor) : bool {
         pp.pending = true
         return false
     }
+    consumed(pp)
     pp.last_tok = pp.lx.tok
     return true
 }
@@ -1301,6 +1320,7 @@ def private do_include(var pp : Preprocessor; at : PpToken; d : PpDirective) {
         diagnose_at(pp, PpSeverity.error, at, "expected \"FILENAME\" or <FILENAME>")
         return
     }
+    consumed(pp)
     pp.last_tok = pp.lx.tok
     if (pp.lx.tok.kind != int(PpTok.HEADER_NAME)) {
         read_line(pp, true)

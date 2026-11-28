@@ -98,6 +98,7 @@ struct PpDiag {
     line : int
     col : int
     what : string
+    skipped : bool      //!< met in a group the directive layer skips, which clang scans for directives alone and does not diagnose
 }
 
 //! The lexer over one file at a time: `pp_open` hands it the file's bytes, `pp_next` reads one token

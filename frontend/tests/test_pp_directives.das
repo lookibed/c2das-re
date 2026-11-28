@@ -778,3 +778,20 @@ def test_line_undefined_name_not_marked(t : T?) {
     t |> equal(diagnostics(pp), "E 2:7 #line directive requires a positive integer argument")
     t |> equal(length(pp.unexpanded), 0)
 }
+
+// every lexer diagnostic, `<file>:<line>:<col> <what>`, `skipped` after one met in a skipped group, a `|` between them
+def private lexer_diagnostics(pp : Preprocessor) : string {
+    let parts <- [for (d in pp.lx.diags); "{d.file}:{d.line}:{d.col} {d.what}{d.skipped ? " skipped" : ""}"]
+    return join(parts, " | ")
+}
+
+[test(description = "a lexer diagnostic met in a skipped group is marked skipped, as clang does not diagnose a group it skips: a bad byte on the line after #if 0, inside it and in a nested conditional, an unterminated comment; one on the line after #else, in an included file and on the line after the #include is not")]
+def test_lexer_diags_in_skipped_groups(t : T?) {
+    var pp <- started([("main.c", "a \xff\n#if 0\n\xff b\nc \xff\n#if 1\n\xff\n#endif\n#else\n\xff d\n#endif\n#include \"h.h\"\n\xff e\n#if 0\n/* open\n"),
+                       ("h.h", "h \xff\n")])
+    t |> equal(stream(pp), "a \xff \xff d h \xff \xff e")
+    t |> equal(lexer_diagnostics(pp), ("0:1:3 invalid UTF-8: byte 255 | 0:3:1 invalid UTF-8: byte 255 skipped | 0:4:3 invalid UTF-8: byte 255 skipped | " +
+                                       "0:6:1 invalid UTF-8: byte 255 skipped | 0:9:1 invalid UTF-8: byte 255 | 0:12:1 invalid UTF-8: byte 255 | " +
+                                       "2:1:3 invalid UTF-8: byte 255 | 0:14:1 unterminated /* comment skipped"))
+    t |> equal(diagnostics(pp), "E 13:2 unterminated conditional directive")
+}

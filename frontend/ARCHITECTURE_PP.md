@@ -31,7 +31,7 @@ token's bytes, `pp_spelling_of` a string of them, `pp_token_span` and `pp_token_
 current token's. A token reader that keeps tokens - the C tokens - keeps that range, not a copy.
 The unit holds every file's text this way, which is what clang holds too. Directive
 diagnostics (`pp.diags`) carry the physical place and the presumed one; the lexer's own
-diagnostics stay in `pp.lx.diags`. An error never stops the preprocessor: `#error` and a
+diagnostics stay in `pp.lx.diags` (section 53). An error never stops the preprocessor: `#error` and a
 malformed directive are recorded, and reading goes on, as clang reports every error of a unit. A
 fatal one does: an `#include` that finds no file, or one it cannot read, is clang's fatal error,
 and `pp.fatal` ends the unit there, as clang's compile ends; clang's `-E` alone reads on with its
@@ -218,3 +218,16 @@ the source had space, for the C-IR's ledger.
 `#ident "text"`. PP.2 keeps each as a `PpPragma` with `ident` set and `text` its string literal, so
 an `-E`-style printer writes `#ident <text>` where `emitted` places it, and the C-IR's ledger sees
 it among the pragmas. Anything but a plain or wide string literal after it is clang's error.
+
+## 53. Diagnostics {#pp-diags}
+
+The lexer raises its diagnostics (`PpDiag`, `ARCHITECTURE.md` section 4) as it reads a token, with
+no knowledge of groups; the directive layer marks each when it consumes the token it came with
+(`consumed`): `skipped` when that token falls in a skipped group. A skipped group is only scanned
+for its conditional directives, which is all clang does with one - it lexes the group raw and
+reports nothing in it - so a bad byte, or an unterminated comment, in `#if 0` is no error of the
+unit, and a reader that refuses a unit with a lexer diagnostic passes over a `skipped` one. The
+token after a directive's line is read before the directive is done (section 5) and consumed after
+it, so it is marked by the group the directive opens or closes: the line after `#if 0` is skipped,
+the line after its `#else` is not. An `#include` consumes the token after its line before the
+included file opens, so that token's diagnostics are marked in the file that read it.

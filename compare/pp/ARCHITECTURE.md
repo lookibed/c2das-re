@@ -137,7 +137,10 @@ does an error marked undecided. A difference wholly before the line - its last P
 them, handed out before the line was read - or past its `#endif`, and an error raised there, stay
 the preprocessor's own. A unit's class (`pp2_class`) is the latest its differences wait for,
 raised to needs PP.3 by a place left to PP.3 with no difference; it differs when one difference
-differs, when the preprocessor has an error of its own - one naming PP.3 is not -, when the pragma
+differs, when the preprocessor has an error of its own - one naming PP.3 is not; a lexer diagnostic
+met outside a skipped group is one, as clang's compile reports it, though its `-E` passes an
+invalid byte through, and one in a skipped group is none, as clang reads nothing there
+(`frontend/ARCHITECTURE_PP.md#pp-diags`) -, when the pragma
 counts disagree with nothing left to PP.3 to explain them (clang has more: `_Pragma` in an
 expansion), or when the streams
 are equal and a pragma stands at another place than clang's. Each unit not clean prints its count
