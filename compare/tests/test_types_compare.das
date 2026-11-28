@@ -56,12 +56,14 @@ def private unit_returning(var e : CirExpr?) : CirTu {
 // `short` read from the reference `s`, then converted to `int`: an implicit cast pair
 def private read_short() : CirExpr? => new CirExpr(e = "cast", t = 0, cast_kind = "IntegralCast", a = new CirExpr(e = "cast", t = 1, cast_kind = "LValueToRValue", a = new CirExpr(e = "ref", t = 1, name = "s")))
 
-[test(description = "the C-IR comparison: equal units, then the first differing field of a declaration, a statement and an expression, a cast's kind and explicitness, a missing operand; a reference's name and the parentheses never differ")]
+[test(description = "the C-IR comparison: equal units, then the first differing field of a declaration, a statement and an expression, a cast's kind and explicitness, a missing operand; a reference's name, but not the parentheses")]
 def test_cir_difference(t : T?) {
     var a <- unit_returning(read_short())
     var b <- unit_returning(read_short())
     t |> equal(cir_difference(a, b), "")
     b.decls[0].body.body[0].e.a.a.name = "main__s"
+    t |> equal(cir_difference(a, b), "decl 0 (main).body.0.e.a.a.name: builder s, Dumper A main__s")
+    b.decls[0].body.body[0].e.a.a.name = "s"
     b.decls[0].body.body[0].e.paren = true
     t |> equal(cir_difference(a, b), "")
     b.decls[0].body.body[0].e.cast_kind = "NoOp"
@@ -99,6 +101,8 @@ def private changed(change : block<(var a, b : CirTu) : void>) : string {
 
 [test(description = "the C-IR comparison reports each field it compares: an expression's value, bytes, operator, character mark, vol, trait value and type, argument and item counts, an item's position and value, an argument and each operand; a statement's type, value, mark, label, body count, expressions and statements; a declaration's kind, name, linkage, origin, parameters and initializer")]
 def test_cir_fields(t : T?) {
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].name = "y"; }, "decl 0 (main).body.0.name: builder , Dumper A y")
+    t |> equal(changed() $(var _a, b) { b.decls[0].name = "x"; }, "decl 0 (main).name: builder , Dumper A x")
     let e = "decl 0 (main).body.0.e"
     t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.v = "7"; }, "{e}.v: builder , Dumper A 7")
     t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.bytes |> push(uint8(65)); }, "{e}.bytes: builder [], Dumper A [ 0x41]")
@@ -149,7 +153,7 @@ def test_cir_fields(t : T?) {
     t |> equal(changed() $(var _a, b) { b.decls[0].is_static = true; }, "decl 0 (main).static: builder false, Dumper A true")
     t |> equal(changed() $(var _a, b) { b.decls[0].is_extern = true; }, "decl 0 (main).extern: builder false, Dumper A true")
     t |> equal(changed() $(var _a, b) { b.decls[0].from_func = "f"; }, "decl 0 (main).from_func: builder , Dumper A f")
-    t |> equal(changed() $(var _a, b) { b.decls[0].params |> push(CirParam(t = 0)); }, "decl 0 (main).params: builder , Dumper A int/32s")
+    t |> equal(changed() $(var _a, b) { b.decls[0].params |> push(CirParam(t = 0)); }, "decl 0 (main).params: builder , Dumper A :int/32s")
     t |> equal(changed() $(var _a, b) { b.decls[0].init = read_short(); }, "decl 0 (main).init: builder none, Dumper A cast")
 }
 
@@ -172,6 +176,44 @@ def test_census_difference(t : T?) {
     delete_tu(b)
 }
 
+[test(description = "the ratchet's keys: a unit's dialect and file stem; a list's lines, its comments aside")]
+def test_ratchet(t : T?) {
+    t |> equal(ratchet_key("msvc", "suites/x/00012.c"), "msvc 00012")
+    t |> equal(ratchet_key("linux", "pr34.c.c"), "linux pr34")
+    let keys <- ratchet_keys("# a comment\nlinux 00001\n\nmsvc 00002\n")
+    var listed <- [for (k in keys(keys)); k]
+    sort(listed)
+    t |> equal(join(listed, ","), "linux 00001,msvc 00002")
+}
+
+[test(description = "a ratchet's text: the listed keys and the run's byte-identical ones, sorted, a listed key the run did not compare kept")]
+def test_ratchet_text(t : T?) {
+    let listed <- ratchet_keys("linux 00009\nmsvc 00001\n")
+    let text = ratchet_text(listed, ["msvc 00001", "linux 00002"])
+    t |> equal(text, "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux 00002\nlinux 00009\nmsvc 00001\n")
+}
+
+[test(description = "over a whole suite a listed unit the run did not compare under one of its dialects is stale, and the update drops it; a key of a dialect the run left out stays")]
+def test_ratchet_stale(t : T?) {
+    let listed <- ratchet_keys("linux 00001\nlinux 00007\nmsvc 00007\n")
+    let seen <- {"linux 00001" => true}
+    let stale <- ratchet_stale(listed, seen, ["linux"])
+    t |> equal(join(stale, ","), "linux 00007")
+    t |> equal(ratchet_text(listed, ["linux 00001"], stale), "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux 00001\nmsvc 00007\n")
+}
+
+[test(description = "a ratchet file that does not exist is an error; a unit named on the command line is no suite's: never checked against the list nor written to it", timeout = 600)]
+def test_ratchet_runs(t : T?) {
+    let missing = path_join(test_temp_dir(), "no_such_ratchet.txt")
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], ratchet = missing, units <- ["{FIXTURES}/differs.c"])), 1)
+    t |> success(!stat(missing).is_reg)
+    let ratchet = path_join(test_temp_dir(), "ratchet.txt")
+    let text = "# a list\nlinux differs\n"
+    fwrite(ratchet, text)
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], ratchet = ratchet, update_ratchet = true, units <- ["{FIXTURES}/conversions.c", "{FIXTURES}/differs.c"])), 0)
+    t |> equal(fread(ratchet), text)
+}
+
 [test(description = "a run's counts: Dumper A failed, aggregates refused or typed, scalar-only refused, agreeing, differing in the table, the C-IR or the census")]
 def test_count(t : T?) {
     var n : TypesTotals
@@ -179,37 +221,37 @@ def test_count(t : T?) {
     t |> equal(count_types(n, TypesResult(unit = "b.c", dialect = "msvc", aggregate = true, builder_error = "builder: x")), "")
     t |> equal(count_types(n, TypesResult(unit = "c.c", dialect = "msvc", aggregate = true)), "c.c [msvc]: aggregates in Dumper A's table, but the builder typed the unit")
     t |> equal(count_types(n, TypesResult(unit = "d.c", dialect = "linux", builder_error = "parser: y")), "d.c [linux]: refused: parser: y")
-    t |> equal(count_types(n, TypesResult(unit = "e.c", dialect = "linux", whole = true, cir = true, census = true)), "")
-    t |> equal(count_types(n, TypesResult(unit = "f.c", dialect = "linux", whole = true, cir = true, difference = "census z")), "f.c [linux]: differs: census z")
-    t |> equal(count_types(n, TypesResult(unit = "g.c", dialect = "linux", census = true, difference = "table entry 0: z")), "g.c [linux]: differs: table entry 0: z")
+    t |> equal(count_types(n, TypesResult(unit = "e.c", dialect = "linux", whole = true, cir = true, census = true, bytes = true, core = true)), "")
+    t |> equal(count_types(n, TypesResult(unit = "f.c", dialect = "linux", whole = true, cir = true, bytes = true, difference = "census z")), "f.c [linux]: differs: census z")
+    t |> equal(count_types(n, TypesResult(unit = "g.c", dialect = "linux", census = true, core = true, difference = "table entry 0: z")), "g.c [linux, core]: differs: table entry 0: z")
     t |> equal(count_types(n, TypesResult(unit = "h.c", dialect = "linux", whole = true, census = true, difference = "C-IR x")), "h.c [linux]: differs: C-IR x")
-    t |> equal(describe_types_totals("all", n), "all: 8 units, 1 Dumper A failed, 2 with aggregates, 5 scalar-only: 3 whole table, 2 C-IR, 3 census agree; 3 differ, 1 refused")
+    t |> equal(describe_types_totals("all", n), "all: 8 units, 1 Dumper A failed, 2 with aggregates, 5 scalar-only: 3 whole table, 2 C-IR, 3 census, 2 bytes agree; 3 differ, 1 refused; core (no array) 1/2 byte-identical")
 }
 
-// the fixture `name` compared under `dialect` as `whole/cir/census/aggregate`, the builder's error
+// the fixture `name` compared under `dialect` as `whole/cir/census/bytes/aggregate`, the builder's error
 // or the differences after it
 def private compared(name, dialect : string) : string {
-    let r = compare_types("{FIXTURES}/{name}", "compare/work/types", target_by_name(dialect))
+    let r = compare_types("{FIXTURES}/{name}", target_by_name(dialect))
     return "Dumper A: {r.dumper_error}" if (!empty(r.dumper_error))
-    let shape = "{r.whole}/{r.cir}/{r.census}/{r.aggregate}"
+    let shape = "{r.whole}/{r.cir}/{r.census}/{r.bytes}/{r.aggregate}"
     return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR and the census; an aggregate and a constant array size refused; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree; a unit clang types otherwise differs in all three", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate and a constant array size refused; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree; a unit clang types otherwise differs in all four", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
-            t |> equal(compared("conversions.c", dialect), "true/true/true/false")
-            t |> equal(compared("redeclared.c", dialect), "true/true/true/false")
-            t |> equal(compared("walk_bodies.c", dialect), "true/true/true/false")
-            t |> equal(compared("expr_only.c", dialect), "true/true/true/false")
-            t |> equal(compared("header.c", dialect), "true/true/true/false")
-            t |> equal(compared("decl_order.c", dialect), "true/true/true/false")
-            t |> equal(compared("expr_first.c", dialect), "true/true/true/false")
-            t |> equal(compared("aggregate.c", dialect), "false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
+            t |> equal(compared("conversions.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("redeclared.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("walk_bodies.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("expr_only.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("header.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("decl_order.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("expr_first.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
             let size = dialect == "linux" ? "unsigned long" : "unsigned long long"
-            t |> equal(compared("differs.c", dialect), "false/false/false/false table entry 0: builder int/32s, Dumper A {size}/64u; C-IR decl 1 (main).body.t: builder int/32s, Dumper A {size}/64u; census anomaly\tIntegralCast implicit directly over a call's result builder 0, Dumper A 1 | chain\tIntegralCast builder 0, Dumper A 1 | clause\t6.3.1.3p3 integer to signed, implementation-defined builder 0, Dumper A 1")
-            t |> equal(compared("refused.c", dialect), "false/false/false/false builder: {FIXTURES}/refused.c:2:11: an array size other than an integer literal is not typed yet")
+            t |> equal(compared("differs.c", dialect), "false/false/false/false/false table entry 0: builder int/32s, Dumper A {size}/64u; C-IR decl 1 (main).body.t: builder int/32s, Dumper A {size}/64u; census anomaly\tIntegralCast implicit directly over a call's result builder 0, Dumper A 1 | chain\tIntegralCast builder 0, Dumper A 1 | clause\t6.3.1.3p3 integer to signed, implementation-defined builder 0, Dumper A 1; bytes line 16: ours \"w\": 32, | theirs \"w\": 64,")
+            t |> equal(compared("refused.c", dialect), "false/false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")
         }
     }
 }
@@ -220,7 +262,7 @@ def test_aggregate_kinds(t : T?) {
     t |> success(has_aggregate([CirType(k = "enum", name = "E")]))
 }
 
-[test(description = "the builder's C-IR refuses a unit the parser refuses and one clang -E refuses, each naming the step", timeout = 600)]
+[test(description = "the builder's C-IR refuses a unit the parser refuses, a file the preprocessor cannot read, and an #error the preprocessor reaches through an evaluated #if, each naming the step", timeout = 600)]
 def test_builder_refusals(t : T?) {
     let dir = path_join(test_temp_dir(), "edges")
     mkdir_rec(dir)
@@ -228,29 +270,70 @@ def test_builder_refusals(t : T?) {
     fwrite(generic, "int x = _Generic(1, int: 2, default: 3);\n")
     var error : string
     var tu : CirTu
-    builder_tu(generic, dir, target_lp64_linux(), tu, error)
+    builder_tu(generic, target_lp64_linux(), tu, error)
     t |> success(starts_with(error, "parser: "), error)
     delete_tu(tu)
     error = ""
     var missing : CirTu
-    builder_tu(path_join(dir, "missing.c"), dir, target_lp64_linux(), missing, error)
-    t |> success(starts_with(error, "clang -E: "), error)
+    builder_tu(path_join(dir, "missing.c"), target_lp64_linux(), missing, error)
+    t |> success(starts_with(error, "parser: cannot read "), error)
     delete_tu(missing)
+    error = ""
+    let evaluated = path_join(dir, "evaluated.c")
+    fwrite(evaluated, "#if 1 + 1\n#error boom\n#endif\nint x;\n")
+    var stood_in : CirTu
+    builder_tu(evaluated, target_lp64_linux(), stood_in, error)
+    t |> success(starts_with(error, "parser: ") && find(error, "#error boom") >= 0, error)
+    delete_tu(stood_in)
 }
 
 [test(description = "run_types: a unit that agrees passes, a refused one fails, no unit fails; the c-testsuite folder missing is an error; run.das as a child prints the totals", timeout = 600)]
 def test_run_types(t : T?) {
-    let work = path_join(test_temp_dir(), "work")
-    t |> equal(run_types(TypesArgs(work = work, dialect <- ["linux"], units <- ["{FIXTURES}/conversions.c"])), 0)
-    t |> equal(run_types(TypesArgs(work = work, dialect <- ["linux"], units <- ["{FIXTURES}/refused.c"])), 1)
-    t |> equal(run_types(TypesArgs(work = work)), 1)
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], units <- ["{FIXTURES}/conversions.c"])), 0)
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], units <- ["{FIXTURES}/refused.c"])), 1)
+    t |> equal(run_types(TypesArgs()), 1)
     var error : string
     let units <- c_testsuite_units(test_temp_dir(), error)
     t |> success(ends_with(error, "is missing (fetch it with suites/c_testsuite/fetch.sh)") && empty(units), error)
     let argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
-                 "--work", work, "--dialect", "linux", "{FIXTURES}/conversions.c"]
+                 "--dialect", "linux", "{FIXTURES}/conversions.c"]
     var out : string
     t |> equal(run_and_capture(argv, out, 600.0), 0)
-    t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 with aggregates, 1 scalar-only: 1 whole table, 1 C-IR, 1 census agree; 0 differ, 0 refused") >= 0, out)
+    t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 with aggregates, 1 scalar-only: 1 whole table, 1 C-IR, 1 census, 1 bytes agree; 0 differ, 0 refused; core (no array) 0/0 byte-identical") >= 0, out)
 }
 
+
+[test(description = "a unit agreeing in all but its bytes differs; the gcc-torture corpus unfetched is an error; a ratchet key of a name with no dot")]
+def test_count_bytes_and_corpus(t : T?) {
+    var n : TypesTotals
+    t |> equal(count_types(n, TypesResult(unit = "i.c", dialect = "linux", whole = true, cir = true, census = true, difference = "bytes line 1: x")), "i.c [linux]: differs: bytes line 1: x")
+    t |> equal(n.differ, 1)
+    var error : string
+    let units <- gcc_torture_units(test_temp_dir(), error)
+    t |> success(empty(units) && ends_with(error, "is missing (fetch it with suites/gcc_torture/fetch.sh)"), error)
+    t |> equal(ratchet_key("linux", "x/00012"), "linux 00012")
+}
+
+// a fetched c-testsuite under a new root holding the fixtures `names`, and that root
+def private suite_root(name : string; names : array<string>) : string {
+    let root = path_join(test_temp_dir(), name)
+    let folder = path_join(root, "suites/c_testsuite/fetch/c-testsuite/tests/single-exec")
+    mkdir_rec(folder)
+    for (unit in names) {
+        fwrite(path_join(folder, unit), fread("{FIXTURES}/{unit}"))
+    }
+    return root
+}
+
+[test(description = "a whole-suite ratchet run: a listed unit no longer byte-identical fails it and nothing is written though another grew; a listed unit the suite no longer holds is reported and the update drops it", timeout = 900)]
+def test_ratchet_suite_runs(t : T?) {
+    let root = suite_root("suite", ["conversions.c", "differs.c"])
+    let ratchet = path_join(root, "ratchet.txt")
+    let regressed = "# list\nlinux differs\n"
+    fwrite(ratchet, regressed)
+    t |> equal(run_types(TypesArgs(c_testsuite = true, root = root, dialect <- ["linux"], ratchet = ratchet, update_ratchet = true)), 1)
+    t |> equal(fread(ratchet), regressed)
+    fwrite(ratchet, "# list\nlinux nosuch\n")
+    t |> equal(run_types(TypesArgs(c_testsuite = true, root = root, dialect <- ["linux"], ratchet = ratchet, update_ratchet = true)), 0)
+    t |> equal(fread(ratchet), "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux conversions\n")
+}

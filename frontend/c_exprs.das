@@ -14,31 +14,17 @@ require c_types public
 //! as a `cast` node of clang's `castKind` on the node clang puts it on. `c_exprs_use` turns the
 //! pool types into table indices, in the order Dumper A interns them.
 
-//! What an identifier names where the walk stands: a variable or a function, its declared pool
-//! type, the parameter types an old-style definition's calls convert to, and whether its
-//! declaration has a prototype.
-struct CId {
-    t : int
-    is_function : bool
-    proto : bool
-    old_style : int     //!< the pool function type an old-style definition's calls convert by, -1 for none
-    builtin : bool      //!< a builtin function of `BUILTIN_FUNCTIONS`, referenced only as a callee
-}
+//! The binary operators whose parentheses from a macro expansion the C-IR keeps, as Dumper A
+//! keeps them: a shift or a bitwise operator, whose precedence a reader misreads.
+let private PAREN_KEPT_OPS <- {"shl", "shr", "band", "bor", "bxor"}
 
 //! The builtin functions the builder types, each with its prototype's result and parameter
 //! spellings as clang declares it.
-let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["long", "long"])]
+let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["long", "long"]), (name = "__builtin_abort", ret = "void", params = array<string>())]
 
-//! The state of a unit's expressions: the type builder, the identifiers in scope and the return
-//! type of the function being read.
-struct CIr {
-    b : CTypes
-    ids : table<int; CId>
-    id_undo : array<tuple<sym : int; had : bool; was : CId>>
-    id_marks : array<int>
-    ret : int
-    cases : table<int64; bool>  //!< the case values of the innermost switch read so far
-}
+//! The state of a unit's expressions is the type builder's (`CTypes`): its types, the identifiers
+//! in scope and the return type of the function being read.
+typedef CIr = CTypes
 
 //! Bind identifier `sym` to `id` in the innermost scope.
 def c_ir_bind(var r : CIr; sym : int; id : CId) {
@@ -70,38 +56,38 @@ def c_ir_close(var r : CIr) {
 }
 
 // the kind of pool type `t`
-def private kind_of(r : CIr; t : int) : string => r.b.pool[t].k
+def private kind_of(r : CIr; t : int) : string => r.pool[t].k
 
-def private is_int(r : CIr; t : int) : bool => r.b.pool[t].k == "int"
+def private is_int(r : CIr; t : int) : bool => r.pool[t].k == "int"
 
-def private is_float(r : CIr; t : int) : bool => r.b.pool[t].k == "float"
+def private is_float(r : CIr; t : int) : bool => r.pool[t].k == "float"
 
 def private is_arith(r : CIr; t : int) : bool => is_int(r, t) || is_float(r, t)
 
-def private is_ptr(r : CIr; t : int) : bool => r.b.pool[t].k == "ptr"
+def private is_ptr(r : CIr; t : int) : bool => r.pool[t].k == "ptr"
 
-def private is_bool(r : CIr; t : int) : bool => r.b.pool[t].k == "int" && r.b.pool[t].spell == "_Bool"
+def private is_bool(r : CIr; t : int) : bool => r.pool[t].k == "int" && r.pool[t].spell == "_Bool"
 
-def private unq(r : CIr; t : int) : int => r.b.unqualified[t]
+def private unq(r : CIr; t : int) : int => r.unqualified[t]
 
 // whether pool type `t` is a pointer to unqualified `void`
-def private is_void_ptr(r : CIr; t : int) : bool => is_ptr(r, t) && r.b.pool[r.b.pool[t].to].k == "void" && r.b.quals[r.b.pool[t].to] == 0
+def private is_void_ptr(r : CIr; t : int) : bool => is_ptr(r, t) && r.pool[r.pool[t].to].k == "void" && r.quals[r.pool[t].to] == 0
 
 // whether pool type `t` points at `void`, qualified or not
-def private points_at_void(r : CIr; t : int) : bool => is_ptr(r, t) && r.b.pool[r.b.pool[t].to].k == "void"
+def private points_at_void(r : CIr; t : int) : bool => is_ptr(r, t) && r.pool[r.pool[t].to].k == "void"
 
 //! Pool type `t` with no qualifier at any pointer or array level, a function type kept whole: two
 //! types with one such form differ in qualifiers at most, as clang's similar types do.
 def c_bare(var r : CIr; t : int) : int {
     let u = unq(r, t)
-    let k = r.b.pool[u].k
+    let k = r.pool[u].k
     if (k == "ptr") {
-        let to = c_bare(r, r.b.pool[u].to)
-        return c_pointer(r.b, to)
+        let to = c_bare(r, r.pool[u].to)
+        return c_pointer(r, to)
     } elif (k == "array") {
-        let count = r.b.pool[u].count
-        let elem = c_bare(r, r.b.pool[u].elem)
-        return c_array(r.b, elem, count)
+        let count = r.pool[u].count
+        let elem = c_bare(r, r.pool[u].elem)
+        return c_array(r, elem, count)
     }
     return u
 }
@@ -110,10 +96,10 @@ def c_bare(var r : CIr; t : int) : int {
 // `getUnqualifiedType`)
 def private unqualified_object(var r : CIr; t : int) : int {
     let u = unq(r, t)
-    return u if (r.b.pool[u].k != "array")
-    let count = r.b.pool[u].count
-    let elem = unqualified_object(r, r.b.pool[u].elem)
-    return c_array(r.b, elem, count)
+    return u if (r.pool[u].k != "array")
+    let count = r.pool[u].count
+    let elem = unqualified_object(r, r.pool[u].elem)
+    return c_array(r, elem, count)
 }
 
 // a new implicit or explicit cast of `kind` to pool type `t` over `x`
@@ -143,9 +129,9 @@ def private is_lvalue(x : CirExpr?) : bool => x.e == "ref" || x.e == "index" || 
 def c_rvalue(var r : CIr; var x : CirExpr?) : CirExpr? {
     let k = kind_of(r, x.t)
     if (k == "func") {
-        return cast_node(x, c_pointer(r.b, x.t), "FunctionToPointerDecay")
+        return cast_node(x, c_pointer(r, x.t), "FunctionToPointerDecay")
     } elif (k == "array") {
-        return cast_node(x, c_pointer(r.b, r.b.pool[x.t].elem), "ArrayToPointerDecay")
+        return cast_node(x, c_pointer(r, r.pool[x.t].elem), "ArrayToPointerDecay")
     } elif (is_lvalue(x)) {
         return cast_node(x, unq(r, x.t), "LValueToRValue")
     }
@@ -153,14 +139,14 @@ def c_rvalue(var r : CIr; var x : CirExpr?) : CirExpr? {
 }
 
 // the pool type `int`
-def private int_t(var r : CIr) : int => c_builtin(r.b, "int")
+def private int_t(var r : CIr) : int => c_builtin(r, "int")
 
 //! `x` as a value under the integer promotions (C11 6.3.1.1p2): an integer narrower than `int`
 //! is `int` (clang's usual unary conversions).
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
 def c_promote(var r : CIr; var x : CirExpr?) : CirExpr? {
     var v = c_rvalue(r, x)
-    if (is_int(r, v.t) && r.b.pool[v.t].w < r.b.tu.target.int_w) {
+    if (is_int(r, v.t) && r.pool[v.t].w < r.tu.target.int_w) {
         return c_implicit(v, int_t(r), "IntegralCast")
     }
     return v
@@ -168,13 +154,13 @@ def c_promote(var r : CIr; var x : CirExpr?) : CirExpr? {
 
 // the rank of integer pool type `t` (C11 6.3.1.1p1) by its spelling
 def private rank(r : CIr; t : int) : int {
-    let spell = r.b.pool[t].spell
+    let spell = r.pool[t].spell
     let base = starts_with(spell, "unsigned ") ? slice(spell, length("unsigned ")) : spell
     return base == "long long" ? 5 : base == "long" ? 4 : base == "int" ? 3 : base == "short" ? 2 : base == "_Bool" ? 0 : 1
 }
 
 // the unsigned type of the rank of signed integer pool type `t`
-def private unsigned_of(var r : CIr; t : int) : int => c_builtin(r.b, "unsigned {r.b.pool[t].spell}")
+def private unsigned_of(var r : CIr; t : int) : int => c_builtin(r, "unsigned {r.pool[t].spell}")
 
 // the castKind of an arithmetic conversion from pool type `from` to `to`
 def private arith_kind(r : CIr; from, to : int) : string {
@@ -190,12 +176,12 @@ def private arith_kind(r : CIr; from, to : int) : string {
 def private common_type(var r : CIr; a, b : int) : int {
     return a if (a == b)
     if (is_float(r, a) || is_float(r, b)) {
-        let wa = is_float(r, a) ? (r.b.pool[a].spell == "long double" ? 3 : r.b.pool[a].w == 64 ? 2 : 1) : 0
-        let wb = is_float(r, b) ? (r.b.pool[b].spell == "long double" ? 3 : r.b.pool[b].w == 64 ? 2 : 1) : 0
+        let wa = is_float(r, a) ? (r.pool[a].spell == "long double" ? 3 : r.pool[a].w == 64 ? 2 : 1) : 0
+        let wb = is_float(r, b) ? (r.pool[b].spell == "long double" ? 3 : r.pool[b].w == 64 ? 2 : 1) : 0
         return wa >= wb ? a : b
     }
-    let sa = r.b.pool[a].is_signed
-    let sb = r.b.pool[b].is_signed
+    let sa = r.pool[a].is_signed
+    let sb = r.pool[b].is_signed
     if (sa == sb) {
         return rank(r, a) >= rank(r, b) ? a : b
     }
@@ -203,7 +189,7 @@ def private common_type(var r : CIr; a, b : int) : int {
     let s = sa ? a : b
     if (rank(r, u) >= rank(r, s)) {
         return u
-    } elif (r.b.pool[s].w > r.b.pool[u].w) {
+    } elif (r.pool[s].w > r.pool[u].w) {
         return s
     }
     return unsigned_of(r, s)
@@ -223,10 +209,10 @@ def c_arith(var r : CIr; var a, b : CirExpr?&) : int {
 
 // the value `v` held in integer pool type `t`: wrapped to its width, sign-extended when signed
 def private held_in(r : CIr; t : int; v : int64) : int64 {
-    let w = r.b.pool[t].w
-    return v if (r.b.pool[t].k != "int" || w >= 64)
+    let w = r.pool[t].w
+    return v if (r.pool[t].k != "int" || w >= 64)
     let low = v & ((1l << int64(w)) - 1l)
-    return r.b.pool[t].is_signed && (low >> int64(w - 1)) != 0l ? low - (1l << int64(w)) : low
+    return r.pool[t].is_signed && (low >> int64(w - 1)) != 0l ? low - (1l << int64(w)) : low
 }
 
 //! The value of integer constant expression `x` (C11 6.6) into `v`: literals, integer casts, the
@@ -257,7 +243,7 @@ def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
         return c_fold(r, c != 0l ? x.a : x.b, v)
     }
     var a, b : int64
-    return false if (x.e != "bin" || !c_fold(r, x.a, a) || !c_fold(r, x.b, b) || !fold_binary(x.op, !r.b.pool[x.a.t].is_signed, a, b, v))
+    return false if (x.e != "bin" || !c_fold(r, x.a, a) || !c_fold(r, x.b, b) || !fold_binary(x.op, !r.pool[x.a.t].is_signed, a, b, v))
     v = held_in(r, x.t, v)
     return true
 }
@@ -308,6 +294,18 @@ def private truth_of(op : string; unsigned_operands : bool; a, b : int64) : bool
     return op == "lt" ? less : op == "gt" ? greater : op == "le" ? !greater : op == "ge" ? !less : op == "eq" ? a == b : a != b
 }
 
+//! The value of parser expression node `n` into `v` when it is an integer constant expression
+//! (C11 6.6): typed and folded by `c_fold`, the unit's one evaluator, which the type builder calls
+//! for an array size (`CTypes.fold`); false for any other expression, the error set when its typing
+//! refused it.
+[arch(at="ARCHITECTURE_EXPRS.md#c-exprs-constants")]
+def c_fold_node(var r : CIr; var p : CParser; n : int; var v : int64&) : bool {
+    var x = c_expr(r, p, n)
+    let folded = x != null && c_fold(r, x, v)
+    delete_expr(x)
+    return folded
+}
+
 //! Whether `x` is a null pointer constant (C11 6.3.2.3p3): an integer constant expression of value
 //! 0, or one cast to `void *`.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-constants")]
@@ -324,18 +322,20 @@ def c_is_null(r : CIr; x : CirExpr?) : bool {
 //! parameter the other's list (the pool keeps no prototype mark, so `()` and `(void)` are one).
 def c_composite(var r : CIr; a, b : int) : int {
     return a if (a == b)
-    return -1 if (r.b.quals[a] != r.b.quals[b])
+    return -1 if (r.quals[a] != r.quals[b])
     // copies: the pool grows below, which moves its elements
-    let x := r.b.pool[a]
-    let y := r.b.pool[b]
+    let x := r.pool[a]
+    let y := r.pool[b]
     return -1 if (x.k != y.k)
     if (x.k == "ptr") {
         let to = c_composite(r, x.to, y.to)
-        return to < 0 ? -1 : c_qualified(r.b, c_pointer(r.b, to), r.b.quals[a])
+        return -1 if (to < 0)
+        let ptr = c_pointer(r, to)
+        return c_qualified(r, ptr, r.quals[a])
     } elif (x.k == "array") {
         let elem = c_composite(r, x.elem, y.elem)
         return -1 if (elem < 0 || (x.count >= 0 && y.count >= 0 && x.count != y.count))
-        return c_array(r.b, elem, x.count >= 0 ? x.count : y.count)
+        return c_array(r, elem, x.count >= 0 ? x.count : y.count)
     } elif (x.k == "func") {
         return composite_function(r, a, b, x, y)
     }
@@ -358,14 +358,14 @@ def private composite_function(var r : CIr; a, b : int; x, y : CirType) : int {
         return -1 if (c < 0)
         params |> push(c)
     }
-    return c_function(r.b, ret, params, x.variadic)
+    return c_function(r, ret, params, x.variadic)
 }
 
 // the composite of the types pointers `a` and `b` point at, their own qualifiers aside (an array's
 // element's too); -1 for incompatible ones
 def private pointee_composite(var r : CIr; a, b : int) : int {
-    let to_a = unqualified_object(r, r.b.pool[a].to)
-    let to_b = unqualified_object(r, r.b.pool[b].to)
+    let to_a = unqualified_object(r, r.pool[a].to)
+    let to_b = unqualified_object(r, r.pool[b].to)
     return c_composite(r, to_a, to_b)
 }
 
@@ -376,8 +376,8 @@ def private nested_qualifiers(var r : CIr; from, to : int) : bool {
     var a = from
     var b = to
     while (is_ptr(r, a) && is_ptr(r, b)) {
-        a = unq(r, r.b.pool[a].to)
-        b = unq(r, r.b.pool[b].to)
+        a = unq(r, r.pool[a].to)
+        b = unq(r, r.pool[b].to)
     }
     return unqualified_object(r, a) == unqualified_object(r, b)
 }
@@ -388,8 +388,8 @@ def private nested_qualifiers(var r : CIr; from, to : int) : bool {
 // that differ in qualifiers through pointer levels
 def private pointers_assign(var r : CIr; from, to : int) : bool {
     return true if (points_at_void(r, from) || points_at_void(r, to))
-    let a = unq(r, r.b.pool[from].to)
-    let b = unq(r, r.b.pool[to].to)
+    let a = unq(r, r.pool[from].to)
+    let b = unq(r, r.pool[to].to)
     return true if (is_int(r, a) && is_int(r, b) && rank(r, a) == rank(r, b))
     return pointee_composite(r, from, to) >= 0 || nested_qualifiers(r, from, to)
 }
@@ -414,7 +414,7 @@ def c_assigned(var r : CIr; p : CParser; var x : CirExpr?; target, tok : int) : 
     } elif (is_bool(r, to) && is_ptr(r, v.t)) {
         return c_implicit(v, to, "PointerToBoolean")
     }
-    c_reject(r.b, p, tok, "a value of this type in a slot of that type")
+    c_reject(r, p, tok, "a value of this type in a slot of that type")
     return null
 }
 
@@ -454,10 +454,10 @@ def private assign_op(k : int) : string {
 }
 
 // the pool type of `ptrdiff_t`, the dialect's pointer-wide signed integer
-def private ptrdiff_t(var r : CIr) : int => c_builtin(r.b, r.b.tu.target.long_w == r.b.tu.target.ptr_w ? "long" : "long long")
+def private ptrdiff_t(var r : CIr) : int => c_builtin(r, r.tu.target.long_w == r.tu.target.ptr_w ? "long" : "long long")
 
 //! The pool type of `size_t`, the dialect's pointer-wide unsigned integer.
-def c_size_t(var r : CIr) : int => c_builtin(r.b, r.b.tu.target.long_w == r.b.tu.target.ptr_w ? "unsigned long" : "unsigned long long")
+def c_size_t(var r : CIr) : int => c_builtin(r, r.tu.target.long_w == r.tu.target.ptr_w ? "unsigned long" : "unsigned long long")
 
 // a binary operator `op` over `a` and `b` at token `tok`, each operand converted as C11 6.5.5 to
 // 6.5.14 say: arithmetic by the usual arithmetic conversions, a shift's operands each promoted, a
@@ -465,7 +465,7 @@ def c_size_t(var r : CIr) : int => c_builtin(r.b, r.b.tu.target.long_w == r.b.tu
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
 def private binary(var r : CIr; p : CParser; op : string; var a, b : CirExpr?; tok : int) : CirExpr? {
     if (!operands_valid(r, op, a.t, b.t)) {
-        c_reject(r.b, p, tok, "this operator on operands of these types")
+        c_reject(r, p, tok, "this operator on operands of these types")
         return null
     }
     if (op == "land" || op == "lor") {
@@ -504,7 +504,7 @@ def private binary(var r : CIr; p : CParser; op : string; var a, b : CirExpr?; t
         a = c_rvalue(r, a)
         b = c_rvalue(r, b)
         if (pointee_composite(r, a.t, b.t) < 0) {
-            c_reject(r.b, p, tok, "a difference of pointers to incompatible types")
+            c_reject(r, p, tok, "a difference of pointers to incompatible types")
             return null
         }
         return new CirExpr(e = "bin", t = ptrdiff_t(r), op = op, a = a, b = b)
@@ -543,9 +543,9 @@ def private operands_valid(r : CIr; op : string; a, b : int) : bool {
 // holds it; -1 for none
 def private literal_type(var r : CIr; v : uint64; candidates : array<string>) : int {
     for (spell in candidates) {
-        let t = c_builtin(r.b, spell)
-        let w = r.b.pool[t].w
-        let limit = r.b.pool[t].is_signed ? (1ul << uint64(w - 1)) - 1ul : (w >= 64 ? 0xFFFFFFFFFFFFFFFFul : (1ul << uint64(w)) - 1ul)
+        let t = c_builtin(r, spell)
+        let w = r.pool[t].w
+        let limit = r.pool[t].is_signed ? (1ul << uint64(w - 1)) - 1ul : (w >= 64 ? 0xFFFFFFFFFFFFFFFFul : (1ul << uint64(w)) - 1ul)
         return t if (v <= limit)
     }
     return -1
@@ -565,7 +565,8 @@ def private literal_candidates(unsigned_suffix : bool; longs : int; decimal : bo
 }
 
 // an integer literal node from token `tok` (C11 6.4.4.1): its value and the type its base, suffix
-// and value give
+// and value give; under msvc an `ll` literal without `u` that `long long` does not hold is a
+// wrapped `long long`, as clang's MSVC compatibility types it
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-literals")]
 def private int_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
     let spelled = to_lower(c_spelling(p.unit, tok))
@@ -591,9 +592,13 @@ def private int_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
         value = value * base + uint64(d)
     }
     let decimal = base == 10ul
+    if (ok && is_msvc(r.tu.target) && longs == 2 && !unsigned_suffix && value > 0x7FFFFFFFFFFFFFFFul) {
+        // clang's MSVC compatibility: an `ll` literal past `long long` stays `long long`, wrapped
+        return new CirExpr(e = "int_lit", t = c_builtin(r, "long long"), v = "-{decimal(~value + 1ul)}")
+    }
     let t = ok ? literal_type(r, value, literal_candidates(unsigned_suffix, longs, decimal)) : -1
     if (t < 0) {
-        c_refuse(r.b, p, tok, "the integer literal '{c_spelling(p.unit, tok)}', which no type of its list holds,")
+        c_refuse(r, p, tok, "the integer literal '{c_spelling(p.unit, tok)}', which no type of its list holds,")
         return null
     }
     return new CirExpr(e = "int_lit", t = t, v = decimal(value))
@@ -701,7 +706,7 @@ def c_string_literal(var r : CIr; var p : CParser; first, count : int) : CirExpr
     for (t in range(first, first + count)) {
         let spelled = c_spelling(p.unit, t)
         if (!starts_with(spelled, "\"")) {
-            c_refuse(r.b, p, t, "a prefixed string literal")
+            c_refuse(r, p, t, "a prefixed string literal")
             unsafe {
                 delete x
             }
@@ -710,7 +715,7 @@ def c_string_literal(var r : CIr; var p : CParser; first, count : int) : CirExpr
         literal_body(spelled, x.bytes)
     }
     x.bytes |> push(uint8(0))
-    x.t = c_array(r.b, c_builtin(r.b, "char"), length(x.bytes))
+    x.t = c_array(r, c_builtin(r, "char"), length(x.bytes))
     return x
 }
 
@@ -784,14 +789,14 @@ def private char_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
     }
     let units <- wide_units(slice(spelled, quote))
     let code = length(units) == 1 ? units[0] : -1l
-    let wide = is_msvc(r.b.tu.target) ? "unsigned short" : "int"
+    let wide = is_msvc(r.tu.target) ? "unsigned short" : "int"
     let spell = prefix == "L" ? wide : prefix == "u" ? "unsigned short" : prefix == "U" ? "unsigned int" : ""
     let limit = spell == "unsigned short" ? 65535l : spell == "int" ? 2147483647l : 4294967295l
     if (empty(spell) || code < 0l || code > limit) {
-        c_refuse(r.b, p, tok, "the character constant {spelled}")
+        c_refuse(r, p, tok, "the character constant {spelled}")
         return null
     }
-    return new CirExpr(e = "int_lit", t = c_builtin(r.b, spell), v = "{code}", is_char = true)
+    return new CirExpr(e = "int_lit", t = c_builtin(r, spell), v = "{code}", is_char = true)
 }
 
 // a floating literal node from token `tok` (C11 6.4.4.2): `float` with an `f` suffix, `long
@@ -803,20 +808,20 @@ def private float_literal(var r : CIr; p : CParser; tok : int) : CirExpr? {
     let kind = last == "f" ? "float" : last == "l" ? "long double" : "double"
     let digits = kind == "double" ? spelled : slice(spelled, 0, length(spelled) - 1)
     // under msvc `long double` is a double; under linux it is x87's 64-bit significand
-    let extended = kind == "long double" && !is_msvc(r.b.tu.target)
-    return new CirExpr(e = "float_lit", t = c_builtin(r.b, kind), v = c_float_literal(digits, extended ? "extended" : kind))
+    let extended = kind == "long double" && !is_msvc(r.tu.target)
+    return new CirExpr(e = "float_lit", t = c_builtin(r, kind), v = c_float_literal(digits, extended ? "extended" : kind))
 }
 
 //! The size in bytes Dumper A gives pool type `t`: a scalar's width, a pointer's and a function's
 //! the pointer width, an array its count of elements; negative for one it has none for.
 def c_size_of(r : CIr; t : int) : int64 {
-    let k = r.b.pool[t].k
+    let k = r.pool[t].k
     if (k == "int" || k == "float") {
-        return int64(r.b.pool[t].w / 8)
+        return int64(r.pool[t].w / 8)
     } elif (k == "ptr" || k == "func") {
-        return int64(r.b.tu.target.ptr_w / 8)
+        return int64(r.tu.target.ptr_w / 8)
     } elif (k == "array") {
-        return int64(r.b.pool[t].count) * c_size_of(r, r.b.pool[t].elem)
+        return int64(r.pool[t].count) * c_size_of(r, r.pool[t].elem)
     }
     return -1l
 }
@@ -826,52 +831,52 @@ def c_size_of(r : CIr; t : int) : int64 {
 def private sizeof_node(var r : CIr; p : CParser; of_t : int; var operand : CirExpr?; tok : int) : CirExpr? {
     let size = c_size_of(r, of_t)
     if (size < 0l) {
-        c_refuse(r.b, p, tok, "sizeof of a type without a size")
+        c_refuse(r, p, tok, "sizeof of a type without a size")
         return null
     }
     return new CirExpr(e = "sizeof_v", t = c_size_t(r), trait_v = uint64(size), of_t = of_t, a = operand)
 }
 
-// a call of `fn` with the argument nodes `n_args` (a list) at token `tok`: the callee read, each
+// a call of `fn`, by name the identifier `sym` (-1 for another callee), with the argument nodes
+// `n_args` (a list) at token `tok`: the callee read, each
 // argument converted to its parameter's type, or, past the parameters or with no prototype, by the
 // default argument promotions; an old-style definition's call to its promoted parameter types
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-slots")]
-def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : int) : CirExpr? {
+def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok, sym : int) : CirExpr? {
     var old_style = -1
     var proto = true
     var builtin = -1
     var named_function = false
-    if (fn.e == "ref" && fn.name != "") {
-        let sym = c_symbol(p.unit, fn.name)
+    if (sym >= 0) {
         let id = r.ids?[sym] ?? CId(t = -1, old_style = -1)
         old_style = id.old_style
         proto = id.proto
         builtin = id.builtin ? id.t : -1
         named_function = id.is_function || id.builtin
     }
-    var callee = builtin >= 0 ? cast_node(fn, c_pointer(r.b, builtin), "FunctionToPointerDecay") : c_rvalue(r, fn)
-    let target = is_ptr(r, callee.t) ? r.b.pool[callee.t].to : -1
+    var callee = builtin >= 0 ? cast_node(fn, c_pointer(r, builtin), "FunctionToPointerDecay") : c_rvalue(r, fn)
+    let target = is_ptr(r, callee.t) ? r.pool[callee.t].to : -1
     if (target < 0 || kind_of(r, target) != "func") {
-        c_refuse(r.b, p, tok, "a call of a value that is no function")
+        c_refuse(r, p, tok, "a call of a value that is no function")
         return null
     }
     let shape = old_style >= 0 ? old_style : unq(r, target)
-    let params := r.b.pool[shape].params
+    let params := r.pool[shape].params
     // a prototype fixes the count of arguments: a call to a declared function with one, or through
     // a type with parameters - a pointer variable's (a type of no parameter may be `()`, which
     // fixes none)
-    let fixed = named_function ? proto : !empty(params) || r.b.pool[shape].variadic
+    let fixed = named_function ? proto : !empty(params) || r.pool[shape].variadic
     var given = 0
     var counted = n_args
     while (counted >= 0) {
         given++
         counted = p.ast.nodes[counted].next
     }
-    if (fixed && (given < length(params) || (given > length(params) && !r.b.pool[shape].variadic))) {
-        c_reject(r.b, p, tok, "a call with {given} arguments of a function whose prototype has {length(params)}")
+    if (fixed && (given < length(params) || (given > length(params) && !r.pool[shape].variadic))) {
+        c_reject(r, p, tok, "a call with {given} arguments of a function whose prototype has {length(params)}")
         return null
     }
-    var x = new CirExpr(e = "call", t = unq(r, r.b.pool[target].ret), fn = callee)
+    var x = new CirExpr(e = "call", t = unq(r, r.pool[target].ret), fn = callee)
     var arg = n_args
     while (arg >= 0) {
         var a = c_expr(r, p, arg)
@@ -882,8 +887,8 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : 
             return null if (a == null)
         } else {
             a = c_promote(r, a)
-            if (is_float(r, a.t) && r.b.pool[a.t].w == 32) {
-                a = c_implicit(a, c_builtin(r.b, "double"), "FloatingCast")
+            if (is_float(r, a.t) && r.pool[a.t].w == 32) {
+                a = c_implicit(a, c_builtin(r, "double"), "FloatingCast")
             }
         }
         x.args |> push(a)
@@ -920,7 +925,7 @@ def private conditional(var r : CIr; p : CParser; var c, a, b : CirExpr?; tok : 
         }
     }
     if (t < 0) {
-        c_refuse(r.b, p, tok, "a conditional of these arms")
+        c_refuse(r, p, tok, "a conditional of these arms")
         return null
     }
     return new CirExpr(e = "cond", t = t, c = c, a = a, b = b)
@@ -933,24 +938,24 @@ def private conditional(var r : CIr; p : CParser; var c, a, b : CirExpr?; tok : 
 // does; -2 with the error set where one points at a function with no parameter, as the pool cannot
 // tell `()` from `(void)` there
 def private pointer_arms(var r : CIr; p : CParser; var a, b : CirExpr?&; tok : int) : int {
-    let quals = r.b.quals[r.b.pool[a.t].to] | r.b.quals[r.b.pool[b.t].to]
-    let ta = unq(r, r.b.pool[a.t].to)
-    let tb = unq(r, r.b.pool[b.t].to)
+    let quals = r.quals[r.pool[a.t].to] | r.quals[r.pool[b.t].to]
+    let ta = unq(r, r.pool[a.t].to)
+    let tb = unq(r, r.pool[b.t].to)
     var t = -1
     if (kind_of(r, ta) == "void" || kind_of(r, tb) == "void") {
-        t = c_pointer(r.b, c_qualified(r.b, c_builtin(r.b, "void"), quals))
+        t = c_pointer(r, c_qualified(r, c_builtin(r, "void"), quals))
         a = c_implicit(a, t, kind_of(r, ta) == "void" ? "NoOp" : "BitCast")
         b = c_implicit(b, t, kind_of(r, tb) == "void" ? "NoOp" : "BitCast")
         return t
     }
     for (pointee in fixed_array(ta, tb)) {
-        if (kind_of(r, pointee) == "func" && empty(r.b.pool[pointee].params) && !r.b.pool[pointee].variadic) {
-            c_refuse(r.b, p, tok, "a conditional of function pointers one of which takes no parameter", " (whether it has a prototype is not in its type)")
+        if (kind_of(r, pointee) == "func" && empty(r.pool[pointee].params) && !r.pool[pointee].variadic) {
+            c_refuse(r, p, tok, "a conditional of function pointers one of which takes no parameter", " (whether it has a prototype is not in its type)")
             return -2
         }
     }
     let composite = c_composite(r, ta, tb)
-    t = composite < 0 ? c_pointer(r.b, c_builtin(r.b, "void")) : c_pointer(r.b, c_qualified(r.b, composite, quals))
+    t = composite < 0 ? c_pointer(r, c_builtin(r, "void")) : c_pointer(r, c_qualified(r, composite, quals))
     a = c_implicit(a, t, "BitCast")
     b = c_implicit(b, t, "BitCast")
     return t
@@ -964,15 +969,15 @@ def private unary(var r : CIr; p : CParser; k : int; var a : CirExpr?; post : bo
         let op = k == int(CTok.INC) ? (post ? "postinc" : "preinc") : (post ? "postdec" : "predec")
         return new CirExpr(e = "un", t = unq(r, a.t), op = op, a = a)
     } elif (k == '&') {
-        return new CirExpr(e = "un", t = c_pointer(r.b, a.t), op = "addr", a = a)
+        return new CirExpr(e = "un", t = c_pointer(r, a.t), op = "addr", a = a)
     } elif (k == '*') {
         a = c_rvalue(r, a)
         if (!is_ptr(r, a.t)) {
-            c_refuse(r.b, p, tok, "a dereference of a value that is no pointer")
+            c_refuse(r, p, tok, "a dereference of a value that is no pointer")
             return null
         }
-        var x = new CirExpr(e = "un", t = r.b.pool[a.t].to, op = "deref", a = a)
-        x.vol = (r.b.quals[x.t] & C_VOLATILE) != 0
+        var x = new CirExpr(e = "un", t = r.pool[a.t].to, op = "deref", a = a)
+        x.vol = (r.quals[x.t] & C_VOLATILE) != 0
         return x
     } elif (k == '!') {
         a = c_rvalue(r, a)
@@ -1009,22 +1014,22 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
     for (fn in BUILTIN_FUNCTIONS) {
         // a declaration of the name leaves it clang's builtin
         if (fn.name == name && !(r.ids?[sym] ?? CId(t = -1, old_style = -1)).builtin) {
-            var inscope params <- [for (x in fn.params); c_builtin(r.b, x)]
-            let proto = c_function(r.b, c_builtin(r.b, fn.ret), params, false)
+            var inscope params <- [for (x in fn.params); c_builtin(r, x)]
+            let proto = c_function(r, c_builtin(r, fn.ret), params, false)
             r.ids[sym] = CId(t = proto, is_function = true, proto = true, old_style = -1, builtin = true)
         }
     }
     if (!key_exists(r.ids, sym)) {
-        c_refuse(r.b, p, tok, "the identifier '{c_symbol_text(p.unit, sym)}', which names no variable or function the builder knows,")
+        c_refuse(r, p, tok, "the identifier '{c_symbol_text(p.unit, sym)}', which names no variable or function the builder knows,")
         return null
     }
     let id = r.ids?[sym] ?? CId()
     if (id.builtin && !callee) {
-        c_refuse(r.b, p, tok, "the builtin '{name}' other than as a callee")
+        c_refuse(r, p, tok, "the builtin '{name}' other than as a callee")
         return null
     }
-    var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r.b) : id.t, name = name)
-    x.vol = (r.b.quals[id.t] & C_VOLATILE) != 0
+    var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r) : id.t, name = empty(id.name) ? name : id.name)
+    x.vol = (r.quals[id.t] & C_VOLATILE) != 0
     return x
 }
 
@@ -1036,7 +1041,7 @@ def private operator_expr(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
         return a == null ? null : unary(r, p, node.op, a, kind == CNode.POSTFIX, node.tok)
     } elif (kind == CNode.COND) {
         if (node.b < 0) {
-            c_refuse(r.b, p, node.tok, "GNU's ?: with no middle operand")
+            c_refuse(r, p, node.tok, "GNU's ?: with no middle operand")
             return null
         }
         var c = c_expr(r, p, node.a)
@@ -1066,23 +1071,23 @@ def private subscript(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? 
     i = c_rvalue(r, i)
     let ptr = is_ptr(r, base.t) ? base.t : i.t
     if (!is_ptr(r, ptr)) {
-        c_refuse(r.b, p, node.tok, "a subscript of a value that is no pointer")
+        c_refuse(r, p, node.tok, "a subscript of a value that is no pointer")
         return null
     }
-    var x = new CirExpr(e = "index", t = r.b.pool[ptr].to, base = base, i = i)
-    x.vol = (r.b.quals[x.t] & C_VOLATILE) != 0
+    var x = new CirExpr(e = "index", t = r.pool[ptr].to, base = base, i = i)
+    x.vol = (r.quals[x.t] & C_VOLATILE) != 0
     return x
 }
 
 // an explicit cast node `node` typed: its operand a value, the kind by the two types
 def private explicit_cast(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
-    let to = c_type_name_type(r.b, p, node.a)
+    let to = c_type_name_type(r, p, node.a)
     var a = to < 0 ? null : c_expr(r, p, node.b)
     return null if (a == null)
     a = c_rvalue(r, a)
     let ck = explicit_kind(r, a, to)
     if (empty(ck)) {
-        c_refuse(r.b, p, node.tok, "this cast")
+        c_refuse(r, p, node.tok, "this cast")
         return null
     }
     return cast_node(a, unq(r, to), ck, true)
@@ -1107,7 +1112,9 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.PAREN || kind == CNode.EXTENSION) {
         var inner = c_expr(r, p, node.a)
         if (inner != null && kind == CNode.PAREN) {
-            inner.paren = true
+            // as Dumper A marks them: the source's own parentheses all, a macro expansion's only
+            // around a shift or a bitwise operator
+            inner.paren = !p.unit.toks[node.tok].expanded || (inner.e == "bin" && key_exists(PAREN_KEPT_OPS, inner.op))
         }
         return inner
     } elif (kind == CNode.UNARY || kind == CNode.POSTFIX || kind == CNode.BINARY || kind == CNode.ASSIGN || kind == CNode.COND) {
@@ -1115,19 +1122,24 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.CALL) {
         let callee = p.ast.nodes[node.a]
         var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
-        return fn == null ? null : call(r, p, fn, node.b, node.tok)
+        // a parenthesized name calls what the name binds, as clang reads `(f)(1)`
+        var named = node.a
+        while (p.ast.nodes[named].kind == CNode.PAREN) {
+            named = p.ast.nodes[named].a
+        }
+        return fn == null ? null : call(r, p, fn, node.b, node.tok, p.ast.nodes[named].kind == CNode.IDENT ? p.ast.nodes[named].a : -1)
     } elif (kind == CNode.INDEX) {
         return subscript(r, p, node)
     } elif (kind == CNode.CAST) {
         return explicit_cast(r, p, node)
     } elif (kind == CNode.SIZEOF_TYPE) {
-        let of_t = c_type_name_type(r.b, p, node.a)
+        let of_t = c_type_name_type(r, p, node.a)
         return of_t < 0 ? null : sizeof_node(r, p, of_t, null, node.tok)
     } elif (kind == CNode.SIZEOF_EXPR) {
         var a = c_expr(r, p, node.a)
         return a == null ? null : sizeof_node(r, p, a.t, a, node.tok)
     }
-    c_refuse(r.b, p, node.tok, "this expression")
+    c_refuse(r, p, node.tok, "this expression")
     return null
 }
 
@@ -1137,7 +1149,7 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-order")]
 def c_exprs_use(var r : CIr; var x : CirExpr?) {
     return if (x == null)
-    x.t = c_types_use(r.b, x.t)
+    x.t = c_types_use(r, x.t)
     if (x.e == "sizeof_v") {
         if (x.a != null) {
             c_exprs_use(r, x.a)
@@ -1145,7 +1157,7 @@ def c_exprs_use(var r : CIr; var x : CirExpr?) {
             delete_expr(x.a)
             x.a = null
         } else {
-            x.of_t = c_types_use(r.b, x.of_t)
+            x.of_t = c_types_use(r, x.of_t)
         }
         return
     }

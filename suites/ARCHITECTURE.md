@@ -114,6 +114,12 @@ output (`<suite>/work/`) are gitignored; only the runner and its two state files
   afresh, writes the interestingness test `work/<seed>/interesting.sh`, runs the reducer (cvise
   by default) and leaves the result at `work/<seed>/min.c`.
 - `<suite>/expected_pass.txt` - the ratchet: the sorted ids that pass.
+- `<suite>/dumper_c_identical.txt` - the ratchet of Dumper C (c-testsuite and gcc-torture): the
+  sorted `<dialect> <id>` lines whose Dumper C C-IR is Dumper A's byte for byte, which
+  `compare/types/run.das --ratchet` holds and `--update-ratchet` writes
+  (`compare/types/ARCHITECTURE.md`). `suite_runner.das`'s `--dumper c` converts with Dumper C;
+  `dumper_refusal` refuses another value and `--update` or `--audit-skips` with it, since
+  `expected_pass.txt` is Dumper A's.
 - `<suite>/skip.txt` - the ledger of tests never run: one tab-separated line per id with the
   feature, the reason and the ledger row (`P<n>.<m>`) or phase that unblocks it, `never` for a
   feature no row will lift.

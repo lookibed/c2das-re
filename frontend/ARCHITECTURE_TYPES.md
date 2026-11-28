@@ -87,11 +87,12 @@ function at the end of its declarator are pointers to the element and to the fun
 typedef of an array or function type used with no declarator of its own adjusts the same way. The
 array is then never used, as clang's parameter types are the adjusted ones.
 
-An array's size is an integer literal, in parentheses or not, decimal, octal or hex with any suffix,
-below 2^31; any other size - an integer constant expression, which waits for constant folding, or a
-variable size, which the spec leaves out of scope - is refused, and so is `[*]` under a declarator.
-An array with no size is count -1 unless its initializer sizes it (section 27) or it is a tentative
-definition the unit's end completes.
+An array's size is an integer constant expression (C11 6.6) from 0 to 2^31 - 1, evaluated by the
+unit's one evaluator: `CTypes.fold`, which the walk sets to `c_exprs.das`'s `c_fold_node`
+(`ARCHITECTURE_EXPRS.md` section 41), so array sizes, index designators and `case` labels fold
+alike. Any other size - a variable one, which the spec leaves out of scope - is refused, and so is
+`[*]` under a declarator. An array with no size is count -1 unless its initializer sizes it (section
+27) or it is a tentative definition the unit's end completes.
 
 ## 27. Initializers and expression types {#c-types-arrays}
 
@@ -99,8 +100,8 @@ An unsized array that has an initializer takes its count from it: a run of strin
 its bytes - each escape one byte, a universal character name its UTF-8 bytes, the NUL included -
 and so does one braced alone for a character array; an initializer list gives one past the last
 position its items fill, each item the position after the one before, an index designator `[k]`
-(an integer literal) moving it to `k`; for an array of arrays each item is braced or a string
-literal. A position past 2^31 - 1 is refused. An array of unknown size that a typedef names
+(an integer constant expression) moving it to `k`; for an array of arrays each item is braced or a
+string literal. A position past 2^31 - 1 is refused. An array of unknown size that a typedef names
 (`typedef char A[]; A a = "hello";`) is sized by the initializer the same way.
 
 A file-scope declaration with no initializer and no `extern` is a tentative definition (C11
@@ -110,18 +111,18 @@ unit's end, and Dumper A reads that type at the declaration. So the builder give
 one does (with a size, an initializer, or tentatively); a later `extern` declaration with no size
 changes nothing, and one with a size is refused (the completion it makes waits for the Aggregates
 phase). A prefixed (wide or UTF) string literal, any other designator (a range, a nested one, a
-non-literal index), an elided brace in an array of arrays and any other initializer of an unsized
+non-constant index), an elided brace in an array of arrays and any other initializer of an unsized
 array are refused.
 
-An array size other than an integer literal is refused here: `c_types.das` evaluates no constant
-expression, which `c_exprs.das` does over typed expressions (`ARCHITECTURE_EXPRS.md` section 41).
 
 ## 28. The own libc headers {#c-types-library}
 
 Dumper A dumps no declaration outside the program (its file policy), so the own headers' types
-enter the table only where the unit uses them. The builder reads `clang -E` text, whose line
-markers name each declaration's file: a declaration in a file whose name starts with the folder the
-builder is opened with (`c_types_open`'s `library_dir`) adds no type. Its typedef names are bound to
+enter the table only where the unit uses them. Each declaration's token names its file: a
+declaration in a file whose name starts with the folder the builder is opened with
+(`c_types_open`'s `library_dir`), or, given a program root (`c_ir_open`'s `program_dir`), in a file
+whose full path lies outside it, adds no type and no declaration; a C file outside the root is the
+error Dumper A gives, its definitions would stay external. Its typedef names are bound to
 their pool types, or, for one the builder refuses, to the refusal, which a use in the unit reports;
 its function names count as declared for the block rule of section 24.
 

@@ -24,8 +24,8 @@ def private types_of(text : string; msvc : bool = false; library : string = "") 
     var r = new CIr
     c_ir_open(*r, msvc ? target_llp64_msvc() : target_lp64_linux(), library)
     let ok = c_ir_unit(*r, p, u)
-    let listed = ok ? join([for (t in r.b.tu.types); entry(t)], " ") : "error: {r.b.err}"
-    delete_tu(r.b.tu)
+    let listed = ok ? join([for (t in r.tu.types); entry(t)], " ") : "error: {r.err}"
+    delete_tu(r.tu)
     unsafe {
         delete r
     }
@@ -46,6 +46,12 @@ def test_scalars(t : T?) {
         t |> equal(types_of("size_t n; long l;", true), "int:64:false:unsigned long long int:32:true:long")
         t |> equal(types_of("size_t n;"), "parse error: t.c:1:1: expected a declaration, got 'size_t'")
     }
+}
+
+[test(description = "array sizes and index designators as integer constant expressions, through the unit's one evaluator: arithmetic, sizeof, a character constant")]
+def test_constant_sizes(t : T?) {
+    t |> equal(types_of("char a[2 * 3 + (1 << 2)], b[sizeof(int)], c['a' - 96]; int d[] = \{[2 + 1] = 1\};"),
+               "int:8:false:char array:0:10 array:0:4 array:0:1 int:32:true:int array:4:4")
 }
 
 [test(description = "pointers, arrays and functions: each part before the type it builds, a function's result before its parameters, C's inside-out declarator reading")]
@@ -135,11 +141,11 @@ def test_refusals(t : T?) {
     t |> equal(types_of("int * __attribute__((mode(DI))) p;"), "error: t.c:1:22: the attribute 'mode', which changes a type, is not typed yet")
     t |> equal(types_of("int (__attribute__((mode(DI))) p);"), "error: t.c:1:21: the attribute 'mode', which changes a type, is not typed yet")
     t |> equal(types_of("void f(int x __attribute__((mode(DI))));"), "error: t.c:1:29: the attribute 'mode', which changes a type, is not typed yet")
-    t |> equal(types_of("int a[2 + 1];"), "error: t.c:1:7: an array size other than an integer literal is not typed yet")
-    t |> equal(types_of("int a[0b11];"), "error: t.c:1:7: the array size '0b11' is not typed yet")
-    t |> equal(types_of("int a[4294967296];"), "error: t.c:1:7: an array size past 2^31 - 1 is not typed yet")
+    t |> equal(types_of("void f(int n) \{ int a[n]; \}"), "error: t.c:1:23: an array size other than an integer constant expression is not typed yet")
+    t |> equal(types_of("int a[4294967296];"), "error: t.c:1:7: an array size below 0 or past 2^31 - 1 is not typed yet")
+    t |> equal(types_of("int a[1 - 2];"), "error: t.c:1:7: an array size below 0 or past 2^31 - 1 is not typed yet")
     t |> equal(types_of("void f(int n, int (*a)[*]);"), "error: t.c:1:19: a variable-length array is not typed yet")
-    t |> equal(types_of("int a[] = \{[2 + 1] = 1\};"), "error: t.c:1:13: an array index other than an integer literal is not typed yet")
+    t |> equal(types_of("void f(int n) \{ int a[] = \{[n] = 1\}; \}"), "error: t.c:1:29: an array index other than an integer constant expression is not typed yet")
     t |> equal(types_of("int a[] = \{[1 ... 2] = 1\};"), "error: t.c:1:12: an array sized by this designated initializer is not typed yet")
     t |> equal(types_of("int a[][2] = \{[1][0] = 1\};"), "error: t.c:1:15: an array sized by this designated initializer is not typed yet")
     t |> equal(types_of("int s[] = L\"x\";"), "error: t.c:1:11: a prefixed string literal is not typed yet")
@@ -247,4 +253,9 @@ def test_branch_scopes(t : T?) {
                "int:32:true:int func:0::false")
     t |> equal(types_of("_Atomic struct S *p;"), "error: t.c:1:1: an _Atomic type is not typed yet")
     t |> equal(types_of("_Alignas(int) int x;"), "error: t.c:1:1: an _Alignas alignment is not typed yet")
+}
+
+[test(description = "a GNU binary literal sizes an array as its base-2 value")]
+def test_binary_size(t : T?) {
+    t |> equal(types_of("int a[0b11];"), "int:32:true:int array:0:3")
 }

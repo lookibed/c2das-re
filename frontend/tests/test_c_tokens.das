@@ -477,6 +477,36 @@ def test_range_two_files(t : T?) {
     t |> equal(placed("# 4 \"y.h\"\n"), "$@t.c:1:1")
 }
 
+[test(description = "C source read with a feature table answers the #if queries by it; a table that cannot be read is the unit's error, the tokens read and ended")]
+def test_feature_table(t : T?) {
+    var unit : CUnit
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#if __has_builtin(__builtin_expect)\nyes\n#else\nno\n#endif\n")
+    let clean = c_tokens_expand(unit, mem, "main.c", array<string>(), array<string>(), -1l, features_path("linux"))
+    t |> success(clean, unit.err)
+    t |> equal(c_spelling(unit, 0), "yes")
+    var bare = new PpMemoryProvider()
+    bare->add("main.c", "#if __has_builtin(__builtin_expect)\nyes\n#else\nno\n#endif\n")
+    t |> success(!c_tokens_expand(unit, bare, "main.c", array<string>(), array<string>(), -1l, "/no/such.defs"))
+    t |> equal(unit.err, "/no/such.defs: no such feature-query table")
+    t |> equal(c_spelling(unit, 0), "no")
+    t |> equal(unit.toks[length(unit.toks) - 1].kind, int(CTok.EOF))
+}
+
+[test(description = "the places in the file as read of tokens the reader makes: the second `:` of a split `::` keeps the first's, the end takes the last token's, after an expansion the call's `)`")]
+def test_read_places(t : T?) {
+    var unit : CUnit
+    let split = expanded_unit(unit, [("main.c", "int a;\n  a::b")])
+    t |> success(split, unit.err)
+    t |> equal("{unit.toks[4].read_file}:{unit.toks[4].read_line} {unit.toks[5].read_file}:{unit.toks[5].read_line}", "0:2 0:2")
+    let last = unit.toks[length(unit.toks) - 1]
+    t |> equal("{last.read_file}:{last.read_line}", "0:2")
+    let expanded = expanded_unit(unit, [("main.c", "#define E(x) x\nE(\n1)")])
+    t |> success(expanded, unit.err)
+    let end = unit.toks[length(unit.toks) - 1]
+    t |> equal("{end.read_file}:{end.read_line}", "0:3")
+}
+
 [test(description = "a _Pragma whose pragma the C-IR does not honour is refused at the operator, as a #pragma line is")]
 def test_pragma_operator_refused(t : T?) {
     t |> equal(expanded([("main.c", "void f(void);\n_Pragma(\"weak f\")\nvoid f(void) \{\}\n")]), "error: main.c:2:1: the pragma '#pragma weak f' is not parsed")

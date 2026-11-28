@@ -16,7 +16,7 @@ instead.** `REVIEW.das` follows only a `require` that names a file.
 never requires a native module - `crt`, `c_runtime` or one of its modules - directly or through
 what it requires; the frontend needs none, and a floating constant or anything else the C library
 would compute is computed in das.** Dumper C runs inside a daslang compile and in a web page,
-where no native module loads; `REVIEW.das` reports such a `require`.
+where no native module loads; `REVIEW.das` reports such a `require`. The exception, `include/tests/`, is the header set's test code, which compiles converted programs against the C runtime, not Dumper C.
 
 **A diff that adds a file under this folder adds a `.das`, a `.h` or a `.md` file, or a `.defs`
 table under `predefined/`, and writes

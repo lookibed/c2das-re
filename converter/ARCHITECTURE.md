@@ -7,8 +7,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
 
 ## 1. File charters
 
-- `cir.das` - the C-IR of `docs/c-ir-spec.md` as das values (`CirTu`, `CirType`, `CirDecl`,
-  `CirStmt`, `CirExpr`, one struct per spec table), the canonical writer `write_cir`, the
+- `cir.das` - the C-IR of `docs/c-ir-spec.md` as das values (`CirTu`, `CirType`, `CirDecl`, `CirStmt`, `CirExpr`, one struct per spec table), the canonical writer `write_cir`, the
   reader `read_cir`, `write_program` (the manifest of `docs/c-ir-spec.md` section 7), `write_cir_decl` (one
   declaration's bytes), `ident_of` (a file stem as an identifier), the pinned `CAST_KINDS`, the two
   dialects, `is_jmp_buf` (the dumper's opaque `jmp_buf` record, `JMP_BUF`), and the walks every pass shares (`each_stmt`, `each_expr`, `each_subexpr`, `below_casts`, `storage_root`). Nothing here knows clang or daslang syntax. A tree is owned through plain pointers and freed by one `delete` of its
@@ -62,6 +61,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   it. A key's presence is `key_exists`, since json_boost's `?[]` of a missing key is a non-null
   sentinel (`probes/test_stdlib.das`). Nothing here knows the C-IR or the emitter.
 - `cir_emit.das` - the steps after the dump: `cir_to_das` reads one unit's C-IR text and `tu_to_das` emits it under a sidecar and formats it, the emitter's or the reader's error otherwise; `pipeline.das` emits through it and the browser page of `web/ARCHITECTURE.md` section 8 runs it in wasm64. It requires neither `dumper_a` nor `cbind`.
+- `dumper_c.das` - Dumper C behind `--dumper c` (`ARCHITECTURE_DUMPER_C.md`): `dumper_c_tu`, the unit preprocessed by clang and its C-IR built and placed by `frontend/c_ir.das`; `dumper_c_main.das`, the child `pipeline.das` runs it in for `--dumper c`. `tests/test_dumper_c.das` holds it against Dumper A.
 - `pipeline.das` - `convert(c_path, out_dir, target[, clang, sidecar, param_writes, loops,
   first_member])`: read the sidecar (a `param_writes`, `loops` or `first_member` argument other than "" overrides
   the sidecar's key, one not a mode refused), dump under its `defines`, write the C-IR, read it back and rewrite it
@@ -96,7 +96,7 @@ normative design is `docs/very-detailed-plan.md` (sections 4 and 5) and the expe
   with a given compiler and flags and runs it once, with the program's arguments when given, the native side every differential test compares against.
 - `main.das` - the CLI (`daslib/clargs`): `c2das <file.c>... | --program <p.json> [--out] [--target]
   [--run] [--arg]... [--sidecar] [--param-writes in-place|copy] [--loops range|while] [--first-member
-  addr|reinterpret] [--layout source|source-cut|single]`. Several files are one program linked in their order, as are the files a manifest
+  addr|reinterpret] [--layout source|source-cut|single] [--dumper a|c]`. Several files are one program linked in their order, as are the files a manifest
   names; files beside `--program` are a usage error (exit 2). `--layout` chooses the modules of such
   a program (section 8): `source`, the default and the idiomatic form, a module per C file with
   every cycle one module of fragments; `source-cut`, the cycles cut by late binding; `single`, one

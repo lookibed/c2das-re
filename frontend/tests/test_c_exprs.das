@@ -91,36 +91,57 @@ def private statements(types : array<CirType>; st : CirStmt?; var out : array<st
     statements(types, st.body_s, out, marks)
 }
 
-// the C-IR of unit `text` (named `t.c`, `library` the own headers' folder) as lines joined by
-// ` ; `: each global's initializer and each function's statements; `error: ` and the builder's
-// error, or `parse error: `. With `full`, the marks of `shown`, every global as `G <name>:<type>`
-// (`extern` when it is one) with its initializer, and the type table last as `TABLE` and its keys
-def private ir_of(text : string; msvc : bool = false; full : bool = false; library : string = "") : string {
+// the C-IR of unit `text` (named `unit`, `library` the own headers' folder) as lines joined by
+// ` ; `: each global's initializer and each function's statements, with `names` every global's and
+// function's name and a function's parameters' too; `error: ` and the builder's error, or `parse
+// error: `. With `full`, the marks of `shown`, every global as `G <name>:<type>` (`extern` when it
+// is one) with its initializer, and the type table last as `TABLE` and its keys
+def private ir_of(text : string; msvc : bool = false; unit : string = "t.c"; names : bool = false; full : bool = false;
+                  library : string = "") : string {
     var p : CParser
-    c_parser_open_text(p, text, "t.c", msvc)
+    c_parser_open_text(p, text, unit, msvc)
+    return ir_listed(p, msvc, names, full, library)
+}
+
+// `ir_of` over C source `text` named `main.c`, read with macro expansion and no clang
+def private source_ir_of(text : string; full : bool = false) : string {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", text)
+    var p : CParser
+    c_parser_open_source(p, mem, "main.c", array<string>(), array<string>())
+    return ir_listed(p, false, false, full, "")
+}
+
+// the lines `ir_of` writes for the unit parser `p` opened
+def private ir_listed(var p : CParser; msvc, names, full : bool; library : string) : string {
     let u = c_unit(p)
     return "parse error: {p.err}" if (p.failed)
     var r = new CIr
     c_ir_open(*r, msvc ? target_llp64_msvc() : target_lp64_linux(), library)
     var out : array<string>
     if (c_ir_unit(*r, p, u)) {
-        for (d in r.b.tu.decls) {
+        for (d in r.tu.decls) {
             if (full && d.k == "global") {
-                out |> push("G {d.name}:{spelled(r.b.tu.types, d.t)}{d.is_extern ? " extern" : ""}={shown(r.b.tu.types, d.init, true)}")
+                out |> push("G {d.name}:{spelled(r.tu.types, d.t)}{d.is_extern ? " extern" : ""}={shown(r.tu.types, d.init, true)}")
+            } elif (names && d.k == "global") {
+                out |> push(d.init != null ? "{d.name}={shown(r.tu.types, d.init)}" : "{d.name}")
             } elif (d.k == "global" && d.init != null) {
-                out |> push("{d.name}={shown(r.b.tu.types, d.init)}")
+                out |> push("{d.name}={shown(r.tu.types, d.init)}")
             } elif (d.k == "func") {
-                statements(r.b.tu.types, d.body, out, full)
+                if (names) {
+                    out |> push("{d.name}(" + join([for (q in d.params); q.name], ",") + ")")
+                }
+                statements(r.tu.types, d.body, out, full)
             }
         }
         if (full) {
-            out |> push("TABLE " + join([for (ty in r.b.tu.types); c_type_key(ty)], " "))
+            out |> push("TABLE " + join([for (ty in r.tu.types); c_type_key(ty)], " "))
         }
     } else {
-        out |> push("error: {r.b.err}")
+        out |> push("error: {r.err}")
     }
     let listed = join(out, " ; ")
-    delete_tu(r.b.tu)
+    delete_tu(r.tu)
     unsafe {
         delete r
     }
@@ -183,21 +204,32 @@ def test_argument_promotions(t : T?) {
                "expr call<int>(FunctionToPointerDecay<func*>(printf); NoOp<char*>(ArrayToPointerDecay<char*>(str<char[3]>)), IntegralCast<int>(LValueToRValue<char>(c)), FloatingCast<double>(LValueToRValue<float>(f))) ; expr call<int>(FunctionToPointerDecay<func*>(h); IntegralCast<int>(LValueToRValue<char>(c)), FloatingCast<double>(LValueToRValue<float>(f)))")
 }
 
-[test(description = "__builtin_expect, the one builtin typed: called through a decay to its prototype, its arguments converted to long; its reference typed as clang types a builtin")]
+[test(description = "the builtins typed, __builtin_expect and __builtin_abort: called through a decay to its prototype, __builtin_expect's arguments converted to long; the reference typed as clang types a builtin")]
 def test_builtin(t : T?) {
     t |> equal(ir_of("void g(int x) \{ __builtin_expect(x, 0); \}"),
                "expr call<long>(FunctionToPointerDecay<func*>(__builtin_expect); IntegralCast<long>(LValueToRValue<int>(x)), IntegralCast<long>(0<int>))")
+    t |> equal(ir_of("void g(void) \{ __builtin_abort(); \}"), "expr call<void>(FunctionToPointerDecay<func*>(__builtin_abort); )")
 }
 
-[test(description = "literals: an integer literal's type by base, suffix and value under both dialects, character constants plain, escaped, wide and of plain unsigned char, floating constants by suffix")]
+[test(description = "literals: an integer literal's type by base, suffix and value under both dialects, character constants plain, escaped, wide and of plain unsigned char, a wide one of a numeric escape, floating constants by suffix")]
 def test_literals(t : T?) {
     t |> run("linux") @(t : T?) {
         t |> equal(ir_of("void g(void) \{ 2147483647; 2147483648; 0x80000000; 0xffffffffffffffff; 10u; 10l; 10ul; 07; 'a'; '\\xff'; L'b'; u'c'; U'd'; 1.5; 1.5f; 2.5L; \}"),
                    "expr 2147483647<int> ; expr 2147483648<long> ; expr 2147483648<unsigned int> ; expr 18446744073709551615<unsigned long> ; expr 10<unsigned int> ; expr 10<long> ; expr 10<unsigned long> ; expr 7<int> ; expr '97'<int> ; expr '255'<int> ; expr '98'<int> ; expr '99'<unsigned short> ; expr '100'<unsigned int> ; expr 0x1.8p+0<double> ; expr 0x1.8p+0<float> ; expr 0x1.4p+1<long double>")
     }
-    t |> run("msvc: long is 32 bits, wchar_t unsigned short") @(t : T?) {
+    t |> run("msvc: long is 32 bits, wchar_t unsigned short, an ll literal past long long a wrapped long long") @(t : T?) {
         t |> equal(ir_of("void g(void) \{ 2147483648; 4294967296; 0x80000000l; L'b'; \}", true),
                    "expr 2147483648<long long> ; expr 4294967296<long long> ; expr 2147483648<unsigned long> ; expr '98'<unsigned short>")
+        t |> equal(ir_of("void g(void) \{ 0xc000000080000000LL; 0xc000000080000000ULL; 0xc000000080000000; 0x7fffffffffffffffLL; \}", true),
+                   "expr -4611686016279904256<long long> ; expr 13835058057429647360<unsigned long long> ; expr 13835058057429647360<unsigned long long> ; expr 9223372036854775807<long long>")
+    }
+    t |> run("a prefixed constant's one octal or hexadecimal escape: a code unit, not a byte; one past its type's range refused") @(t : T?) {
+        t |> equal(ir_of("void g(void) \{ L'\\400'; U'\\x41'; \}"), "expr '256'<int> ; expr '65'<unsigned int>")
+        t |> equal(ir_of("void g(void) \{ L'\\400'; \}", true), "expr '256'<unsigned short>")
+        t |> equal(ir_of("void g(void) \{ U'\\x80000000'; \}"), "expr '2147483648'<unsigned int>")
+        t |> equal(ir_of("void g(void) \{ L'\\x80000000'; \}"), "error: t.c:1:16: the character constant L'\\x80000000' is not typed yet")
+        t |> equal(ir_of("void g(void) \{ L'\\4000'; \}"), "error: t.c:1:16: the character constant L'\\4000' is not typed yet")
+        t |> equal(ir_of("void g(void) \{ L'\\4a'; \}"), "error: t.c:1:16: the character constant L'\\4a' is not typed yet")
     }
 }
 
@@ -220,6 +252,61 @@ def test_statements(t : T?) {
                "g_s=1<int> ; null - - ; null - - ; if LValueToRValue<int>(x) - ; expr assign<int>(x, 2<int>) ; return 0<int> ; while LValueToRValue<int>(x) - ; expr postdec<int>(x) ; do 0<int> - ; expr postinc<int>(x) ; for lt<int>(LValueToRValue<int>(i), 2<int>) postinc<int>(i) ; i:int=0<int> ; null - - ; switch LValueToRValue<int>(x) - ; case 97c ; case 2 ; break - - ; default - - ; null - - ; label l ; goto l ; expr LValueToRValue<int>(x) ; return LValueToRValue<int>(x)")
 }
 
+// the places the builder gives unit `text`: each declaration's `name@file:line:col`, then its body's
+// statements' `kind@line:col`, the top level of each block in order
+def private places_of(text : string; source : bool = false) : string {
+    var p : CParser
+    if (source) {
+        var mem = new PpMemoryProvider()
+        mem->add("main.c", text)
+        c_parser_open_source(p, mem, "main.c", array<string>(), array<string>())
+    } else {
+        c_parser_open_text(p, text, "t.c")
+    }
+    let u = c_unit(p)
+    return "parse error: {p.err}" if (p.failed)
+    var r = new CIr
+    c_ir_open(*r, target_lp64_linux(), "")
+    var out : array<string>
+    if (c_ir_unit(*r, p, u)) {
+        out |> reserve(length(r.tu.decls))
+        for (d in r.tu.decls) {
+            out |> push("{d.name}@{d.loc.file}:{d.loc.line}:{d.loc.col}")
+            if (d.body != null) {
+                out |> reserve(length(out) + length(d.body.body))
+                for (st in d.body.body) {
+                    out |> push("{st.s}@{st.loc.line}:{st.loc.col}")
+                }
+            }
+        }
+    } else {
+        out |> push("error: {r.err}")
+    }
+    delete_tu(r.tu)
+    unsafe {
+        delete r
+    }
+    return join(out, " ")
+}
+
+[test(description = "places from the builder's own tokens: the file and line a line marker gives, the column the token stands at in the text; a declaration at its name, a statement at its first token, a GNU statement block used as a statement at its expression statement's")]
+def test_places(t : T?) {
+    t |> equal(places_of("# 7 \"s.c\"\nint  g;\nint f(int x) \{\n  x = 1;\n   (\{ x; \});\n\}\n"),
+               "g@s.c:7:6 f@s.c:8:5 expr@9:3 compound@10:4")
+}
+
+[test(description = "places from C source read with macro expansion: a node an expansion made at the outermost macro name, line and column, as clang's expansion location puts it, and every place in the file as read, `#line` aside, as Dumper A gives it")]
+def test_source_places(t : T?) {
+    t |> equal(places_of("#define SET(v) x = v\n#define DECL(n) int n;\nint g;\n  DECL(h)\nint f(int x) \{\n  SET(\n1);\n#line 50 \"q.c\"\n  x = 2;\n\}\n", true),
+               "g@main.c:3:5 h@main.c:4:3 f@main.c:5:5 expr@6:3 expr@9:3")
+}
+
+[test(description = "a macro expansion's parentheses are marked only around a shift or a bitwise operator, as Dumper A marks them; the source's own all")]
+def test_macro_parens(t : T?) {
+    t |> equal(source_ir_of("#define SQ(x) ((x) * (x))\n#define OR(a, b) ((a) | (b))\nint f(int a) \{ return SQ(a) + OR(a, 1) + (a); \}", true),
+               "return add<int>(add<int>(mul<int>(LValueToRValue<int>(a), LValueToRValue<int>(a)), bor<int>(LValueToRValue<int>(a), 1<int>)()), LValueToRValue<int>(a())) ; TABLE int:32:true:int func:0:0:false")
+}
+
 [test(description = "the table order: a declaration's type, then its initializer's node types before their operands', a body's expressions where they stand")]
 def test_table_order(t : T?) {
     var p : CParser
@@ -228,8 +315,8 @@ def test_table_order(t : T?) {
     var r = new CIr
     c_ir_open(*r, target_lp64_linux(), "")
     t |> success(c_ir_unit(*r, p, u))
-    t |> equal(join([for (ty in r.b.tu.types); c_type_key(ty)], " "), "int:8:false:char int:32:true:int void func:2::false int:16:true:short")
-    delete_tu(r.b.tu)
+    t |> equal(join([for (ty in r.tu.types); c_type_key(ty)], " "), "int:8:false:char int:32:true:int void func:2::false int:16:true:short")
+    delete_tu(r.tu)
     unsafe {
         delete r
     }
@@ -258,6 +345,21 @@ def test_refusals(t : T?) {
     t |> equal(ir_of("void g(void) \{ asm(\"nop\"); \}"), "error: t.c:1:16: this statement is not typed yet")
 }
 
+[test(description = "names as Dumper A gives them: a file static's <stem>__<name>, a digit stem led by _, a later declaration without static keeping it; a hoisted static's <fn>_<name>, numbered past a file-scope name, a local and an earlier hoisted static; a parameter and a local renamed past a block-scope extern or prototype of their name; every reference bound to its declaration's name")]
+def test_names(t : T?) {
+    t |> run("file statics") @(t : T?) {
+        t |> equal(ir_of("static int n; extern int n; static int f(void); int f(void) \{ return n; \}", false, "dir/9lives.c", true),
+                   "_9lives__n ; _9lives__f() ; _9lives__f() ; return LValueToRValue<int>(_9lives__n)")
+    }
+    t |> run("hoisted statics") @(t : T?) {
+        t |> equal(ir_of("int g_a; int g(int g_b) \{ static int a = 1; static int b; \{ static int a; \} int g_c; static int c; return a + b; \}", false, "t.c", true),
+                   "g_a ; g_a1=1<int> ; g_b1 ; g_a2 ; g_c1 ; g(g_b) ; null - - ; null - - ; null - - ; g_c:int=- ; null - - ; return add<int>(LValueToRValue<int>(g_a1), LValueToRValue<int>(g_b1))")
+    }
+    t |> run("locals and parameters past a block-scope extern or prototype") @(t : T?) {
+        t |> equal(ir_of("int x; int y(void); int f(int x) \{ int y = x; \{ extern int x; int y(void); return x + y(); \} \}", false, "t.c", true),
+                   "x ; y() ; f(x1) ; y1:int=LValueToRValue<int>(x1) ; null - - ; return add<int>(LValueToRValue<int>(x), call<int>(FunctionToPointerDecay<func*>(y); ))")
+    }
+}
 [test(description = "a block declaration of a function declared before rebinds its prototype for the calls in its scope, adding no declaration")]
 def test_block_prototype(t : T?) {
     t |> equal(ir_of("int f(); void g(void) \{ int f(double); f(1); \} void h(void) \{ f(1); \}"),
@@ -446,15 +548,15 @@ def test_operator_forms(t : T?) {
 
 [test(description = "the marks and the table: vol on a volatile dereference and subscript, paren on a parenthesized operand; a conditional's and a subscript's types enter the table before their operands', a builtin's entry unnamed")]
 def test_marks_and_order(t : T?) {
-    t |> equal(ir_of("void g(volatile int *vp) \{ *vp; \}", false, true), "expr LValueToRValue<int>(deref<int>(LValueToRValue<int*>(vp))^) ; TABLE void int:32:true:int ptr:1 func:0:2:false")
-    t |> equal(ir_of("volatile int a[2]; void g(void) \{ a[0]; \}", false, true),
+    t |> equal(ir_of("void g(volatile int *vp) \{ *vp; \}", full = true), "expr LValueToRValue<int>(deref<int>(LValueToRValue<int*>(vp))^) ; TABLE void int:32:true:int ptr:1 func:0:2:false")
+    t |> equal(ir_of("volatile int a[2]; void g(void) \{ a[0]; \}", full = true),
                "G a:int[2]=- ; expr LValueToRValue<int>(index<int>(ArrayToPointerDecay<int*>(a), 0<int>)^) ; TABLE int:32:true:int array:0:2 void func:2::false ptr:0")
-    t |> equal(ir_of("void g(int x) \{ (x); \}", false, true), "expr LValueToRValue<int>(x()) ; TABLE void int:32:true:int func:0:1:false")
-    t |> equal(ir_of("int g(void) \{ return (short)1 ? (char)2 : 3; \}", false, true),
+    t |> equal(ir_of("void g(int x) \{ (x); \}", full = true), "expr LValueToRValue<int>(x()) ; TABLE void int:32:true:int func:0:1:false")
+    t |> equal(ir_of("int g(void) \{ return (short)1 ? (char)2 : 3; \}", full = true),
                "return cond<int>(IntegralCast<int>(IntegralCast!<short>(1<int>)), IntegralCast<int>(IntegralCast!<char>(2<int>)), 3<int>) ; TABLE int:32:true:int func:0::false int:16:true:short int:8:false:char")
-    t |> equal(ir_of("int a[2]; int g(void) \{ return a[(char)1]; \}", false, true),
+    t |> equal(ir_of("int a[2]; int g(void) \{ return a[(char)1]; \}", full = true),
                "G a:int[2]=- ; return LValueToRValue<int>(index<int>(ArrayToPointerDecay<int*>(a), IntegralCast!<char>(1<int>))) ; TABLE int:32:true:int array:0:2 func:0::false ptr:0 int:8:false:char")
-    t |> equal(ir_of("void g(int x) \{ __builtin_expect(x, 0); \}", false, true),
+    t |> equal(ir_of("void g(int x) \{ __builtin_expect(x, 0); \}", full = true),
                "expr call<long>(FunctionToPointerDecay<func*>(__builtin_expect); IntegralCast<long>(LValueToRValue<int>(x)), IntegralCast<long>(0<int>)) ; TABLE void int:32:true:int func:0:1:false int:64:true:long func:3:3,3:false ptr:4 func:0::true")
 }
 
@@ -465,9 +567,9 @@ def test_walk_forms(t : T?) {
     t |> equal(ir_of("int x; int x = 1;"), "x=1<int>")
     t |> equal(ir_of("int f(double); int f(); void g(void) \{ f(); \}"), "error: t.c:1:40: {few}")
     t |> equal(ir_of("typedef int F(double); F f; void g(void) \{ f(); \}"), "error: t.c:1:44: {few}")
-    t |> equal(ir_of("void g(void) \{ extern int e; \}", false, true), "G e:int extern=- ; null - - ; TABLE void func:0::false int:32:true:int")
-    t |> equal(ir_of("int e; void g(void) \{ extern int e; \}", false, true), "G e:int=- ; null - - ; TABLE int:32:true:int void func:1::false")
-    t |> equal(ir_of("extern int x = 1;", false, true), "G x:int=1<int> ; TABLE int:32:true:int")
+    t |> equal(ir_of("void g(void) \{ extern int e; \}", full = true), "G e:int extern=- ; null - - ; TABLE void func:0::false int:32:true:int")
+    t |> equal(ir_of("int e; void g(void) \{ extern int e; \}", full = true), "G e:int=- ; null - - ; TABLE int:32:true:int void func:1::false")
+    t |> equal(ir_of("extern int x = 1;", full = true), "G x:int=1<int> ; TABLE int:32:true:int")
     t |> equal(ir_of("void g(int x) \{ l: \} void h(int x) \{ while (x) continue; for (x = 0; x < 2; x++) ; \}"),
                "label l ; null - - ; while LValueToRValue<int>(x) - ; continue - - ; for lt<int>(LValueToRValue<int>(x), 2<int>) postinc<int>(x) ; expr assign<int>(x, 0<int>) ; null - -")
     t |> equal(ir_of("void g(int x) \{ ((\{ x; \})); (void)(\{ x; \}); __extension__ (\{ x; \}); if (x) l: x = 1; \}"),
@@ -476,11 +578,11 @@ def test_walk_forms(t : T?) {
 
 [test(description = "the own headers' declarations: a library function, variable and definition bound for the unit; a name a later header declaration leaves untyped unbound")]
 def test_library_bindings(t : T?) {
-    t |> equal(ir_of("# 1 \"/lib/h.h\" 1\nint puts(const char *);\nextern int lib_v;\n# 2 \"t.c\" 2\nint f(void) \{ puts(\"x\"); return lib_v; \}\n", false, false, "/lib/"),
+    t |> equal(ir_of("# 1 \"/lib/h.h\" 1\nint puts(const char *);\nextern int lib_v;\n# 2 \"t.c\" 2\nint f(void) \{ puts(\"x\"); return lib_v; \}\n", library = "/lib/"),
                "expr call<int>(FunctionToPointerDecay<func*>(puts); NoOp<char*>(ArrayToPointerDecay<char*>(str<char[2]>))) ; return LValueToRValue<int>(lib_v)")
-    t |> equal(ir_of("# 1 \"/lib/h.h\" 1\nint lib_f(int);\nint lib_f(int) __attribute__((mode(DI)));\n# 2 \"t.c\" 2\nint f(void) \{ return lib_f(1); \}\n", false, false, "/lib/"),
+    t |> equal(ir_of("# 1 \"/lib/h.h\" 1\nint lib_f(int);\nint lib_f(int) __attribute__((mode(DI)));\n# 2 \"t.c\" 2\nint f(void) \{ return lib_f(1); \}\n", library = "/lib/"),
                "error: t.c:2:22: the identifier 'lib_f', which names no variable or function the builder knows, is not typed yet")
-    t |> equal(ir_of("# 1 \"/lib/h.h\" 1\nstatic int lib_def(int a) \{ return a; \}\n# 2 \"t.c\" 2\nint f(void) \{ return lib_def(2.5); \}\n", false, false, "/lib/"),
+    t |> equal(ir_of("# 1 \"/lib/h.h\" 1\nstatic int lib_def(int a) \{ return a; \}\n# 2 \"t.c\" 2\nint f(void) \{ return lib_def(2.5); \}\n", library = "/lib/"),
                "return call<int>(FunctionToPointerDecay<func*>(lib_def); FloatingToIntegral<int>(0x1.4p+1<double>))")
 }
 
@@ -493,6 +595,17 @@ def test_declared_qualifiers(t : T?) {
     t |> equal(ir_of("int * volatile p; void g(void) \{ p; \}"), "expr LValueToRValue<int*>(p~)")
 }
 
+[test(description = "a declaration's linkage clang rejects is invalid C: a static after a non-static declaration, a file-scope object with no storage class after a static one; an extern or a function after a static keeps its internal linkage")]
+def test_linkage_clash(t : T?) {
+    t |> equal(ir_of("static int k; int k;"), "error: t.c:1:19: a non-static declaration of 'k' after a static one is invalid C, which clang rejects")
+    t |> equal(ir_of("static int k; static int k; int k;"), "error: t.c:1:33: a non-static declaration of 'k' after a static one is invalid C, which clang rejects")
+    t |> equal(ir_of("int k; static int k;"), "error: t.c:1:19: a static declaration of 'k' after a non-static one is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(void) \{ extern int k; \} static int k;"), "error: t.c:1:43: a static declaration of 'k' after a non-static one is invalid C, which clang rejects")
+    t |> equal(ir_of("int f(void); static int f(void) \{ return 0; \}"), "error: t.c:1:25: a static declaration of 'f' after a non-static one is invalid C, which clang rejects")
+    t |> equal(ir_of("static int k = 1; extern int k; static int f(void); int f(void) \{ return k; \}", false, "u.c", true),
+               "u__k=1<int> ; u__f() ; u__f() ; return LValueToRValue<int>(u__k)")
+}
+
 [test(description = "a GNU binary literal is read in base 2 and typed as a hexadecimal or octal one is, past `int` into `unsigned int`; its suffixes as any literal's")]
 def test_binary_literals(t : T?) {
     t |> equal(ir_of("int x = 0b11; int y = 0B101; unsigned long z = 0b1ul; long long w = 0b11LL;"), "x=3<int> ; y=5<int> ; z=1<unsigned long> ; w=3<long long>")
@@ -502,4 +615,59 @@ def test_binary_literals(t : T?) {
     for (bad in ["09", "08u", "0b12", "0b2", "0x1g"]) {
         t |> equal(ir_of("int x = {bad};"), "parse error: t.c:1:9: invalid numeric constant '{bad}'", bad)
     }
+}
+
+[test(description = "a parenthesized callee calls what its name binds, as clang reads `(f)(1)`: its prototype counts the arguments, an old-style definition converts them; a block-scope function declaration with static storage is invalid C")]
+def test_paren_callee(t : T?) {
+    t |> equal(ir_of("int f(void); void g(void) \{ (f)(1); \}"), "error: t.c:1:29: a call with 1 arguments of a function whose prototype has 0 is invalid C, which clang rejects")
+    t |> equal(ir_of("int f(c) char c; \{ return c; \} int g(void) \{ return (f)(1.5) + f(1.5); \}"), "return IntegralCast<int>(LValueToRValue<char>(c)) ; return add<int>(call<int>(FunctionToPointerDecay<func*>(f); FloatingToIntegral<int>(0x1.8p+0<double>)), call<int>(FunctionToPointerDecay<func*>(f); FloatingToIntegral<int>(0x1.8p+0<double>)))")
+    t |> equal(ir_of("int f(void); void g(void) \{ static int f(void); \}"), "error: t.c:1:40: a function declared in a block with static storage is invalid C, which clang rejects")
+}
+
+// each declaration of unit `text` as `<name>` and ` static` when it is one, joined by ` ; `
+def private statics_of(text : string) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c")
+    let u = c_unit(p)
+    var r = new CIr
+    c_ir_open(*r, target_lp64_linux(), "")
+    let clean = !p.failed && c_ir_unit(*r, p, u)
+    let out <- clean ? [for (d in r.tu.decls); "{d.name}{d.is_static ? " static" : ""}"] : ["error: {p.failed ? p.err : r.err}"]
+    delete_tu(r.tu)
+    unsafe {
+        delete r
+    }
+    return join(out, " ; ")
+}
+
+[test(description = "a function's declaration and definition take the internal linkage an earlier `static` gave the name; `static; extern; static` stays valid")]
+def test_static_linkage_kept(t : T?) {
+    t |> equal(statics_of("static int f(void); int f(void) \{ return 0; \} int f(void);"), "t__f static ; t__f static ; t__f static")
+    t |> equal(ir_of("static int k; extern int k; static int k; int g(void) \{ return k; \}", false, "t.c", true), "t__k ; g() ; return LValueToRValue<int>(t__k)")
+}
+
+[test(description = "the names: a parenthesized character case label keeps its mark, a renamed local's name is taken for the next, a parameter renamed past a block extern under every statement form, a block prototype's parameter, a definition's name and block externs elsewhere taken by a hoisted static, typedef names not")]
+def test_names_more(t : T?) {
+    t |> equal(ir_of("void g(int x) \{ switch (x) \{ case ('a'): ; \} \}"), "switch LValueToRValue<int>(x) - ; case 97c ; null - -")
+    t |> equal(ir_of("int x; void f(void) \{ \{ extern int x; \} \{ int x = 1; \} \{ int x = 2; \} \}", false, "t.c", true), "x ; f() ; null - - ; x1:int=1<int> ; x2:int=2<int>")
+    let forms = fixed_array("if (x) \{ extern int x; \}", "while (x) \{ extern int x; \}", "do \{ extern int x; \} while (0);",
+                            "switch (x) \{ case 1: \{ extern int x; \} \}", "for (;;) \{ extern int x; \}", "(\{ extern int x; 0; \});",
+                            "switch (x) \{ default: \{ extern int x; \} \}", "l: \{ extern int x; \}")
+    for (form in forms) {
+        t |> success(find(ir_of("int x; int f(int x) \{ {form} return x; \}", false, "t.c", true), "f(x1)") >= 0, form)
+    }
+    t |> equal(ir_of("int f(void) \{ int g(int f_s); static int s; return s; \}", false, "t.c", true), "g(f_s) ; f_s1 ; f() ; null - - ; return LValueToRValue<int>(f_s1)")
+    t |> equal(ir_of("int f(void) \{ \{ typedef int f_s; \} static int s; return s; \}", false, "t.c", true), "f_s ; f() ; null - - ; return LValueToRValue<int>(f_s)")
+    t |> equal(ir_of("void f_s(void) \{\} int f(void) \{ static int s; return s; \}", false, "t.c", true), "f_s() ; f_s1 ; f() ; null - - ; return LValueToRValue<int>(f_s1)")
+    t |> equal(ir_of("void h(void) \{ extern int f_s; \} int f(void) \{ static int s; return s; \}", false, "t.c", true), "f_s ; h() ; null - - ; f_s1 ; f() ; null - - ; return LValueToRValue<int>(f_s1)")
+    t |> equal(ir_of("typedef int f_s; int f(void) \{ static int s; return s; \}", false, "t.c", true), "f_s ; f() ; null - - ; return LValueToRValue<int>(f_s)")
+}
+
+[test(description = "a macro expansion's parentheses are marked around each shift and bitwise operator, never around an assignment; an msvc `ll` literal past 64 bits is refused")]
+def test_macro_parens_more(t : T?) {
+    for (op in fixed_array("<<", ">>", "&", "^")) {
+        t |> success(find(source_ir_of("#define M(a) ((a) {op} 1)\nint f(int a) \{ return M(a) + 1; \}", true), ")()") >= 0, op)
+    }
+    t |> equal(source_ir_of("#define M(a) ((a) |= 1)\nint f(int a) \{ return M(a) + 1; \}", true), "return add<int>(assignbor<int>(a, 1<int>), 1<int>) ; TABLE int:32:true:int func:0:0:false")
+    t |> equal(ir_of("void g(void) \{ 0x1c000000080000000LL; \}", true), "error: t.c:1:16: the integer literal '0x1c000000080000000LL', which no type of its list holds, is not typed yet")
 }

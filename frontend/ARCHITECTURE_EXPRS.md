@@ -18,7 +18,8 @@ the walk: a variable from its declaration on, so its own initializer sees it), `
 `assign` with its operator, `cond`, `comma`, `call`, `index` (the base as the source writes it),
 `cast` for an explicit cast, and `sizeof_v` with Dumper A's size of the type (a scalar its width, a
 pointer and a function the pointer width, `long double` its 64 bits, an array its count of
-elements). Parentheses set `paren`; `__extension__` is its operand. A reference, a subscript and a
+elements). Parentheses set `paren` (a macro expansion's only around a shift or a bitwise operator,
+`ARCHITECTURE_NAMES.md` section 88); `__extension__` is its operand. A reference, a subscript and a
 dereference of a volatile-qualified type set `vol`.
 
 A reference to a function an old-style definition defined has the type `R ()`, as clang's reference
@@ -26,9 +27,10 @@ does, while its calls convert by the definition's promoted parameters (section 4
 with no prototype keeps the type and prototype of an earlier one of the name (clang's composite
 type), and a block declaration of a function declared before binds its prototype for the calls in
 its block, though it adds no declaration (`int f(); ... { int f(double); f(1); }` converts the
-argument to `double`). `__builtin_expect` is the one builtin function typed, only as a callee: its
-reference has the type clang gives a builtin, `<builtin fn type>` (`c_builtin_fn_type`, in the table
-`void (...)`, a type no declaration of gnu17 has), and its decay is to a pointer to its prototype `long (long, long)`.
+argument to `double`). The builtin functions typed are `__builtin_expect` and `__builtin_abort`
+(`BUILTIN_FUNCTIONS`), only as callees: a reference has the type clang gives a builtin, `<builtin
+fn type>` (`c_builtin_fn_type`, in the table `void (...)`, keyed apart), and its decay is to a
+pointer to its prototype, `long (long, long)` and `void (void)`.
 
 Refused, at the construct's place: an identifier no variable or function in scope names (an enum
 constant among them, until the Aggregates phase), a builtin other than as a callee, GNU's `?:` with
@@ -100,14 +102,17 @@ rank. Rank follows the spelling (`long` above `int` at one width, `long long` ab
 
 `c_fold` evaluates an integer constant expression (C11 6.6) over typed nodes: integer and character
 literals, integer casts, `sizeof`, the unary, binary, logical and conditional operators, each step
-held in its node's type (wrapped to the width, unsigned arithmetic for unsigned operands). A `case`
-label is folded so (its `v`; a GNU range is refused), and so is an index designator. A null pointer
-constant (`c_is_null`, 6.3.2.3p3) is an integer constant expression of value 0, or an explicit cast
-of one to `void *`. A floating constant cast at once to an integer type is an integer constant
-(6.6p6), its value truncated toward zero (`c_float_integer`), so `(int)0.0` is a null pointer
-constant. A `_Static_assert`'s condition is folded the same way where it stands, at file scope or in
-a block, and adds nothing to the C-IR: 0 is invalid C, and a condition the builder cannot fold yet
-is refused.
+held in its node's type (wrapped to the width, unsigned arithmetic for unsigned operands).
+`c_fold_node` types a parser expression and folds it: the unit's one evaluator, for a `case`
+label (its `v`; a GNU range is refused), an index designator, and through `CTypes.fold` an array
+size (`ARCHITECTURE_TYPES.md` section 26). A typed size expression adds pool types only, as Dumper
+A's table holds the folded array type and no node of its size. A null pointer constant
+(`c_is_null`, 6.3.2.3p3) is an integer constant expression of value 0, or an explicit cast of one
+to `void *`. A floating constant cast at once to an integer type is an integer constant (6.6p6),
+its value truncated toward zero (`c_float_integer`), so `(int)0.0` is a null pointer constant. A
+`_Static_assert`'s condition is folded the same way where it stands, at file scope or in a block,
+and adds nothing to the C-IR: 0 is invalid C, and a condition the builder cannot fold yet is
+refused.
 
 ## 42. Conversions to a slot's type {#c-exprs-slots}
 
@@ -142,7 +147,8 @@ is an `IntegralCast` over `1`). The slots:
 - a call's arguments: within a prototype's parameters each to its parameter's type; past them, or
   when the callee has no prototype, by the default argument promotions (6.5.2.2p6: promoted, `float`
   to `double`); a call by name of a function an old-style definition defined converts its arguments
-  to that definition's parameter types promoted, as clang does.
+  to that definition's parameter types promoted, as clang does. A name in parentheses (`(f)(1)`)
+  calls by name all the same: its prototype counts the arguments and its definition converts them.
 
 An explicit cast takes its operand as a value (to `void` too) and its kind from the two types:
 `NoOp` when they differ in qualifiers at their pointer and array levels at most (a function type's
@@ -154,13 +160,16 @@ kinds as above, `ToVoid`, `NullToPointer` for a null pointer constant integer to
 
 An integer literal takes the first type of its list that holds its value (6.4.4.1): decimal with no
 suffix `int`, `long`, `long long`; octal, hex or GNU binary (`0b`, read in base 2) with no suffix
-the signed and unsigned types of each rank in turn; `u`, `l`, `ll` and their combinations their own lists; the widths the dialect's. Its
-`v` is the decimal value. A character constant is an `int` of the one byte it holds, read as plain
+the signed and unsigned types of each rank in turn; `u`, `l`, `ll` and their combinations their own
+lists; the widths the dialect's. Its `v` is the decimal value. Under msvc an `ll` literal without `u` past `long long` is a `long long`
+of the wrapped value, as clang's MSVC compatibility types it (`0xc000000080000000LL` is
+-4611686016279904256). A character constant is an `int` of the one byte it holds, read as plain
 `char` (unsigned under both dialects); with `L` the dialect's `wchar_t` (`int`, msvc's
 `unsigned short`), with `u` `unsigned short`, with `U` `unsigned int`, of the one character it holds
-(`wide_units`: an octal or hex escape its whole value, `L'\x100'` 256, a universal character name
-and a UTF-8 sequence of the source their code point), refused past its type's range; both set
-`is_char`. A string literal is `char[N]` of its bytes, escapes decoded, a universal
+(`wide_units`: an octal or hex escape its whole value, a code unit and not a byte, `L'\x100'` and
+`L'\400'` 256, a universal character name and a UTF-8 sequence of the source their code point),
+refused past its type's range; both set `is_char`. A string literal is `char[N]` of its bytes,
+escapes decoded, a universal
 character name as its UTF-8 bytes, adjacent literals joined, the NUL appended; a prefixed one is
 refused. A floating constant is `float` with `f`, `long double` with `l`, else `double`, its `v` by
 section 45.
@@ -179,11 +188,11 @@ value. A `case` label's expression adds no type (Dumper A folds it from the tree
 The statements are Dumper A's shapes: a block's declarations as its statements (a local's `decl`, a
 hoisted `static` a `null` with the static in `decls` as a global named `<function>_<name>` before
 the function, an `extern` a `null`, a block function declaration nothing), `case`, `default` and a
-label as markers followed by the statement under them, a `for`'s declaration as a compound statement
-in `init_s`, an expression statement (and a `for`'s initializer and step, an `if`, `while`, `do` or
-`for` condition) made a value, a GNU statement expression used as a statement - through parentheses,
-`__extension__` and a cast to `void` - as its compound statement. Names are C.4's: the C-IR here
-keeps each declaration's own name, and the comparison sets names aside.
+label as markers followed by the statement under them, a `for`'s declaration as a compound
+statement in `init_s`, an expression statement (and a `for`'s initializer and step, an `if`,
+`while`, `do` or `for` condition) made a value, a GNU statement expression used as a statement - through
+parentheses, `__extension__` and a cast to `void` - as its compound statement. The names are
+`ARCHITECTURE_NAMES.md`'s.
 
 ## 45. Floating constants {#c-exprs-floats}
 

@@ -9,11 +9,26 @@ require daslib/strings_boost
 require c_parser public
 require ../converter/cir.das public
 
+//! What an identifier names where the walk stands: a variable or a function, its declared pool
+//! type, the parameter types an old-style definition's calls convert to, and whether its
+//! declaration has a prototype.
+struct CId {
+    t : int
+    is_function : bool
+    proto : bool
+    old_style : int     //!< the pool function type an old-style definition's calls convert by, -1 for none
+    builtin : bool      //!< a builtin function of `BUILTIN_FUNCTIONS`, referenced only as a callee
+    name : string       //!< the name a reference to it spells in the C-IR (`ARCHITECTURE_NAMES.md`)
+}
+
 //! The C-IR type table of one unit as Dumper A builds it (`ARCHITECTURE_TYPES.md`): every type a
 //! declaration reaches, once, in the order Dumper A's walk first uses it, each `spell` as clang
 //! spells it under the dialect. `pool` holds the types the builder has met, typedefs resolved, by
 //! the same structural key, a qualified type apart from its unqualified one; `c_types_use` interns
 //! a pool type into the table, qualifiers dropped, its parts first.
+//! Beside it, what the walk over the unit keeps: the identifiers in scope, the return type of the
+//! function being read, and the evaluator of an integer constant expression an array size spells
+//! (`c_exprs.das`'s).
 struct CTypes {
     tu : CirTu
     index : table<string; int>      //!< a table entry's key to its index
@@ -28,6 +43,22 @@ struct CTypes {
     declared : table<int; bool>     //!< the function names declared so far
     library_dir : string            //!< the own libc headers' folder, whose declarations add no type
     old_style : array<int>          //!< the promoted parameter types an old-style definition's type takes
+    ids : table<int; CId>           //!< an identifier's symbol to what it names where the walk stands
+    id_undo : array<tuple<sym : int; had : bool; was : CId>>
+    id_marks : array<int>
+    ret : int                       //!< the pool result type of the function being read
+    cases : table<int64; bool>      //!< the case values of the innermost switch read so far
+    tu_prefix : string              //!< the unit's file stem as an identifier, a file static's prefix
+    linkage_names : table<string; string>   //!< a name with internal linkage to its C-IR name
+    external_names : table<string>          //!< a name declared with external linkage
+    program_dir : string                    //!< the program root, `/` last; "" for none: every file but the own headers'
+    in_program_of : table<int; bool>        //!< per file name of the unit, whether its declarations are the program's
+    file_scope_names : table<string>        //!< every name declared at file scope or by a block-scope `extern` or prototype
+    hoisted_names : table<string>           //!< the names of the statics hoisted so far
+    fn_all_locals : table<string>           //!< the parameter and variable names of the function being read, renames included
+    fn_extern_names : table<string>         //!< the names its block-scope `extern` declarations and prototypes declare
+    fn_name : string                        //!< the C name of the function being read
+    fold : function<(var b : CTypes; var p : CParser; n : int; var v : int64&) : bool> //!< an integer constant expression's value; null for none
     prior : table<int; int>         //!< an ordinary name declared at file scope, or `extern`, to its (composite) pool type
     prototyped : table<int; bool>   //!< such a name whose function type has a prototype
     library_functions : table<int; int2>    //!< a function the own headers declare: its declaration and init-declarator
@@ -391,42 +422,21 @@ def private is_end(p : CParser; d : int) : bool {
     return at < 0 || p.ast.nodes[at].kind == CNode.D_NAME
 }
 
-// the value of node `n`, an integer literal in parentheses or not, as an array size or index (`what`);
-// -2 with the error set for any other node (an integer constant expression waits for constant
-// folding, a variable-length array is out of scope) and for a value past 2^31 - 1
-def private literal_value(var b : CTypes; var p : CParser; n : int; what : string) : int {
-    var at = n
-    while (p.ast.nodes[at].kind == CNode.PAREN) {
-        at = p.ast.nodes[at].a
-    }
-    if (p.ast.nodes[at].kind != CNode.INT) {
-        refuse(b, p, p.ast.nodes[n].tok, "an {what} other than an integer literal")
+// the value of integer constant expression node `n` (C11 6.6) as an array size or index (`what`),
+// through the unit's one evaluator (`fold`, `c_exprs.das`'s); -2 with the error set for any other
+// expression (a variable-length array is out of scope) and for a value below 0 or past 2^31 - 1
+[arch(at="ARCHITECTURE_TYPES.md#c-types-declarators")]
+def private constant_value(var b : CTypes; var p : CParser; n : int; what : string) : int {
+    var v = 0l
+    let folded = invoke(b.fold, b, p, n, v)
+    if (!folded) {
+        refuse(b, p, p.ast.nodes[n].tok, "an {what} other than an integer constant expression")
+        return -2
+    } elif (v < 0l || v > 2147483647l) {
+        refuse(b, p, p.ast.nodes[n].tok, "an {what} below 0 or past 2^31 - 1")
         return -2
     }
-    let spelled = to_lower(c_spelling(p.unit, p.ast.nodes[at].a))
-    var end = length(spelled)
-    peek_data(spelled) $(text) {
-        while (end > 0 && (text[end - 1] == uint8('u') || text[end - 1] == uint8('l'))) {
-            end--
-        }
-    }
-    let digits = slice(spelled, 0, end)
-    let hex = starts_with(digits, "0x")
-    let base = hex ? 16 : starts_with(digits, "0") ? 8 : 10
-    var value = 0l
-    for (ch in hex ? slice(digits, 2) : digits) {
-        let v = is_number(ch) ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : 99
-        if (v >= base) {
-            refuse(b, p, p.ast.nodes[n].tok, "the {what} '{c_spelling(p.unit, p.ast.nodes[at].a)}'")
-            return -2
-        }
-        value = value * int64(base) + int64(v)
-        if (value > 2147483647l) {
-            refuse(b, p, p.ast.nodes[n].tok, "an {what} past 2^31 - 1")
-            return -2
-        }
-    }
-    return int(value)
+    return int(v)
 }
 
 // the bytes of a UTF-8 encoding of code point `c`
@@ -506,7 +516,7 @@ def private initializer_count(var b : CTypes; var p : CParser; init, elem : int)
                 refuse(b, p, it.tok, "an array sized by this designated initializer")
                 return -2
             }
-            next = literal_value(b, p, desig.a, "array index")
+            next = constant_value(b, p, desig.a, "array index")
             return -2 if (next < 0)
         } elif (count == 0 && it.next < 0 && value == CNode.STRING && b.pool[elem].k == "int" && b.pool[elem].w == 8) {
             return string_bytes(b, p, p.ast.nodes[it.b].a, p.ast.nodes[it.b].b)
@@ -552,7 +562,7 @@ def c_declarator_type(var b : CTypes; var p : CParser; base, d : int; adjust : b
             refuse(b, p, n.tok, "a variable-length array")
             return -1
         }
-        let count = n.b >= 0 ? literal_value(b, p, n.b, "array size") : last ? initializer_count(b, p, init, base) : -1
+        let count = n.b >= 0 ? constant_value(b, p, n.b, "array size") : last ? initializer_count(b, p, init, base) : -1
         return -1 if (count == -2)
         return c_declarator_type(b, p, array_of(b, base, count), n.a, adjust, init)
     }
