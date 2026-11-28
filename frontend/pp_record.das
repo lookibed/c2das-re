@@ -339,7 +339,7 @@ def private ends_in_macro_name(var pp : Preprocessor; m, callee, lo, close : int
     return false if (tail.kind != int(PpTok.IDENTIFIER))
     let k = mac.function_like ? param_index(pp, callee, tail.sym) : -1
     return called_definition(pp, tail.sym) != -1 if (k < 0)
-    return true if (lo < 0 || mac.variadic && k == length(mac.params) - 1)
+    return true if (mac.variadic && k == length(mac.params) - 1)
     var a = lo
     for (_i in range(k)) {
         let end = arg_end(pp, a, close)
