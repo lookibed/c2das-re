@@ -755,6 +755,29 @@ def private function_names(var r : CIr; var p : CParser; name : string; f, body 
 
 // function definition `def_node`: its type (an old-style one's parameters promoted, as clang types
 // it), each parameter, then its body; the function's declaration after the statics its body hoists
+// the parameters of old-style definition `n`'s function declarator `f`, each typed by its
+// declaration list, into `typed` and `names`, and the promoted types its calls convert by into
+// `r.old_style`; false with the error set for one the builder does not type
+def private old_style_types(var r : CIr; var p : CParser; n : CNodeRec; f : int; var typed : array<int>; var names : array<string>) : bool {
+    var param = p.ast.nodes[f].b
+    while (param >= 0) {
+        let typing = p.ast.nodes[param].b
+        let old = declaration_of(p, n.c, typing)
+        var typed_by = p.ast.nodes[old].b
+        while (typed_by >= 0 && p.ast.nodes[typed_by].a != typing) {
+            typed_by = p.ast.nodes[typed_by].next
+        }
+        return false if (!c_plain_attributes(r, p, p.ast.nodes[typed_by].d))
+        let pt = c_parameter_type(r, p, p.ast.nodes[old].a, typing)
+        return false if (pt < 0)
+        typed |> push(pt)
+        names |> push(c_symbol_text(p.unit, p.ast.nodes[param].a))
+        r.old_style |> push(c_promoted(r, pt))
+        param = p.ast.nodes[param].next
+    }
+    return true
+}
+
 [arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
 def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     let n = p.ast.nodes[def_node]
@@ -765,24 +788,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     let old_style = p.ast.nodes[f].op == 2
     var typed : array<int>
     var names : array<string>
-    if (old_style) {
-        var param = p.ast.nodes[f].b
-        while (param >= 0) {
-            let typing = p.ast.nodes[param].b
-            let old = declaration_of(p, n.c, typing)
-            var typed_by = p.ast.nodes[old].b
-            while (typed_by >= 0 && p.ast.nodes[typed_by].a != typing) {
-                typed_by = p.ast.nodes[typed_by].next
-            }
-            return false if (!c_plain_attributes(r, p, p.ast.nodes[typed_by].d))
-            let pt = c_parameter_type(r, p, p.ast.nodes[old].a, typing)
-            return false if (pt < 0)
-            typed |> push(pt)
-            names |> push(c_symbol_text(p.unit, p.ast.nodes[param].a))
-            r.old_style |> push(c_promoted(r, pt))
-            param = p.ast.nodes[param].next
-        }
-    }
+    return false if (old_style && !old_style_types(r, p, n, f, typed, names))
     r.anchor_at = loc_of(p, name_tok(p, d, n.tok))
     return false if (!c_tag_definitions(r, p, n.a, false))
     let spelled = c_declarator_type(r, p, c_specifier_type(r, p, n.a), d, false)

@@ -154,7 +154,7 @@ def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
 }
 
 // whether token `tok` stands in a file under the own libc headers' folder
-def private in_library_file(b : CTypes; var p : CParser; tok : int) : bool => !empty(b.library_dir) && starts_with(c_file_name(p.unit, p.unit.toks[tok].file), b.library_dir)
+def private in_library_file(b : CTypes; p : CParser; tok : int) : bool => !empty(b.library_dir) && starts_with(c_file_name(p.unit, p.unit.toks[tok].file), b.library_dir)
 
 // the layout requirement of pool type `t` under msvc: a record's, through arrays; 0 for any other
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]

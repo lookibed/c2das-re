@@ -54,10 +54,9 @@ parser, the C-IR builder or the layout yet.
   and initializer-sized arrays, the typedef and tag scopes, a record's and an enum's entry with its
   layout. It writes `converter/cir.das`'s structures and requires no other converter module than
   `bit_units.das`, through `c_layout.das`.
-- `c_records.das` - struct, union and enum definitions built into types, a tag's use bound to its
-  definition, the walk that interns and anchors them, `dims` (`ARCHITECTURE_RECORDS.md`).
-  `tests/test_c_records.das` - the table order, anchors, tag uses, library records, enums under
-  both dialects, promotions, member access, `dims`, layout attributes, every refusal with its place.
+- `c_records.das` - records and enums built into types, tag uses bound, the anchoring walk, `dims`
+  (`ARCHITECTURE_RECORDS.md`); `tests/test_c_records.das` each of these under both dialects and
+  every refusal with its place.
 - `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
   constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 38 to 44).
 - `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
@@ -86,24 +85,19 @@ parser, the C-IR builder or the layout yet.
 - `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
   block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
   forms, and a unit with real bodies with its allocation probe.
-- `c_layout.das` - the record layout of a dialect (`ARCHITECTURE_LAYOUT.md`, the `msvc` rules in
-  `ARCHITECTURE_LAYOUT_MSVC.md`): a record's size, alignment and member bit offsets from a
-  description of its members, and the record written into a C-IR type with the `packed` verdict of
-  `converter/bit_units.das`, which it requires. It reads no C text: the type builder describes the
-  record.
-- `tests/test_c_layout.das` - every layout rule of both dialects with clang's numbers for a record
-  of `compare/layout/fixtures/rules.c` or `fixtures/msvc/rules_msvc.c`, every refusal with its
-  message, and the C-IR write with its `packed` verdicts. The comparison with clang over the
-  corpora is `compare/layout/`.
-- `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, the text the
-  parser tests read.
+- `c_layout.das` - a dialect's record layout (`ARCHITECTURE_LAYOUT.md`, msvc's in
+  `ARCHITECTURE_LAYOUT_MSVC.md`): size, alignment and member bit offsets from the type builder's
+  description of the members (no C text read), written into a C-IR type with the `packed` verdict
+  of `converter/bit_units.das`, which it requires. `tests/test_c_layout.das` - every rule of both
+  dialects with clang's numbers for a record of `compare/layout/fixtures/`, every refusal, the C-IR
+  write; the comparison with clang over the corpora is `compare/layout/`.
+- `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, for the parser tests.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and
   line-marker case, the places and spellings of expanded tokens, the preprocessor's errors; every expression and type-name form as a dumped tree, the ambiguities, every
   refusal and malformed input with its message, the nesting bound, and the allocation probes.
 - `tests/test_pp_lexer.das` - every token class and edge case of section 4, the placing through
-  splices, interning, and the no-allocation probe over a real header. The clang comparison lives
-  outside this folder: `compare/pp/` (section 2).
-- `tests/test_c_defines.das` - the parser and the reader, and that each table reads clean.
+  splices, interning, and the no-allocation probe over a real header; the clang comparison is
+  `compare/pp/` (section 2). `tests/test_c_defines.das` - the parser and the reader, each table clean.
 - `tests/_own_header_names.das` - `header_names`, the headers of `include/` as a program includes
   them, for the header tests of `include/tests/` and of `converter/tests/` (repo root); a `require`
   path cannot spell the folder `include`, a daslang keyword, so the helper is here.
