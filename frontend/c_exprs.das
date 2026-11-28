@@ -138,12 +138,21 @@ def c_rvalue(var r : CIr; var x : CirExpr?) : CirExpr? {
 // the pool type `int`
 def private int_t(var r : CIr) : int => c_builtin(r, "int")
 
-// the width of the bit-field `v` designates or reads (a member that is one, or its read), -1 for
-// any other value
+// the width of the bit-field `v` designates or reads, -1 for any other value: a member that is one,
+// its read, and as clang's `getSourceBitField` sees through them an assignment's left operand, a
+// comma's right one and a prefix `++` or `--` operand
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
 def private bitfield_width(r : CIr; v : CirExpr?) : int {
     let m = v.e == "cast" && v.cast_kind == "LValueToRValue" ? v.a : v
-    return -1 if (m == null || m.e != "member")
+    return -1 if (m == null)
+    if (m.e == "assign") {
+        return bitfield_width(r, m.a)
+    } elif (m.e == "comma") {
+        return bitfield_width(r, m.b)
+    } elif (m.e == "un" && (m.op == "preinc" || m.op == "predec")) {
+        return bitfield_width(r, m.a)
+    }
+    return -1 if (m.e != "member")
     let base_t = m.arrow ? r.pool[unq(r, m.base.t)].to : m.base.t
     let rec = unq(r, base_t)
     return -1 if (m.field >= length(r.pool[rec].fields))
@@ -317,6 +326,17 @@ def private truth_of(op : string; unsigned_operands : bool; a, b : int64) : bool
 def c_fold_node(var r : CIr; var p : CParser; n : int; var v : int64&) : bool {
     var x = c_expr(r, p, n)
     let folded = x != null && c_fold(r, x, v)
+    delete_expr(x)
+    return folded
+}
+
+//! The value of parser expression node `n`, an integer constant expression, into `v` and its pool
+//! type, unqualified, into `t`; false when it is none.
+[arch(at="ARCHITECTURE_EXPRS.md#c-exprs-constants")]
+def c_fold_node_type(var r : CIr; var p : CParser; n : int; var v : int64&; var t : int&) : bool {
+    var x = c_expr(r, p, n)
+    let folded = x != null && c_fold(r, x, v)
+    t = x != null ? r.unqualified[x.t] : -1
     delete_expr(x)
     return folded
 }

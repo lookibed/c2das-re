@@ -60,13 +60,14 @@ struct CTypes {
     fn_extern_names : table<string>         //!< the names its block-scope `extern` declarations and prototypes declare
     fn_name : string                        //!< the C name of the function being read
     fold : function<(var b : CTypes; var p : CParser; n : int; var v : int64&) : bool> //!< an integer constant expression's value; null for none
+    fold_type : function<(var b : CTypes; var p : CParser; n : int; var v : int64&; var t : int&) : bool> //!< the same with the expression's pool type, unqualified; null for none
     tag_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< a struct, union or enum specifier's pool type (`c_records.das`); null for none
     tags : table<int; int>                  //!< a tag's symbol to its pool record or enum type
     tag_undo : array<tuple<sym : int; was : int>>   //!< the tag bindings a block's end restores
     tag_marks : array<int>
     untyped_tags : table<int; string>       //!< a tag an own header defines that the builder does not type, and why
-    defined_tags : table<int; bool>         //!< every tag a definition has named so far, in any scope
-    tag_names : table<string; bool>         //!< the names records and enums have taken
+    defined_tags : table<string; bool>      //!< every `<kind> <tag>` a definition has named so far, in any scope
+    tag_names_of : table<int; string>       //!< a record or enum specifier with a body to the name it takes (`c_tag_names`)
     typedef_defs : table<int; int2>         //!< a typedef name's one file-scope declaration (declaration, declarator), which a record built at an earlier use reads
     tag_defs : table<int; int>              //!< a tag's symbol to its one file-scope definition, built at the tag's first use
     tag_built : table<int; int>             //!< a record or enum specifier with a body to the pool type it defines
@@ -77,6 +78,7 @@ struct CTypes {
     memo : LayoutMemo                       //!< the `packed` verdicts of the table's records
     anchor_at : CirLoc                      //!< the place of the declaration being read: a library record's anchor
     defining : int                          //!< above 0 while a definition is walked or built: where a specifier may define a tag
+    in_type_name : int                      //!< above 0 while a type name is read, where no specifier defines a tag
     next_tag : int                          //!< the identity the next record or enum takes
     err : string
 }
@@ -104,7 +106,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.tag_marks |> clear()
     b.untyped_tags |> clear()
     b.defined_tags |> clear()
-    b.tag_names |> clear()
+    b.tag_names_of |> clear()
     b.typedef_defs |> clear()
     b.tag_defs |> clear()
     b.tag_built |> clear()
@@ -115,6 +117,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.memo = LayoutMemo()
     b.anchor_at = CirLoc()
     b.defining = 0
+    b.in_type_name = 0
     b.next_tag = 0
     b.err = ""
 }
@@ -778,8 +781,11 @@ def c_param_type(var b : CTypes; var p : CParser; param : int) : int {
 
 //! The pool type of type-name node `t` (C11 6.7.7).
 def c_type_name_type(var b : CTypes; var p : CParser; t : int) : int {
+    b.in_type_name++
     let base = c_specifier_type(b, p, p.ast.nodes[t].a)
-    return c_declarator_type(b, p, base, p.ast.nodes[t].b, false)
+    let typed = c_declarator_type(b, p, base, p.ast.nodes[t].b, false)
+    b.in_type_name--
+    return typed
 }
 
 //! Bind typedef name `sym` to pool type `t` in the innermost scope.
@@ -837,6 +843,84 @@ def c_types_scope_close(var b : CTypes) {
         tat--
     }
     b.tag_undo |> resize(tag_mark)
+}
+
+//! `blk` run where the walk stands with the file scope's typedef names, tags and identifiers alone
+//! in view, every block's and prototype's bindings set aside and put back after: a record whose one
+//! file-scope definition a use in a block reached is built in the scope of its definition.
+def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
+    var typedefs_now : table<int; int>
+    var tags_now : table<int; int>
+    var ids_now : table<int; CId>
+    var ids_had : table<int; bool>
+    if (!empty(b.marks)) {
+        var at = length(b.undo) - 1
+        while (at >= b.marks[0]) {
+            let entry = b.undo[at]
+            if (!key_exists(typedefs_now, entry.sym)) {
+                typedefs_now[entry.sym] = b.typedefs?[entry.sym] ?? -1
+            }
+            if (entry.was < 0) {
+                b.typedefs |> erase(entry.sym)
+            } else {
+                b.typedefs[entry.sym] = entry.was
+            }
+            at--
+        }
+    }
+    if (!empty(b.tag_marks)) {
+        var at = length(b.tag_undo) - 1
+        while (at >= b.tag_marks[0]) {
+            let entry = b.tag_undo[at]
+            if (!key_exists(tags_now, entry.sym)) {
+                tags_now[entry.sym] = b.tags?[entry.sym] ?? -1
+            }
+            if (entry.was < 0) {
+                b.tags |> erase(entry.sym)
+            } else {
+                b.tags[entry.sym] = entry.was
+            }
+            at--
+        }
+    }
+    if (!empty(b.id_marks)) {
+        var at = length(b.id_undo) - 1
+        while (at >= b.id_marks[0]) {
+            let entry = b.id_undo[at]
+            if (!key_exists(ids_had, entry.sym)) {
+                ids_had[entry.sym] = key_exists(b.ids, entry.sym)
+                ids_now[entry.sym] = b.ids?[entry.sym] ?? CId()
+            }
+            if (entry.had) {
+                b.ids[entry.sym] = entry.was
+            } else {
+                b.ids |> erase(entry.sym)
+            }
+            at--
+        }
+    }
+    invoke(blk, b)
+    for (sym, t in keys(typedefs_now), values(typedefs_now)) {
+        if (t < 0) {
+            b.typedefs |> erase(sym)
+        } else {
+            b.typedefs[sym] = t
+        }
+    }
+    for (sym, t in keys(tags_now), values(tags_now)) {
+        if (t < 0) {
+            b.tags |> erase(sym)
+        } else {
+            b.tags[sym] = t
+        }
+    }
+    for (sym, had in keys(ids_had), values(ids_had)) {
+        if (had) {
+            b.ids[sym] = ids_now?[sym] ?? CId()
+        } else {
+            b.ids |> erase(sym)
+        }
+    }
 }
 
 //! Whether specifier list `specs` holds `typedef`.

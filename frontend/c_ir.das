@@ -27,6 +27,7 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
     r.id_marks |> clear()
     r.ret = -1
     r.fold = @@c_fold_node
+    r.fold_type = @@c_fold_node_type
     r.tag_type = @@c_tag_type
     r.tu_prefix = ""
     r.linkage_names |> clear()
@@ -393,14 +394,13 @@ def private variable(var r : CIr; var g : CirDecl?; sym : int; global, is_static
 }
 
 // the struct, union and enum definitions among declaration `decl`'s specifiers, walked
-// (`c_tag_definitions`): one with no tag that a typedef declares by its name alone is named by it,
-// and an own header's record is anchored at the declaration's place
-def private declaration_tags(var r : CIr; var p : CParser; decl : int; typedef_decl : bool) : bool {
+// (`c_tag_definitions`), each named as `c_tag_names` named it, and an own header's record anchored
+// at the declaration's place
+def private declaration_tags(var r : CIr; var p : CParser; decl : int) : bool {
     let n = p.ast.nodes[decl]
     let first = n.b >= 0 ? p.ast.nodes[n.b].a : -1
-    let hint = typedef_decl && first >= 0 && p.ast.nodes[first].kind == CNode.D_NAME ? name_of(p, first) : ""
     r.anchor_at = loc_of(p, first >= 0 ? name_tok(p, first, n.tok) : n.tok)
-    return c_tag_definitions(r, p, n.a, hint, false)
+    return c_tag_definitions(r, p, n.a, false)
 }
 
 // typedef name `sym` of pool type `t`, declared at `at`: bound, so a record its type reached first
@@ -426,7 +426,7 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
     let typedef_decl = c_declares_typedef(p, n.a)
     let is_static = has_storage(p, n.a, CTok.STATIC)
     let is_extern = has_storage(p, n.a, CTok.EXTERN)
-    return false if (!declaration_tags(r, p, decl, typedef_decl))
+    return false if (!declaration_tags(r, p, decl))
     if (n.b < 0) {
         return c_specifier_type(r, p, n.a) >= 0
     }
@@ -706,7 +706,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         }
     }
     r.anchor_at = loc_of(p, name_tok(p, d, n.tok))
-    return false if (!c_tag_definitions(r, p, n.a, "", false))
+    return false if (!c_tag_definitions(r, p, n.a, false))
     let t = c_declarator_type(r, p, c_specifier_type(r, p, n.a), d, false)
     r.old_style |> clear()
     return false if (!c_tag_complete(r, p))
@@ -792,9 +792,7 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
     let is_def = n.kind == CNode.FUNC_DEF
     return if (n.kind != CNode.DECL && !is_def)
     let typedef_decl = !is_def && c_declares_typedef(p, n.a)
-    let first = n.b >= 0 && !is_def ? p.ast.nodes[n.b].a : -1
-    let hint = typedef_decl && first >= 0 && p.ast.nodes[first].kind == CNode.D_NAME ? name_of(p, first) : ""
-    if (!c_tag_definitions(r, p, n.a, hint, true)) {
+    if (!c_tag_definitions(r, p, n.a, true)) {
         library_tags_untyped(r, p, n.a)
         r.err = ""
     }
@@ -843,6 +841,7 @@ def c_ir_unit(var r : CIr; var p : CParser; u : int) : bool {
     r.tu_prefix = ident_of(slice(r.tu.tu, 0, max(find(r.tu.tu, "."), 0)))
     collect_file_scope_names(r, p, u)
     c_tag_lookahead(r, p, u)
+    c_tag_names(r, p, u)
     var none : array<CirStmt?>
     var at = p.ast.nodes[u].a
     while (empty(r.err) && at >= 0) {
