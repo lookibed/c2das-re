@@ -10,6 +10,7 @@ require ../pp/pp_macros.das
 require ../../frontend/c_defines.das
 require ../../frontend/pp_lexer.das
 require ../../frontend/pp_directives.das
+require ../../frontend/pp_record.das
 require ../../converter/tiers.das
 require ../../converter/dumper_a.das
 
@@ -1023,4 +1024,40 @@ def test_run_pp5_command_line(t : T?) {
     let fixtures <- pp5_corpus_units(getcwd(), "fixtures", error)
     t |> equal(error, "")
     t |> success(has_value([for (u in fixtures); base_name(u)], "p9_fn_macros.c"), "{length(fixtures)} fixture units")
+}
+
+// the stray copies among the copies the handed-out token is in
+def private stray_copies(var pp : Preprocessor) : int {
+    var stray = 0
+    pp_each_copy(pp, pp.tok.copy) $(call, k) {
+        stray += pp5_stray_copy(pp, call, k) ? 1 : 0
+    }
+    return stray
+}
+
+[test(description = "a stray copy is a source token outside the stretch of the argument it is a copy of: a token of the argument is none; a source token after the call carrying the argument's copy is one, after an argument a directive splits too; a token of a macro body is none")]
+def test_pp5_stray_copy(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#define W(x) x\n#define B(y) [y]\nW(a) b\nW(c\n#define N\nd) e B(f)\n")
+    var pp : Preprocessor
+    t |> success(pp_expand_start(pp, mem, "main.c", array<string>(), array<string>(), 1000000000l))
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "a")
+    t |> success(pp_is_copy_of(pp, pp.tok.copy, 0, 0))
+    t |> equal(stray_copies(pp), 0)
+    let copy_of_a = pp.tok.copy
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "b")
+    t |> equal(stray_copies(pp), 0)
+    pp.tok.copy = copy_of_a
+    t |> equal(stray_copies(pp), 1)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "c")
+    let copy_of_c = pp.tok.copy
+    t |> equal(stray_copies(pp), 0)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "d")
+    t |> equal(stray_copies(pp), 0)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "e")
+    pp.tok.copy = copy_of_c
+    t |> equal(stray_copies(pp), 1)
+    t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "[")
+    pp.tok.copy = copy_of_a
+    t |> equal(stray_copies(pp), 0)
 }

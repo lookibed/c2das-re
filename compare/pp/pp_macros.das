@@ -263,6 +263,17 @@ struct private RecordSide {
 // the canonical path of file `file` of the record, "" for none
 def private path_of(side : RecordSide; file : int) : string => file >= 0 && file < length(side.paths) ? side.paths[file] : ""
 
+//! Whether the handed-out token, read as a copy of argument `k` of call `call`, is a stray copy: a
+//! token spelled in the source outside that argument's stretch of the file, which no substitution
+//! of the argument can have made. A token of a macro body is none.
+[arch(at="ARCHITECTURE.md#pp5")]
+def pp5_stray_copy(pp : Preprocessor; call, k : int) : bool {
+    return false if (pp.tok.spelled != PpSpelled.source)
+    let arg & = unsafe(pp.expansion.call_args[pp.expansion.calls[call].first_arg + k])
+    let tok & = unsafe(pp.tok.tok)
+    return arg.from >= 0 && arg.file == tok.file && (tok.offset < arg.from || tok.offset >= arg.to)
+}
+
 // the unit read by the record with the table, the own headers and the unit's own defines and folders
 def private read_record(var side : RecordSide; unit : string; entries, search, defines, dirs : array<string>; var result : Pp5Result) {
     var our_entries := entries
@@ -276,12 +287,8 @@ def private read_record(var side : RecordSide; unit : string; entries, search, d
         pp_each_copy(side.pp, side.pp.tok.copy) $(call, k) {
             let key = int64(call) * 4096l + int64(k)
             side.copied |> insert(key)
-            if (side.pp.tok.spelled == PpSpelled.source && !key_exists(side.stray, key)) {
-                let arg & = unsafe(side.pp.expansion.call_args[side.pp.expansion.calls[call].first_arg + k])
-                let tok & = unsafe(side.pp.tok.tok)
-                if (arg.from >= 0 && arg.file == tok.file && (tok.offset < arg.from || tok.offset >= arg.to)) {
-                    side.stray[key] = "'{pp_token_spelling(side.pp)}' at {tok.line}:{tok.col}"
-                }
+            if (!key_exists(side.stray, key) && pp5_stray_copy(side.pp, call, k)) {
+                side.stray[key] = "'{pp_token_spelling(side.pp)}' at {side.pp.tok.tok.line}:{side.pp.tok.tok.col}"
             }
         }
     }
