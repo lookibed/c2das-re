@@ -572,12 +572,15 @@ def pp_start(var pp : Preprocessor; var provider : PpFileProvider?; main : strin
 def private skipping(pp : Preprocessor) : bool => !empty(pp.conds) && !pp.conds[length(pp.conds) - 1].active
 
 //! the current token consumed: the lexer diagnostics raised up to it marked with the group that
-//! takes it, skipped or read - a token read past a directive's line is consumed after the directive
+//! takes it, skipped or read - a token read past a directive's line is consumed after the directive -
+//! and placed at their presumed line and file while their file is still the one read
 [arch(at="ARCHITECTURE_PP.md#pp-diags")]
 def private consumed(var pp : Preprocessor) {
     let skipped = skipping(pp)
     for (i in range(pp.lexer_diags_seen, length(pp.lx.diags))) {
         pp.lx.diags[i].skipped = skipped
+        pp.lx.diags[i].pname = pp.state.pname
+        pp.lx.diags[i].pline = presumed_line(pp, pp.lx.diags[i].line)
     }
     pp.lexer_diags_seen = length(pp.lx.diags)
 }

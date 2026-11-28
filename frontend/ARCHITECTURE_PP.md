@@ -229,5 +229,8 @@ reports nothing in it - so a bad byte, or an unterminated comment, in `#if 0` is
 unit, and a reader that refuses a unit with a lexer diagnostic passes over a `skipped` one. The
 token after a directive's line is read before the directive is done (section 5) and consumed after
 it, so it is marked by the group the directive opens or closes: the line after `#if 0` is skipped,
-the line after its `#else` is not. An `#include` consumes the token after its line before the
-included file opens, so that token's diagnostics are marked in the file that read it.
+the line after its `#else` is not. The same mark places the diagnostic at its presumed line and
+file (`pline`, `pname`, as a directive diagnostic and a token carry them): every token is consumed
+while its file is the one read - the end of a file before the file closes, the token after an
+`#include` line before the included file opens - so a diagnostic keeps its file's `#line` though
+the read that met it goes on past the file's end into its includer.

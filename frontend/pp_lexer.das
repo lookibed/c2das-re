@@ -99,6 +99,8 @@ struct PpDiag {
     col : int
     what : string
     skipped : bool      //!< met in a group the directive layer skips, which clang scans for directives alone and does not diagnose
+    pname : int         //!< the presumed file name `#line` gives the place, an index of the directive layer's `names`
+    pline : uint        //!< the presumed line; both the directive layer's to set, 0 under the lexer alone
 }
 
 //! The lexer over one file at a time: `pp_open` hands it the file's bytes, `pp_next` reads one token

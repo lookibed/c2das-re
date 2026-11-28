@@ -795,3 +795,14 @@ def test_lexer_diags_in_skipped_groups(t : T?) {
                                        "2:1:3 invalid UTF-8: byte 255 | 0:14:1 unterminated /* comment skipped"))
     t |> equal(diagnostics(pp), "E 13:2 unterminated conditional directive")
 }
+
+[test(description = "a lexer diagnostic carries the presumed line and file #line gives its place, kept when the header it was met in closes in the same read, and the includer's for the token after an #include line")]
+def test_lexer_diag_presumed_place(t : T?) {
+    var pp <- started([("main.c", "#line 20 \"m.c\"\n#include \"h.h\"\n\xff z\n"), ("h.h", "#line 50 \"p.h\"\nh\n/* open")])
+    t |> success(pp_next_token(pp))
+    t |> equal(pp_token_spelling(pp), "h")
+    t |> success(pp_next_token(pp))
+    t |> equal(pp_token_spelling(pp), "\xff")
+    let shown <- [for (d in pp.lx.diags); "{pp.names[d.pname]}:{int64(d.pline)} {d.line}:{d.col} {d.what}"]
+    t |> equal(join(shown, " | "), "m.c:21 3:1 invalid UTF-8: byte 255 | p.h:51 3:1 unterminated /* comment")
+}
