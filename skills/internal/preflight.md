@@ -23,7 +23,7 @@ lint gate with); a folder of house `.das` code outside that list is a defect of 
 
 | Gate | What it runs | Red means |
 |---|---|---|
-| env | `scripts/verify_daslang.sh`, then `scripts/fetch_dasflex.sh` (dasFlex into `fetch/dasFlex/` at its `VERSIONS.md` pin, the module folder `das` loads) | the toolchain lacks a part, `DASLANG_ROOT` is behind the `VERSIONS.md` pin, or the dasFlex checkout has local changes |
+| env | `scripts/verify_daslang.sh`; `$PATH_TO_LIBCLANG/bin/clang --version` equal to the `libclang:` line of `VERSIONS.md` (every clang oracle reads that clang's dump, and another version's dump differs: a wrong clang shows up as fake oracle differences); `fetch/dasFlex` no symlink, then `scripts/fetch_dasflex.sh` (dasFlex into `fetch/dasFlex/` at its `VERSIONS.md` pin, the module folder `das` loads); under the tests lane also `lua/fetch.sh`, so a missing Lua fetch stops the run before the first suite, not at the last | the toolchain lacks a part, `DASLANG_ROOT` is behind the `VERSIONS.md` pin, or the dasFlex checkout has local changes |
 | native | `scripts/build_crt.sh` | `dasCRuntime/` (the `crt` module) does not build against `DASLANG_ROOT` |
 | untracked | `git ls-files --others --exclude-standard` | an untracked file exists: commit it, ignore it with a reason, or delete it |
 | format | `utils/das-fmt/dasfmt.das -- --verify` per `.das` file of every `.das` folder outside `fetch/` and `work/`; the first unformatted file is named | a file is not formatted: run the formatter (MCP `format_file` or the CLI) |
@@ -33,7 +33,7 @@ lint gate with); a folder of house `.das` code outside that list is a defect of 
 | md-ascii | added lines of every `REVIEW*.md`, `ARCHITECTURE*.md`, `CLAUDE.md` and `AGENTS.md` in the tree and of `skills/internal/*.md` (`docs/` is never checked) | an em-dash, arrow or ellipsis in one of them |
 | review-md | `utils/internal/review-md/main.das -- --base <base>` | a `REVIEW.das` gate of a touched folder fired |
 | criteria | `metrics/criteria.das -- --report --delta-ref <base>`: prints the readability criteria table of the committed `metrics/criteria_linux.json`, its delta against the base's, and a `stale:` line per sample input that measures differently now | the capture is missing or unreadable; a stale sample or a fallen percentage is reported, never red: re-record with `scripts/run_criteria.sh` |
-| tests | `dastest -- --test <suite> --failures-only` per suite, `--jobs` suites at once, the isolated suites under `--isolated-mode`; every suite runs before the lane fails | a suite is red: the failing test is fixed or its expectation corrected |
+| tests | `dastest -- --test <suite> --failures-only` per suite, `--jobs` suites at once, the isolated suites under `--isolated-mode`, a suite listed in `suite_timeouts` (`PREFLIGHT_SUITE_TIMEOUTS`, `suite=seconds`) under that whole-run `--timeout` instead of dastest's 1200 s - `compare/tests=3600`: its real-project conversions take 13 minutes alone on a loaded box and its files share a work folder, so it cannot run isolated; every suite runs before the lane fails | a suite is red: the failing test is fixed or its expectation corrected |
 
 A red gate is fixed and re-run alone with `--only`; the full run happens once per PR. The
 suites under `suites/` (c-testsuite, torture, csmith) are not preflight gates: their runners

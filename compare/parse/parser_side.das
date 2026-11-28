@@ -16,14 +16,14 @@ require ../../frontend/c_parser.das
 def private nd(p : CParser; n : int) : CNodeRec => p.ast.nodes[n]
 
 //! The place token `t` stands at.
-def token_place(var p : CParser; t : int) : Place {
+def token_place(p : CParser; t : int) : Place {
     let tok = p.unit.toks[t]
     return Place(file = c_file_name(p.unit, tok.file), line = tok.line, col = tok.col)
 }
 
-def private at_text(var p : CParser; n : int) : string => place_text(token_place(p, nd(p, n).tok))
+def private at_text(p : CParser; n : int) : string => place_text(token_place(p, nd(p, n).tok))
 
-def private symbol(var p : CParser; s : int) : string => s < 0 ? "" : pp_symbol_text(p.unit.lx, s)
+def private symbol(var p : CParser; s : int) : string => s < 0 ? "" : c_symbol_text(p.unit, s)
 
 //! The value of the integer constant spelled `spelling` in decimal, as clang writes it; "?" for a
 //! spelling past 64 bits or not an integer constant.
@@ -433,7 +433,7 @@ def private declarator_line(var p : CParser; specs, id : int; is_typedef : bool;
 }
 
 // a line at token `tok`'s place with text `text`
-def private line_at(var p : CParser; tok : int; text : string) : FormLine => FormLine(file = token_place(p, tok).file, text = text)
+def private line_at(p : CParser; tok : int; text : string) : FormLine => FormLine(file = token_place(p, tok).file, text = text)
 
 // the token of the name of the tag whose keyword is token `keyword`, past any attributes; -1 for none
 def private tag_name_token(p : CParser; keyword : int) : int {
@@ -570,7 +570,7 @@ def private bodies_in_order(var p : CParser; bodies : array<int>; var lines : ar
 }
 
 // a note per body of `bodies`, which the oracle cannot compare, for `reason`
-def private note_bodies(var p : CParser; bodies : array<int>; reason : string; var lines : array<FormLine>) {
+def private note_bodies(p : CParser; bodies : array<int>; reason : string; var lines : array<FormLine>) {
     lines |> reserve(length(lines) + length(bodies))
     for (b in bodies) {
         lines |> push(FormLine(file = token_place(p, nd(p, b).tok).file, note = reason))
