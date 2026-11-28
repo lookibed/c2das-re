@@ -4,6 +4,7 @@ require dastest/testing_boost public
 require strings
 require daslib/strings_boost
 require math
+require daslib/cmp
 require ../pp_expand.das
 
 //! `frontend/pp_expand.das`: macro expansion over in-memory files - object-like and function-like
@@ -65,15 +66,15 @@ def test_function_like(t : T?) {
     t |> equal(expanded("#define g(x) x\n#define EMPTY\ng EMPTY (1)\n").out, "g ( 1 )")
 }
 
-[test(description = "the number of arguments: an empty argument, f() of a macro of no parameter, and too few or too many - clang's error, the name handed out and the call dropped")]
+[test(description = "the number of arguments: an empty argument, f() of a macro of no parameter, and too few or too many - clang's error, the name handed out and the call dropped; a call the end of the unit cuts off hands out nothing")]
 def test_argument_count(t : T?) {
     t |> equal(expanded("#define z() Z\n#define one(a) [a]\n#define two(a,b) a+b\nz() z( ) one() two(,) one((,))\n").out, "Z Z [ ] + [ ( , ) ]")
     let bad = expanded("#define z() Z\n#define two(a,b) a+b\nz(1) two(1) two(1,2,3) after\n")
     t |> equal(bad.out, "z two two after")
     t |> equal(bad.diags, "E 3:1 too many arguments provided to function-like macro invocation | E 3:6 too few arguments provided to function-like macro invocation | E 3:13 too many arguments provided to function-like macro invocation")
-    let open = expanded("#define f(x) x\nf(1, 2\n")
-    t |> equal(open.out, "f")
-    t |> equal(open.diags, "E 2:1 unterminated function-like macro invocation")
+    let open = expanded("#define f(x) x\na f(1, 2\n")
+    t |> equal(open.out, "a")
+    t |> equal(open.diags, "E 2:3 unterminated function-like macro invocation")
 }
 
 [test(description = "the arguments of a call in a directive line end with the line: an unterminated call there is clang's error")]
@@ -369,13 +370,18 @@ def test_builtin_edges(t : T?) {
     t |> success(year >= 2025, date)
 }
 
-[test(description = "_Pragma's operand keeps a backslash before any character but \\ and \"; a missing ( or ) is clang's error")]
+[test(description = "_Pragma's operand keeps a backslash before any character but \\ and \"; malformed, it is clang's error and the token read in place of the (, the string or the ) is handed out, as clang recovers")]
 def test_pragma_operator_edges(t : T?) {
     var pp <- started([("main.c", "_Pragma(\"a\\nb\") z\n")])
     t |> equal(stream(pp), "z")
     t |> equal(join([for (p in pp.pragmas); p.text], " / "), "a\\nb")
-    t |> equal(expanded("_Pragma(\"x\" y) z\n").diags, "E 1:1 _Pragma takes a parenthesized string literal")
-    t |> equal(expanded("_Pragma x \"y\") z\n").diags, "E 1:1 _Pragma takes a parenthesized string literal")
+    let malformed = "E 1:1 _Pragma takes a parenthesized string literal"
+    for (text, out in ["_Pragma(\"x\" y) z\n", "_Pragma \"x\" z\n", "_Pragma x \"y\") z\n", "_Pragma(once) x\n", "_Pragma() x\n", "_Pragma(a\nb) x\n", "_Pragma(\"x\"", "_Pragma"],
+                      ["y ) z", "\"x\" z", "x \"y\" ) z", "x", "x", "b ) x", "", ""]) {
+        let r = expanded(text)
+        t |> equal(r.out, out, text)
+        t |> equal(r.diags, malformed, text)
+    }
 }
 
 [test(description = "in an #if line an argument ending with defined does not swallow the replacement's next token: F(defined) X reads as defined X, as clang reads it")]
@@ -459,6 +465,55 @@ def test_paste_name_allocates_no_string(t : T?) {
     t |> equal(int(string_heap_allocation_count()) - before, 0)
 }
 
+// the pragma ledger of `main.c` holding `text`: each pragma's text and pack entry's alignment at the
+// count of tokens handed out before it, in the order done, then the stream
+def private pragma_places(text : string) : string {
+    var pp <- started([("main.c", text)])
+    let out = stream(pp)
+    var places <- [for (p in pp.pragmas); (p.emitted, p.text)]
+    places |> push_from([for (p in pp.packs); (p.emitted, "pack {p.current}")])
+    sort(places) <| cmp_by(_._0)
+    let ledger = join([for (p in places); "{p._1}@{p._0}"], " / ")
+    return "{ledger} || {out}"
+}
+
+[test(description = "_Pragma's operand is read with macro expansion, as clang reads it: a macro naming the string, or one that stringifies it")]
+def test_pragma_operand_expanded(t : T?) {
+    t |> equal(pragma_places("#define STRINGIFY(a) #a\n#define DIAG(x) _Pragma(STRINGIFY(GCC diagnostic x))\nDIAG(push) y1\n"), "GCC diagnostic push@0 || y1")
+    t |> equal(pragma_places("#define S \"pack(1)\"\na _Pragma(S) z\n"), "pack 1@1 || a | z")
+    t |> equal(expanded("#define S \"pack(1)\"\n_Pragma(S) z\n").diags, "")
+}
+
+[test(description = "_Pragma in a macro argument is done at the rescan, at its place in the stream (C11 6.10.3.4p3): once per use of the argument, the token after it starting a line, none in an argument # or ## takes as written")]
+def test_pragma_in_argument(t : T?) {
+    let wrap = "#define WRAP(x) x\nWRAP(struct A\{char c; int i;\}; _Pragma(\"pack(1)\") struct B\{char c; int i;\};)\n"
+    t |> equal(pragma_places(wrap), "pack 1@11 || struct A \{ char c ; int i ; \} ; | struct B \{ char c ; int i ; \} ;")
+    t |> equal(pragma_places("#define TWICE(x) x x\nTWICE(_Pragma(\"pack(8)\") a) w\n"), "pack 8@0 / pack 8@1 || a | a w")
+    t |> equal(pragma_places("#define WRAP(x) x\nWRAP(a _Pragma(\"pack(1)\") b) c\n"), "pack 1@1 || a | b c")
+    t |> equal(pragma_places("#define WRAP(x) x\n#define S \"p\"\nWRAP(a _Pragma(S) b) c\n"), "p@1 || a | b c")
+    t |> equal(pragma_places("#define F(x) x\n#define G(x) [x]\nG(F(_Pragma(\"p\")) q) r\n"), "p@1 || [ | q ] r")
+    t |> equal(pragma_places("#define S(x) #x\n#define C(x) x ## y\nS(_Pragma(\"p\")) C(_Pragma)\n"), " || \"_Pragma(\\\"p\\\")\" _Pragmay")
+    let bad = expanded("#define TWICE(x) x x\nTWICE(_Pragma(once) a) w\n")
+    t |> equal(bad.out, "a a w")
+    t |> equal(bad.diags, "E 2:7 _Pragma takes a parenthesized string literal")
+}
+
+[test(description = "_Pragma in an #if line is done and the rest of the line evaluated, as clang does")]
+def test_pragma_in_condition(t : T?) {
+    let r = expanded("#if _Pragma(\"x\") 1\nyes\n#endif\n")
+    t |> equal(r.out, "yes")
+    t |> equal(r.diags, "")
+    t |> equal(pragma_places("#if _Pragma(\"x\") 1\nyes\n#endif\n"), "x@0 || yes")
+}
+
+[test(description = "a name of a macro disabled when a call's arguments read it is painted for good (C11 6.10.3.4p2), though the read leaves that macro's replacement")]
+def test_disabled_names_painted_in_arguments(t : T?) {
+    let k = expanded("#define k(x) x\n#define kk k(kk\nkk 1);\n")
+    t |> equal(k.out, "kk 1 ;")
+    t |> equal(k.diags, "")
+    t |> equal(expanded("#define k(x) x\n#define m(a) k(m(a)\nm(1)) ;\n").out, "m ( 1 ) ;")
+}
+
 [test(description = "the call record grows geometrically: many calls make few heap blocks, not one per call")]
 def test_call_record_allocations(t : T?) {
     let text = "#define cat(a,b) a##b\nxy\n" + repeat("cat(x,y) ", 2000)
@@ -487,5 +542,54 @@ def test_builtins_and_pastes_allocate_no_string(t : T?) {
     }
     t |> equal(count, 2400)
     t |> equal(int(string_heap_allocation_count()) - strings, 0)
+}
+
+[test(description = "in an #if line the < ... > of __has_include and __has_include_next is left as written, as defined's operand is; other operands, __has_attribute's among them, are expanded as clang does")]
+def test_has_include_operand(t : T?) {
+    let pp4 = "E 3:2 #if expression needs the PP.4 evaluator: "
+    let defs = "#define linux 1\n#define HDR <stddef.h>\n"
+    t |> equal(expanded("{defs}#if __has_include(<linux/version.h>) && linux\n#endif\n").diags, "{pp4}__has_include(<linux/version.h>) && 1")
+    t |> equal(expanded("{defs}#if __has_include_next( <linux/x.h> )\n#endif\n").diags, "{pp4}__has_include_next( <linux/x.h> )")
+    t |> equal(expanded("{defs}#if __has_include(HDR) + __has_attribute(linux)\n#endif\n").diags, "{pp4}__has_include(<stddef.h>) + __has_attribute(1)")
+    t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "{pp4}__has_include 1")
+}
+
+[test(description = "an argument in an #if line is pre-expanded before defined reads it, as clang does: F(defined X) of a defined X hands the evaluator defined 1, clang's error there")]
+def test_defined_in_argument(t : T?) {
+    let r = expanded("#define X 1\n#define F(x) x\n#if F(defined X)\nyes\n#endif\nend\n")
+    t |> equal(r.out, "end")
+    t |> equal(r.diags, "E 3:2 #if expression needs the PP.4 evaluator: defined 1")
+    t |> equal(expanded("#define F(x) x\n#if F(defined X)\nyes\n#else\nno\n#endif\n").out, "no")
+}
+
+[test(description = "__VA_OPT__ in a macro that is not variadic is clang's warning at the #define; in a function-like macro it is empty, # of it is \"\"; in an object-like one it stays")]
+def test_va_opt_not_variadic(t : T?) {
+    let r = expanded("#define V(x) [__VA_OPT__(x) x]\n#define W(x,y) #__VA_OPT__(x) y\n#define O __VA_OPT__(x) z\nV(1) W(1,2) O\n")
+    t |> equal(r.out, "[ 1 ] \"\" 2 __VA_OPT__ ( x ) z")
+    t |> equal(r.diags, "W 1:15 __VA_OPT__ can only appear in the expansion of a variadic macro | W 2:17 __VA_OPT__ can only appear in the expansion of a variadic macro | W 3:11 __VA_OPT__ can only appear in the expansion of a variadic macro")
+}
+
+[test(description = "# drops a final unescaped backslash of its string with clang's warning; an escaped one stays")]
+def test_stringify_final_backslash(t : T?) {
+    let r = expanded("#define q(x) #x\nq(\\) q(a \\) q('\\\\') r\n")
+    t |> equal(r.out, "\"\" \"a \" \"'\\\\\\\\'\" r")
+    t |> equal(r.diags, "W 2:3 invalid string literal, ignoring final '\\' | W 2:10 invalid string literal, ignoring final '\\'")
+}
+
+[test(description = "a directive line between a function-like macro's name and a ( ends the lookahead: the name is no call, as clang's -E reads it; blank lines do not")]
+def test_directive_before_lparen(t : T?) {
+    t |> equal(expanded("#define g(x) [x]\ng\n#define Q\n(2)\n").out, "g | ( 2 )")
+    t |> equal(expanded("#define g(x) [x]\n#define G g\nG\n#if 1\n#endif\n(2) end\n").out, "g | ( 2 ) end")
+    t |> equal(expanded("#define g(x) [x]\ng\n\n(2)\n").out, "[ 2 ]")
+}
+
+[test(description = "a #define or #undef of a builtin name no macro defines is clang's warning; an #undef removes the builtin, a #define and #undef of one leave the name")]
+def test_builtin_undef(t : T?) {
+    let r = expanded("#undef __LINE__\n__LINE__ __FILE__\n#undef _Pragma\n_Pragma(\"x\") z\n")
+    t |> equal(r.out, "__LINE__ \"main.c\" | _Pragma ( \"x\" ) z")
+    t |> equal(r.diags, "W 1:8 undefining builtin macro | W 3:8 undefining builtin macro")
+    let d = expanded("#define __LINE__ 5\n__LINE__\n#undef __LINE__\n__LINE__\n#define __has_include x\n#undef __COUNTER__\n#undef NOT_DEFINED\n")
+    t |> equal(d.out, "5 | __LINE__")
+    t |> equal(d.diags, "W 1:9 redefining builtin macro | W 5:9 redefining builtin macro | W 6:8 undefining builtin macro")
 }
 

@@ -42,6 +42,22 @@ enum PpBuiltin {
     base_file
     file_name
     pragma
+    evaluated       //!< clang's `__has_*` family and the like: the `#if` evaluator's, handed out as a name
+}
+
+//! How a function-like macro's call ended: replaced, refused with clang's error, or unterminated.
+enum private PpCallRead {
+    expanded
+    refused
+    unterminated
+}
+
+//! How a `_Pragma` read ended: done (or kept for the rescan, the operand given back), a token to
+//! hand out in its place, or the end of the input.
+enum private PragmaRead {
+    done
+    token
+    end
 }
 
 //! The kind of the placemarker of an empty operand of `##` (C11 6.10.3.3p2), never handed out.
@@ -60,7 +76,10 @@ class PpExpander : PpExpansion {
     carry_bol : bool                    //!< an empty expansion's place, given to the next token
     carry_space : bool
     condition : bool                    //!< expanding an `#if` line: `defined`'s operand stays
-    defined_state : int                 //!< 1 after `defined`, 2 after `defined (`
+    defined_state : int                 //!< 1 after `defined`, 2 after `defined (`; 3 after `__has_include`, 4 after its `(`, 5 in its `< ... >`
+    pre_expanding : int                 //!< the arguments being macro-expanded (C11 6.10.3.1): a `_Pragma` read then is done at the rescan
+    sym_has_include : int
+    sym_has_include_next : int
     counter : int
     epoch : int64                       //!< the seconds since 1970 `__DATE__`, `__TIME__` and `__TIMESTAMP__` show, in UTC
     scratch : PpLexer                   //!< re-lexes a pasted spelling and a `_Pragma` operand
@@ -72,7 +91,6 @@ class PpExpander : PpExpansion {
             pop_context(self)
         }
         if (empty(self.ctx) && self.depth == 0 && !self.has_ahead) {
-
             self.text |> clear()
         }
         var t : PpOutToken
@@ -83,6 +101,10 @@ class PpExpander : PpExpansion {
 
     def override expand_line(var pp : Preprocessor; condition : bool) : void {
         expand_held_line(self, pp, condition)
+    }
+
+    def override macro_changed(var pp : Preprocessor; name : PpToken; undef : bool) : void {
+        builtin_changed(self, pp, name, undef)
     }
 }
 
@@ -197,12 +219,15 @@ def private read_raw(var ex : PpExpander; var pp : Preprocessor; var t : PpOutTo
     return -1
 }
 
-//! whether a `(` comes next, read past when it does; any other token is given back
+//! whether a `(` comes next, read past when it does; any other token, or one of the source read past a
+//! directive line, is given back
+[arch(at="ARCHITECTURE_EXPAND.md#pp-context")]
 def private next_is_lparen(var ex : PpExpander; var pp : Preprocessor) : bool {
     var n : PpOutToken
+    let directives = pp.directives_read
     let from = read_raw(ex, pp, n)
     return false if (from == -2)
-    return true if (n.tok.kind == int(PpTok.LPAREN))
+    return true if (n.tok.kind == int(PpTok.LPAREN) && (from >= 0 || pp.directives_read == directives))
     if (from >= 0) {
         ex.ctx[from].pos--
     } else {
@@ -234,9 +259,10 @@ def private next_expanded(var ex : PpExpander; var pp : Preprocessor; var t : Pp
         let m = pp.macro_of?[t.tok.sym] ?? -1
         if (m < 0) {
             let builtin = ex.builtin_of?[t.tok.sym] ?? PpBuiltin.none
-            return true if (builtin == PpBuiltin.none || (builtin == PpBuiltin.pragma && ex.condition))
+            return true if (builtin == PpBuiltin.none || builtin == PpBuiltin.evaluated)
             if (builtin == PpBuiltin.pragma) {
-                do_pragma_operator(ex, pp, t)
+                let done = do_pragma_operator(ex, pp, t)
+                return done == PragmaRead.token if (done != PragmaRead.done)
                 continue
             }
             t = builtin_token(ex, pp, builtin, t)
@@ -247,7 +273,9 @@ def private next_expanded(var ex : PpExpander; var pp : Preprocessor; var t : Pp
             return true
         }
         if (pp.macros[m].function_like) {
-            return true if (!next_is_lparen(ex, pp) || !call_function_like(ex, pp, m, t))
+            return true if (!next_is_lparen(ex, pp))
+            let called = call_function_like(ex, pp, m, t)
+            return true if (called == PpCallRead.refused)
             continue
         }
         expand_macro(ex, pp, m, t, -1, t)
@@ -255,20 +283,35 @@ def private next_expanded(var ex : PpExpander; var pp : Preprocessor; var t : Pp
     return false
 }
 
-//! in an `#if` line, `defined X` and `defined ( X )`: whether `t` is `defined` or a part of its
-//! operand, which is not expanded
+//! in an `#if` line, `defined X`, `defined ( X )` and the `< ... >` of `__has_include ( < ... > )`
+//! and `__has_include_next`: whether `t` is `defined` or a part of an operand that is not expanded
 [arch(at="ARCHITECTURE_EXPAND.md#pp-expand-line")]
 def private defined_operand(var ex : PpExpander; pp : Preprocessor; t : PpOutToken) : bool {
+    let kind = t.tok.kind
     if (ex.defined_state == 1) {
-        ex.defined_state = t.tok.kind == int(PpTok.LPAREN) ? 2 : 0
+        ex.defined_state = kind == int(PpTok.LPAREN) ? 2 : 0
         return true
     }
     if (ex.defined_state == 2) {
         ex.defined_state = 0
         return true
     }
-    if (t.tok.kind == int(PpTok.IDENTIFIER) && t.tok.sym == pp.sym_defined) {
+    if (ex.defined_state == 3 || ex.defined_state == 4) {
+        let opens = ex.defined_state == 3 ? kind == int(PpTok.LPAREN) : kind == int(PpTok.LESS)
+        ex.defined_state = opens ? ex.defined_state + 1 : 0
+        return opens
+    }
+    if (ex.defined_state == 5) {
+        ex.defined_state = kind == int(PpTok.GREATER) ? 0 : 5
+        return true
+    }
+    return false if (kind != int(PpTok.IDENTIFIER))
+    if (t.tok.sym == pp.sym_defined) {
         ex.defined_state = 1
+        return true
+    }
+    if (t.tok.sym == ex.sym_has_include || t.tok.sym == ex.sym_has_include_next) {
+        ex.defined_state = 3
         return true
     }
     return false
@@ -277,7 +320,8 @@ def private defined_operand(var ex : PpExpander; pp : Preprocessor; t : PpOutTok
 // Calls
 
 //! the arguments of a call of `m` after its `(`, into the invocation slot `d`, up to the matching
-//! `)` read into `rparen`; false at the end of the input first
+//! `)` read into `rparen`; false at the end of the input first. A name of a macro disabled when it
+//! is read is painted (C11 6.10.3.4p2): reading on can leave that macro's context.
 [arch(at="ARCHITECTURE_EXPAND.md#pp-calls")]
 def private collect_args(var ex : PpExpander; var pp : Preprocessor; m, d : int; var rparen : PpOutToken) : bool {
     ex.inv[d].raw |> clear()
@@ -290,15 +334,16 @@ def private collect_args(var ex : PpExpander; var pp : Preprocessor; m, d : int;
     var nest = 0
     var t : PpOutToken
     while (true) {
-        let from = read_raw(ex, pp, t)
-        return false if (from == -2)
-        if (from == -1) {
-            if (t.tok.at_bol) {
-                t.tok.at_bol = false
-                t.tok.has_space = true
-            }
+        return false if (read_raw(ex, pp, t) == -2)
+        if (t.tok.at_bol) {
+            t.tok.at_bol = false
+            t.tok.has_space = true
         }
         let kind = t.tok.kind
+        if (kind == int(PpTok.IDENTIFIER) && !t.painted) {
+            let named = pp.macro_of?[t.tok.sym] ?? -1
+            t.painted = named >= 0 && disabled(ex, named)
+        }
         if (kind == int(PpTok.LPAREN)) {
             nest++
         } elif (kind == int(PpTok.RPAREN)) {
@@ -357,26 +402,27 @@ def private arguments_fit(var ex : PpExpander; var pp : Preprocessor; m, d : int
 }
 
 //! a call of the function-like `m` whose name `name` is read and whose `(` is next: its arguments
-//! collected and the replacement pushed; false, the name to hand out as it is, on an error
+//! collected and the replacement pushed; on clang's error the name is handed out as it is
+//! (`refused`), or with the call at the end of the input nothing is (`unterminated`)
 [arch(at="ARCHITECTURE_EXPAND.md#pp-calls")]
-def private call_function_like(var ex : PpExpander; var pp : Preprocessor; m : int; name : PpOutToken) : bool {
+def private call_function_like(var ex : PpExpander; var pp : Preprocessor; m : int; name : PpOutToken) : PpCallRead {
     let d = ex.depth
     if (d >= length(ex.inv)) {
         ex.inv |> resize(d + 1)
     }
     ex.depth++
     var rparen : PpOutToken
-    var ok = collect_args(ex, pp, m, d, rparen)
-    if (!ok) {
+    var read = PpCallRead.expanded
+    if (!collect_args(ex, pp, m, d, rparen)) {
         diag(pp, PpSeverity.error, name, "unterminated function-like macro invocation")
+        read = PpCallRead.unterminated
+    } elif (!arguments_fit(ex, pp, m, d, name)) {
+        read = PpCallRead.refused
     } else {
-        ok = arguments_fit(ex, pp, m, d, name)
-    }
-    if (ok) {
         expand_macro(ex, pp, m, name, d, rparen)
     }
     ex.depth--
-    return ok
+    return read
 }
 
 //! the call of `m` recorded: its name, the outermost name's presumed place, the presumed line of
@@ -456,7 +502,6 @@ def private param_of(pp : Preprocessor; m : int; h : PpHeld) : int {
         return i if (params[i] == h.sym)
     }
     return -1
-
 }
 
 //! a body token as a token of the replacement
@@ -479,14 +524,16 @@ def private closing_paren(pp : Preprocessor; open, hi : int) : int {
     return hi
 }
 
-//! whether body index `i` of `m` starts `__VA_OPT__ (`
+//! whether body index `i` of `m` starts `__VA_OPT__ (`: in a function-like macro that is not variadic
+//! it is clang's warning at the `#define`, and empty
 def private va_opt_at(pp : Preprocessor; m, i, hi : int) : bool {
-    return (pp.macros[m].variadic && pp.macro_body[i].sym == pp.sym_va_opt && i + 1 < hi
+    return (pp.macros[m].function_like && pp.macro_body[i].sym == pp.sym_va_opt && i + 1 < hi
         && pp.macro_body[i + 1].kind == int(PpTok.LPAREN))
 }
 
 //! argument `p` of slot `d` macro-expanded, once, as a context of its own whose end ends the
-//! input (C11 6.10.3.1); its range in the slot's `exp`
+//! input (C11 6.10.3.1), as clang does in an `#if` line too: `defined`'s operand is expanded there;
+//! its range in the slot's `exp`
 [arch(at="ARCHITECTURE_EXPAND.md#pp-substitute")]
 def private expanded_arg(var ex : PpExpander; var pp : Preprocessor; d, p : int) : int2 {
     return ex.inv[d].exp_at[p] if (ex.inv[d].exp_at[p].x >= 0)
@@ -499,18 +546,23 @@ def private expanded_arg(var ex : PpExpander; var pp : Preprocessor; d, p : int)
     let bol = ex.carry_bol
     let space = ex.carry_space
     let state = ex.defined_state
+    let condition = ex.condition
     ex.carry_bol = false
     ex.carry_space = false
     ex.defined_state = 0
+    ex.condition = false
+    ex.pre_expanding++
     let start = length(ex.inv[d].exp)
     var t : PpOutToken
     while (next_expanded(ex, pp, t)) {
         ex.inv[d].exp |> push(t)
     }
     pop_context(ex)
+    ex.pre_expanding--
     ex.carry_bol = bol
     ex.carry_space = space
     ex.defined_state = state
+    ex.condition = condition
     ex.inv[d].exp_at[p] = int2(start, length(ex.inv[d].exp))
     return ex.inv[d].exp_at[p]
 }
@@ -539,25 +591,25 @@ def private paste(var ex : PpExpander; var pp : Preprocessor; var out : array<Pp
     t.len = length(ex.text) - at
     t.spelled = PpSpelled.scratch
     if (kind == int(PpTok.IDENTIFIER)) {
-        t.tok.sym = interned_text(ex, pp, at)
+        t.tok.sym = interned_bytes(pp, ex.text, at)
         t.spelled = PpSpelled.symbol
         ex.text |> resize(at)
     }
     out[last] = t
 }
 
-//! the symbol of the name spelled from `at` to the end of the text pool; the pool's bytes are
-//! read in place, and copied only for a name the interner has not seen
-def private interned_text(var ex : PpExpander; var pp : Preprocessor; at : int) : int {
-    let len = length(ex.text) - at
-    ex.text |> push(0u8)
-    let view = unsafe(reinterpret<string>(unsafe(addr(ex.text[at]))))
+//! the symbol of the name `bytes` spell from `at` to their end; the bytes are read in place, and
+//! copied only for a name the interner has not seen
+def private interned_bytes(var pp : Preprocessor; var bytes : array<uint8>; at : int) : int {
+    let len = length(bytes) - at
+    bytes |> push(0u8)
+    let view = unsafe(reinterpret<string>(unsafe(addr(bytes[at]))))
     let known = symbol_count(pp.lx.flex.syms)
     let id = intern_name(pp.lx.flex.syms, view)
     if (id == known) {
         pp.lx.flex.syms.names[id] = clone_string(view)
     }
-    ex.text |> resize(at + len)
+    bytes |> resize(at + len)
     return id
 }
 
@@ -612,7 +664,6 @@ def private append_operand(var ex : PpExpander; var pp : Preprocessor; var out :
     for (i in range(start, hi)) {
         out |> push(src[i])
         if (i == lo) {
-            out[length(out) - 1].tok.at_bol = false
             out[length(out) - 1].tok.has_space = out[length(out) - 1].tok.has_space || space
         }
     }
@@ -718,6 +769,7 @@ def private substitute(var ex : PpExpander; var pp : Preprocessor; m, d, lo, hi 
 [arch(at="ARCHITECTURE_EXPAND.md#pp-substitute")]
 def private va_opt_content(var ex : PpExpander; var pp : Preprocessor; m, d, lo, hi : int) : array<PpOutToken> {
     var content <- buffer(ex)
+    return <- content if (!pp.macros[m].variadic)
     let r = expanded_arg(ex, pp, d, length(pp.macros[m].params) - 1)
     if (r.y > r.x) {
         substitute(ex, pp, m, d, lo, hi, content)
@@ -727,7 +779,8 @@ def private va_opt_content(var ex : PpExpander; var pp : Preprocessor; m, d, lo,
 }
 
 //! `# arg` (C11 6.10.3.2): the tokens `src[lo .. hi)` spelled in a string literal, one blank where
-//! a token has space before it, `\` and `"` escaped in string and character literals; at `at`
+//! a token has space before it, `\` and `"` escaped in string and character literals, a final
+//! unescaped `\` dropped with clang's warning; at `at`
 [arch(at="ARCHITECTURE_EXPAND.md#pp-stringify")]
 def private stringified(var ex : PpExpander; var pp : Preprocessor; src : array<PpOutToken>; lo, hi : int; at : PpOutToken) : PpOutToken {
     var t = at
@@ -739,7 +792,7 @@ def private stringified(var ex : PpExpander; var pp : Preprocessor; src : array<
     ex.text |> push('"'u8)
     for (i in range(lo, hi)) {
         let k = src[i].tok.kind
-        if (i > lo && (src[i].tok.has_space || src[i].tok.at_bol)) {
+        if (i > lo && src[i].tok.has_space) {
             ex.text |> push(' 'u8)
         }
         let from = length(ex.text)
@@ -747,6 +800,14 @@ def private stringified(var ex : PpExpander; var pp : Preprocessor; src : array<
         if (k == int(PpTok.STRING_LITERAL) || k == int(PpTok.CHAR_CONSTANT)) {
             escape_from(ex, from)
         }
+    }
+    var backslashes = 0
+    while (length(ex.text) - backslashes - 1 > t.at && ex.text[length(ex.text) - backslashes - 1] == '\\'u8) {
+        backslashes++
+    }
+    if (backslashes % 2 == 1) {
+        ex.text |> pop()
+        diag(pp, PpSeverity.warning, src[hi - 1], "invalid string literal, ignoring final '\\'")
     }
     ex.text |> push('"'u8)
     t.len = length(ex.text) - t.at
@@ -900,60 +961,113 @@ def private builtin_token(var ex : PpExpander; pp : Preprocessor; b : PpBuiltin;
     return pooled_token(ex, int(PpTok.STRING_LITERAL), at, t)
 }
 
-//! the text of a `_Pragma` string literal (C11 6.10.9): the prefix and the quotes off, `\"` and
-//! `\\` read as one character each
-def private destringized(s : string) : string {
-    let open = find(s, "\"")
-    return build_string() $(var out) {
-        var escaped = false
-        for (c in slice(s, open + 1, length(s) - 1)) {
-            if (c == '\\' && !escaped) {
-                escaped = true
-                continue
-            }
-            if (escaped && c != '\\' && c != '"') {
-                out |> write_char('\\')
-            }
-            escaped = false
-            out |> write_char(c)
-        }
+//! a `#define` (`undef` false) or an `#undef` of `name`: of a builtin name no macro defines, clang's
+//! warning; an `#undef` removes the builtin for the rest of the unit, as clang does
+[arch(at="ARCHITECTURE_EXPAND.md#pp-builtins")]
+def private builtin_changed(var ex : PpExpander; var pp : Preprocessor; name : PpToken; undef : bool) {
+    return if (!key_exists(ex.builtin_of, name.sym))
+    if (!pp_defined(pp, name.sym)) {
+        diag(pp, PpSeverity.warning, PpOutToken(tok = name, pname = pp.state.pname, pline = uint(name.line) + pp.state.line_delta),
+             undef ? "undefining builtin macro" : "redefining builtin macro")
+    }
+    if (undef) {
+        ex.builtin_of |> erase(name.sym)
     }
 }
 
-//! `_Pragma ( string-literal )` read after the name `t` (unexpanded, as clang reads it): the
-//! destringized text lexed and done as a `#pragma` line; the next token starts a line, as after the
-//! directive
-[arch(at="ARCHITECTURE_EXPAND.md#pp-builtins")]
-def private do_pragma_operator(var ex : PpExpander; var pp : Preprocessor; t : PpOutToken) {
-    var lp, str, rp : PpOutToken
-    let ok = (read_raw(ex, pp, lp) != -2 && lp.tok.kind == int(PpTok.LPAREN) && read_raw(ex, pp, str) != -2
-        && str.tok.kind == int(PpTok.STRING_LITERAL))
-    if (!ok) {
-        diag(pp, PpSeverity.error, t, "_Pragma takes a parenthesized string literal")
-        return
+//! the text of the `_Pragma` string literal `str` (C11 6.10.9) as the scratch lexer's input: the
+//! prefix and the quotes off, `\"` and `\\` read as one character each
+def private open_destringized(var ex : PpExpander; var pp : Preprocessor; str : PpOutToken) {
+    let span = pp_span_of(pp, str)
+    var bytes <- ex.scratch.flex.bytes
+    bytes |> clear()
+    var open = 0
+    while (unsafe(span.data[open]) != '"'u8) {
+        open++
     }
-    if (read_raw(ex, pp, rp) == -2 || rp.tok.kind != int(PpTok.RPAREN)) {
-        diag(pp, PpSeverity.error, t, "_Pragma takes a parenthesized string literal")
-        return
+    var i = open + 1
+    while (i < span.len - 1) {
+        let c = unsafe(span.data[i])
+        if (c == '\\'u8 && i + 1 < span.len - 1 && (unsafe(span.data[i + 1]) == '\\'u8 || unsafe(span.data[i + 1]) == '"'u8)) {
+            i++
+        }
+        bytes |> push(unsafe(span.data[i]))
+        i++
+    }
+    pp_open(ex.scratch, bytes, str.tok.file)
+}
+
+//! `_Pragma ( string-literal )` read after the name `t` (C11 6.10.9), its operand read with
+//! expansion as clang reads it. In an argument being macro-expanded the operand is given back and
+//! `_Pragma` handed out, to be done at the rescan (6.10.3.4p3); else the destringized text is lexed
+//! and done as a `#pragma` line, and the next token starts a line, as after the directive.
+//! Malformed, it is clang's error, and the token read where another was expected is handed out in
+//! `t`, as clang recovers
+[arch(at="ARCHITECTURE_EXPAND.md#pp-builtins")]
+def private do_pragma_operator(var ex : PpExpander; var pp : Preprocessor; var t : PpOutToken) : PragmaRead {
+    let name = t
+    let malformed = "_Pragma takes a parenthesized string literal"
+    var lp, str, rp : PpOutToken
+    if (!next_expanded(ex, pp, lp)) {
+        diag(pp, PpSeverity.error, name, malformed)
+        return PragmaRead.end
+    }
+    if (lp.tok.kind != int(PpTok.LPAREN)) {
+        diag(pp, PpSeverity.error, name, malformed)
+        t = lp
+        return PragmaRead.token
+    }
+    if (!next_expanded(ex, pp, str)) {
+        diag(pp, PpSeverity.error, name, malformed)
+        return PragmaRead.end
+    }
+    if (str.tok.kind != int(PpTok.STRING_LITERAL)) {
+        diag(pp, PpSeverity.error, name, malformed)
+        t = str
+        var more = t.tok.kind == int(PpTok.RPAREN) || next_expanded(ex, pp, t)
+        while (more && t.tok.kind != int(PpTok.RPAREN) && !t.tok.at_bol) {
+            more = next_expanded(ex, pp, t)
+        }
+        if (more && t.tok.kind == int(PpTok.RPAREN)) {
+            more = next_expanded(ex, pp, t)
+        }
+        return more ? PragmaRead.token : PragmaRead.end
+    }
+    if (!next_expanded(ex, pp, rp)) {
+        diag(pp, PpSeverity.error, name, malformed)
+        return PragmaRead.end
+    }
+    if (rp.tok.kind != int(PpTok.RPAREN)) {
+        diag(pp, PpSeverity.error, name, malformed)
+        t = rp
+        return PragmaRead.token
+    }
+    if (ex.pre_expanding > 0) {
+        var operand <- buffer(ex)
+        operand |> push(lp)
+        operand |> push(str)
+        operand |> push(rp)
+        push_context(ex, operand, -1, false)
+        return PragmaRead.token
     }
     pp.line |> clear()
     pp.line_text |> clear()
-    pp_open_text(ex.scratch, destringized(pp_spelling_of(pp, str)), t.tok.file)
+    open_destringized(ex, pp, str)
     while (pp_next(ex.scratch)) {
         let at = length(pp.line_text)
-        let text = pp_spelling(ex.scratch)
-        peek_data(text) $(chars) {
-            for (c in chars) {
-                pp.line_text |> push(c)
-            }
+        let span = pp_token_range(ex.scratch)
+        pp.line_text |> reserve(at + span.len)
+        for (i in range(span.start, span.start + span.len)) {
+            pp.line_text |> push(ex.scratch.flex.bytes[i])
         }
         let st & = unsafe(ex.scratch.tok)
-        let sym = st.kind == int(PpTok.IDENTIFIER) ? intern_name(pp.lx.flex.syms, text) : -1
-        pp.line |> push(PpHeld(kind = st.kind, sym = sym, file = t.tok.file, offset = t.tok.offset, line = t.tok.line, col = t.tok.col,
-                               at = at, len = length(text), has_space = st.has_space))
+        let sym = st.kind == int(PpTok.IDENTIFIER) ? interned_bytes(pp, pp.line_text, at) : -1
+        pp.line |> push(PpHeld(kind = st.kind, sym = sym, file = name.tok.file, offset = name.tok.offset, line = name.tok.line, col = name.tok.col,
+                               at = at, len = span.len, has_space = st.has_space))
     }
-    pp_pragma_line(pp, t.tok)
+    pp_pragma_line(pp, name.tok)
     ex.carry_bol = true
+    return PragmaRead.done
 }
 
 // Directive lines
@@ -1006,6 +1120,14 @@ def private expand_held_line(var ex : PpExpander; var pp : Preprocessor; conditi
 
 // Starting
 
+//! clang's builtin names the `#if` evaluator answers (`Preprocessor::RegisterBuiltinMacros`): PP.3
+//! hands them out as names, and a `#define` or `#undef` of one is clang's warning
+let private EVALUATED_BUILTINS <- ["__has_feature", "__has_extension", "__has_builtin", "__has_constexpr_builtin", "__has_attribute",
+                                   "__has_c_attribute", "__has_declspec_attribute", "__has_cpp_attribute", "__has_include",
+                                   "__has_include_next", "__has_embed", "__has_warning", "__is_identifier", "__is_target_arch",
+                                   "__is_target_vendor", "__is_target_os", "__is_target_environment", "__is_target_variant_os",
+                                   "__is_target_variant_environment", "__building_module"]
+
 //! Start preprocessing `main` as `pp_start` does, with macro expansion: `pp_next_token` hands out
 //! the expanded tokens, and the macros of `#include`, `#line` and `#if` lines are expanded.
 //! `epoch` is the time `__DATE__`, `__TIME__` and `__TIMESTAMP__` show, seconds since 1970 in
@@ -1024,6 +1146,11 @@ def pp_expand_start(var pp : Preprocessor; var provider : PpFileProvider?; main 
     for (entry in names) {
         ex.builtin_of |> insert(intern_name(pp.lx.flex.syms, entry._0), entry._1)
     }
+    for (name in EVALUATED_BUILTINS) {
+        ex.builtin_of |> insert(intern_name(pp.lx.flex.syms, name), PpBuiltin.evaluated)
+    }
+    ex.sym_has_include = intern_name(pp.lx.flex.syms, "__has_include")
+    ex.sym_has_include_next = intern_name(pp.lx.flex.syms, "__has_include_next")
     pp.expansion = ex
     return ok
 }
