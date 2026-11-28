@@ -69,7 +69,7 @@ def test_fixture_verdicts(t : T?) {
     let flags <- flags_of(t)
     let work = test_temp_dir()
     let expected <- {"expressions.c" => "same", "types.c" => "same", "typedefs.c" => "same", "static_assert.c" => "same",
-                     "bodies.c" => "same", "edges.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "parser refused",
+                     "bodies.c" => "same", "edges.c" => "same", "semantic.c" => "differs", "builtin.c" => "differs", "pragma.c" => "same", "imaginary.c" => "parser refused",
                      "clang_refuses.c" => "clang refused", "refused.c" => "construct refused", "causes.c" => "differs",
                      "wildcards.c" => "same", "oldstyle.c" => "same", "param_bodies.c" => "same", "forward.c" => "same"}
     for (name, verdict in keys(expected), values(expected)) {
@@ -302,11 +302,11 @@ def test_forward_tags(t : T?) {
     }
 }
 
-[test(description = "a refusal names its place: the directive the tokens refuse, and clang's own error", timeout = 1200)]
+[test(description = "a refusal names its place: the constant the tokens refuse, and clang's own error", timeout = 1200)]
 def test_refusals_located(t : T?) {
     let flags <- flags_of(t)
-    let pragma <- compare_unit("compare/parse/fixtures/pragma.c", test_temp_dir(), flags)
-    t |> success(ends_with(pragma.message, "pragma.c:3:2: the directive '#pragma' is not parsed"), pragma.message)
+    let imaginary <- compare_unit("compare/parse/fixtures/imaginary.c", test_temp_dir(), flags)
+    t |> success(ends_with(imaginary.message, "imaginary.c:3:21: invalid numeric constant '2.0i'"), imaginary.message)
     let clang <- compare_unit("compare/parse/fixtures/clang_refuses.c", test_temp_dir(), flags)
     t |> success(find(clang.message, "clang_refuses.c:2:9: error: use of undeclared identifier") >= 0, clang.message)
 }
@@ -379,7 +379,7 @@ def test_corpus_errors(t : T?) {
     error = ""
     let fixtures <- corpus_units(getcwd(), "fixtures", error)
     t |> equal(error, "")
-    t |> equal(length(fixtures), 16)
+    t |> equal(length(fixtures), 17)
     t |> equal(length(none) + length(missing), 0)
 }
 
@@ -429,11 +429,14 @@ def test_stray_semicolon(t : T?) {
 // whether line `piece` is one of `lines`
 def private has_line(lines : array<string>; piece : string) : bool => has_value(lines, piece)
 
-[test(description = "a line marker's file name keeps an escaped quote as its bytes, and a unit whose name holds a quote compares the same", timeout = 600)]
+[test(description = "a line marker's file name reads an escaped quote as the quote, and a unit whose name holds a quote compares the same", timeout = 600)]
 def test_escaped_file_name(t : T?) {
     let text = "# 1 \"a\\\"b.c\"\nint x;\n"
     let map <- presumed_map(text, "u.i")
-    t |> equal(place_of(map, find(text, "x;")).file, "a\\\"b.c")
+    t |> equal(place_of(map, find(text, "x;")).file, "a\"b.c")
+    let two <- presumed_map("# 1 \"c\\\\d.c\"\nint y;\n# 1 \"e\\\nz", "u.i")
+    t |> equal(place_of(two, 13).file, "c\\d.c")
+    t |> equal(place_of(two, 28).file, "e\\")
     let r <- unit_result(t, "esc\"q.c", "int x;\n")
     t |> equal(r.verdict, "same", describe_result(r))
 }
@@ -605,11 +608,11 @@ def test_run_das(t : T?) {
 [test(description = "run_parse_oracle: a unit the parser refuses fails the run and a same one passes it, an unknown corpus fails it, a --define reaches the preprocessing; the frontend corpus is the own headers", timeout = 1200)]
 def test_run_parse_oracle(t : T?) {
     let work = path_join(test_temp_dir(), "work")
-    t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, units <- ["compare/parse/fixtures/pragma.c"])), 1)
+    t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, units <- ["compare/parse/fixtures/imaginary.c"])), 1)
     t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, units <- ["compare/parse/fixtures/expressions.c"])), 0)
     t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, corpus <- ["nope"])), 1)
     let unit = path_join(test_temp_dir(), "defined.c")
-    t |> success(fwrite(unit, "#ifndef X\n#pragma pack(1)\n#endif\nint a;\n"))
+    t |> success(fwrite(unit, "#ifndef X\ndouble _Complex z = 2.0i;\n#endif\nint a;\n"))
     t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, units <- [unit])), 1)
     t |> equal(run_parse_oracle(ParseOracleArgs(work = work, show = 3, define <- ["X"], units <- [unit])), 0)
     var error : string

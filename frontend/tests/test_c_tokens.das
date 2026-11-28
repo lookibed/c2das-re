@@ -170,30 +170,37 @@ def test_line_markers(t : T?) {
         t |> equal(placed("a\n# 1 \"a.c\"\nb\n# 10 \"b.h\" 1 3 4\n  c d\n\ne\n# 3 \"a.c\" 2\nf\n#line 20 \"c.h\"\ng\n# 5\nh"),
                    "a@t.c:1:1 b@a.c:1:1 c@b.h:10:3 d@b.h:10:5 e@b.h:12:1 f@a.c:3:1 g@c.h:20:1 h@c.h:5:1 $@c.h:5:2")
     }
-    t |> run("a file a marker names again has the id it had") @(t : T?) {
+    t |> run("a file a marker names again has the id it had; file 1 is the predefined macros' buffer") @(t : T?) {
         var unit : CUnit
         c_tokens_of_text(unit, "# 1 \"a.c\"\nb\n# 1 \"b.h\"\nc\n# 2 \"a.c\"\nd", "t.c")
-        t |> equal(unit.toks[0].file, 1)
-        t |> equal(unit.toks[1].file, 2)
-        t |> equal(unit.toks[2].file, 1)
-        t |> equal(c_file_name(unit, 2), "b.h")
+        t |> equal(unit.toks[0].file, 2)
+        t |> equal(unit.toks[1].file, 3)
+        t |> equal(unit.toks[2].file, 2)
+        t |> equal(c_file_name(unit, 1), "<built-in>")
+        t |> equal(c_file_name(unit, 3), "b.h")
     }
     t |> run("a marker at the end of the unit leaves the end placed after the last token") @(t : T?) {
         t |> equal(placed("x\n# 4 \"y.h\""), "x@t.c:1:1 $@t.c:1:2")
         t |> equal(placed(""), "$@t.c:1:1")
         t |> equal(placed("# 5\n\"s\""), "\"s\"@t.c:5:1 $@t.c:5:4")
     }
-    t |> run("a directive that is no line marker is an error naming it") @(t : T?) {
-        t |> equal(lexed("x\n#pragma once\ny"), "error: t.c:2:2: the directive '#pragma' is not parsed")
-        t |> equal(lexed("# 1 \"h.h\"\n#define A 1"), "error: h.h:1:2: the directive '#define' is not parsed")
-        t |> equal(lexed("x\n#\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
-        t |> equal(lexed("x\n#\nline 7\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
-        t |> equal(lexed("x\n#\n5\ny"), "error: t.c:3:1: an empty directive '#' is not parsed")
-        t |> equal(lexed("#line x"), "error: t.c:1:7: the directive '#x' is not parsed")
-        t |> equal(lexed("# 0x10 \"a.c\""), "error: t.c:1:3: the directive '#0x10' is not parsed")
-        t |> equal(lexed("# 3 L\"w.h\"\nx"), "error: t.c:1:5: a line marker's file name 'L\"w.h\"' is not parsed")
-        t |> equal(lexed("# 3 u8\"w.h\"\nx"), "error: t.c:1:5: a line marker's file name 'u8\"w.h\"' is not parsed")
-        t |> equal(lexed("# 9999999999 \"a.c\""), "error: t.c:1:3: the directive '#9999999999' is not parsed")
+    t |> run("any other directive is the preprocessor's: done, a `#define` expanding nothing here") @(t : T?) {
+        t |> equal(lexed("x\n#pragma once\ny"), "I:x I:y")
+        t |> equal(lexed("# 1 \"h.h\"\n#define A 1\nA"), "I:A")
+        t |> equal(lexed("x\n#\ny"), "I:x I:y")
+        t |> equal(lexed("x\n#\nline 7\ny"), "I:x I:line N:7 I:y")
+        t |> equal(lexed("x\n#\n5\ny"), "I:x N:5 I:y")
+    }
+    t |> run("a malformed directive is the preprocessor's error at its place") @(t : T?) {
+        t |> equal(lexed("x\n#assert y\nz"), "error: t.c:2:2: invalid preprocessing directive")
+        t |> equal(lexed("# 0x10 \"a.c\""), "error: t.c:1:3: line marker directive requires a simple digit sequence")
+        t |> equal(lexed("# 3 L\"w.h\"\nx"), "error: t.c:1:5: invalid filename for line marker directive")
+        t |> equal(lexed("# 3 u8\"w.h\"\nx"), "error: t.c:1:5: invalid filename for line marker directive")
+        t |> equal(lexed("# 9999999999 \"a.c\""), "error: t.c:1:3: line marker directive requires a positive integer argument")
+        t |> equal(lexed("x\n# 4 \"a.c\" 2\ny"), "error: t.c:2:11: invalid line marker flag '2': cannot pop empty include stack")
+    }
+    t |> run("a warning is no error") @(t : T?) {
+        t |> equal(lexed("#ifdef A\n#endif B\nx"), "I:x")
     }
 }
 
@@ -212,10 +219,24 @@ def private allocations_of_read(var unit : CUnit; text : string) : int3 {
     return int3(length(unit.toks), int(heap_allocation_count()) - heap, int(string_heap_allocation_count()) - strings)
 }
 
-[test(description = "reading a unit's C tokens allocates no string and no heap block per token: the token array grows by doubling, a line marker's file is interned, and a second read allocates nothing")]
+[test(description = "reading a unit's C tokens allocates no string and no heap block per token: the token array grows by doubling, and a second read allocates no more than the preprocessor's one block a unit; a line marker costs what the preprocessor's `#line` costs, a few blocks each")]
 def test_no_allocation(t : T?) {
     let line = "x = y[0x10] * (z - 1.5f) + sizeof(int) ; s = \"a\" ;\n"
-    let text = build_string() $(var w) {
+    let plain = build_string() $(var w) {
+        for (_i in range(400)) {
+            w |> write(line)
+        }
+    }
+    var unit : CUnit
+    let first = allocations_of_read(unit, plain)
+    t |> success(first.x > 8000, "{first.x} tokens")
+    t |> equal(first.z, 0, "string allocations, first read")
+    t |> success(first.y <= 20, "heap allocations {first.y} for {first.x} tokens: the array's doublings and the new names")
+    let again = allocations_of_read(unit, plain)
+    t |> equal(again.x, first.x)
+    t |> success(again.y <= 1, "heap allocations {again.y}, the array grown and every name known")
+    t |> equal(again.z, 0, "string allocations, every name known")
+    let marked = build_string() $(var w) {
         for (i in range(400)) {
             if (i % 50 == 0) {
                 w |> write("# {i + 1} \"{i % 100 == 0 ? "a.h" : "b.h"}\" 1\n")
@@ -223,13 +244,83 @@ def test_no_allocation(t : T?) {
             w |> write(line)
         }
     }
+    allocations_of_read(unit, marked)
+    let markers = allocations_of_read(unit, marked)
+    t |> equal(markers.x, first.x)
+    t |> success(markers.y <= again.y + 2 * 8, "heap allocations {markers.y} for 8 line markers")
+    t |> success(markers.z <= 5 * 8, "string allocations {markers.z} for 8 line markers")
+}
+
+// a unit of C source over the in-memory `files` (path, text pairs), read from `main.c` with macro
+// expansion
+def private expanded_unit(var unit : CUnit; files : array<tuple<string; string>>) : bool {
+    var mem = new PpMemoryProvider()
+    for (f in files) {
+        mem->add(f._0, f._1)
+    }
+    return c_tokens_expand(unit, mem, "main.c", array<string>(), array<string>(), 1000000000l)
+}
+
+// every token of the expanded `main.c` placed as `placed` writes them, or `error: <message>`
+def private expanded(files : array<tuple<string; string>>) : string {
     var unit : CUnit
-    let first = allocations_of_read(unit, text)
-    t |> success(first.x > 8000, "{first.x} tokens")
-    t |> equal(first.z, 0, "string allocations, first read")
-    t |> success(first.y <= 20, "heap allocations {first.y} for {first.x} tokens: the array's doublings and the new names")
-    let again = allocations_of_read(unit, text)
-    t |> equal(again.x, first.x)
-    t |> equal(again.y, 0, "heap allocations, the array grown and every name known")
-    t |> equal(again.z, 0, "string allocations, every name known")
+    if (!expanded_unit(unit, files)) {
+        return "error: {unit.err}"
+    }
+    var parts : array<string>
+    parts |> reserve(length(unit.toks))
+    for (t in range(length(unit.toks))) {
+        let spelling = unit.toks[t].kind == int(CTok.EOF) ? "$" : c_spelling(unit, t)
+        parts |> push("{spelling}@{c_where(unit, t)}")
+    }
+    return join(parts, " ")
+}
+
+[test(description = "C source read with macro expansion: a token an expansion makes stands at the outermost macro name, as clang's expansion location does; a source token at its own place")]
+def test_expansion_places(t : T?) {
+    t |> run("an object-like and a function-like call, an argument on a later line") @(t : T?) {
+        t |> equal(expanded([("main.c", "#define N 4\n#define ADD(a, b) a + b\nint x = ADD(N,\n  2);")]),
+                   "int@main.c:3:1 x@main.c:3:5 =@main.c:3:7 4@main.c:3:9 +@main.c:3:9 2@main.c:3:9 ;@main.c:4:5 $@main.c:4:6")
+    }
+    t |> run("a call inside a call's replacement stands at the outer name") @(t : T?) {
+        t |> equal(expanded([("main.c", "#define ONE 1\n#define F(v) v + ONE\n  F(2)")]),
+                   "2@main.c:3:3 +@main.c:3:3 1@main.c:3:3 $@main.c:3:4")
+    }
+    t |> run("a token of an included file names that file, and `#line` moves the place") @(t : T?) {
+        t |> equal(expanded([("main.c", "#include \"h.h\"\n#line 40 \"m.c\"\nb"), ("h.h", "a")]),
+                   "a@h.h:1:1 b@m.c:40:1 $@m.c:40:2")
+    }
+}
+
+[test(description = "a pasted or stringified token keeps its spelling after the preprocessor reuses its pool: the unit copies it")]
+def test_scratch_spellings(t : T?) {
+    var unit : CUnit
+    let clean = expanded_unit(unit, [("main.c", "#define CAT(a, b) a ## b\n#define S(x) #x\nint CAT(fo, o) = CAT(1, 2); char *p = S(a  b); int CAT(x, y);")])
+    t |> success(clean, unit.err)
+    let spellings <- [for (k in range(length(unit.toks) - 1)); c_spelling(unit, k)]
+    t |> equal(join(spellings, " "), "int foo = 12 ; char * p = \"a b\" ; int xy ;")
+    t |> equal(unit.toks[1].kind, int(CTok.IDENTIFIER))
+    t |> equal(unit.toks[3].kind, int(CTok.INT_CONSTANT))
+    t |> equal(unit.toks[9].kind, int(CTok.STRING_LITERAL))
+    let foo = c_symbol(unit, "foo")
+    t |> equal(unit.toks[1].sym, foo)
+}
+
+[test(description = "an error of the preprocessor ends the read at its place: a directive's, a fatal `#include`'s, the lexer's under `#line`, and a token an expansion makes")]
+def test_preprocessor_errors(t : T?) {
+    t |> equal(expanded([("main.c", "int a;\n#error boom\nint b;")]), "error: main.c:2:2: #error boom")
+    t |> equal(expanded([("main.c", "int a;\n#include \"h.h\"")]), "error: main.c:2:10: 'h.h' file not found; searched: .")
+    t |> equal(expanded([("main.c", "#include \"h.h\""), ("h.h", "x\n#error inner")]), "error: h.h:2:2: #error inner")
+    t |> equal(expanded([("main.c", "#line 10 \"q.c\"\nx /* b")]), "error: q.c:10:3: unterminated /* comment")
+    t |> equal(expanded([("main.c", "#define AT(x) x @\nint a;\n  AT(1)")]), "error: main.c:3:3: stray '@'")
+    t |> equal(expanded([("main.c", "#define BAD 08\nint a = BAD;")]), "error: main.c:2:9: invalid numeric constant '08'")
+}
+
+[test(description = "the text of a token range: the bytes between its ends when they are source tokens of one file in order, else the spellings with a blank between")]
+def test_range_text(t : T?) {
+    var unit : CUnit
+    expanded_unit(unit, [("main.c", "#define CALL f(1,2)\nint x = g( 3 ,4 ); int y = CALL;")])
+    t |> equal(c_range_text(unit, 4, 8), "( 3 ,4 )")
+    t |> equal(c_range_text(unit, 13, 18), "f ( 1 , 2 )")
+    t |> equal(c_range_text(unit, 8, 13), ") ; int y = f")
 }

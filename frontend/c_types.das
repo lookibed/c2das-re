@@ -45,7 +45,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
 
 // the error at token `tok`: a construct the builder does not type yet, and `why` after it; every
 // refusal stops the unit, so it is the first
-def private refuse(var b : CTypes; var p : CParser; tok : int; what : string; why : string = "") {
+def private refuse(var b : CTypes; p : CParser; tok : int; what : string; why : string = "") {
     b.err = "{c_where(p.unit, tok)}: {what} is not typed yet{why}"
 }
 
@@ -232,7 +232,7 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
             named = b.typedefs?[n.a] ?? -1
             if (named < 0) {
                 let why = b.untyped?[n.a] ?? ""
-                let name = pp_symbol_text(p.unit.lx, n.a)
+                let name = c_symbol_text(p.unit, n.a)
                 refuse(b, p, n.tok, "the typedef name '{name}'", empty(why) ? "" : ": {why}")
                 return -1
             }
@@ -616,7 +616,7 @@ def private gives_size(p : CParser; d, init : int) : bool {
 // no size changes nothing; one with a size is refused, as the completion it makes waits for the
 // Aggregates phase
 [arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
-def private tentative(var b : CTypes; var p : CParser; t, sym, id : int) : int {
+def private tentative(var b : CTypes; p : CParser; t, sym, id : int) : int {
     return t if (b.pool[t].count >= 0)
     var after = false
     var decl = b.unit_items
@@ -672,7 +672,7 @@ def private linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int 
         if ((functions && !proto && prev_proto) || (arrays && n.count < 0)) {
             result = prev
         } elif (!(functions && (proto || old_style) && !prev_proto) && !(arrays && a.count < 0)) {
-            refuse(b, p, tok, "a redeclaration of '{pp_symbol_text(p.unit.lx, sym)}' whose type differs from the earlier one's", " (its composite type waits for the Aggregates phase)")
+            refuse(b, p, tok, "a redeclaration of '{c_symbol_text(p.unit, sym)}' whose type differs from the earlier one's", " (its composite type waits for the Aggregates phase)")
             return -1
         }
     }
@@ -708,7 +708,7 @@ def private declaration(var b : CTypes; var p : CParser; decl : int; local : boo
         var t = sized_by_initializer(b, p, applied(b, p, base, d, false, init), d, init)
         return false if (t < 0)
         if (typedef_decl) {
-            var td = CirType(k = "typedef", name = pp_symbol_text(p.unit.lx, sym), to = c_types_use(b, t))
+            var td = CirType(k = "typedef", name = c_symbol_text(p.unit, sym), to = c_types_use(b, t))
             intern(b, "typedef:{td.name}", td)
             bind(b, sym, t)
             continue
@@ -805,7 +805,7 @@ def private definition(var b : CTypes; var p : CParser; def_node : int) : bool {
 }
 
 // whether external declaration `decl` stands in a file under the own libc headers' folder
-def private in_library(b : CTypes; var p : CParser; decl : int) : bool {
+def private in_library(b : CTypes; p : CParser; decl : int) : bool {
     return false if (empty(b.library_dir))
     let file = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
     return starts_with(file, b.library_dir)
