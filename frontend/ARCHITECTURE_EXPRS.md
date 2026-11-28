@@ -18,7 +18,8 @@ the walk: a variable from its declaration on, so its own initializer sees it), `
 `assign` with its operator, `cond`, `comma`, `call`, `index` (the base as the source writes it),
 `cast` for an explicit cast, and `sizeof_v` with Dumper A's size of the type (a scalar its width, a
 pointer and a function the pointer width, `long double` its 64 bits, an array its count of
-elements). Parentheses set `paren`; `__extension__` is its operand. A reference, a subscript and a
+elements). Parentheses set `paren` (a macro expansion's only around a shift or a bitwise operator,
+`ARCHITECTURE_NAMES.md` section 48); `__extension__` is its operand. A reference, a subscript and a
 dereference of a volatile-qualified type set `vol`.
 
 A reference to a function an old-style definition defined has the type `R ()`, as clang's reference

@@ -38,13 +38,9 @@ A declaration's place (`loc`) is its name's token, a typedef's, a variable's and
 alike; a statement's is its first token's (a declaration statement's its variable's name, a `case`,
 `default` or label marker its keyword's or name's, a block `{`, a GNU statement block used as a
 statement the expression statement's). The builder places a token where its own token stream puts
-it (`loc_of`): the file and line the text's line markers give, the column the token stands at.
-Over `clang -E` text that is Dumper A's place for a token on the first token's column of a line,
-since `clang -E` indents each line's first token to its column, and for a token after single
-spaces; it is not for a token after a run of blanks or a comment, which `clang -E` writes as one
-space, nor for a token a macro expansion produced, which Dumper A places at the expansion. A
-`#line` directive gives the presumed line, where Dumper A places by the physical one. Parentheses
-are a source's own: `clang -E` text keeps no trace of a macro body, whose parentheses Dumper A
-keeps only around a shift or a bitwise operator. The preprocessor's expansion record
-(`ARCHITECTURE_PP.md`, PP.5 of the plan) gives each token its spelling and expansion places and
-closes these differences.
+it (`loc_of`): over C source the preprocessor reads, its expansion location in the file as read -
+a source token's own place, a token an expansion made the outermost macro name's line and column -
+with `#line` aside, as Dumper A places it (`frontend/ARCHITECTURE_PARSER.md` section 14). A
+preprocessed unit's tokens have only the place its line markers present. A macro expansion's
+parentheses are marked only around a shift or a bitwise operator, which Dumper A keeps there; the
+source's own are all marked.

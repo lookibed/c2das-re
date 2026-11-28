@@ -17,8 +17,8 @@ A token is its kind (`CTok`), its symbol, where its spelling lies, and its presu
 then each name a file, `#line` or a line marker gives), a line and a column. A token of the source
 stands at its own place; a token an expansion makes, a macro body's or an argument's, stands at the
 outermost macro name of its call, line and column, as clang's expansion location does, and is
-marked `expanded`. The end of a unit whose last token an expansion made stands after the call's
-`)`, the main file's lexer's last token.
+marked `expanded`; `read_file` and `read_line` place it in the file as read, `#line` aside (over
+`-E` text, its presumed place). The end after an expansion stands after the call's `)`.
 
 The spelling is kept where the preprocessor keeps it (`PpSpelled`): a file's working buffer, the
 macro body pool or a symbol, all valid for the unit's life, read through `pp_span_of`. A pasted or
