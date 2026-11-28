@@ -799,7 +799,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
 // as Dumper A leaves them out
 [arch(at="ARCHITECTURE_TYPES.md#c-types-library")]
 def private in_library(var r : CIr; p : CParser; decl : int) : bool {
-    let file = p.unit.toks[p.ast.nodes[decl].tok].file
+    let file = p.unit.toks[p.ast.nodes[decl].tok].read_file
     if (!key_exists(r.in_program_of, file)) {
         let name = c_file_name(p.unit, file)
         let full = empty(r.program_dir) ? name : get_full_file_name(name)
@@ -811,7 +811,7 @@ def private in_library(var r : CIr; p : CParser; decl : int) : bool {
 // the error, at external declaration `decl`, of a C file outside the program root, whose
 // definitions would stay external, as Dumper A gives it; false when there is none
 def private outside_c_file(var r : CIr; p : CParser; decl : int) : bool {
-    let name = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
+    let name = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].read_file)
     return false if (empty(r.program_dir) || !ends_with(name, ".c") || (!empty(r.library_dir) && starts_with(name, r.library_dir)))
     r.err = "{c_where(p.unit, p.ast.nodes[decl].tok)}: {name} is a C file outside the program root {r.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root"
     return true

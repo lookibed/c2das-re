@@ -737,9 +737,28 @@ def c_tokens_of_text(var unit : CUnit; text : string; name : string) : bool {
     return c_tokens_read(unit)
 }
 
-//! `c_tokens_expand_open` and `c_tokens_read`.
+//! the feature tables read so far, by path: each read once, every unit given a copy
+var private feature_tables : table<string; PpFeatures>
+
+//! `c_tokens_expand_open` and `c_tokens_read`, the `#if` feature queries answered by the table
+//! `features_path` (`read_features`, read once a path; "" for none, every query 0); a table that
+//! cannot be read is the unit's error.
 def c_tokens_expand(var unit : CUnit; var provider : PpFileProvider?; main : string; predefines : array<string>;
-                    search : array<string>; epoch : int64 = -1l) : bool {
+                    search : array<string>; epoch : int64 = -1l; features_path : string = "") : bool {
     c_tokens_expand_open(unit, provider, main, predefines, search, epoch)
-    return c_tokens_read(unit)
+    var error : string
+    if (!empty(features_path) && !key_exists(feature_tables, features_path)) {
+        var read <- read_features(features_path, error)
+        if (empty(error)) {
+            feature_tables |> emplace(features_path, read)
+        }
+    }
+    if (!empty(features_path) && empty(error)) {
+        unit.pp.eval.features := feature_tables[features_path]
+    }
+    let clean = c_tokens_read(unit)
+    if (!empty(error)) {
+        unit.err = error
+    }
+    return clean && empty(error)
 }

@@ -260,7 +260,7 @@ def test_aggregate_kinds(t : T?) {
     t |> success(has_aggregate([CirType(k = "enum", name = "E")]))
 }
 
-[test(description = "the builder's C-IR refuses a unit the parser refuses, a file the preprocessor cannot read, and one clang -E refuses where it stands in for an #if PP.4 evaluates, each naming the step", timeout = 600)]
+[test(description = "the builder's C-IR refuses a unit the parser refuses, a file the preprocessor cannot read, and an #error the preprocessor reaches through an evaluated #if, each naming the step", timeout = 600)]
 def test_builder_refusals(t : T?) {
     let dir = path_join(test_temp_dir(), "edges")
     mkdir_rec(dir)
@@ -281,7 +281,7 @@ def test_builder_refusals(t : T?) {
     fwrite(evaluated, "#if 1 + 1\n#error boom\n#endif\nint x;\n")
     var stood_in : CirTu
     builder_tu(evaluated, target_lp64_linux(), stood_in, error)
-    t |> success(starts_with(error, "clang -E: ") && find(error, "boom") >= 0, error)
+    t |> success(starts_with(error, "parser: ") && find(error, "#error boom") >= 0, error)
     delete_tu(stood_in)
 }
 

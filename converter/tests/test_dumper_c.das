@@ -71,12 +71,11 @@ def private dumped_c(name, text : string) : string {
     return listed
 }
 
-[test(description = "Dumper C reads C source through the frontend's preprocessor, the own headers searched and the predefined macros defined, so a node an expansion made stands at its macro name; every place in the file as read, `#line` aside; where an #if needs PP.4, clang -E stands in", timeout = 600)]
+[test(description = "Dumper C reads C source through the frontend's preprocessor, the own headers searched, the predefined macros defined and the dialect's feature table loaded, so a node an expansion made stands at its macro name; every place in the file as read, `#line` aside, an #if evaluated", timeout = 600)]
 def test_dumper_c_source(t : T?) {
     t |> equal(dumped_c("raw.c", "#include <stddef.h>\n#define RET(v) return (v)\n#line 50\nint f(void) \{\n  RET(\n__LP64__);\n\}\n"), "f@4:5 body@5:3")
-    t |> equal(dumped_c("pp4.c", "#if __LINE__ > 0\n#define RET(v) return (v)\n#endif\nint f(void) \{\n  RET(\n1);\n\}\n"), "f@4:5 body@5:3")
-    t |> success(dumper_c_needs_evaluator("main.c:1:2: #if expression needs the PP.4 evaluator: 1 + 1"))
-    t |> success(!dumper_c_needs_evaluator("main.c:1:2: #error x"))
+    t |> equal(dumped_c("pp4.c", "#if __LINE__ > 0\n#line 90\n#define RET(v) return (v)\n#endif\nint f(void) \{\n  RET(\n1);\n\}\n"), "f@5:5 body@6:3")
+    t |> equal(dumped_c("feature.c", "#if !__has_builtin(__builtin_expect)\n#error no feature table\n#endif\nint f(void) \{\n  return 1;\n\}\n"), "f@4:5 body@5:3")
 }
 
 [test(description = "main.das --dumper c on one file runs Dumper C: its C-IR file beside the module and its producer; a unit with no macro converts to the module --dumper a gives", timeout = 600)]
@@ -119,7 +118,7 @@ def private both_dumpers(c_path : string; inputs : DumpInputs) : string {
     return listed
 }
 
-[test(description = "Dumper C leaves out the declarations of a header outside the program root as Dumper A does, takes them under a wider sidecar root, and refuses a C file outside the root and a main file outside it", timeout = 600)]
+[test(description = "Dumper C leaves out the declarations of a header outside the program root as Dumper A does, takes them under a wider sidecar root, and refuses a C file outside the root and a main file outside it; a `#line` naming a file is no file outside the root", timeout = 600)]
 def test_dumper_c_program_root(t : T?) {
     mkdir_rec(path_join(test_temp_dir(), "root/d"))
     let top = get_full_file_name(path_join(test_temp_dir(), "root"))
@@ -136,6 +135,8 @@ def test_dumper_c_program_root(t : T?) {
     dumper_c_tu(q, target_lp64_linux(), default_clang(), DumpInputs(program_root = top), tu, error)
     t |> equal(length([for (d in tu.decls); d; where d.name == "shared_count"]), 1)
     delete_tu(tu)
+    fwrite(path_join(top, "d/renamed.c"), "int foo(void) \{\n#line 1 \"renamed.c\"\n  return 26;\n\}\nint main(void) \{ return foo(); \}\n")
+    t |> equal(both_dumpers(path_join(top, "d/renamed.c"), DumpInputs()), "")
     fwrite(path_join(top, "other.c"), "int other(void) \{ return 1; \}\n")
     fwrite(path_join(top, "d/r.c"), "#include \"../other.c\"\nint main(void) \{ return other(); \}\n")
     error = ""

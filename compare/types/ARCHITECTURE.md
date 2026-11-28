@@ -58,8 +58,8 @@ difference:
   lists, a cast's kind and explicitness among them, every name (a declaration's, a parameter's, a
   local's, a reference's), types by structural name. Set aside: the places, and what the
   preprocessor alone knows - the macro fields and whether parentheses are the
-  source's own or a macro body's (Dumper A keeps a macro body's only around a shift or a bitwise
-  operator; `clang -E` text keeps no trace of a macro);
+  source's own or a macro body's (both keep a macro body's only around a shift or a bitwise
+  operator, and the byte comparison checks them);
 - the conversion census of `metrics/conversion_census_count.das` (`census_tu`) over both units,
   key by key: every count of every dimension (castKind, pair, context, rule, clause, chain,
   anomaly) equal, the plan's C.3 acceptance;
@@ -68,8 +68,7 @@ difference:
   included, the plan's C.6.
 
 A scalar-only unit agrees when all four are equal; one that differs in its bytes alone differs in
-places or parentheses (`frontend/ARCHITECTURE_NAMES.md` section 48), which Dumper C takes from
-`clang -E` text where an `#if` needs PP.4. A scalar-only unit whose table holds no
+places or parentheses (`frontend/ARCHITECTURE_NAMES.md` section 48). A scalar-only unit whose table holds no
 array type either is a core unit, the set the Core phase's acceptance names: its printed line says
 `core`, and the totals count the core units and their byte-identical ones apart.
 

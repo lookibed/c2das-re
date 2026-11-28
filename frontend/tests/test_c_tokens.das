@@ -484,3 +484,19 @@ def test_range_two_files(t : T?) {
     t |> equal(c_range_text(unit, 0, 2), "int a b")
     t |> equal(placed("# 4 \"y.h\"\n"), "$@t.c:1:1")
 }
+
+[test(description = "C source read with a feature table answers the #if queries by it; a table that cannot be read is the unit's error, the tokens read and ended")]
+def test_feature_table(t : T?) {
+    var unit : CUnit
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#if __has_builtin(__builtin_expect)\nyes\n#else\nno\n#endif\n")
+    let clean = c_tokens_expand(unit, mem, "main.c", array<string>(), array<string>(), -1l, features_path("linux"))
+    t |> success(clean, unit.err)
+    t |> equal(c_spelling(unit, 0), "yes")
+    var bare = new PpMemoryProvider()
+    bare->add("main.c", "#if __has_builtin(__builtin_expect)\nyes\n#else\nno\n#endif\n")
+    t |> success(!c_tokens_expand(unit, bare, "main.c", array<string>(), array<string>(), -1l, "/no/such.defs"))
+    t |> equal(unit.err, "/no/such.defs: no such feature-query table")
+    t |> equal(c_spelling(unit, 0), "no")
+    t |> equal(unit.toks[length(unit.toks) - 1].kind, int(CTok.EOF))
+}

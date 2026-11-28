@@ -7,13 +7,11 @@ Dumper C, the clang-free C-IR builder of `frontend/` (`frontend/ARCHITECTURE_TYP
 ## 1. The driver {#dumper-c}
 
 `dumper_c_tu` builds a unit's C-IR with Dumper C: the frontend's preprocessor reads the unit
-(`c_parser_open_source`: the dialect's predefined-macro table, the own headers' folder searched, the
-file system through `PpFioProvider`), the parser reads its tokens, and `c_ir_unit` builds the C-IR,
-the own headers' folder as the library. Every place in the C-IR is the builder's own token's
-(`frontend/ARCHITECTURE_NAMES.md` section 48). Where an `#if` or `#elif` needs the evaluator PP.4
-brings (`dumper_c_needs_evaluator`), clang preprocesses the unit under Dumper A's flags
-(`dumper_frontend_flags`) and the parser reads that text, whose tokens have only the place its line
-markers present; nothing under `frontend/` starts clang. The builder leaves out the declarations of
+(`c_parser_open_source`: the dialect's predefined-macro table, its feature table for the `#if`
+queries, the own headers' folder searched, the file system through `PpFioProvider`), the parser
+reads its tokens, and `c_ir_unit` builds the C-IR, the own headers' folder as the library. Every
+place in the C-IR is the builder's own token's (`frontend/ARCHITECTURE_NAMES.md` section 48). No
+clang runs for Dumper C. The builder leaves out the declarations of
 a file outside the program root (the sidecar's `program_root`, else the main file's folder) as it
 leaves out the own headers', and a C file outside it is an error, as Dumper A's file policy has it;
 a main file outside the root is refused before it is read.
