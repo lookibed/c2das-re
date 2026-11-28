@@ -112,7 +112,8 @@ struct PpHeld {
 }
 
 //! One `#define`: the body is `count` tokens of `Preprocessor.macro_body` from `first`; a
-//! variadic macro's last parameter is `__VA_ARGS__`, or the name a GNU `name...` gives it.
+//! variadic macro's last parameter is `__VA_ARGS__`, or the name a GNU `name...` gives it. The
+//! line from the name to its last token is bytes `at .. stop` of the working buffer `buffer`.
 struct PpMacro {
     name : int
     function_like : bool
@@ -124,6 +125,9 @@ struct PpMacro {
     line : int
     col : int
     undecided : bool    //!< defined in a group an undecided conditional chose
+    buffer : int
+    at : int
+    stop : int
 }
 
 //! Why an `#include` read no file.
@@ -205,7 +209,8 @@ enum PpSpelled {
 //! expansion, the place of the outermost macro name; `call` the macro call it came from, an index of
 //! the expansion's `calls`, -1 for a token of the source. `spelled`, `buffer`, `at` and `len` say
 //! where its spelling lies (`pp_span_of`). `painted` marks a name read while its macro was
-//! disabled: it never expands again.
+//! disabled: it never expands again. `copy` is the innermost argument it is a copy of, an index of
+//! the expansion's `copies`, 0 for none.
 struct PpOutToken {
     tok : PpToken
     pline : uint
@@ -216,13 +221,16 @@ struct PpOutToken {
     at : int
     len : int
     painted : bool
+    copy : int
 }
 
 //! One macro call: the macro (an index of `Preprocessor.macros`), its name token's place and the
 //! call that token came from (-1: the source), the presumed place of the outermost name, the
 //! presumed line of its end (the `)`, or the name of an object-like macro) and that token's
 //! physical line and column, and its arguments, `arg_count` entries of the expansion's `call_args`
-//! from `first_arg`.
+//! from `first_arg`. `arg_of` is the call whose argument `arg_k` was being macro-expanded when the
+//! name was read (-1: none), `outer` the outermost call through `arg_of` and `parent`, itself at
+//! the top; `in_line` marks a call of a directive's line, whose tokens no reader gets.
 struct PpCall {
     macro : int
     name : PpToken
@@ -234,25 +242,57 @@ struct PpCall {
     end_col : int
     first_arg : int
     arg_count : int
+    arg_of : int
+    arg_k : int
+    outer : int
+    in_line : bool
+}
+
+//! Where an argument's text as written lies.
+enum PpArgText {
+    empty       //!< no token
+    source      //!< `len` bytes at `at` of the file buffer `buffer`, one stretch of the file
+    body        //!< the `len` body tokens of `Preprocessor.macro_body` from `at`: the call is written in a `#define`
+    pooled      //!< `len` bytes at `at` of the expansion's `arg_text`: the tokens as read, a blank where one has space
 }
 
 //! One argument of a call as written: its file and the byte span from its first token's offset to
-//! its last token's end, -1 offsets when it is empty or not spelled in one stretch of a file.
+//! its last token's end, -1 offsets when it is empty or not spelled in one stretch of a file; and
+//! where its text lies (`text`, `buffer`, `at`, `len`).
 struct PpCallArg {
     file : int
     from : int
     to : int
+    text : PpArgText
+    buffer : int
+    at : int
+    len : int
+}
+
+//! A token's place in an argument: it is in a copy of argument `k` of call `call`, and `outer` is
+//! the copy it was in before that substitution (an index of the expansion's `copies`, 0 for none).
+struct PpArgCopy {
+    call : int
+    k : int
+    outer : int
 }
 
 //! The macro expansion over the directive layer, PP.3's (`pp_expand.das`): `next_token` hands out
 //! the next expanded token into `pp.tok`; `expand_line` expands the tokens of `pp.line` in place,
 //! leaving the operands of `defined` alone when `condition`; `macro_changed` hears of a `#define`
 //! of a name no macro defines and of every `#undef`, before the table changes. It keeps the call
-//! record and the pool of the spellings it made.
+//! record and the pool of the spellings it made, the argument copies (`copies`, entry 0 none), the
+//! texts of the arguments no stretch of a file spells (`arg_text`), and the per-macro parameter
+//! counts `pp_macro_uses` computes once (`uses_at`, an index of `uses` per macro, -1 not yet).
 class PpExpansion {
     calls : array<PpCall>
     call_args : array<PpCallArg>
     text : array<uint8>
+    copies : array<PpArgCopy>
+    arg_text : array<uint8>
+    uses : array<int>
+    uses_at : array<int>
+    called_def : table<int; int>    //!< per name a body calls: its one definition, -2 when it has two
     def abstract next_token(var pp : Preprocessor) : bool
     def abstract expand_line(var pp : Preprocessor; condition : bool) : void
     def macro_changed(var pp : Preprocessor; name : PpToken; undef : bool) : void {
@@ -1197,9 +1237,9 @@ def private body_error(pp : Preprocessor; m : PpMacro) : string {
     return ""
 }
 
-//! whether two definitions of one name are the same (C11 6.10.3p2): parameters, spellings, and
+//! Whether two definitions of one name are the same (C11 6.10.3p2): parameters, spellings, and
 //! whitespace between the body's tokens
-def private same_definition(pp : Preprocessor; a, b : PpMacro) : bool {
+def pp_same_definition(pp : Preprocessor; a, b : PpMacro) : bool {
     return false if (a.function_like != b.function_like || a.variadic != b.variadic || length(a.params) != length(b.params) || a.count != b.count)
     for (x, y in a.params, b.params) {
         return false if (x != y)
@@ -1227,7 +1267,8 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
     }
     let name_at = pp.lx.tok
     var m = PpMacro(name = pp.lx.tok.sym, file = pp.lx.tok.file, line = pp.lx.tok.line, col = pp.lx.tok.col,
-                    first = length(pp.macro_body), undecided = pp_in_undecided_group(pp))
+                    first = length(pp.macro_body), undecided = pp_in_undecided_group(pp), buffer = pp.state.buffer,
+                    at = pp.lx.flex.tok.start, stop = pp.lx.flex.tok.start + pp.lx.flex.tok.len)
     var more = next_on_line(pp)
     if (more && pp.lx.tok.kind == int(PpTok.LPAREN) && !pp.lx.tok.has_space) {
         m.function_like = true
@@ -1235,12 +1276,14 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
             skip_rest(pp)
             return
         }
+        m.stop = pp.lx.flex.tok.start + pp.lx.flex.tok.len
         more = next_on_line(pp)
     } elif (more && !pp.lx.tok.has_space) {
         diagnose(pp, PpSeverity.warning, "ISO C99 requires whitespace after the macro name")
     }
     while (more) {
         hold(pp, pp.macro_body, pp.macro_text)
+        m.stop = pp.lx.flex.tok.start + pp.lx.flex.tok.len
         more = next_on_line(pp)
     }
     m.count = length(pp.macro_body) - m.first
@@ -1258,7 +1301,7 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
         }
     }
     let old = pp.macro_of?[m.name] ?? -1
-    if (old >= 0 && !same_definition(pp, pp.macros[old], m)) {
+    if (old >= 0 && !pp_same_definition(pp, pp.macros[old], m)) {
         diagnose_at(pp, PpSeverity.warning, at, "'{pp_name(pp, m.name)}' macro redefined")
     } elif (old < 0 && pp.expansion != null) {
         pp.expansion->macro_changed(pp, name_at, false)
