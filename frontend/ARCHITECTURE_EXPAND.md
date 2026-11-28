@@ -101,7 +101,10 @@ optional name, anything but a number asking for "a positive integer argument" as
 an `#if` or `#elif` line the operand of `defined` - `defined X` and `defined ( X )`, written or
 produced by a macro - is left as written, and so is the `< ... >` of `__has_include ( < ... > )`
 and `__has_include_next`, which clang lexes as a header name (`#define linux 1` leaves
-`<linux/version.h>`); any other operand, `__has_include`'s macro name and `__has_attribute`'s
+`<linux/version.h>`), and `__has_embed`'s. The parenthesized operand of the queries clang reads
+unexpanded - `__has_feature`, `__has_extension`, `__has_builtin`, `__has_constexpr_builtin`,
+`__has_warning`, `__is_identifier`, `__is_target_*`, `__building_module` - is left as written too
+(`UNEXPANDED_QUERIES`); any other operand, `__has_include`'s macro name and the attribute queries'
 among them, is expanded, as clang expands it. An argument of a call in the line is pre-expanded
 as anywhere else, with no operand left: `F(defined X)` of a defined `X` gives clang's `defined 1`.
 The expanded line goes to the evaluator hook (`ARCHITECTURE_PP.md` section 11). A `_Pragma` in
@@ -155,8 +158,9 @@ time `pp_expand_start` is given, in UTC (`"Sep  9 2001"`, `"01:46:40"`, `"Sun Se
 2001"`), the current time by default: clang shows `SOURCE_DATE_EPOCH` the same way, which makes a
 unit's output reproducible and the oracle's comparison exact; `__TIMESTAMP__` shows that time,
 not the file's, since the file provider has no file times. clang's other builtin names, the
-`__has_*` family, `__is_identifier`, `__is_target_*` and `__building_module`, are the `#if`
-evaluator's: PP.3 hands them out as names. A `#define` of a builtin name no macro defines is
+`__has_*` family but `__has_cpp_attribute`, which clang under C does not have, `__is_identifier`,
+`__is_target_*` and `__building_module`, are the `#if` evaluator's (`ARCHITECTURE_EVAL.md` section
+42): PP.3 hands them out as names, and `PpExpansion.is_builtin` tells `defined` they are there. A `#define` of a builtin name no macro defines is
 clang's warning "redefining builtin macro" and the definition takes over; an `#undef` of one is
 "undefining builtin macro" and removes the builtin for the rest of the unit, so `__LINE__` after
 `#undef __LINE__` is a name, as it is after a `#define` and `#undef` of it (the directive layer

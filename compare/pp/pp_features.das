@@ -68,6 +68,7 @@ def private sorted_keys(names : table<string; bool>) : array<string> {
 //! The operands each query is asked of, read from clang's headers under `headers` (the pinned SDK's
 //! `include/` folder): the builtin tables, the attribute spellings, the feature list, the warning
 //! groups and the keywords; `error` names a header that is missing.
+[arch(at="ARCHITECTURE.md#features")]
 def feature_candidates(headers : string; var error : string&) : table<string; array<string>> {
     var out : table<string; array<string>>
     let basic = path_join(path_join(headers, "clang"), "Basic")
@@ -135,6 +136,7 @@ def private query_text(q, name : string) : string => q == "__has_warning" ? "{q}
 //! in one `clang -E -P` run a query, under `flags` (the dialect's dumper flags), into `work`; every
 //! answer that differs from the query's default (0; 1 for `__is_identifier`) a line. `error` names
 //! a clang run that fails or answers a line short.
+[arch(at="ARCHITECTURE.md#features")]
 def generate_features(dialect : string; flags : array<string>; candidates : table<string; array<string>>; work : string;
                       var error : string&) : string {
     var lines : array<string>

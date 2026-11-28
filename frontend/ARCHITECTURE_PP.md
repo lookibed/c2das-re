@@ -151,14 +151,18 @@ the presumed include stack they stand for.
 ## 11. The `#if` evaluator hook {#pp-if-hook}
 
 `#if` and `#elif` copy their expression's tokens into `pp.line`, have the expansion expand them
-with `defined`'s operands left as written (`expand_condition`), and ask `eval_condition`, the one
-place PP.4's evaluator goes. Until then it answers `0`, `1`, `defined X` and `defined(X)`, each
-under any number of `!`; any other expression is an error naming PP.4 and false, so the group is
-skipped, and the conditional is marked `undecided`: the group read may not be the one clang reads,
-which the directive oracle reads off to class a difference (`compare/pp/ARCHITECTURE.md` section
-4). For the same reading a macro defined, and a diagnostic met, while such a conditional is open
-is marked `undecided` (`PpMacro`, `PpDiagnostic`). An `#elif` whose conditional already took a group evaluates nothing. `#ifdef`, `#ifndef`,
-`#elifdef` and `#elifndef` ask the macro table now.
+with `defined`'s operands left as written (`expand_condition`), and ask `eval_condition`, which
+hands the line to the evaluator of `ARCHITECTURE_EVAL.md` (`pp.eval`) and answers its questions:
+`defined` and `#ifdef` by `pp_is_defined` (a macro, or a builtin name the expansion still has),
+`__has_include` and `__has_include_next` by the search of section 8 (`include_answer`, the header
+name built as `#include` builds it, `line_header_name`), `__has_embed` by reading the file found.
+Every condition is decided: an error the evaluator reports skips the group, as clang skips it, and
+stands in `pp.diags` at its token. With no expansion set (`pp_start` alone) a macro in the line is
+a name worth 0, the queries are answered, and no builtin name is defined. The dialect's char and
+`wchar_t` facts come from the predefined entries (`pp_eval_target`); the feature table is the
+caller's to load into `pp.eval.features` (`read_features`), else every feature query answers 0. An
+`#elif` whose conditional already took a group evaluates nothing, and a conditional opened in a
+skipped group evaluates none of its lines.
 
 ## 12. The macro table {#pp-macros}
 

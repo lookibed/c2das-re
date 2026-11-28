@@ -513,7 +513,7 @@ def private drop_placemarkers(var toks : array<PpOutToken>) {
 def private param_of(pp : Preprocessor; m : int; h : PpHeld) : int {
     return -1 if (h.kind != int(PpTok.IDENTIFIER) || !pp.macros[m].function_like)
     let params & = unsafe(pp.macros[m].params)
-    for (i in range(length(params))) {  // nolint:PERF018 - the index is the answer
+    for (i in range(length(params))) {
         return i if (params[i] == h.sym)
     }
     return -1

@@ -84,6 +84,7 @@ def features_path(dialect : string) : string => path_join(dir_name(predefined_pa
 
 //! The table text `text` read: a line `<query> <operand> <value>`, an empty line and a line starting
 //! with `#` skipped. `error` names `path` and the first line that is no entry, or that repeats one.
+[arch(at="ARCHITECTURE_EVAL.md#pp-eval-features")]
 def parse_features(text, path : string; var error : string&) : PpFeatures {
     var features : PpFeatures
     for (line, line_no in split(text, "\n"), count(1)) {
