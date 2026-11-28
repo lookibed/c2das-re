@@ -145,6 +145,12 @@ def run_converted(spec : DemoSpec) : DemoRun {
     run.final = final_line(output)
     // a speed run that did not end owes no `final` line: it fails on its end, not as a desync
     run.sync = !spec.speed ? tic_sync(expected, got, spec.tics) : run.ended ? final_sync(expected, run.final) : TicSync(compared = length(expected))
+    // a speed build that ends prints its `final` line before the end: one with no tic line and none
+    // was built before DOOM_FINAL_CHECKSUM, not a replay that fell out of sync
+    if (spec.speed && run.ended && run.tics == 0 && empty(run.final)) {
+        run.error = "rebuild needed: the speed build {spec.entry} ended but printed no `final` line, so it predates {FINAL_CHECKSUM_DEFINE}; rebuild it with --speed and --native or --convert"
+        run.sync = TicSync(compared = length(expected))
+    }
     run.traces = join(trace_lines(output), "\n")
     run.timing = host_timing(output)
     return run

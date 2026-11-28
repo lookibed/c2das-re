@@ -30,7 +30,6 @@ require ../perf/perf_lanes.das
 let WORK = "doom/work"
 let NATIVE = "doom/work/native/doom"
 // the define of the patch's trace lines, the folder of the traces --trace runs write
-let TRACE_DEFINE = "DOOM_TIC_TRACE"
 let TRACES = "doom/work/trace"
 let FREEDOOM2 = "doom/fetch/wads/freedoom2.wad"
 let NATIVE_FLAGS <- ["-O2", "-w"]
@@ -114,27 +113,22 @@ def private native_command(defines : array<string>; form : string) : array<strin
     return <- argv
 }
 
-// the sidecar's defines for `form`: TRACE_DEFINE after them for the traced build, `speed_defines`
-// for the speed build; `error` set when the sidecar does not read
+// the sidecar's defines for `form` (`form_defines`); `error` set when the sidecar does not read
 def private sidecar_defines(form : string; var error : string&) : array<string> {
     let side = read_sidecar(SIDECAR, error)
-    var defines <- form == "speed" ? speed_defines(side.defines) : clone_to_move(side.defines)
-    if (form == "trace") {
-        defines |> push(TRACE_DEFINE)
-    }
-    return <- defines
+    return <- form_defines(form, side.defines)
 }
 
 // the sidecar a conversion of `form` takes: `base` (SIDECAR or the variant's) itself for the sync
-// build, else written into `root`, with TRACE_DEFINE first among its defines for the traced build, `speed_sidecar`'s for
-// the speed build; "" with `error` set when it cannot be written
+// build, else written into `root` as `form_sidecar_text` gives it; "" with `error` set when it
+// cannot be written
 def private form_sidecar(root, base, form : string; var error : string&) : string {
     if (empty(form)) {
         return base
     }
     mkdir_rec(root)
     let path = path_join(root, "doom-{form}.c2das")
-    let text = form == "trace" ? with_define(fread(base), TRACE_DEFINE, error) : speed_sidecar(fread(base), error)
+    let text = form_sidecar_text(form, fread(base), error)
     if (!empty(error)) {
         error = "{base}: {error}"
     } elif (!fwrite(path, text)) {

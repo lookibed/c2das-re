@@ -124,10 +124,17 @@ def test_slowdown(t : T?) {
 
 [test]
 def test_render(t : T?) {
-    t |> run("the provenance, the table and a line per cell that does not stand") @(t : T?) {
+    t |> run("the provenance, the table and a line per cell that does not stand; a capture with no speed check was held to the demo's end alone") @(t : T?) {
         let text = render_fps(stand_in_capture())
-        let want = "Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `0123456789ab`, captured 2026-11-04 12:00 UTC; clang version 22.1.8; daslang 0.6.4.\n\nPureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop in the speed build, which leaves the patch's per-tic checksums and tic lines out and hashes once, the last tic's state and frame, held to the reference log's last line: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of 3 speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.\n\n| Workload |  native fps |        interp fps |    JIT fps | interp / native | JIT / native |\n| :------- | ----------: | ----------------: | ---------: | --------------: | -----------: |\n| demo1    | 1000.0 ±0% |         25.0 ±3% | 250.0 ±0% |            40.0 |          4.0 |\n| demo2    |  500.0 ±0% | suspect (±37.5%) |     desync |         suspect |          n/a |\n\n- demo2, JIT: desync after 25 tics in sync on cs: expected `tic=25 cs=1`, got `tic=25 cs=2`\n"
+        let want = "Box PC (AMD Ryzen 7 7435HS), linux x86_64; c2das-re `0123456789ab`, captured 2026-11-04 12:00 UTC; clang version 22.1.8; daslang 0.6.4.\n\nPureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over the process CPU time (`clock()`) of the host's update loop in the speed build, which leaves the patch's per-tic checksums and tic lines out and was held to the demo's end (`timed N gametics`) alone, no final line checked: the playback alone timed, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of 3 speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median; above 20% it is `suspect`, without a ratio. `X / native` is native fps over X's.\n\n| Workload |  native fps |        interp fps |    JIT fps | interp / native | JIT / native |\n| :------- | ----------: | ----------------: | ---------: | --------------: | -----------: |\n| demo1    | 1000.0 ±0% |         25.0 ±3% | 250.0 ±0% |            40.0 |          4.0 |\n| demo2    |  500.0 ±0% | suspect (±37.5%) |     desync |         suspect |          n/a |\n\n- demo2, JIT: desync after 25 tics in sync on cs: expected `tic=25 cs=1`, got `tic=25 cs=2`\n"
         t |> equal(text, want)
+    }
+    t |> run("a capture whose speed runs printed the final line names its patch and the one hash inside the timed window") @(t : T?) {
+        var c <- stand_in_capture()
+        c.speed_check = FINAL_LINE_CHECK
+        c.speed_patch = "doom/patches/0001-per-tic-checksum.patch (sha256 ab12)"
+        let method = "in the speed build, which leaves the per-tic checksums and tic lines of doom/patches/0001-per-tic-checksum.patch (sha256 ab12) out and hashes once as the demo ends, the last tic's state and frame, held to the reference log's last line: the playback and that one hash timed, the module load, the JIT compile and `doom_init` outside it. Per demo"
+        t |> success(render_fps(c) |> contains(method), render_fps(c))
     }
     t |> run("a suspect cell shows its spread alone, a ratio over it `suspect`, a desync `desync`") @(t : T?) {
         let text = render_fps(stand_in_capture())
@@ -242,10 +249,10 @@ def test_speed_run(t : T?) {
 
 [test]
 def test_timed_evidence(t : T?) {
-    t |> run("a speed run: hash off, the tics, the lane and build, the fps and the final line") @(t : T?) {
+    t |> run("a speed run: no per-tic hash and one final hash inside the timed window, the tics, the lane and build, the fps and the final line") @(t : T?) {
         let spec = DemoSpec(entry = "doom/work/source-speed/doom_main.das", tier = "interp", demo = 1)
         let run = speed_run(4, 0.5lf, "tic=3 cs=00000003 fb=0000000a", "tic=3 cs=00000003 fb=0000000a")
-        t |> equal(timed_evidence(spec, run), "timed interp demo1, speed build doom/work/source-speed/doom_main.das: hash off (no per-tic cs or fb; one cs and fb of the last tic as the demo ends), tics 0-3 (4 gametics) in 0.500 s = 8.0 fps; final `tic=3 cs=00000003 fb=0000000a` is the reference's last tic")
+        t |> equal(timed_evidence(spec, run), "timed interp demo1, speed build doom/work/source-speed/doom_main.das: no per-tic hash; one final hash (cs and fb of the last tic), inside the timed window, tics 0-3 (4 gametics) in 0.500 s = 8.0 fps; final `tic=3 cs=00000003 fb=0000000a` is the reference's last tic")
     }
     t |> run("a sync run: hash on, every tic held to the reference, not a speed sample") @(t : T?) {
         let sync_spec = DemoSpec(entry = "doom/work/source/doom_main.das", tier = "native", demo = 2)

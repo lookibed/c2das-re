@@ -4,6 +4,7 @@ require strings
 require daslib/fio
 require daslib/strings_boost
 require daslib/json_boost
+require ../harness.das
 require ../demo_run.das
 require ../fps.das
 require ../../perf/samples.das
@@ -27,6 +28,7 @@ def private stand_in_plan(samples : int) : FpsPlan {
     set_env_variable("DOOM_STAND_IN", "4,-1,255,0,-1,-1")
     set_env_variable("DOOM_NATIVE_DESYNC", "")
     set_env_variable("DOOM_NATIVE_SPEED_FAIL", "")
+    set_env_variable("DOOM_NATIVE_SPEED_STALE", "")
     return <- FpsPlan(sync_native = path_join(root, "doom"), sync_entry = spec.entry, native = path_join(root, "doom-speed"), entry = path_join(root, "doom_main_speed.das"), wad = spec.wad, work = spec.work, ref_dirs <- clone_to_move(spec.ref_dirs), tiers <- ["interp"], demos <- [1], samples = samples, timeout = 60, capture_path = path_join(root, "results.json"))
 }
 
@@ -109,6 +111,16 @@ def test_cell(t : T?) {
         t |> equal(cell.error, "speed build did not end in `timed 4 gametics` (exit 0)")
         t |> equal(length(cell.samples), 0)
         t |> equal(native_runs(plan), 2)
+    }
+    t |> run("a speed build made before the final line ends with none: rebuild needed, not a desync") @(t : T?) {
+        let plan <- stand_in_plan(3)
+        set_env_variable("DOOM_NATIVE_SPEED_STALE", "1")
+        var cell <- fps_sync(plan, NATIVE_LANE, 1)
+        sampled(plan, cell, 3)
+        set_env_variable("DOOM_NATIVE_SPEED_STALE", "")
+        t |> success(!cell.desync)
+        t |> equal(cell.error, "rebuild needed: the speed build {plan.native} ended but printed no `final` line, so it predates {FINAL_CHECKSUM_DEFINE}; rebuild it with --speed and --native or --convert")
+        t |> equal(length(cell.samples), 0)
     }
 }
 
@@ -223,6 +235,29 @@ def test_run_das(t : T?) {
         t |> equal(run_das(dir, ["--run", "--demo", "1"], out), 1)
         t |> success(out |> contains("interp demo1 on freedoom2.wad: no doom/work/source/doom_main.das; run --convert"), out)
         t |> success(!(out |> contains("doom: demo1, native")), out)
+    }
+    t |> run("--fps over stand-in builds logs each timed run's evidence line, the sync run's and the speed run's") @(t : T?) {
+        let root = scratch("doom_run_das_fps")
+        mkdir_rec(path_join(root, "doom/work/native"))
+        write_native_stand_in(path_join(root, "doom/work/native/doom"))
+        write_native_stand_in(path_join(root, "doom/work/native/doom-speed"))
+        for (layout in ["source", "source-speed"]) {
+            mkdir_rec(path_join(root, "doom/work/{layout}"))
+            fwrite(path_join(root, "doom/work/{layout}/doom_main.das"), STAND_IN)
+        }
+        mkdir_rec(path_join(root, "doom/fetch/wads"))
+        fwrite(path_join(root, "doom/fetch/wads/freedoom2.wad"), "IWAD")
+        mkdir_rec(path_join(root, "doom/ref"))
+        fwrite(path_join(root, "doom/ref/freedoom2_demo1.log"), "# stand-in
+" + join([for (tic in range(4)); "tic={tic} cs=0000000{tic}"], "\n") + "\n")
+        set_env_variable("DOOM_STAND_IN", "4,-1,255,0,-1,-1")
+        set_env_variable("DOOM_NATIVE_DESYNC", "")
+        set_env_variable("DOOM_NATIVE_SPEED_FAIL", "")
+        set_env_variable("DOOM_NATIVE_SPEED_STALE", "")
+        var out : string
+        t |> equal(run_das(root, ["--run", "--fps", "--demo", "1", "--tiers", "interp", "--samples", "1"], out), 0, out)
+        t |> success(out |> contains("doom: timed native demo1, sync build doom/work/native/doom: hash on (cs and fb every tic, a tic line each), tics 0-3 (4 gametics) in 0.125 s = 32.0 fps; every tic held to the reference, not a speed sample"), out)
+        t |> success(out |> contains("doom: timed native demo1, speed build doom/work/native/doom-speed: no per-tic hash; one final hash (cs and fb of the last tic), inside the timed window, tics 0-3 (4 gametics) in 0.125 s = 32.0 fps; final `tic=3 cs=00000003` is the reference's last tic"), out)
     }
     t |> run("a refused --fps stops before any run") @(t : T?) {
         var out : string

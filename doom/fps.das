@@ -41,7 +41,9 @@ struct FpsLane {
 //! Every number one `--fps` run measured: the c2das-re commit, the command that reproduces it,
 //! the end of the run, the machine (`perf/boxes.das`) and the tools, the runs per cell, the
 //! `spread_rule` (`perf/samples.das`), the core its speed runs ran pinned to (-1 for none) and
-//! the clock, the lanes, the demos and one cell per demo and lane.
+//! the clock, how its speed runs were held to the reference (`speed_check`: `FINAL_LINE_CHECK`, or
+//! "" for a capture from before it, held to the demo's end alone) with the patch that printed the
+//! line and its sha256 (`speed_patch`), the lanes, the demos and one cell per demo and lane.
 struct FpsCapture {
     commit : string
     command : string
@@ -55,6 +57,8 @@ struct FpsCapture {
     spread_rule : string
     pinned_core : int = -1
     clock : string
+    speed_check : string
+    speed_patch : string
     lanes : array<FpsLane>
     workloads : array<string>
     cells : array<FpsCell>
@@ -98,7 +102,7 @@ def run_problem(run : DemoRun) : string {
 def timed_evidence(spec : DemoSpec; run : DemoRun) : string {
     let n = run.timing.tics
     let build = run.speed ? "speed build" : "sync build"
-    let hash = run.speed ? "hash off (no per-tic cs or fb; one cs and fb of the last tic as the demo ends)" : "hash on (cs and fb every tic, a tic line each)"
+    let hash = run.speed ? "no per-tic hash; one final hash (cs and fb of the last tic), inside the timed window" : "hash on (cs and fb every tic, a tic line each)"
     let held = run.speed ? "final `{run.final}` is the reference's last tic" : "every tic held to the reference, not a speed sample"
     return "timed {spec.tier} demo{spec.demo}, {build} {spec.entry}: {hash}, tics 0-{n - 1} ({n} gametics) in {run.timing.seconds:.3f} s = {double(n) / run.timing.seconds:.1f} fps; {held}"
 }
@@ -193,6 +197,15 @@ def private slowdown_text(c : FpsCapture; workload, lane : string) : string {
     return r > 0.0lf ? "{r:.1f}" : MISSING
 }
 
+// how capture `c`'s speed builds ran and were held to the reference: the final line of its patch, or,
+// for a capture that records none, the demo's end alone
+def private speed_method(c : FpsCapture) : string {
+    if (c.speed_check == FINAL_LINE_CHECK) {
+        return "which leaves the per-tic checksums and tic lines of {c.speed_patch} out and hashes once as the demo ends, the last tic's state and frame, held to the reference log's last line: the playback and that one hash timed, the module load, the JIT compile and `doom_init` outside it"
+    }
+    return "which leaves the patch's per-tic checksums and tic lines out and was held to the demo's end (`timed N gametics`) alone, no final line checked: the playback alone timed, the module load, the JIT compile and `doom_init` outside it"
+}
+
 // PureDOOM's name in `UPSTREAM_CELLS`, the ports directory's
 let private DOOM_PROGRAM = "puredoom"
 
@@ -211,7 +224,7 @@ def render_fps(c : FpsCapture) : string {
     }
     let machine = box_label(capture_box(c.box, c.cpu), c.cpu)
     var text = "Box {machine}, {c.platform}; c2das-re `{c.commit}`, captured {c.timestamp}; {c.clang}; daslang {c.daslang}.\n\n"
-    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, which leaves the patch's per-tic checksums and tic lines out and hashes once, the last tic's state and frame, held to the reference log's last line: the playback alone, the module load, the JIT compile and `doom_init` outside it. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median{spread_note(c.spread_rule)}; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
+    text += "PureDOOM `-timedemo demoN` on freedoom2.wad. fps is the demo's gametics over {FPS_CLOCK} in the speed build, {speed_method(c)}. Per demo and lane one run of the sync build first holds every tic to the reference log; a cell is then the median of {c.samples} speed runs, each its own process ending in the demo's `timed N gametics`, ± half the range over the median{spread_note(c.spread_rule)}; above {int(SUSPECT_SPREAD * 100.0lf)}% it is `{SUSPECT}`, without a ratio. `X / native` is native fps over X's.\n\n"
     let failed <- [for (cell in c.cells); "\n- {cell.workload}, {fps_title(cell.lane)}: {cell.error}"; where !empty(cell.error)]
     let notes <- upstream_footnotes([DOOM_PROGRAM], das_lanes)
     return text + table_of(headers, rows, 1) + join(failed, "") + "\n" + (empty(notes) ? "" : "\n" + join(notes, "\n") + "\n")

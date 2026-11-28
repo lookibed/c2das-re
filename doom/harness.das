@@ -217,6 +217,11 @@ def trace_lines(text : string) : array<string> => <- [for (line in split(text, "
 let TIC_CHECKSUM_DEFINE = "DOOM_TIC_CHECKSUM"
 //! The define of patch 0001's one `final` line, the speed build's.
 let FINAL_CHECKSUM_DEFINE = "DOOM_FINAL_CHECKSUM"
+//! The define of patch 0002's `trace=` lines, the traced build's.
+let TRACE_DEFINE = "DOOM_TIC_TRACE"
+//! How a capture's speed runs were held to the reference (`FpsCapture.speed_check`): the speed build
+//! prints one `final` line, the last tic's cs and fb, held to the reference log's last line.
+let FINAL_LINE_CHECK = "final line"
 
 //! The text after `final ` of the first `final tic=` line of `output`, the speed build's one checksum
 //! line (the last tic run, as the reference log's line of it reads); "" without one.
@@ -265,6 +270,21 @@ def speed_sidecar(sidecar : string; var error : string&) : string {
     let without = without_define(sidecar, TIC_CHECKSUM_DEFINE, error)
     return empty(error) ? with_define(without, FINAL_CHECKSUM_DEFINE, error) : ""
 }
+
+//! The defines of the build `form` from the sync build's `defines`: `TRACE_DEFINE` after them for
+//! the traced build (`trace`), `speed_defines` for the speed build (`speed`), else `defines`.
+def form_defines(form : string; defines : array<string>) : array<string> {
+    var out <- form == "speed" ? speed_defines(defines) : clone_to_move(defines)
+    if (form == "trace") {
+        out |> push(TRACE_DEFINE)
+    }
+    return <- out
+}
+
+//! The sidecar text of the traced (`trace`) or the speed build from the sync build's text
+//! `sidecar`: `TRACE_DEFINE` first among its defines, or `speed_sidecar`'s; "" with `error` set when
+//! the text refuses.
+def form_sidecar_text(form, sidecar : string; var error : string&) : string => form == "trace" ? with_define(sidecar, TRACE_DEFINE, error) : speed_sidecar(sidecar, error)
 
 //! `sidecar`'s text with `define` first among its defines, in the spelling of the sidecar's own
 //! file (`"defines": [`) or of a variant's written one (`"defines" : [` over lines); "" with `error`

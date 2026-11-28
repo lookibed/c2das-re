@@ -317,6 +317,7 @@ def test_final_checksum(t : T?) {
     t |> run("the speed build's final line, the text after `final `, \"\" without one") @(t : T?) {
         t |> equal(final_line("Z_Init\nfinal tic=3 cs=00000003 fb=0000000a\nError: timed 4 gametics in 4 realtics\n"), "tic=3 cs=00000003 fb=0000000a")
         t |> equal(final_line("tic=3 cs=00000003\nfinal\n"), "")
+        t |> equal(final_line("final cs=00000001\nfinal tic=3 cs=00000003\n"), "tic=3 cs=00000003")
     }
     t |> run("held to the reference's last tic line") @(t : T?) {
         let expected <- ["tic=0 cs=00000000", "tic=1 cs=00000001"]
@@ -339,6 +340,20 @@ def test_final_checksum(t : T?) {
     }
     t |> run("the speed build's defines: the final checksum's first, the per-tic checksum's out") @(t : T?) {
         t |> equal(join(speed_defines(["A", TIC_CHECKSUM_DEFINE, "B"]), ","), "{FINAL_CHECKSUM_DEFINE},A,B")
+    }
+    t |> run("the defines are the ones patch 0001 tests") @(t : T?) {
+        let patch = fread("doom/patches/0001-per-tic-checksum.patch")
+        t |> success(patch |> contains("defined({FINAL_CHECKSUM_DEFINE})"), "patch 0001 names {FINAL_CHECKSUM_DEFINE}")
+        t |> success(patch |> contains("defined({TIC_CHECKSUM_DEFINE})"), "patch 0001 names {TIC_CHECKSUM_DEFINE}")
+    }
+    t |> run("each build form's defines and sidecar: the speed build's swap the checksums, the traced build's add the trace") @(t : T?) {
+        t |> equal(join(form_defines("speed", ["A", TIC_CHECKSUM_DEFINE]), ","), "{FINAL_CHECKSUM_DEFINE},A")
+        t |> equal(join(form_defines("trace", ["A", TIC_CHECKSUM_DEFINE]), ","), "A,{TIC_CHECKSUM_DEFINE},{TRACE_DEFINE}")
+        t |> equal(join(form_defines("", ["A", TIC_CHECKSUM_DEFINE]), ","), "A,{TIC_CHECKSUM_DEFINE}")
+        var error : string
+        t |> equal(form_sidecar_text("speed", "\{\"defines\": [\"A\", \"{TIC_CHECKSUM_DEFINE}\"]\}", error), "\{\"defines\": [\"{FINAL_CHECKSUM_DEFINE}\", \"A\"]\}")
+        t |> equal(form_sidecar_text("trace", "\{\"defines\": [\"A\"]\}", error), "\{\"defines\": [\"{TRACE_DEFINE}\", \"A\"]\}")
+        t |> equal(error, "")
     }
     t |> run("the speed build's sidecar reads with the converter's reader, the defines swapped") @(t : T?) {
         var error : string
