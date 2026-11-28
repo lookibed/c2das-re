@@ -377,10 +377,19 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.s = n.kind == CNode.CONTINUE ? "continue" : "break"
     } elif (n.kind == CNode.RETURN) {
         st.s = "return"
+        let void_fn = r.b.pool[r.ret].k == "void"
         if (n.a >= 0) {
             var e = c_expr(r, p, n.a)
-            st.e = e == null ? null : used(r, r.b.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, p, e, r.ret, p.ast.nodes[n.a].tok))
+            if (e != null && void_fn && r.b.pool[r.b.unqualified[e.t]].k != "void") {
+                c_reject(r.b, p, n.tok, "a value returned from a void function")
+                delete_expr(e)
+                return false
+            }
+            st.e = e == null ? null : used(r, void_fn ? c_rvalue(r, e) : c_assigned(r, p, e, r.ret, p.ast.nodes[n.a].tok))
             ok = st.e != null
+        } elif (!void_fn) {
+            c_reject(r.b, p, n.tok, "a return with no value from a function that returns one")
+            ok = false
         }
     } else {
         c_refuse(r.b, p, n.tok, "this statement")
