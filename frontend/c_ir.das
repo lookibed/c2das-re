@@ -24,7 +24,7 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
 }
 
 // the location of token `tok` as a C-IR place
-def private loc_of(var p : CParser; tok : int) : CirLoc {
+def private loc_of(p : CParser; tok : int) : CirLoc {
     let t = p.unit.toks[tok]
     return CirLoc(file = c_file_name(p.unit, t.file), line = t.line, col = t.col)
 }
@@ -115,7 +115,7 @@ def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? 
 // the name a declarator declares, as text
 def private name_of(var p : CParser; d : int) : string {
     let sym = c_declarator_name(p.ast, d)
-    return sym < 0 ? "" : pp_symbol_text(p.unit.lx, sym)
+    return sym < 0 ? "" : c_symbol_text(p.unit, sym)
 }
 
 // whether specifier list `specs` holds storage class `k`
@@ -188,7 +188,7 @@ def private function_declaration(var r : CIr; var p : CParser; id, t : int; is_s
         c_ir_bind(r, sym, function_id(r, p, sym, linked, f))
         return true
     }
-    let name = pp_symbol_text(p.unit.lx, sym)
+    let name = c_symbol_text(p.unit, sym)
     var cd = new CirDecl(k = "func", name = name, c_name = name, t = c_types_use(r.b, linked), is_static = is_static, loc = loc_of(p, p.ast.nodes[id].tok))
     r.b.declared[sym] = true
     c_ir_bind(r, sym, function_id(r, p, sym, linked, f))
@@ -260,7 +260,7 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         next = p.ast.nodes[id].next
         let d = p.ast.nodes[id].a
         let sym = c_declarator_name(p.ast, d)
-        let name = pp_symbol_text(p.unit.lx, sym)
+        let name = c_symbol_text(p.unit, sym)
         let at = loc_of(p, p.ast.nodes[id].tok)
         return false if (!c_plain_attributes(r.b, p, p.ast.nodes[id].d))
         let init_node = p.ast.nodes[id].b
@@ -317,7 +317,7 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
         return static_assertion(r, p, n)
     } elif (n.kind == CNode.LABEL || n.kind == CNode.CASE || n.kind == CNode.DEFAULT) {
         if (n.kind == CNode.LABEL) {
-            into |> push(new CirStmt(s = "label", label_name = pp_symbol_text(p.unit.lx, n.a), loc = at))
+            into |> push(new CirStmt(s = "label", label_name = c_symbol_text(p.unit, n.a), loc = at))
         } elif (n.kind == CNode.DEFAULT) {
             into |> push(new CirStmt(s = "default", loc = at))
         } else {
@@ -378,7 +378,7 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.s = "null"
     } elif (n.kind == CNode.GOTO) {
         st.s = "goto"
-        st.label_name = pp_symbol_text(p.unit.lx, n.a)
+        st.label_name = c_symbol_text(p.unit, n.a)
     } elif (n.kind == CNode.CONTINUE || n.kind == CNode.BREAK) {
         st.s = n.kind == CNode.CONTINUE ? "continue" : "break"
     } elif (n.kind == CNode.RETURN) {
@@ -508,7 +508,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     let d = p.ast.nodes[n.b].a
     let f = c_name_function(p.ast, d)
     let sym = c_declarator_name(p.ast, d)
-    let name = pp_symbol_text(p.unit.lx, sym)
+    let name = c_symbol_text(p.unit, sym)
     let old_style = p.ast.nodes[f].op == 2
     var typed : array<int>
     var names : array<string>
@@ -525,7 +525,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
             let pt = c_parameter_type(r.b, p, p.ast.nodes[old].a, typing)
             return false if (pt < 0)
             typed |> push(pt)
-            names |> push(pp_symbol_text(p.unit.lx, p.ast.nodes[param].a))
+            names |> push(c_symbol_text(p.unit, p.ast.nodes[param].a))
             r.b.old_style |> push(c_promoted(r.b, pt))
             param = p.ast.nodes[param].next
         }
@@ -576,7 +576,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
 }
 
 // whether external declaration `decl` stands in a file under the own libc headers' folder
-def private in_library(r : CIr; var p : CParser; decl : int) : bool {
+def private in_library(r : CIr; p : CParser; decl : int) : bool {
     return false if (empty(r.b.library_dir))
     let file = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
     return starts_with(file, r.b.library_dir)

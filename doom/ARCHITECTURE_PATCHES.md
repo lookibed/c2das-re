@@ -19,6 +19,19 @@ in order: `players[0].mo->x`, `y`, `z`, `angle` (each 0 while `players[0].mo` is
 or, on a tic that starts a screen melt, the screen the melt starts from (`wipe_EndScreen` puts it
 back); the melt's own steps run no tic and print nothing. Every tic of a timedemo has its line.
 
+Under `-DDOOM_FINAL_CHECKSUM`, the speed build's define (`ARCHITECTURE_RUN.md` section 9), the same
+code builds without the per-tic hunks: `G_CheckDemoStatus`, as a `-timedemo` run reaches the end of
+its demo (in `G_Ticker` of the tic past the last, as it reads that tic's command), prints one line,
+`final tic=<gametic - 1> cs=<8 hex digits> fb=<8 hex digits>`, `cs` of the player's state and the
+random index and `fb` of `screens[0]` as they stand then. That is the state the last tic left and the
+screen `D_Display` drew for it unless something ran between: `G_Ticker` runs a reborn and a pending
+level change (`G_DoReborn`, `G_DoCompleted`, `G_DoLoadLevel`) before it reads the command, and a
+screen melt `D_Display` started steps `wipe_ScreenWipe` over `screens[0]` before the next
+`G_Ticker`. A demo whose last tic sets one of these ends with another `cs` or `fb` than the
+reference's last line, a desync and no fps, never a false pass. For the three freedoom2 demos the
+line is the reference log's last line after `final `, the same bytes natively. That build hashes nothing else, one frame and 24 bytes of
+state for the whole run, inside the host's timed window.
+
 `w_wad.c`, `r_data.c` and `i_video.c` make the frame a function of the game alone, so the
 reference frames are the patched source's, not vanilla's, at the pixels below. A column
 drawer reads `dc_source[(frac >> FRACBITS) & 127]`, up to 127 bytes past a column's start: a wall

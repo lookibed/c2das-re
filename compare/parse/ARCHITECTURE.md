@@ -39,11 +39,12 @@ the meaning of the program is left to it (section 3).
   `bodies.c` (record and enum bodies, definitions, every statement), `edges.c` (precedence,
   postfix chains, type names in odd places, GNU forms), `wildcards.c` (a `?` for one part of a
   type), `oldstyle.c` (old-style definitions), `param_bodies.c` (tag bodies inside declarators,
-  some not compared), `forward.c` (tags declared with no body), all `same`; `semantic.c` (a clang
-  semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
+  some not compared), `forward.c` (tags declared with no body), `pragma.c` (pragmas `clang -E`
+  keeps that change no C-IR, which the preprocessor's ledger takes), all `same`; `semantic.c`
+  (a clang semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
   `causes.c` (a builtin and a merged redeclaration, `differs` by named causes only);
-  `refused.c` (`construct refused`); `pragma.c` (`parser refused`); `clang_refuses.c` (`clang
-  refused`).
+  `refused.c` (`construct refused`); `imaginary.c` (a GNU imaginary constant, `parser refused`);
+  `clang_refuses.c` (`clang refused`).
 - The tests are `compare/tests/test_parse_oracle.das`.
 
 ## 2. Places {#places}
@@ -53,9 +54,10 @@ a file, a line and a column, as the line markers present them. The parser's side
 a node's first token from its token (`frontend/ARCHITECTURE_PARSER.md` section 14). Clang's JSON
 writes each location's byte offset into the text, and drops a file or line equal to the last one
 written, so the clang side does not read clang's lines: `presumed_map` reads the line markers of
-the text itself (`# <line> "<file>" <flags>` and `#line <line> "<file>"`, the file as the bytes
-between the quotes) and `place_of` turns an offset into a place, the column a byte column. So a
-place is compared from two readings of the markers, the parser's and the oracle's own.
+the text itself (`# <line> "<file>" <flags>` and `#line <line> "<file>"`, the file between the
+quotes with each `\\` and `\"` one character, as clang and the preprocessor read it) and
+`place_of` turns an offset into a place, the column a byte column. So a place is compared from
+two readings of the markers, the parser's and the oracle's own.
 
 ## 3. The form and what is compared {#compared}
 
