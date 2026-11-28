@@ -10,10 +10,6 @@ require pp_expand public
 //! argument and a macro tell Dumper C about the expansions of a unit. None allocates for a token or
 //! a call; a text is appended to the caller's buffer.
 
-//! The outermost call that call `call` is part of, through the calls it came from and the arguments
-//! it was read in; `call` itself when it is outermost.
-def pp_outermost_call(pp : Preprocessor; call : int) : int => pp.expansion.calls[call].outer
-
 //! The expansion location of a token of call `call` (-1: a token of the source): the place of the
 //! outermost call's name, as clang's `SourceManager` gives it; `own` for a token of the source.
 [arch(at="ARCHITECTURE_EXPAND.md#pp-places")]
@@ -32,9 +28,9 @@ def pp_expansion_place(pp : Preprocessor; t : PpOutToken) : PpPlace => pp_expans
 //! body's token in its `#define`.
 def pp_spelling_place(t : PpOutToken) : PpPlace => PpPlace(file = t.tok.file, offset = t.tok.offset, line = t.tok.line, col = t.tok.col)
 
-//! Each argument copy `copy` (a token's `copy`) is in, innermost first: `blk` gets the call and the
-//! parameter index. `#define A(x) B(x)` makes a token of `A(t)` a copy of `B`'s argument 0, then
-//! of `A`'s.
+//! Each argument copy `copy` (a token's `copy`) is in, the latest substitution first: `blk` gets
+//! the call and the parameter index. `#define A(x) B(x)` makes a token of `A(t)` a copy of `B`'s
+//! argument 0, then of `A`'s; `A(B(t))` makes `t` a copy of `A`'s argument 0, then of `B`'s.
 [arch(at="ARCHITECTURE_EXPAND.md#pp-copies")]
 def pp_each_copy(pp : Preprocessor; copy : int; blk : block<(call : int; k : int) : void>) {
     var at = copy
@@ -56,16 +52,14 @@ def pp_is_copy_of(pp : Preprocessor; copy, call, k : int) : bool {
     return false
 }
 
-//! The bytes of argument `k` of call `call` as written, when they lie in one place: one stretch of a
-//! file, or the pool's join of tokens no stretch spells; null data for an argument written in a
-//! `#define`, whose text `pp_call_arg_text` joins, and length 0 for an empty one.
+//! The bytes of argument `k` of call `call` as written, when they are one stretch of a file, valid
+//! for the whole unit; null data for any other argument, whose text `pp_call_arg_text` appends,
+//! and length 0 for an empty one.
 [arch(at="ARCHITECTURE_EXPAND.md#pp-record")]
 def pp_call_arg_view(pp : Preprocessor; call, k : int) : tuple<data : uint8 const?; len : int> {
     let arg & = unsafe(pp.expansion.call_args[pp.expansion.calls[call].first_arg + k])
     if (arg.text == PpArgText.source) {
         return (data = unsafe(pp.buffer_data[arg.buffer] + arg.at), len = arg.len)
-    } elif (arg.text == PpArgText.pooled) {
-        return (data = unsafe(addr(pp.expansion.arg_text[arg.at])), len = arg.len)
     }
     return (data = null, len = 0)
 }
@@ -86,6 +80,12 @@ def pp_call_arg_text(pp : Preprocessor; call, k : int; var out : array<uint8>) {
             for (b in range(h.at, h.at + h.len)) {
                 out |> push(pp.macro_text[b])
             }
+        }
+        return
+    } elif (arg.text == PpArgText.pooled) {
+        out |> reserve(length(out) + arg.len)
+        for (b in range(arg.at, arg.at + arg.len)) {
+            out |> push(pp.expansion.arg_text[b])
         }
         return
     }

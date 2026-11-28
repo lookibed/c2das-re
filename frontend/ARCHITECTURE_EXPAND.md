@@ -130,11 +130,16 @@ them outermost first by walking `parent`), and a call an argument writes by `arg
 Its arguments are `PpCallArg` entries of `call_args`, each the file and byte range from its first
 token to the end of its last (-1 when it is empty or not one stretch of a file), and where its text
 as written lies (`text`), which `pp_call_arg_text` appends to a caller's buffer and
-`pp_call_arg_view` gives in place when it lies in one piece:
+`pp_call_arg_view` gives in place for a `source` argument alone, its bytes valid for the whole unit
+(a file buffer lives as long as the unit); for a `body` or `pooled` argument the view is null data,
+since the `arg_text` pool moves as later arguments grow it:
 
 - `source`: one stretch of a file buffer (`ARCHITECTURE_PP.md` section 5), when both ends are
   tokens of the source in one buffer and no directive line was read inside the argument
-  (`PpInvocation.dirs`); the text is the file's, line splices removed.
+  (`PpInvocation.dirs`), nor inside the argument it is read in when an enclosing call's argument
+  is being macro-expanded (`arg_of`): that argument's tokens were read before, so a call nested in
+  it is a stretch only when the enclosing argument is one; the text is the file's, line splices
+  removed.
 - `body`: the call is written in one `#define` - its name and its `)` are tokens of the body of the
   macro whose replacement they stand in, and that `(` closes at that `)` - and the body splits into
   the arguments as read; the argument is a range of body tokens, the text their spellings with a
@@ -237,13 +242,15 @@ place of the same name is already on the token (`pline`, `pname`, section 32).
 Substitution (section 32) marks each token it puts in for a parameter as a copy of that argument:
 `copy` is an index of the expansion's `copies`, a `PpArgCopy` of the call, the parameter and the
 copy the token was in before (`outer`), entry 0 standing for none. So a token keeps the chain of
-every argument it went through, innermost first: with `#define B(y) [y y]` and `#define A(x)
-B(x) x`, each `t` of `A(t)` inside the brackets is in `B`'s argument 0 and then `A`'s, the last
-one in `A`'s alone, and the brackets in none. One entry covers a run of tokens that were in one
-copy before, and each use of a parameter makes its own run, so the entries grow with the
-substitutions, not the tokens, and geometrically. An operand of `##` kept whole is a copy too; a
-pasted token, a stringified one and a body token are none. `pp_each_copy` walks a chain and
-`pp_is_copy_of` asks for one call and parameter; which node is the topmost copy is Dumper C's to
+every argument it went through, the latest substitution first: with `#define B(y) [y y]` and
+`#define A(x) B(x) x`, each `t` of `A(t)` inside the brackets is in `B`'s argument 0 and then `A`'s,
+the last one in `A`'s alone, and the brackets in none; `A(B(t))` substitutes `t` into `B` during
+`A`'s prescan and the copy into `A` after, so its chain is `A`'s argument, then `B`'s. A token of
+the source carries no copy, whatever token was handed out before it. One entry covers a run of
+tokens that were in one copy before, and each use of a parameter makes its own run, so the entries
+grow with the substitutions, not the tokens, and geometrically. An operand of `##` kept whole is a
+copy too; a pasted token, a stringified one and a body token are none. `pp_each_copy` walks a chain
+and `pp_is_copy_of` asks for one call and parameter; which node is the topmost copy is Dumper C's to
 tell from its tree.
 
 ## 57. Macro facts {#pp-macro-facts}

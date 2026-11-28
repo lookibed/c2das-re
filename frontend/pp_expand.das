@@ -552,8 +552,9 @@ def private body_args(pp : Preprocessor; m, from, close, count : int; elided : b
 
 //! where argument `i` of slot `d` is written, into `arg`: its file span when its first and last
 //! tokens are of one file in order (the record's span); when `spell` - it is no stretch of a
-//! `#define` - one stretch of a file buffer with no directive in it, else its tokens' spellings
-//! joined into the `arg_text` pool, a blank where a token has space
+//! `#define` - one stretch of a file buffer with no directive in it nor in the argument it is read
+//! in (`arg_call`), else its tokens' spellings joined into the `arg_text` pool, a blank where a
+//! token has space
 [arch(at="ARCHITECTURE_EXPAND.md#pp-record")]
 def private arg_written(var ex : PpExpander; var pp : Preprocessor; d, i : int; spell : bool; var arg : PpCallArg) {
     let lo = ex.inv[d].raw_at[i]
@@ -567,7 +568,8 @@ def private arg_written(var ex : PpExpander; var pp : Preprocessor; d, i : int; 
         arg.to = last.tok.offset + last.tok.len
     }
     return if (!spell)
-    let one_stretch = (first.spelled == PpSpelled.source && last.spelled == PpSpelled.source && first.call < 0 && last.call < 0
+    let enclosing_stretch = ex.arg_call < 0 || ex.call_args[ex.calls[ex.arg_call].first_arg + ex.arg_k].text == PpArgText.source
+    let one_stretch = (enclosing_stretch && first.spelled == PpSpelled.source && last.spelled == PpSpelled.source && first.call < 0 && last.call < 0
         && first.buffer == last.buffer && last.at >= first.at && i + 1 < length(ex.inv[d].dirs) && ex.inv[d].dirs[i] == ex.inv[d].dirs[i + 1])
     if (one_stretch) {
         arg.text = PpArgText.source

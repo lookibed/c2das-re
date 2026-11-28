@@ -209,7 +209,7 @@ enum PpSpelled {
 //! expansion, the place of the outermost macro name; `call` the macro call it came from, an index of
 //! the expansion's `calls`, -1 for a token of the source. `spelled`, `buffer`, `at` and `len` say
 //! where its spelling lies (`pp_span_of`). `painted` marks a name read while its macro was
-//! disabled: it never expands again. `copy` is the innermost argument it is a copy of, an index of
+//! disabled: it never expands again. `copy` is the latest argument copy it is in, an index of
 //! the expansion's `copies`, 0 for none.
 struct PpOutToken {
     tok : PpToken
@@ -2048,15 +2048,8 @@ def pp_next_directive_token(var pp : Preprocessor) : bool {
         if (pp.state.guard != GuardState.inside) {
             pp.state.guard = GuardState.none
         }
-        pp.tok.tok = pp.lx.tok
-        pp.tok.pline = presumed_line(pp, pp.lx.tok.line)
-        pp.tok.pname = pp.state.pname
-        pp.tok.call = -1
-        pp.tok.spelled = PpSpelled.source
-        pp.tok.buffer = pp.state.buffer
-        pp.tok.at = pp.lx.flex.tok.start
-        pp.tok.len = pp.lx.flex.tok.len
-        pp.tok.painted = false
+        pp.tok = PpOutToken(tok = pp.lx.tok, pline = presumed_line(pp, pp.lx.tok.line), pname = pp.state.pname, call = -1,
+                            spelled = PpSpelled.source, buffer = pp.state.buffer, at = pp.lx.flex.tok.start, len = pp.lx.flex.tok.len)
         return true
     }
     return false

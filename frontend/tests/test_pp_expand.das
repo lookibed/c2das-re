@@ -735,6 +735,17 @@ def test_argument_text(t : T?) {
     t |> equal("{body.data == null} {body.len}", "true 0")
     let source = pp_call_arg_view(pp, 0, 0)
     t |> equal(source.len, length("aa  +\n  bb"))
+    let pooled = pp_call_arg_view(pp, 6, 0)
+    t |> equal("{pooled.data == null} {pooled.len} {arg_text(pp, 6, 0)}", "true 0 c d")
+}
+
+[test(description = "a call nested in another call's argument is one stretch of a file only when the enclosing argument is: a directive inside the enclosing argument makes both arguments pooled, so the two spell the same tokens alike")]
+def test_argument_text_nested_directive(t : T?) {
+    var pp <- started([("main.c", "#define A(x) x\n#define B(y) <y>\nA(B(1\n#ifdef Z\n+2\n#endif\n+3))\nA(B(4 + 5))\n")])
+    stream(pp)
+    t |> equal(call_tree(pp), "A -1/-1.-1/0 (B(1 +3)); B -1/0.0/0 (1 +3); A -1/-1.-1/2 (B(4 + 5)); B -1/2.0/2 (4 + 5)")
+    let kinds <- [for (a in pp.expansion.call_args); "{a.text}"]
+    t |> equal(join(kinds, " "), "pooled pooled source source")
 }
 
 // each token handed out, `spelling` then `:call.k` for each argument copy it is in, innermost first
@@ -757,12 +768,20 @@ def test_argument_copies(t : T?) {
     t |> equal(copy_chains("#define P(a, b) a ## b #a b ## 1 a\nP(x, y)\n"), "xy \"x\" y1 x:0.0")
     t |> equal(copy_chains("#define Q(a, b) a ## b\nQ(x z, w)\n"), "x:0.0 zw")
     t |> equal(copy_chains("#define I(x) x\n#define T(x) I(x) + x\nT(1)\n"), "1:1.0:0.0 + 1:0.0")
+    t |> equal(copy_chains("#define A(x) x\n#define B(y) y\nA(B(1))\n"), "1:0.0:1.0")
     var pp <- started([("main.c", "#define B(y) [y y]\n#define A(x) B(x) x\nA(t)\n")])
     var copied : array<string>
     while (pp_next_token(pp)) {
         copied |> push("{pp_is_copy_of(pp, pp.tok.copy, 0, 0)}{pp_is_copy_of(pp, pp.tok.copy, 1, 0)}")
     }
     t |> equal(join(copied, " "), "falsefalse truetrue truetrue falsefalse truefalse")
+}
+
+[test(description = "a token of the source carries no argument copy, whatever token was handed out before it: after W(a), b and c are in no copy, and E's arguments read after W(1) are copies of E alone")]
+def test_source_token_after_a_copy(t : T?) {
+    t |> equal(copy_chains("#define W(x) x\nW(a) b c\n"), "a:0.0 b c")
+    t |> equal(copy_chains("#define W(x) x\n#define E(f, y) [f y]\nW(1)\nE(2, 3)\n"), "1:0.0 [ 2:1.0 3:1.1 ]")
+    t |> equal(copy_chains("#define W(x) x\n#define O W(7)\nO 8\n"), "7:1.0 8")
 }
 
 // the one-line text of each macro of `text`, a `|` between them
