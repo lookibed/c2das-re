@@ -201,6 +201,8 @@ def test_case_values(t : T?) {
                "error: t.c:1:30: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
     t |> equal(consts_of("void g(int x) \{ switch (x) \{ case (int)0xffffffffffffffffu: ; \} \}"),
                "error: t.c:1:30: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
+    t |> equal(consts_of("void g(unsigned long x) \{ switch (x) \{ case 9223372036854775808u: ; \} \}"),
+               "error: t.c:1:40: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
     t |> equal(consts_of("void g(unsigned long x) \{ switch (x) \{ case 0xffffffffffffffffu >> 60: ; \} \}"),
                "error: t.c:1:40: a case value Dumper A folds apart from clang's is not typed yet (its fold drops the casts and holds every step in 64 bits)")
 }
@@ -219,6 +221,7 @@ def test_static_refusals(t : T?) {
     t |> equal(consts_of("int f(void); int h = f();"), "error: t.c:1:22: a static object's initializer that is no constant is invalid C, which clang rejects")
     t |> equal(consts_of("int h = 1 / 0;"), "error: t.c:1:9: a static object's initializer that is no constant is invalid C, which clang rejects")
     t |> equal(consts_of("void f(int x) \{ static int *p = &x; \}"), "error: t.c:1:33: a static object's initializer that is no constant is invalid C, which clang rejects")
+    t |> equal(consts_of("void f(x) int x; \{ static int *p = &x; \}"), "error: t.c:1:36: a static object's initializer that is no constant is invalid C, which clang rejects")
     t |> equal(consts_of("void f(void) \{ int y; static int *q = &y; \}"), "error: t.c:1:39: a static object's initializer that is no constant is invalid C, which clang rejects")
     t |> equal(consts_of("const int c = 1; int h = c;"),
                "error: t.c:1:26: a static object's initializer whose constancy clang's evaluator decides and the builder cannot is not typed yet")
