@@ -694,7 +694,7 @@ def private declaration_of(p : CParser; old, d : int) : int {
 }
 
 // the names definition `name` of function declarator `f`, body `body` and old-style parameter
-// names `old_names` keeps while it is read (`ARCHITECTURE_NAMES.md` section 47)
+// names `old_names` keeps while it is read (`ARCHITECTURE_NAMES.md` section 87)
 [arch(at="ARCHITECTURE_NAMES.md#c-names-locals")]
 def private function_names(var r : CIr; var p : CParser; name : string; f, body : int; old_names : array<string>) {
     r.fn_name = name

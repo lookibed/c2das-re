@@ -68,7 +68,7 @@ difference:
   included, the plan's C.6.
 
 A scalar-only unit agrees when all four are equal; one that differs in its bytes alone differs in
-places or parentheses (`frontend/ARCHITECTURE_NAMES.md` section 48). A scalar-only unit whose table holds no
+places or parentheses (`frontend/ARCHITECTURE_NAMES.md` section 88). A scalar-only unit whose table holds no
 array type either is a core unit, the set the Core phase's acceptance names: its printed line says
 `core`, and the totals count the core units and their byte-identical ones apart.
 

@@ -10,7 +10,7 @@ Dumper C, the clang-free C-IR builder of `frontend/` (`frontend/ARCHITECTURE_TYP
 (`c_parser_open_source`: the dialect's predefined-macro table, its feature table for the `#if`
 queries, the own headers' folder searched, the file system through `PpFioProvider`), the parser
 reads its tokens, and `c_ir_unit` builds the C-IR, the own headers' folder as the library. Every
-place in the C-IR is the builder's own token's (`frontend/ARCHITECTURE_NAMES.md` section 48). No
+place in the C-IR is the builder's own token's (`frontend/ARCHITECTURE_NAMES.md` section 88). No
 clang runs for Dumper C. The builder leaves out the declarations of
 a file outside the program root (the sidecar's `program_root`, else the main file's folder) as it
 leaves out the own headers', and a C file outside it is an error, as Dumper A's file policy has it;
