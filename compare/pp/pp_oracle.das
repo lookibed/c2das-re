@@ -741,7 +741,8 @@ def private pp2_span(d : Pp2Difference; clang : array<OracleToken>; ours : array
 }
 
 //! The class of difference `d`: needs PP.3 when PP.2's side stands in a group an undecided
-//! conditional chose, or an undecided line's place lies in its span, or PP.2's side, or the token
+//! conditional chose, or an undecided line's place lies in its span - before its last PP.2 token,
+//! since a token handed out before the line cannot depend on it - or PP.2's side, or the token
 //! either side of it, names a macro PP.2 defined or one of clang's builtin macros or stands in a
 //! function-like macro's call, or a place left to PP.3 lies in its span - never in PP.3's expanded
 //! stream; else it differs.
@@ -753,7 +754,7 @@ def pp2_difference_class(r : Pp2Result; d : Pp2Difference; clang : array<OracleT
         return Pp2Class.needs_pp3 if (ours[j].undecided)
     }
     for (p in r.undecided_at) {
-        return Pp2Class.needs_pp3 if (span.x <= p && p <= span.y)
+        return Pp2Class.needs_pp3 if (span.x <= p && (p < span.y || span.x == span.y))
     }
     let near = int2(max(span.x - 1, 0), min(span.y + 1, length(ours)))
     for (j in range(near.x, near.y)) {

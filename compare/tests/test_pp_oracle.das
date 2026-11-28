@@ -330,6 +330,15 @@ def test_pp2_undecided_groups(t : T?) {
     t |> equal(classed("a x b w", "a b z", none, [1]), "needs_pp3 c1+1 p1+0 | differs c3+1 p2+1")
 }
 
+[test(description = "an undecided line's place bounds what it explains: a difference wholly before it, the last token before it among them, and one past its group still differ; tokens clang alone has at the place need PP.3")]
+def test_undecided_place_bounds_the_class(t : T?) {
+    let none <- array<int>()
+    t |> equal(classed("a x b c d e", "a y b c? d f", none, [3]), "differs c1+1 p1+1 | differs c5+1 p5+1")
+    t |> equal(classed("a b c x d", "a b c d", none, [3]), "needs_pp3 c3+1 p3+0")
+    t |> equal(classed("a x c", "a y c", none, [2]), "differs c1+1 p1+1")
+    t |> equal(classed("a x b c", "a y b c", none), "differs c1+1 p1+1")
+}
+
 // a result whose differences are of `classes`
 def private with_classes(classes : array<Pp2Class>) : Pp2Result {
     var r = Pp2Result()
@@ -418,6 +427,48 @@ def test_pp2_macro_condition_needs_pp3(t : T?) {
     t |> equal(length(after_toks), 0)
     t |> equal(join(ra.errors, " | "), "7:7 expected value in expression | 9:2 invalid preprocessing directive")
     t |> equal(pp2_class(ra), Pp2Class.differs)
+}
+
+[test(description = "an error met before an undecided conditional is the preprocessor's own though the same read reaches the conditional's line")]
+def test_error_before_the_mark_in_the_same_read(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let unit = unit_file("error_before_mark.c", "#define N 1\n#error before\n#if N\n#endif\nint a;\n")
+    var r = Pp2Result(unit = unit)
+    let toks <- pp2_tokens(unit, setup.entries, setup.search, r)
+    t |> equal(length(toks), 3)
+    t |> equal(join([for (p in r.undecided_at); "{p}"], " "), "0")
+    t |> equal(length(r.pp3_at), 0)
+    t |> equal(join(r.errors, " | "), "2:2 #error before")
+}
+
+[test(description = "in an undecided group only an error is left to PP.3: a warning in the group PP.2 alone takes places nothing")]
+def test_warning_in_undecided_group_places_nothing(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let unit = unit_file("warning_in_group.c", "#define N 1\n#if N\n#else\nint a;\n#warning inside\n#endif\nint b;\n")
+    var r = Pp2Result(unit = unit)
+    let toks <- pp2_tokens(unit, setup.entries, setup.search, r)
+    t |> equal(length(toks), 6)
+    t |> equal(join([for (p in r.undecided_at); "{p}"], " "), "0")
+    t |> equal(length(r.pp3_at), 0)
+    t |> equal(join(r.errors, " | "), "")
+}
+
+[test(description = "in PP.3's expanded stream an #if or #line naming a macro is read as clang reads it - a painted name stays a name worth 0 there - so nothing is undecided and an error in the group or past it stays the preprocessor's own")]
+def test_pp3_stream_never_marked(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let unit = unit_file("pp3_macro_if.c", "#define N 1\n#define L 30\n#define P P\n#if N && !P\n#error taken\n#endif\n#line L\nint a;\n#error after\n")
+    var r = Pp2Result(unit = unit, expanded = true)
+    let toks <- pp2_tokens(unit, setup.entries, setup.search, r)
+    t |> equal(length(toks), 3)
+    t |> equal(length(r.undecided_at), 0)
+    t |> equal(length(r.pp3_at), 0)
+    t |> equal(join(r.errors, " | "), "5:2 #error taken | 9:2 #error after")
 }
 
 [test(description = "a corpus that is unknown or whose folder is missing, a suite not fetched among them, is an error, never an empty corpus")]

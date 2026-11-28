@@ -133,7 +133,8 @@ no difference waits for PP.4. PP.2 alone reads a conditional that tests a macro'
 than clang, which expands it: such a conditional is undecided (`frontend/ARCHITECTURE_PP.md` section
 11), and a difference whose PP.2 side stands in a group it chose (`Pp2Token.undecided`) or whose
 span holds the place of its line (`undecided_at`, `Preprocessor.unexpanded`) needs PP.3, and so
-does an error marked undecided. A difference past its `#endif` and an error raised there stay
+does an error marked undecided. A difference wholly before the line - its last PP.2 token among
+them, handed out before the line was read - or past its `#endif`, and an error raised there, stay
 the preprocessor's own. A unit's class (`pp2_class`) is the latest its differences wait for,
 raised to needs PP.3 by a place left to PP.3 with no difference; it differs when one difference
 differs, when the preprocessor has an error of its own - one naming PP.3 is not -, when the pragma
