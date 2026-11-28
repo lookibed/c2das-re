@@ -64,14 +64,9 @@ def private exhausted(r : CIr; fr : Frame) : bool {
     return fr.next >= length(r.pool[fr.t].fields)
 }
 
-// the pool type of position `pos` of object `fr`: the element, or the field with the record's
-// qualifiers
-def private slot_type(var r : CIr; fr : Frame; pos : int) : int {
-    if (r.pool[fr.t].k == "array") {
-        return r.pool[fr.t].elem
-    }
-    return c_qualified(r, r.pool[fr.t].fields[pos].t, r.quals[fr.x.t])
-}
+// the pool type of position `pos` of object `fr`: the element or the field (a qualifier is dropped
+// where the value converts and where the table interns the type, so the record's adds nothing)
+def private slot_type(r : CIr; fr : Frame; pos : int) : int => r.pool[fr.t].k == "array" ? r.pool[fr.t].elem : r.pool[fr.t].fields[pos].t
 
 // a frame over a new empty list of pool type `t`, at its first position; null with the error set
 // for an incomplete record or a flexible array member's list

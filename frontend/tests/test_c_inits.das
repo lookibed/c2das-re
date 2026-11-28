@@ -98,10 +98,12 @@ def test_struct_lists(t : T?) {
     t |> equal(inits_of("struct B \{ int a : 3; int : 2; int b : 4; \}; struct B g = \{1, 2\};"), "g:struct B=\{0:1, 2:2\}")
 }
 
-[test(description = "a union's list holds one member: the first with no designator, the designated one, the last of several designators")]
+[test(description = "a union's list holds one member: the first with no designator, the designated one, the last of several designators; a member whose list ran out leaves no position for the next item")]
 def test_union_lists(t : T?) {
     t |> equal(inits_of(RECORDS + "union U a = \{3\}; union U b = \{.f = 1\}; union U c = \{.p = \{1, 2\}\}; union U d = \{.i = 1, .f = 2\};"),
                "a:union U=\{0:3\} ; b:union U=\{1:IntegralToFloating<float>(1)\} ; c:union U=\{2:\{0:1, 1:2\}\} ; d:union U=\{1:IntegralToFloating<float>(2)\}")
+    t |> equal(inits_of("struct P \{ int x, y; \}; union V \{ struct P p; int i; \}; union V a = \{1, 2, 3\}; union V b = \{.p.y = 1, 5\};"),
+               "a:union V=\{0:\{0:1, 1:2\}\} ; b:union V=\{0:\{1:1\}\}")
 }
 
 [test(description = "elided braces: a subobject with no braces of its own takes the items after it while it has positions - an array of records, a record's array and string, an array of arrays, a union's first member")]
