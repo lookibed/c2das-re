@@ -212,17 +212,81 @@ def expression_only(tu : CirTu; declared : array<string>) : table<string; bool> 
     return <- only
 }
 
+//! The names of the entries of Dumper A's table a declaration interns that no declaration of `decls`
+//! names, of the two kinds `ARCHITECTURE.md#declaration-order` lists: an array of unknown size whose
+//! completed form (the element and a count) is a global's type, which the redeclaration's composite
+//! replaced; and, when a typedef name is declared twice, the types the later declarations intern
+//! under the shared `typedef` entry - those `declared` (the rebuilt order) does not hold.
+[arch(at="ARCHITECTURE.md#declaration-order")]
+def declaration_extras(tu : CirTu; declared : array<string>) : table<string; bool> {
+    var extras : table<string; bool>
+    var completed : table<int; bool>
+    var typedefs : table<string; int>
+    for (d in tu.decls) {
+        if (d.k == "global" && d.t >= 0 && tu.types[d.t].k == "array" && tu.types[d.t].count >= 0) {
+            completed[tu.types[d.t].elem] = true
+        } elif (d.k == "typedefdecl") {
+            typedefs[d.name] = (typedefs?[d.name] ?? 0) + 1
+        }
+    }
+    for (t, i in tu.types, count()) {
+        if (t.k == "array" && t.count < 0 && key_exists(completed, t.elem)) {
+            extras[type_name(tu.types, i)] = true
+        }
+    }
+    var twice = false
+    for (n in values(typedefs)) {
+        twice ||= n > 1
+    }
+    if (twice) {
+        let in_order <- {for (name in declared); name => true}
+        for (i in range(length(tu.types))) {
+            let name = type_name(tu.types, i)
+            if (!key_exists(in_order, name)) {
+                extras[name] = true
+            }
+        }
+    }
+    return <- extras
+}
+
+// the rebuilt order `order` with each of `extras` (in Dumper A's order) where Dumper A's table
+// `theirs` puts it among them: after the longest run of rebuilt entries from the first that Dumper A
+// interned before it
+def private placed_extras(order, extras, theirs : array<string>) : array<string> {
+    let index <- {for (name, i in theirs, count()); name => i}
+    var expected : array<string>
+    expected |> reserve(length(order) + length(extras))
+    var placed = 0
+    for (name in order) {
+        let at = index?[name] ?? -1
+        while (placed < length(extras) && (index?[extras[placed]] ?? -1) < at) {
+            expected |> push(extras[placed])
+            placed++
+        }
+        expected |> push(name)
+    }
+    for (i in range(placed, length(extras))) {
+        expected |> push(extras[i])
+    }
+    return <- expected
+}
+
 //! The difference of the builder's table `ours` from Dumper A's declaration types, "" for none
 //! (`ARCHITECTURE.md#declaration-order`): `order` is Dumper A's declaration order rebuilt, `theirs`
-//! its whole table, `expression_only` the entries only its expressions reach. Every other entry of
-//! Dumper A's table is a declaration's - the rebuilt order's, and the ones a declaration interned
-//! that no rebuilt declaration names (a block typedef's type under a name that already has an entry,
-//! an array type a redeclaration's composite replaced) - and the builder has exactly those: the
-//! rebuilt ones in the rebuilt order, the others in Dumper A's order.
+//! its whole table, `expression_only` the entries only its expressions reach, `explained` the
+//! entries a declaration interns that no rebuilt declaration names (`declaration_extras`). Every
+//! other entry of Dumper A's table is a declaration's: one neither rebuilt nor explained is a gap
+//! of the rebuilt walk, a difference. The builder has exactly the declaration entries, in the
+//! rebuilt order with each explained one where Dumper A's table puts it among them: after the
+//! longest run of rebuilt entries from the first that Dumper A interned before it.
 [arch(at="ARCHITECTURE.md#declaration-order")]
-def declaration_difference(ours, order, theirs : array<string>; expression_only : table<string; bool>) : string {
+def declaration_difference(ours, order, theirs : array<string>; expression_only, explained : table<string; bool>) : string {
     let in_order <- {for (name in order); name => true}
     let extras <- [for (name in theirs); name; where !key_exists(in_order, name) && !key_exists(expression_only, name)]
+    for (name in extras) {
+        return "Dumper A {name}, interned by a declaration the rebuilt walk does not reach" if (!key_exists(explained, name))
+    }
     let is_extra <- {for (name in extras); name => true}
     let ours_set <- {for (name in ours); name => true}
     for (name in ours) {
@@ -237,9 +301,9 @@ def declaration_difference(ours, order, theirs : array<string>; expression_only 
     let rebuilt <- [for (name in ours); name; where key_exists(in_order, name)]
     let in_rebuilt = first_difference(rebuilt, order)
     return "in the rebuilt order, {in_rebuilt}" if (!empty(in_rebuilt))
-    let others <- [for (name in ours); name; where key_exists(is_extra, name)]
-    let in_others = first_difference(others, extras)
-    return empty(in_others) ? "" : "among the entries no rebuilt declaration names, {in_others}"
+    let expected <- placed_extras(order, extras, theirs)
+    let in_all = first_difference(ours, expected)
+    return empty(in_all) ? "" : "with the entries no rebuilt declaration names placed as Dumper A interned them, {in_all}"
 }
 
 //! One unit under one dialect: what each side gave and how they compare.
@@ -323,6 +387,7 @@ def compare_types(unit, work : string; target : CirTarget) : TypesResult {
     let theirs <- failed ? array<string>() : table_names(d.tu.types)
     let order <- failed ? array<string>() : declaration_order(d.tu)
     let only <- expression_only(d.tu, order)
+    let explained <- declaration_extras(d.tu, order)
     r.aggregate = !failed && has_aggregate(d.tu.types)
     delete_tu(d.tu)
     unsafe {
@@ -337,7 +402,7 @@ def compare_types(unit, work : string; target : CirTarget) : TypesResult {
     r.builder_count = length(ours)
     r.dumper_count = length(theirs)
     r.whole = empty(first_difference(ours, theirs))
-    r.difference = declaration_difference(ours, order, theirs, only)
+    r.difference = declaration_difference(ours, order, theirs, only, explained)
     r.declarations = empty(r.difference)
     return <- r
 }

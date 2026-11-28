@@ -26,7 +26,9 @@ entry by entry. It starts clang, so it lives outside `frontend/`, whose code sta
   agree); `redeclared.c`, types a declaration interns that no rebuilt declaration names (a block
   typedef's type under a name with an entry, a redeclaration's array); `expr_first.c`, an expression
   type used before a declaration uses it (only the declaration orders agree); `aggregate.c`, a
-  record the builder refuses; `refused.c`, a scalar-only unit the builder refuses.
+  record the builder refuses; `refused.c`, a scalar-only unit the builder refuses; `walk_bodies.c`,
+  declarations in branches, a loop body and an old-style parameter list that no expression's type
+  names.
 - The tests are `compare/tests/test_types_compare.das`.
 
 ## 2. What is compared {#compared}
@@ -67,11 +69,16 @@ body when none is), where Dumper A interned its type.
 The rebuilt order holds only the types a declaration in `decls` names, and some declarations
 intern a type no declaration names: a block typedef of a name that has a `typedef` entry already
 (the entry is shared by name, so the declaration names the first typedef), an array type a
-redeclaration's composite replaced. So the declaration comparison (`declaration_difference`) does
-not stop at the rebuilt order: every entry of Dumper A's table is a declaration's unless only
+redeclaration's composite replaced. `declaration_extras` finds those two kinds in Dumper A's unit:
+an array of unknown size whose completed form is a global's type, and, when a typedef name is
+declared more than once, every entry the rebuilt order does not hold. The declaration comparison
+(`declaration_difference`) then takes every entry of Dumper A's table as a declaration's unless only
 expression nodes reach it (`expression_only`: the types its expressions name, with their parts,
-less the rebuilt order's). The builder's table must hold exactly the declaration entries - no entry
-Dumper A's declarations do not intern, none of them missing - with the rebuilt ones in the rebuilt
-order and the others in the order of Dumper A's table, so a builder that drops or adds an entry
-never counts as agreeing.
+less the rebuilt order's); a declaration entry that is neither rebuilt nor of those two kinds is a
+gap of the rebuilt walk and a difference, so a walk that skips a branch, a loop body or an
+old-style parameter list fails (`fixtures/walk_bodies.c`). The builder's table must hold exactly the
+declaration entries - no entry Dumper A's declarations do not intern, none of them missing - with
+the rebuilt ones in the rebuilt order and each other one where Dumper A's table puts it among them
+(after the longest run of rebuilt entries from the first that Dumper A interned before it), so a
+builder that drops, adds or moves an entry never counts as agreeing.
 
