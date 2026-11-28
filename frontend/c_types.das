@@ -744,6 +744,12 @@ def c_tentative(var b : CTypes; var p : CParser; t, sym, id : int) : int {
 //! empty `()` and an identifier list do not.
 def c_has_prototype(p : CParser; f : int) : bool => f >= 0 && (p.ast.nodes[f].b >= 0 || p.ast.nodes[f].op == 1) && p.ast.nodes[f].op != 2
 
+// the qualifiers of an object of pool type `t`: its own, or an array's element's
+def private object_quals(b : CTypes; t : int) : int {
+    let u = b.unqualified[t]
+    return b.pool[u].k == "array" ? object_quals(b, b.pool[u].elem) : b.quals[t]
+}
+
 //! The pool type a declaration of `sym` with pool type `t` (function declarator `f`, -1 for none)
 //! has after the declarations of the name before it (C11 6.2.7p4, the composite type): a function
 //! declared with no prototype keeps the earlier prototype, a prototype or an old-style definition
@@ -760,6 +766,10 @@ def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
         let lib_base = c_specifier_type(b, p, p.ast.nodes[lib.x].a)
         prev = c_declarator_type(b, p, lib_base, p.ast.nodes[lib.y].a, false)
         prev_proto = c_has_prototype(p, c_name_function(p.ast, p.ast.nodes[lib.y].a))
+    }
+    if (prev >= 0 && b.pool[u].k != "func" && object_quals(b, prev) != object_quals(b, t)) {
+        c_reject(b, p, tok, "a redeclaration of '{pp_symbol_text(p.unit.lx, sym)}' with other qualifiers")
+        return -1
     }
     let proto = c_has_prototype(p, f)
     let old_style = f >= 0 && p.ast.nodes[f].op == 2
