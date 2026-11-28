@@ -205,7 +205,7 @@ def c_kind_name(k : int) : string {
 //! The symbol of `name` in the unit's interner, interned when new.
 def c_symbol(var unit : CUnit; name : string) : int => intern_name(unit.lx.flex.syms, name)
 
-def private byte_at(unit : CUnit; at : int) : int => int(unsafe(unit.lx.flex.data[at]))
+def private byte_at(unit : CUnit; at : int) : int => int(unsafe(pp_buffer_data(unit.lx)[at]))
 
 def private is_digit(b : int) : bool => is_number(b)
 
@@ -309,7 +309,7 @@ def private number_kind(unit : CUnit; start, len : int) : int {
 
 //! the decimal value of the pp-number token in the lexer, -1 when it holds any other byte
 def private decimal_value(unit : CUnit) : int {
-    let t & = unsafe(unit.lx.flex.tok)
+    let t = pp_token_range(unit.lx)
     var value = 0
     for (i in range(t.start, t.start + t.len)) {
         let b = byte_at(unit, i)
@@ -326,8 +326,8 @@ def private token_error(var unit : CUnit; file, line_delta : int; what : string)
 
 //! the file id of the line marker's name in the lexer's string-literal token, added when new
 def private marker_file(var unit : CUnit) : int {
-    let t & = unsafe(unit.lx.flex.tok)
-    let sym = intern(unit.lx.flex.syms, unit.lx.flex.data, t.start + 1, t.len - 2)
+    let t = pp_token_range(unit.lx)
+    let sym = intern(unit.lx.flex.syms, pp_buffer_data(unit.lx), t.start + 1, t.len - 2)
     for (k in range(length(unit.file_syms))) {
         return k + 1 if (unit.file_syms[k] == sym)
     }
@@ -383,7 +383,7 @@ def private c_kind_of(var unit : CUnit) : int {
     if (k == int(PpTok.IDENTIFIER)) {
         let sym = unit.lx.tok.sym
         return unit.kind_of_sym[sym] if (sym < length(unit.kind_of_sym) && unit.kind_of_sym[sym] != 0)
-        let t & = unsafe(unit.lx.flex.tok)
+        let t = pp_token_range(unit.lx)
         return int(CTok.EOF) if (names_basic_character(unit, t.start, t.len))
         if (sym >= length(unit.kind_of_sym)) {
             unit.kind_of_sym |> resize(max(sym + 1, 2 * length(unit.kind_of_sym)))
@@ -391,7 +391,7 @@ def private c_kind_of(var unit : CUnit) : int {
         unit.kind_of_sym[sym] = int(CTok.IDENTIFIER)
         return int(CTok.IDENTIFIER)
     } elif (k == int(PpTok.PP_NUMBER)) {
-        let t & = unsafe(unit.lx.flex.tok)
+        let t = pp_token_range(unit.lx)
         return number_kind(unit, t.start, t.len)
     } elif (k == int(PpTok.CHAR_CONSTANT)) {
         return int(CTok.CHAR_CONSTANT)
@@ -422,7 +422,7 @@ def private line_marker(var unit : CUnit; var file, line_delta : int&; var more 
     var new_file = file
     more = pp_next(unit.lx)
     if (more && !unit.lx.tok.at_bol && unit.lx.tok.kind == int(PpTok.STRING_LITERAL)) {
-        if (byte_at(unit, unit.lx.flex.tok.start) != '"') {
+        if (byte_at(unit, pp_token_range(unit.lx).start) != '"') {
             token_error(unit, file, line_delta, "a line marker's file name '{pp_spelling(unit.lx)}' is not parsed")
             return false
         }
@@ -439,7 +439,7 @@ def private line_marker(var unit : CUnit; var file, line_delta : int&; var more 
 
 //! the `::` the lexer holds as two `:` tokens: C17 has no `::`, and GNU asm spells `:` twice
 def private colons(var unit : CUnit; file, line_delta : int) {
-    let t & = unsafe(unit.lx.flex.tok)
+    let t = pp_token_range(unit.lx)
     let colon = CToken(kind = int(CTok.COLON), sym = -1, start = t.start, len = 1, file = file,
                        line = unit.lx.tok.line + line_delta, col = unit.lx.tok.col)
     unit.toks |> push(colon) // nolint:STYLE012 - the colons append to the unit's tokens
@@ -470,7 +470,7 @@ def c_tokens_read(var unit : CUnit) : bool {
             token_error(unit, file, line_delta, "{what} '{pp_spelling(unit.lx)}'")
             break
         }
-        let t & = unsafe(unit.lx.flex.tok)
+        let t = pp_token_range(unit.lx)
         unit.toks |> push(CToken(kind = kind, sym = unit.lx.tok.sym, start = t.start, len = t.len,
                                  file = file, line = unit.lx.tok.line + line_delta, col = unit.lx.tok.col))
         more = pp_next(unit.lx)
