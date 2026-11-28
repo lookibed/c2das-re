@@ -75,8 +75,6 @@ daslang; this repository never builds it inside a test and never vendors it.
   not a part of the head-to-head either, here for the same reason.
 - `types/` - the C-IR oracle of Dumper C's builder against Dumper A (`types/ARCHITECTURE.md`),
   not a part of the head-to-head, here for the same reason.
-- `layout/` - the layout oracle of Dumper C's record layout against clang (`layout/ARCHITECTURE.md`),
-  not a part of the head-to-head either, here for the same reason.
 - `work/` - gitignored scratch: translations, compilation databases, the runs' builds and each
   case's folder `work/<suite>/<id>/` (the translation `das/`, the run's `run/`, a csmith
   program generated there, the `verdict`), and each perf kernel's `work/perf/<key>/` (the composed
