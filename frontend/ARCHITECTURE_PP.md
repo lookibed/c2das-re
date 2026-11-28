@@ -53,10 +53,10 @@ nothing, an include guard (section 9) included; a number after `#` is a GNU line
 
 A `#define` or `#undef` of a builtin name (`__FILE__`, `__LINE__`, `_Pragma`, the `__has_*`
 family) is clang's warning, which the expansion gives through `PpExpansion.macro_changed`
-(`ARCHITECTURE_EXPAND.md` section 31): PP.2 alone has no builtin names and gives none. A bad
+(`ARCHITECTURE_EXPAND.md` section 36): PP.2 alone has no builtin names and gives none. A bad
 predefined entry is reported with no place (file 0, line 0), since the entry has none in a file.
 `pp.directives_read` counts the directive lines read, in skipped groups too, which tells the
-expansion that a directive stood between two tokens (`ARCHITECTURE_EXPAND.md` section 25).
+expansion that a directive stood between two tokens (`ARCHITECTURE_EXPAND.md` section 30).
 
 ## 6. Starting a unit and the file provider {#pp-start}
 
@@ -107,7 +107,7 @@ as clang marks it.
 
 `#include` reads its name with `pp_next_header_name`. A token that is no header name - a macro
 naming the header - makes the directive's tokens a line in `pp.line`, which the expansion expands
-in place (`ARCHITECTURE_EXPAND.md` section 28); `include_expanded` then reads the name from it. With
+in place (`ARCHITECTURE_EXPAND.md` section 33); `include_expanded` then reads the name from it. With
 no expansion set the inclusion is recorded with `needs_expansion` and an error names PP.3. `#line`
 whose number is a name is expanded the same way, or left with an error.
 
@@ -171,7 +171,7 @@ variadic one's last parameter is `__VA_ARGS__`, or the name of a GNU `name...`. 
 is refused with an error for a missing or invalid name, `defined`, a malformed parameter list,
 `##` at either end of the body, and a `#` in a function-like body before no parameter
 (`__VA_OPT__` counts as one). `__VA_OPT__` in a macro that is not variadic is clang's warning at
-its place, once a definition (`ARCHITECTURE_EXPAND.md` section 27 reads it). A
+its place, once a definition (`ARCHITECTURE_EXPAND.md` section 32 reads it). A
 redefinition that differs in parameters, spellings or the presence of whitespace between tokens
 is a warning, and the new definition holds, as in clang.
 
@@ -183,7 +183,7 @@ token follows the name with no space (`#define X+`) warns as clang's C99 mode do
 ## 13. The pragma and pack ledgers {#pp-pragmas}
 
 A `#pragma` is never dropped silently. `pp_pragma_line` does the pragma whose tokens are in
-`pp.line`, of a `#pragma` line or of a `_Pragma` operator (`ARCHITECTURE_EXPAND.md` section 31).
+`pp.line`, of a `#pragma` line or of a `_Pragma` operator (`ARCHITECTURE_EXPAND.md` section 36).
 `#pragma once` marks the file; `push_macro` and
 `pop_macro` act on the macro table (section 12). `#pragma pack(...)` is a `PpPack` in
 `pp.packs`: `pack(N)` sets, `pack()` resets to the target's default (0), `pack(push[, tag][,
