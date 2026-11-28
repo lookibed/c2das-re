@@ -428,7 +428,7 @@ def private is_end(p : CParser; d : int) : bool {
 [arch(at="ARCHITECTURE_TYPES.md#c-types-declarators")]
 def private constant_value(var b : CTypes; var p : CParser; n : int; what : string) : int {
     var v = 0l
-    let folded = b.fold != null && invoke(b.fold, b, p, n, v)
+    let folded = invoke(b.fold, b, p, n, v)
     if (!folded) {
         refuse(b, p, p.ast.nodes[n].tok, "an {what} other than an integer constant expression")
         return -2

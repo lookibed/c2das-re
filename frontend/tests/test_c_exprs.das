@@ -616,3 +616,58 @@ def test_binary_literals(t : T?) {
         t |> equal(ir_of("int x = {bad};"), "parse error: t.c:1:9: invalid numeric constant '{bad}'", bad)
     }
 }
+
+[test(description = "a parenthesized callee calls what its name binds, as clang reads `(f)(1)`: its prototype counts the arguments, an old-style definition converts them; a block-scope function declaration with static storage is invalid C")]
+def test_paren_callee(t : T?) {
+    t |> equal(ir_of("int f(void); void g(void) \{ (f)(1); \}"), "error: t.c:1:29: a call with 1 arguments of a function whose prototype has 0 is invalid C, which clang rejects")
+    t |> equal(ir_of("int f(c) char c; \{ return c; \} int g(void) \{ return (f)(1.5) + f(1.5); \}"), "return IntegralCast<int>(LValueToRValue<char>(c)) ; return add<int>(call<int>(FunctionToPointerDecay<func*>(f); FloatingToIntegral<int>(0x1.8p+0<double>)), call<int>(FunctionToPointerDecay<func*>(f); FloatingToIntegral<int>(0x1.8p+0<double>)))")
+    t |> equal(ir_of("int f(void); void g(void) \{ static int f(void); \}"), "error: t.c:1:40: a function declared in a block with static storage is invalid C, which clang rejects")
+}
+
+// each declaration of unit `text` as `<name>` and ` static` when it is one, joined by ` ; `
+def private statics_of(text : string) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c")
+    let u = c_unit(p)
+    var r = new CIr
+    c_ir_open(*r, target_lp64_linux(), "")
+    let clean = !p.failed && c_ir_unit(*r, p, u)
+    let out <- clean ? [for (d in r.tu.decls); "{d.name}{d.is_static ? " static" : ""}"] : ["error: {p.failed ? p.err : r.err}"]
+    delete_tu(r.tu)
+    unsafe {
+        delete r
+    }
+    return join(out, " ; ")
+}
+
+[test(description = "a function's declaration and definition take the internal linkage an earlier `static` gave the name; `static; extern; static` stays valid")]
+def test_static_linkage_kept(t : T?) {
+    t |> equal(statics_of("static int f(void); int f(void) \{ return 0; \} int f(void);"), "t__f static ; t__f static ; t__f static")
+    t |> equal(ir_of("static int k; extern int k; static int k; int g(void) \{ return k; \}", false, "t.c", true), "t__k ; g() ; return LValueToRValue<int>(t__k)")
+}
+
+[test(description = "the names: a parenthesized character case label keeps its mark, a renamed local's name is taken for the next, a parameter renamed past a block extern under every statement form, a block prototype's parameter, a definition's name and block externs elsewhere taken by a hoisted static, typedef names not")]
+def test_names_more(t : T?) {
+    t |> equal(ir_of("void g(int x) \{ switch (x) \{ case ('a'): ; \} \}"), "switch LValueToRValue<int>(x) - ; case 97c ; null - -")
+    t |> equal(ir_of("int x; void f(void) \{ \{ extern int x; \} \{ int x = 1; \} \{ int x = 2; \} \}", false, "t.c", true), "x ; f() ; null - - ; x1:int=1<int> ; x2:int=2<int>")
+    let forms = fixed_array("if (x) \{ extern int x; \}", "while (x) \{ extern int x; \}", "do \{ extern int x; \} while (0);",
+                            "switch (x) \{ case 1: \{ extern int x; \} \}", "for (;;) \{ extern int x; \}", "(\{ extern int x; 0; \});",
+                            "switch (x) \{ default: \{ extern int x; \} \}", "l: \{ extern int x; \}")
+    for (form in forms) {
+        t |> success(find(ir_of("int x; int f(int x) \{ {form} return x; \}", false, "t.c", true), "f(x1)") >= 0, form)
+    }
+    t |> equal(ir_of("int f(void) \{ int g(int f_s); static int s; return s; \}", false, "t.c", true), "g(f_s) ; f_s1 ; f() ; null - - ; return LValueToRValue<int>(f_s1)")
+    t |> equal(ir_of("int f(void) \{ \{ typedef int f_s; \} static int s; return s; \}", false, "t.c", true), "f_s ; f() ; null - - ; return LValueToRValue<int>(f_s)")
+    t |> equal(ir_of("void f_s(void) \{\} int f(void) \{ static int s; return s; \}", false, "t.c", true), "f_s() ; f_s1 ; f() ; null - - ; return LValueToRValue<int>(f_s1)")
+    t |> equal(ir_of("void h(void) \{ extern int f_s; \} int f(void) \{ static int s; return s; \}", false, "t.c", true), "f_s ; h() ; null - - ; f_s1 ; f() ; null - - ; return LValueToRValue<int>(f_s1)")
+    t |> equal(ir_of("typedef int f_s; int f(void) \{ static int s; return s; \}", false, "t.c", true), "f_s ; f() ; null - - ; return LValueToRValue<int>(f_s)")
+}
+
+[test(description = "a macro expansion's parentheses are marked around each shift and bitwise operator, never around an assignment; an msvc `ll` literal past 64 bits is refused")]
+def test_macro_parens_more(t : T?) {
+    for (op in fixed_array("<<", ">>", "&", "^")) {
+        t |> success(find(source_ir_of("#define M(a) ((a) {op} 1)\nint f(int a) \{ return M(a) + 1; \}", true), ")()") >= 0, op)
+    }
+    t |> equal(source_ir_of("#define M(a) ((a) |= 1)\nint f(int a) \{ return M(a) + 1; \}", true), "return add<int>(assignbor<int>(a, 1<int>), 1<int>) ; TABLE int:32:true:int func:0:0:false")
+    t |> equal(ir_of("void g(void) \{ 0x1c000000080000000LL; \}", true), "error: t.c:1:16: the integer literal '0x1c000000080000000LL', which no type of its list holds, is not typed yet")
+}

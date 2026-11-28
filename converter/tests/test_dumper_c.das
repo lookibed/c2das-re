@@ -10,6 +10,7 @@ require ../dumper_c.das
 require ../cir.das
 require ../dumper_a.das
 require ../../frontend/diff.das
+require ../../frontend/c_defines.das
 
 //! `converter/dumper_c.das` and `--dumper` (`converter/ARCHITECTURE_DUMPER_C.md`): a scalar unit
 //! converted with Dumper C gives the C-IR Dumper A gives, byte for byte past the macro fields and
@@ -56,12 +57,12 @@ def test_dasflex_missing(t : T?) {
 
 // Dumper C's C-IR of unit `text` written as `<name>` under the test folder: its first function's
 // first statement's place and the C-IR text past the producer, or `error: ` and the error
-def private dumped_c(name, text : string) : string {
+def private dumped_c(name, text : string; msvc : bool = false) : string {
     let path = path_join(test_temp_dir(), name)
     fwrite(path, text)
     var tu : CirTu
     var error : string
-    dumper_c_tu(path, target_lp64_linux(), default_clang(), DumpInputs(), tu, error)
+    dumper_c_tu(path, msvc ? target_llp64_msvc() : target_lp64_linux(), default_clang(), DumpInputs(), tu, error)
     var listed = "error: {error}"
     if (empty(error)) {
         let last = tu.decls[length(tu.decls) - 1]
@@ -148,4 +149,80 @@ def test_dumper_c_program_root(t : T?) {
     dumper_c_tu(q, target_lp64_linux(), default_clang(), DumpInputs(program_root = path_join(top, "elsewhere")), tu, error)
     t |> success(starts_with(error, "the main file {q} is no file of the program"), error)
     delete_tu(tu)
+}
+
+// the error dumper_c_tu gives `c_path` under `inputs`, "" for none
+def private dumper_c_error(c_path : string; inputs : DumpInputs) : string {
+    var tu : CirTu
+    var error : string
+    dumper_c_tu(c_path, target_lp64_linux(), default_clang(), inputs, tu, error)
+    delete_tu(tu)
+    return error
+}
+
+[test(description = "dumper_c_tu refuses a sidecar's include folders and files, takes the root `/`, refuses a main file under the own headers' folder, and reads the msvc feature table under msvc", timeout = 600)]
+def test_dumper_c_inputs(t : T?) {
+    let refused = "Dumper C takes no sidecar defines, include folders or include files yet"
+    t |> equal(dumper_c_error(FIXTURE, DumpInputs(include_dirs <- ["x"])), refused)
+    t |> equal(dumper_c_error(FIXTURE, DumpInputs(include_files <- ["x.h"])), refused)
+    t |> equal(dumper_c_error(FIXTURE, DumpInputs(program_root = "/")), "")
+    let header = get_full_file_name(path_join(own_include_dir(), "stddef.h"))
+    let under = dumper_c_error(header, DumpInputs())
+    t |> success(starts_with(under, "the main file {header} is no file of the program") && find(under, "under the own libc headers' folder") >= 0, under)
+    t |> equal(dumped_c("msvc_table.c", "#if !__has_attribute(dllexport)\n#error linux table\n#endif\nint f(void) \{\n  return 0;\n\}\n", true), "f@4:5 body@5:3")
+}
+
+// the exit code and output of `converter/dumper_c_main.das` run as the pipeline runs it, on `args`
+def private dumper_c_main(args : array<string>) : tuple<rc : int; out : string> {
+    var argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "converter/dumper_c_main.das", "--"]
+    argv |> push_from(args)
+    var out : string
+    let rc = run_and_capture(argv, out, 300.0)
+    return (rc = rc, out = out)
+}
+
+[test(description = "the Dumper C child: too few arguments print its usage, a refused unit and an unwritable output print why, each with exit 1", timeout = 600)]
+def test_dumper_c_main(t : T?) {
+    let usage = dumper_c_main(["x.c", "linux"])
+    t |> equal(usage.rc, 1)
+    t |> success(find(usage.out, "usage: dumper_c_main.das -- <file.c> <linux|msvc> <clang> <out.cir.json> [<program root>]") >= 0, usage.out)
+    let refused = dumper_c_main(["compare/types/fixtures/refused.c", "linux", default_clang(), path_join(test_temp_dir(), "refused.cir.json")])
+    t |> equal(refused.rc, 1)
+    t |> success(find(refused.out, "dumper C: builder: ") >= 0 && find(refused.out, "a prefixed string literal is not typed yet") >= 0, refused.out)
+    let unwritable = dumper_c_main([FIXTURE, "linux", default_clang(), path_join(test_temp_dir(), "no/such/dir/x.cir.json")])
+    t |> equal(unwritable.rc, 1)
+    t |> success(find(unwritable.out, "dumper C: cannot write ") >= 0, unwritable.out)
+}
+
+[test(description = "convert with Dumper C: a sidecar's defines refused, the child's refusal named, the sidecar's program root carried to the child, and a program of two files each through Dumper C", timeout = 900)]
+def test_pipeline_dumper_c(t : T?) {
+    let dir = path_join(test_temp_dir(), "pipe")
+    mkdir_rec(path_join(dir, "d"))
+    let defines = path_join(dir, "defines.c2das")
+    fwrite(defines, "\{\"defines\": [\"X=1\"]\}\n")
+    let with_defines <- convert(FIXTURE, path_join(dir, "o1"), "linux", "", defines, "", "", "", "", false, "", "", false, "", "", "c")
+    t |> success(find(with_defines.error, "Dumper C takes no sidecar defines, include folders or include files yet") >= 0, with_defines.error)
+    let refused <- convert("compare/types/fixtures/refused.c", path_join(dir, "o2"), "linux", "", "", "", "", "", "", false, "", "", false, "", "", "c")
+    t |> success(find(refused.error, "dumper C: builder: ") >= 0 && find(refused.error, "a prefixed string literal") >= 0, refused.error)
+    let top = get_full_file_name(dir)
+    fwrite(path_join(dir, "hdr.h"), "int shared_count;\n")
+    fwrite(path_join(dir, "d/q.c"), "#include \"../hdr.h\"\nint main(void) \{ return shared_count; \}\n")
+    let rooted = path_join(dir, "root.c2das")
+    fwrite(rooted, "\{\"program_root\": \"{top}\"\}\n")
+    let a <- convert(path_join(dir, "d/q.c"), path_join(dir, "oa"), "linux", "", rooted, "", "", "", "", false, "", "", false, "", "", "a")
+    let c <- convert(path_join(dir, "d/q.c"), path_join(dir, "oc"), "linux", "", rooted, "", "", "", "", false, "", "", false, "", "", "c")
+    t |> success(!empty(c.cir_text), c.error)
+    t |> equal(cir_diff(c.cir_text, a.cir_text), "")
+    t |> success(find(c.cir_text, "\"shared_count\"") >= 0)
+    fwrite(path_join(dir, "m1.c"), "int twice(int v);\nint main(void) \{ return twice(0); \}\n")
+    fwrite(path_join(dir, "m2.c"), "int twice(int v) \{ return 2 * v; \}\n")
+    var argv <- daslang_cmd(CONVERTED_MODULES)
+    argv |> push_from(["converter/main.das", "--", path_join(dir, "m1.c"), path_join(dir, "m2.c"), "--out", path_join(dir, "om"), "--target", "linux", "--dumper", "c"])
+    var out : string
+    let rc = run_and_capture(argv, out, 600.0)
+    t |> equal(rc, 0, out)
+    for (stem in fixed_array("m1", "m2")) {
+        t |> success(find(fread(path_join(dir, "om/{stem}.cir.json")), "\"producer\": \"c2das-dumper-c 0.1") >= 0, stem)
+        t |> success(stat(path_join(dir, "om/{stem}.dumper_c.cir.json")).is_reg, stem)
+    }
 }

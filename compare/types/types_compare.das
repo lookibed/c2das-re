@@ -309,6 +309,8 @@ struct TypesArgs {
     @clarg_name = "update-ratchet"
     @clarg_doc = "add to --ratchet every suite unit of this run that is byte-identical, and over a whole suite drop the lines of units it no longer holds; nothing is written when a listed unit is no longer byte-identical"
     update_ratchet : bool
+    @clarg_doc = "the folder the suites' fetched units lie under (the repository root when none is named)"
+    root : string
     @clarg_positional
     @clarg_doc = "units compared besides the corpus"
     units : array<string>
@@ -427,9 +429,10 @@ def private add_totals(var total : TypesTotals; t : TypesTotals) {
 //! refused and Dumper A failed on none, else 1 (and for no unit named).
 def run_types(args : TypesArgs) : int {
     var error : string
-    var units <- args.c_testsuite ? c_testsuite_units(getcwd(), error) : array<string>()
+    let root = empty(args.root) ? getcwd() : args.root
+    var units <- args.c_testsuite ? c_testsuite_units(root, error) : array<string>()
     if (empty(error) && args.gcc_torture) {
-        units |> push_from(gcc_torture_units(getcwd(), error))
+        units |> push_from(gcc_torture_units(root, error))
     }
     if (!empty(error)) {
         to_log(LOG_ERROR, "{error}\n")

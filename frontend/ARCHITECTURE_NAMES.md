@@ -12,7 +12,8 @@ A declaration at file scope is named by its C name, except one with internal lin
 declaration takes `<stem>__<name>` (`linkage_name`), the stem the unit's file name before its first
 `.` as an identifier (`ident_of` of `converter/cir.das`: every other character `_`, a leading `_`
 before a digit), and every later declaration of the name keeps it, `static` or not (C11 6.2.2p4).
-The declaration's `static` is set for such a name. A block-scope `extern` declaration or prototype
+The declaration's `static` is set for such a name. A function declared in a block with `static`
+is invalid C, as clang rejects it. A block-scope `extern` declaration or prototype
 spells the name of the file-scope entity (`<stem>__<name>` for a static one, else the C name). An
 own header's declaration keeps its C name.
 

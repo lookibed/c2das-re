@@ -349,6 +349,11 @@ def run_suite_main(spec : SuiteSpec; verdict : function<(id : string; c_path : s
     if (parsed >= 0) {
         return parsed
     }
+    return run_suite_with(spec, args, verdict)
+}
+
+//! `run_suite_main` over the command line `args` already read: the exit code.
+def run_suite_with(spec : SuiteSpec; args : Args; verdict : function<(id : string; c_path : string; rc : int; output : string) : Outcome>) : int {
     let refusal = empty(tier_refusal(args.tier, args.update)) ? dumper_refusal(args.dumper, args.update || args.audit_skips) : tier_refusal(args.tier, args.update)
     if (!empty(refusal)) {
         to_log(LOG_ERROR, "{refusal}\n")

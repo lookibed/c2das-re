@@ -500,3 +500,17 @@ def test_feature_table(t : T?) {
     t |> equal(c_spelling(unit, 0), "no")
     t |> equal(unit.toks[length(unit.toks) - 1].kind, int(CTok.EOF))
 }
+
+[test(description = "the places in the file as read of tokens the reader makes: the second `:` of a split `::` keeps the first's, the end takes the last token's, after an expansion the call's `)`")]
+def test_read_places(t : T?) {
+    var unit : CUnit
+    let split = expanded_unit(unit, [("main.c", "int a;\n  a::b")])
+    t |> success(split, unit.err)
+    t |> equal("{unit.toks[4].read_file}:{unit.toks[4].read_line} {unit.toks[5].read_file}:{unit.toks[5].read_line}", "0:2 0:2")
+    let last = unit.toks[length(unit.toks) - 1]
+    t |> equal("{last.read_file}:{last.read_line}", "0:2")
+    let expanded = expanded_unit(unit, [("main.c", "#define E(x) x\nE(\n1)")])
+    t |> success(expanded, unit.err)
+    let end = unit.toks[length(unit.toks) - 1]
+    t |> equal("{end.read_file}:{end.read_line}", "0:3")
+}

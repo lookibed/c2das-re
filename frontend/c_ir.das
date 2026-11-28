@@ -201,15 +201,14 @@ def private push_global(var r : CIr; var g : CirDecl?) {
     r.tu.decls |> push(g)
 }
 
-// the token of the name declarator `d` declares, `fallback` for an abstract one: a declaration's
-// place, as clang places it
-def private name_tok(p : CParser; d, fallback : int) : int {
+// the token of the name declarator `d` declares, a declaration's place as clang places it: an
+// init-declarator and a definition always name one (the parser reads them named)
+def private name_tok(p : CParser; d : int) : int {
     var at = d
-    while (at >= 0) {
-        return p.ast.nodes[at].tok if (p.ast.nodes[at].kind == CNode.D_NAME)
+    while (p.ast.nodes[at].kind != CNode.D_NAME) {
         at = p.ast.nodes[at].a
     }
-    return fallback
+    return p.ast.nodes[at].tok
 }
 
 // `want` when no hoisted static, file-scope name of the unit or name of the function being read
@@ -274,10 +273,7 @@ def private collect_names(var p : CParser; s : int; var locals, externs : table<
                 externs |> insert(name)
                 var param = p.ast.nodes[f].op == 2 ? -1 : p.ast.nodes[f].b
                 while (param >= 0) {
-                    let pname = name_of(p, p.ast.nodes[param].b)
-                    if (!empty(pname)) {
-                        locals |> insert(pname)
-                    }
+                    locals |> insert(name_of(p, p.ast.nodes[param].b))
                     param = p.ast.nodes[param].next
                 }
             } else {
@@ -341,10 +337,14 @@ def private collect_file_scope_names(var r : CIr; var p : CParser; u : int) {
 // type, then its parameters, and its declaration, unless a block declaration of a name declared
 // before, which adds nothing
 def private function_declaration(var r : CIr; var p : CParser; sym, spelled, f : int; local, is_static : bool; at : CirLoc; tok : int) : bool {
+    if (local && is_static) {
+        c_reject(r, p, tok, "a function declared in a block with static storage")
+        return false
+    }
     let t = c_linked(r, p, spelled, sym, f, tok)
     return false if (t < 0)
     let name = c_symbol_text(p.unit, sym)
-    let linked = linkage_name(r, p, name, is_static && !local, false, tok)
+    let linked = linkage_name(r, p, name, is_static, false, tok)
     return false if (empty(linked))
     var fid = function_id(r, p, sym, t, f)
     fid.name = linked
@@ -445,7 +445,7 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         let sym = c_declarator_name(p.ast, d)
         let name = c_symbol_text(p.unit, sym)
         let f = c_name_function(p.ast, d)
-        let at = loc_of(p, name_tok(p, d, p.ast.nodes[id].tok))
+        let at = loc_of(p, name_tok(p, d))
         return false if (!c_plain_attributes(r, p, p.ast.nodes[id].d))
         let init_node = p.ast.nodes[id].b
         var t = c_sized_by_initializer(r, p, c_declarator_type(r, p, base, d, false, init_node), d, init_node)
@@ -475,7 +475,8 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
             into |> push(new CirStmt(s = "null", loc = at))
         } elif (is_extern) {
             if (!key_exists(r.declared, sym)) {
-                r.tu.decls |> push(new CirDecl(k = "global", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), is_extern = true, loc = at))
+                // an undeclared name has no internal linkage: linkage_names holds declared names alone
+                r.tu.decls |> push(new CirDecl(k = "global", name = linked, c_name = name, t = ti, is_extern = true, loc = at))
             }
             into |> push(new CirStmt(s = "null", loc = at))
         } else {
@@ -702,7 +703,8 @@ def private function_names(var r : CIr; var p : CParser; name : string; f, body 
     for (pname in old_names) {
         r.fn_all_locals |> insert(pname)
     }
-    var param = p.ast.nodes[f].op == 2 || c_is_void_list(r, p, p.ast.nodes[f].b) ? -1 : p.ast.nodes[f].b
+    // a `(void)` list's one parameter names "", which no name spells
+    var param = p.ast.nodes[f].op == 2 ? -1 : p.ast.nodes[f].b
     while (param >= 0) {
         r.fn_all_locals |> insert(name_of(p, p.ast.nodes[param].b))
         param = p.ast.nodes[param].next
@@ -744,9 +746,9 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     r.old_style |> clear()
     let t = spelled < 0 ? spelled : c_linked(r, p, spelled, sym, f, p.ast.nodes[n.b].tok)
     let ti = c_types_use(r, t)
-    let linked = ti < 0 ? "" : linkage_name(r, p, name, has_storage(p, n.a, CTok.STATIC), false, name_tok(p, d, n.tok))
+    let linked = ti < 0 ? "" : linkage_name(r, p, name, has_storage(p, n.a, CTok.STATIC), false, name_tok(p, d))
     return false if (empty(linked))
-    var cd = new CirDecl(k = "func", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), loc = loc_of(p, name_tok(p, d, n.tok)))
+    var cd = new CirDecl(k = "func", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), loc = loc_of(p, name_tok(p, d)))
     r.declared[sym] = true
     if (old_style) {
         var none : array<int>
@@ -769,7 +771,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         }
     } else {
         ok = parameters(r, p, f, cd.params, true)
-        var param = c_is_void_list(r, p, p.ast.nodes[f].b) ? -1 : p.ast.nodes[f].b
+        var param = p.ast.nodes[f].b
         var at = 0
         while (ok && param >= 0) {
             let psym = c_declarator_name(p.ast, p.ast.nodes[param].b)
@@ -780,7 +782,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
             param = p.ast.nodes[param].next
         }
     }
-    r.ret = r.unqualified[r.pool[t].ret]
+    r.ret = r.pool[t].ret
     var body : array<CirStmt?>
     ok = ok && statement(r, p, n.d, name, body)
     c_types_scope_close(r)
@@ -812,7 +814,7 @@ def private in_library(var r : CIr; p : CParser; decl : int) : bool {
 // definitions would stay external, as Dumper A gives it; false when there is none
 def private outside_c_file(var r : CIr; p : CParser; decl : int) : bool {
     let name = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].read_file)
-    return false if (empty(r.program_dir) || !ends_with(name, ".c") || (!empty(r.library_dir) && starts_with(name, r.library_dir)))
+    return false if (empty(r.program_dir) || !ends_with(name, ".c"))
     r.err = "{c_where(p.unit, p.ast.nodes[decl].tok)}: {name} is a C file outside the program root {r.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root"
     return true
 }

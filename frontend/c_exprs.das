@@ -1122,7 +1122,12 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.CALL) {
         let callee = p.ast.nodes[node.a]
         var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
-        return fn == null ? null : call(r, p, fn, node.b, node.tok, callee.kind == CNode.IDENT ? callee.a : -1)
+        // a parenthesized name calls what the name binds, as clang reads `(f)(1)`
+        var named = node.a
+        while (p.ast.nodes[named].kind == CNode.PAREN) {
+            named = p.ast.nodes[named].a
+        }
+        return fn == null ? null : call(r, p, fn, node.b, node.tok, p.ast.nodes[named].kind == CNode.IDENT ? p.ast.nodes[named].a : -1)
     } elif (kind == CNode.INDEX) {
         return subscript(r, p, node)
     } elif (kind == CNode.CAST) {

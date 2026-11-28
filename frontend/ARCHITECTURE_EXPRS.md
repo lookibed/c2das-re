@@ -147,7 +147,8 @@ is an `IntegralCast` over `1`). The slots:
 - a call's arguments: within a prototype's parameters each to its parameter's type; past them, or
   when the callee has no prototype, by the default argument promotions (6.5.2.2p6: promoted, `float`
   to `double`); a call by name of a function an old-style definition defined converts its arguments
-  to that definition's parameter types promoted, as clang does.
+  to that definition's parameter types promoted, as clang does. A name in parentheses (`(f)(1)`)
+  calls by name all the same: its prototype counts the arguments and its definition converts them.
 
 An explicit cast takes its operand as a value (to `void` too) and its kind from the two types:
 `NoOp` when they differ in qualifiers at their pointer and array levels at most (a function type's
