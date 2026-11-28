@@ -204,9 +204,9 @@ def test_line_markers(t : T?) {
     }
 }
 
-// the C tokens of `text` read after the unit already met every name in it: their count, and the
-// heap and string-heap allocations the read made
-def private allocations_of_read(var unit : CUnit; text : string) : int3 {
+// the heap and string-heap allocations of a read of `text` in `unit`, opened again first: the C tokens
+// read (`c_tokens`), or the preprocessor alone, its tokens read and dropped; and the tokens' count
+def private allocations_of_read(var unit : CUnit; text : string; c_tokens : bool) : int3 {
     var bytes : array<uint8>
     bytes |> reserve(length(text) + 1)
     for (c in text) {
@@ -215,11 +215,20 @@ def private allocations_of_read(var unit : CUnit; text : string) : int3 {
     c_tokens_open(unit, bytes, "t.c")
     let heap = int(heap_allocation_count())
     let strings = int(string_heap_allocation_count())
-    c_tokens_read(unit)
-    return int3(length(unit.toks), int(heap_allocation_count()) - heap, int(string_heap_allocation_count()) - strings)
+    var count = 0
+    if (c_tokens) {
+        c_tokens_read(unit)
+        count = length(unit.toks)
+    } else {
+        while (pp_next_token(unit.pp)) {
+            count++
+        }
+        count++
+    }
+    return int3(count, int(heap_allocation_count()) - heap, int(string_heap_allocation_count()) - strings)
 }
 
-[test(description = "reading a unit's C tokens allocates no string and no heap block per token: the token array grows by doubling, and a second read allocates no more than the preprocessor's one block a unit; a line marker costs what the preprocessor's `#line` costs, a few blocks each")]
+[test(description = "reading a unit's C tokens allocates nothing on top of what the preprocessor alone allocates over the same text, a line marker's cost included: no string, the token array's doublings and the new names on a first read, nothing on a second")]
 def test_no_allocation(t : T?) {
     let line = "x = y[0x10] * (z - 1.5f) + sizeof(int) ; s = \"a\" ;\n"
     let plain = build_string() $(var w) {
@@ -227,15 +236,6 @@ def test_no_allocation(t : T?) {
             w |> write(line)
         }
     }
-    var unit : CUnit
-    let first = allocations_of_read(unit, plain)
-    t |> success(first.x > 8000, "{first.x} tokens")
-    t |> equal(first.z, 0, "string allocations, first read")
-    t |> success(first.y <= 20, "heap allocations {first.y} for {first.x} tokens: the array's doublings and the new names")
-    let again = allocations_of_read(unit, plain)
-    t |> equal(again.x, first.x)
-    t |> success(again.y <= 1, "heap allocations {again.y}, the array grown and every name known")
-    t |> equal(again.z, 0, "string allocations, every name known")
     let marked = build_string() $(var w) {
         for (i in range(400)) {
             if (i % 50 == 0) {
@@ -244,11 +244,20 @@ def test_no_allocation(t : T?) {
             w |> write(line)
         }
     }
-    allocations_of_read(unit, marked)
-    let markers = allocations_of_read(unit, marked)
-    t |> equal(markers.x, first.x)
-    t |> success(markers.y <= again.y + 2 * 8, "heap allocations {markers.y} for 8 line markers")
-    t |> success(markers.z <= 5 * 8, "string allocations {markers.z} for 8 line markers")
+    for (text, what in fixed_array(plain, marked), fixed_array("plain", "8 line markers")) {
+        var alone, unit : CUnit
+        let pp_first = allocations_of_read(alone, text, false)
+        let first = allocations_of_read(unit, text, true)
+        t |> success(first.x > 8000, "{what}: {first.x} tokens")
+        t |> equal(first.x, pp_first.x, "{what}: a C token per preprocessor token")
+        t |> equal(first.z - pp_first.z, 0, "{what}: string allocations past the preprocessor's {pp_first.z}, first read")
+        t |> success(first.y - pp_first.y <= 20, "{what}: heap allocations {first.y} past the preprocessor's {pp_first.y} for {first.x} tokens: the array's doublings and the new names")
+        let pp_again = allocations_of_read(alone, text, false)
+        let again = allocations_of_read(unit, text, true)
+        t |> equal(again.x, first.x)
+        t |> equal(again.y - pp_again.y, 0, "{what}: heap allocations past the preprocessor's {pp_again.y}, the array grown and every name known")
+        t |> equal(again.z - pp_again.z, 0, "{what}: string allocations past the preprocessor's {pp_again.z}, every name known")
+    }
 }
 
 // a unit of C source over the in-memory `files` (path, text pairs), read from `main.c` with macro
