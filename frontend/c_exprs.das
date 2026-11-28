@@ -1234,6 +1234,18 @@ def private explicit_cast(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
     return cast_node(a, unq(r, to), ck, true)
 }
 
+// call node `node`: its callee, a name read as a callee, then the call
+def private call_expr(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
+    let callee = p.ast.nodes[node.a]
+    var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
+    // a parenthesized name calls what the name binds, as clang reads `(f)(1)`
+    var named = node.a
+    while (p.ast.nodes[named].kind == CNode.PAREN) {
+        named = p.ast.nodes[named].a
+    }
+    return fn == null ? null : call(r, p, fn, node.b, node.tok, p.ast.nodes[named].kind == CNode.IDENT ? p.ast.nodes[named].a : -1)
+}
+
 //! The C-IR expression of parser expression node `n`, typed by pool types, with no conversion at
 //! its top; null with the error set at the first construct not typed yet.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-nodes")]
@@ -1261,14 +1273,7 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.UNARY || kind == CNode.POSTFIX || kind == CNode.BINARY || kind == CNode.ASSIGN || kind == CNode.COND) {
         return operator_expr(r, p, node)
     } elif (kind == CNode.CALL) {
-        let callee = p.ast.nodes[node.a]
-        var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
-        // a parenthesized name calls what the name binds, as clang reads `(f)(1)`
-        var named = node.a
-        while (p.ast.nodes[named].kind == CNode.PAREN) {
-            named = p.ast.nodes[named].a
-        }
-        return fn == null ? null : call(r, p, fn, node.b, node.tok, p.ast.nodes[named].kind == CNode.IDENT ? p.ast.nodes[named].a : -1)
+        return call_expr(r, p, node)
     } elif (kind == CNode.INDEX) {
         return subscript(r, p, node)
     } elif (kind == CNode.MEMBER) {
