@@ -304,6 +304,9 @@ def private note_weak(var r : CIr; p : CParser; sym, specs, attrs, tok : int) {
 // type, then its parameters, and its declaration, unless a block declaration of a name declared
 // before, which adds nothing
 def private function_declaration(var r : CIr; var p : CParser; sym, spelled, f : int; local, is_static : bool; at : CirLoc; tok : int) : bool {
+    if (!is_static && !c_has_prototype(p, f) && (f < 0 || p.ast.nodes[f].op != 2)) {
+        c_library_prior(r, p, sym)
+    }
     let t = c_linked(r, p, spelled, sym, f, tok)
     return false if (t < 0)
     let name = c_symbol_text(p.unit, sym)

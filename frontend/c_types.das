@@ -518,8 +518,20 @@ let private LIBRARY_BUILTINS <- {
     "abs" => ("int", ["int"])
 }
 
-// the pool function type clang gives C library function `name`, -1 for a name it does not know
+//! A block or file-scope declaration with no prototype, not `static`, of C library function `sym`
+//! clang declares itself, which no declaration before it names: the library's prototype becomes
+//! the earlier declaration its composite takes (`extern void exit();` is `void (int)`).
 [arch(at="ARCHITECTURE_SUBSET.md#c-subset-library")]
+def c_library_prior(var b : CTypes; var p : CParser; sym : int) {
+    return if (key_exists(b.prior, sym) || key_exists(b.library_functions, sym))
+    let lib = library_builtin(b, c_symbol_text(p.unit, sym))
+    if (lib >= 0) {
+        b.prior[sym] = lib
+        b.prototyped[sym] = true
+    }
+}
+
+// the pool function type clang gives C library function `name`, -1 for a name it does not know
 def private library_builtin(var b : CTypes; name : string) : int {
     var t = -1
     get(LIBRARY_BUILTINS, name) $(proto) {
@@ -632,13 +644,13 @@ def private builtin_type(var b : CTypes; set : int) : int {
 let private TYPE_ATTRIBUTES <- ["mode", "__mode__", "vector_size", "__vector_size__", "ext_vector_type", "__ext_vector_type__"]
 
 // the attributes Dumper A drops (they change nothing a das run observes), reads (`aligned`,
-// `packed`), accepts as a plain call (`musttail`), and those clang ignores, which reach no node
-// of its dump; any other fails closed, as Dumper A fails (`converter/ARCHITECTURE_DUMPER.md`)
+// `packed`), accepts as a plain call (`musttail`), those clang ignores, which reach no node of its
+// dump, and the calling conventions, which x86-64 ignores or Dumper A strips; any other fails closed, as Dumper A fails (`converter/ARCHITECTURE_DUMPER.md`)
 let private KNOWN_ATTRIBUTES <- {"noinline", "unused", "used", "const", "pure", "always_inline", "nothrow", "cold", "hot",
     "visibility", "format", "nonnull", "malloc", "warn_unused_result", "deprecated", "weak", "may_alias", "section", "leaf",
     "no_instrument_function", "alloc_size", "returns_nonnull", "nodebug", "fallthrough", "gnu_inline", "noreturn", "mode",
     "aligned", "packed", "musttail", "noclone", "noipa", "optimize", "externally_visible", "scalar_storage_order",
-    "vector_size", "ext_vector_type"}
+    "vector_size", "ext_vector_type", "stdcall", "cdecl", "fastcall", "thiscall", "vectorcall", "ms_abi"}
 
 //! The names attribute node `n` lists (`__attribute__((a, b(x)))` lists `a` and `b`), each with
 //! `__` around it removed.
@@ -1286,12 +1298,6 @@ def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
     }
     let proto = c_has_prototype(p, f)
     let old_style = f >= 0 && p.ast.nodes[f].op == 2
-    if (prev < 0 && b.pool[u].k == "func" && !proto && !old_style) {
-        // a declaration with no prototype of a C library function clang knows takes the
-        // library's prototype as its composite (`extern void exit();` is `void (int)`)
-        prev = library_builtin(b, c_symbol_text(p.unit, sym))
-        prev_proto = prev >= 0
-    }
     var result = t
     if (prev >= 0 && b.unqualified[prev] != u) {
         assume a = b.pool[b.unqualified[prev]]

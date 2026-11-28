@@ -212,12 +212,14 @@ def test_library_composite(t : T?) {
     t |> equal(subset_of("extern void exit(); void f(int i) \{ exit(i); \}"),
                "exit:fn(int)(:int) ; f:fn(int)(i:int) ; expr call<void>(FunctionToPointerDecay<fn(int)*>(exit); LValueToRValue<int>(i))")
     t |> equal(subset_of("int g(int, char *); int g();"), "g:fn(int,char*)(:int,:char*) ; g:fn(int,char*)(:int,:char*)")
+    t |> equal(subset_of("static int strcmp() \{ return -1; \}"), "t__strcmp:fn()() ; return neg<int>(1)")
 }
 
 [test(description = "the attributes Dumper A drops or reads are taken; any other refused at its place, weak on a name the unit never defines too")]
 def test_attributes(t : T?) {
     t |> equal(subset_of("__attribute__((weak)) int w(void); int w(void) \{ return 0; \} __attribute__((noinline, noclone, format(printf, 1, 2))) int lg(const char *f, ...);"),
                "w:fn()() ; w:fn()() ; return 0 ; lg:fn(char*,...)(f:char*)")
+    t |> equal(subset_of("extern void g(void) __attribute__((stdcall)); void __attribute__((__cdecl__)) g(void) \{\}"), "g:fn()() ; g:fn()()")
     t |> equal(subset_of("__attribute__((constructor)) static void c(void) \{\}"), "error: t.c:1:16: the attribute 'constructor' is not typed yet, which Dumper A neither drops nor reads")
     t |> equal(subset_of("void f(void) \{ int x __attribute__((__cleanup__(f))); \}"), "error: t.c:1:37: the attribute 'cleanup' is not typed yet, which Dumper A neither drops nor reads")
     t |> equal(subset_of("extern int v __attribute__((weak));"), "error: t.c:1:12: `weak` on 'v', which the unit never defines, is not typed yet")

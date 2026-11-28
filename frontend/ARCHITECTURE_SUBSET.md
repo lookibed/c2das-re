@@ -76,7 +76,8 @@ there, labels nothing and adds no marker; its statement stays.
 
 ## 86. Library functions and the attribute lists {#c-subset-library}
 
-A declaration with no prototype of a C library function clang declares itself (`exit`, `strlen`,
+A declaration with no prototype, neither `static` nor a definition, of a C library function clang
+declares itself (`exit`, `strlen`,
 the `mem` and `str` functions, `malloc`, `free`, `abs`) takes the library's prototype as its
 composite type (`extern void exit();` is `void (int)`), and any declaration with no prototype
 lists its composite type's parameters, unnamed, as Dumper A reads them off clang's type.
@@ -86,7 +87,9 @@ lists its composite type's parameters, unnamed, as Dumper A reads them off clang
 `c_plain_attributes` takes the attributes Dumper A drops (inlining and optimizer hints,
 diagnostics, `visibility`, `section`, `gnu_inline`, `noreturn`, `weak` on a name the unit defines,
 `may_alias`, `mode`), reads (`aligned`, `packed`) or accepts as a plain call (`musttail`), and those
-clang ignores (`noclone`, `noipa`, `optimize`, `externally_visible`, `scalar_storage_order`); any
+clang ignores (`noclone`, `noipa`, `optimize`, `externally_visible`, `scalar_storage_order`) and
+the calling conventions (`stdcall`, `cdecl`, `fastcall`, `thiscall`, `vectorcall`, `ms_abi`), which
+x86-64 ignores or Dumper A strips from a type; any
 other, `ms_struct`, `cleanup`, `constructor` and `transparent_union` among them, is refused at
 its name. A `weak` name the unit never defines (`note_weak`, checked at the unit's end) is
 refused.
