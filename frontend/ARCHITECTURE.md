@@ -1,20 +1,21 @@
 # frontend Architecture
 
-Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
-holds the part of the converter that reads C with no clang behind it. Today that is the libc
-header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
-`converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
-sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token
-lexer of section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
-`#include`, the macro table, the ledgers) and the macro expansion of `ARCHITECTURE_EXPAND.md`
-(sections 29 to 36) - and the first part of Dumper C's parser, which reads the C tokens of a
-preprocessed unit, its expressions, type names, declarations, records, enums, statements and
-function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`,
-section 23), the type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to
-28 and 60), the expressions with their conversions and the unit's C-IR walk
-(`ARCHITECTURE_EXPRS.md`, sections 38 to 45) - and the record layout of `ARCHITECTURE_LAYOUT.md` and
-`ARCHITECTURE_LAYOUT_MSVC.md` (sections 50 to 56). No converter pass calls the preprocessor, the
-parser, the C-IR builder or the layout yet.
+Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder holds
+the part of the converter that reads C with no clang behind it. Today that is the libc header set
+under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
+`converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the sidecar
+reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token lexer of
+section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13, 53 and 54: directives,
+`#include`, the macro table, the ledgers, diagnostics), the macro expansion of
+`ARCHITECTURE_EXPAND.md` (sections 29 to 37, and 55 to 57: the expansion record) and the `#if`
+evaluator of `ARCHITECTURE_EVAL.md` (sections 46 to 52) - and the first part of Dumper C's parser,
+which reads the C tokens of a preprocessed unit or of C source the preprocessor expands, its
+expressions, type names, declarations, records, enums, statements and function definitions
+(`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`, section 23), the
+type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60), the
+expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 38 to
+45) - and the record layout (`ARCHITECTURE_LAYOUT.md`, `ARCHITECTURE_LAYOUT_MSVC.md`, sections 79 to
+85). No converter pass calls any of them yet.
 
 ## 1. File charters
 
@@ -24,22 +25,35 @@ parser, the C-IR builder or the layout yet.
   table (section 3), and where this folder's data lies: `predefined_path` and `own_include_dir`.
   The one `.das` module here a converter pass requires.
 - `predefined/linux.defs`, `predefined/msvc.defs` - the predefined-macro table of each dialect.
+- `predefined/linux_features.defs`, `predefined/msvc_features.defs` - each dialect's answers to the
+  `#if` feature queries, generated from the pinned clang (`ARCHITECTURE_EVAL.md#pp-eval-features`).
 - `pp_lexer.das` - the preprocessing-token lexer (section 4): translation phases 1 and 2, the
   pp-token rules, the placing of a token in its original file. Requires dasFlex's `flex/flex_macro`.
 - `pp_directives.das` - the directive layer over the lexer (`ARCHITECTURE_PP.md`): the file
   providers, the `#include` stack and search, include guards, `#line`, the conditionals, the macro
-  table, the pragma and pack ledgers, and the hook PP.4's `#if` evaluator fills. It expands no
+  table, the pragma and pack ledgers, and the hook that asks PP.4's `#if` evaluator. It expands no
   macro; it holds the interface the expansion fills (`PpExpansion`) and the call record's types.
 - `pp_expand.das` - the macro expansion over the directive layer (`ARCHITECTURE_EXPAND.md`): the
   context stack, calls and their arguments, substitution with `#` and `##`, the builtin names and
-  `_Pragma`, the expansion of directive lines, the call record.
+  `_Pragma`, the expansion of directive lines, the expansion record's calls, argument texts and copies.
+- `pp_record.das` - the expansion record's readers (`ARCHITECTURE_EXPAND.md#pp-record`): a token's
+  expansion place and argument copies, an argument's text, a macro's one-line text, uses and
+  whether the C-IR marks it. What Dumper C writes the C-IR's macro fields from.
+- `pp_eval.das` - the `#if` evaluator (`ARCHITECTURE_EVAL.md`): intmax_t and uintmax_t arithmetic,
+  the constants, `defined` and the queries, the feature-table reader. Below the directive layer: it
+  knows no `Preprocessor` and asks the hook for what only that layer knows.
 - `tests/test_pp_directives.das` - every directive over in-memory files, the predefined-macro table,
   and the own headers read through `fio`. The comparison with clang is `compare/pp/`'s `--pp2`.
 - `tests/test_pp_expand.das` - every expansion rule over in-memory files: the C11 6.10.3 examples,
-  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the call
-  record. The comparison with clang is `compare/pp/`'s `--pp3`.
-- `c_tokens.das` - the C tokens of a preprocessed unit over the pp-lexer: keywords by symbol,
-  pp-numbers classified, line markers read (`ARCHITECTURE_PARSER.md` section 14).
+  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the
+  expansion record and its readers. The comparison with clang is `compare/pp/`'s `--pp3`; with
+  Dumper A's macro marks, `--pp5`.
+- `tests/test_pp_eval.das` - every operator and conversion, the sign trap, every constant form,
+  `defined`, each query, `__has_include` through the include path, the errors, `#elif` and nesting,
+  each verdict pinned against clang. The comparison with clang is `compare/pp/`'s `--pp4`.
+- `c_tokens.das` - the C tokens of a unit as the preprocessor hands them out, of a preprocessed
+  unit or of C source with its macros expanded: keywords by symbol, pp-numbers classified
+  (`ARCHITECTURE_PARSER.md` section 14).
 - `c_ast.das` - the tree in one node array and its one-line dump (section 15). No parsing.
 - `c_parser.das` - the recursive-descent parser: the typedef-name table, type names and
   declarators, expressions, the errors and the nesting bound, declarations, records and enums,
@@ -68,24 +82,17 @@ parser, the C-IR builder or the layout yet.
   declarator nesting bound, and the allocation probe over the preprocessed own headers.
 - `tests/test_c_parse_unit.das` - every record, enum, definition and file-scope form as a dumped
   tree, the tag and enumerator scopes, the old-style declaration list, a body's scope, the
-  refusals and malformed input, the nesting bound of the record forms, and a whole unit of headers
-  and a program with its allocation probe.
-- `c_layout.das` - the record layout of a dialect (`ARCHITECTURE_LAYOUT.md`, the `msvc` rules in
-  `ARCHITECTURE_LAYOUT_MSVC.md`): a record's size, alignment and member bit offsets from a
-  description of its members, and the record written into a C-IR type with the `packed` verdict of
-  `converter/bit_units.das`, which it requires. It reads no C text: the type builder describes the
-  record.
-- `tests/test_c_layout.das` - every layout rule of both dialects with clang's numbers for a record
-  of `compare/layout/fixtures/rules.c` or `fixtures/msvc/rules_msvc.c`, every refusal with its
-  message, and the C-IR write with its `packed` verdicts. The comparison with clang over the
-  corpora is `compare/layout/`.
+  refusals and malformed input, the nesting bound of the record forms, a whole unit of headers
+  and a program with its allocation probe, and a unit of C source with macros parsed with no clang.
+- `c_layout.das` - a record's layout in a dialect, written into a C-IR type (`ARCHITECTURE_LAYOUT.md`,
+  `ARCHITECTURE_LAYOUT_MSVC.md`); `tests/test_c_layout.das` and `compare/layout/` hold it to clang.
 - `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
   block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
   forms, and a unit with real bodies with its allocation probe.
 - `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, the text the
   parser tests read.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and
-  line-marker case; every expression and type-name form as a dumped tree, the ambiguities, every
+  line-marker case, the places and spellings of expanded tokens, the preprocessor's errors; every expression and type-name form as a dumped tree, the ambiguities, every
   refusal and malformed input with its message, the nesting bound, and the allocation probes.
 - `tests/test_pp_lexer.das` - every token class and edge case of section 4, the placing through
   splices, interning, and the no-allocation probe over a real header. The clang comparison lives

@@ -100,14 +100,25 @@ def test_speed(t : T?) {
         t |> equal(run.tics, 0)
         t |> success(in_sync(run))
         t |> equal(run.timing.tics, 4)
-        t |> success(lines[0] |> contains(": speed build ended in `timed 4 gametics` against "), lines[0])
+        t |> equal(run.final, "tic=3 cs=00000003")
+        t |> success(lines[0] |> contains(": speed build ended in `timed 4 gametics`, its `final` line the reference's last tic against "), lines[0])
+    }
+    t |> run("a speed run whose final line is not the reference's last tic is out of sync") @(t : T?) {
+        var spec <- stand_in_spec(0)
+        spec.entry = path_join(dir_name(spec.wad), "doom_main_speed.das")
+        fwrite(spec.entry, STAND_IN)
+        spec.speed = true
+        let run = run_stand_in(spec, "4,3,255,0,-1,-1")
+        t |> success(!in_sync(run))
+        t |> equal(run.sync.fields, "cs")
+        t |> equal(speed_summary(run), "speed build ended in `timed 4 gametics`, expected the final `tic=3 cs=00000003`, got `tic=3 cs=00000009`")
     }
     t |> run("a speed run that prints tic lines is the sync build in its place") @(t : T?) {
         var spec <- stand_in_spec(0)
         spec.speed = true
         let run = run_stand_in(spec, "4,-1,255,0,-1,-1")
         t |> success(!in_sync(run))
-        t |> equal(speed_summary(run), "speed build ended in `timed 4 gametics`, yet printed 4 tic lines")
+        t |> equal(speed_summary(run), "speed build ended in `timed 4 gametics`, yet printed 4 tic lines, expected the final `tic=3 cs=00000003`, got no `final` line")
     }
     t |> run("a speed run that does not end in the timedemo line") @(t : T?) {
         var spec <- stand_in_spec(0)

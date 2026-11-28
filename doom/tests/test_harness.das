@@ -311,3 +311,60 @@ def test_patches_folder(t : T?) {
         t |> success(header |> contains(" + {listed};"), "{log} names the patches as `run.das --demo` writes them")
     }
 }
+
+[test]
+def test_final_checksum(t : T?) {
+    t |> run("the speed build's final line, the text after `final `, \"\" without one") @(t : T?) {
+        t |> equal(final_line("Z_Init\nfinal tic=3 cs=00000003 fb=0000000a\nError: timed 4 gametics in 4 realtics\n"), "tic=3 cs=00000003 fb=0000000a")
+        t |> equal(final_line("tic=3 cs=00000003\nfinal\n"), "")
+        t |> equal(final_line("final cs=00000001\nfinal tic=3 cs=00000003\n"), "tic=3 cs=00000003")
+    }
+    t |> run("held to the reference's last tic line") @(t : T?) {
+        let expected <- ["tic=0 cs=00000000", "tic=1 cs=00000001"]
+        let same = final_sync(expected, "tic=1 cs=00000001")
+        t |> equal(same.compared, 2)
+        t |> equal(same.in_sync, 2)
+        t |> equal(same.desync, "")
+        let other = final_sync(expected, "tic=1 cs=00000009")
+        t |> equal(other.in_sync, 0)
+        t |> equal(other.desync, "expected the final `tic=1 cs=00000001`, got `tic=1 cs=00000009`")
+        t |> equal(other.fields, "cs")
+        let missing = final_sync(expected, "")
+        t |> equal(missing.in_sync, 0)
+        t |> equal(missing.desync, "expected the final `tic=1 cs=00000001`, got no `final` line")
+        t |> equal(missing.fields, "")
+        let none : array<string>
+        let empty_ref = final_sync(none, "tic=0 cs=00000000")
+        t |> equal(empty_ref.compared, 0)
+        t |> equal(empty_ref.desync, "")
+    }
+    t |> run("the speed build's defines: the final checksum's first, the per-tic checksum's out") @(t : T?) {
+        t |> equal(join(speed_defines(["A", TIC_CHECKSUM_DEFINE, "B"]), ","), "{FINAL_CHECKSUM_DEFINE},A,B")
+    }
+    t |> run("the defines are the ones patch 0001 tests") @(t : T?) {
+        let patch = fread("doom/patches/0001-per-tic-checksum.patch")
+        t |> success(patch |> contains("defined({FINAL_CHECKSUM_DEFINE})"), "patch 0001 names {FINAL_CHECKSUM_DEFINE}")
+        t |> success(patch |> contains("defined({TIC_CHECKSUM_DEFINE})"), "patch 0001 names {TIC_CHECKSUM_DEFINE}")
+    }
+    t |> run("each build form's defines and sidecar: the speed build's swap the checksums, the traced build's add the trace") @(t : T?) {
+        t |> equal(join(form_defines("speed", ["A", TIC_CHECKSUM_DEFINE]), ","), "{FINAL_CHECKSUM_DEFINE},A")
+        t |> equal(join(form_defines("trace", ["A", TIC_CHECKSUM_DEFINE]), ","), "A,{TIC_CHECKSUM_DEFINE},{TRACE_DEFINE}")
+        t |> equal(join(form_defines("", ["A", TIC_CHECKSUM_DEFINE]), ","), "A,{TIC_CHECKSUM_DEFINE}")
+        var error : string
+        t |> equal(form_sidecar_text("speed", "\{\"defines\": [\"A\", \"{TIC_CHECKSUM_DEFINE}\"]\}", error), "\{\"defines\": [\"{FINAL_CHECKSUM_DEFINE}\", \"A\"]\}")
+        t |> equal(form_sidecar_text("trace", "\{\"defines\": [\"A\"]\}", error), "\{\"defines\": [\"{TRACE_DEFINE}\", \"A\"]\}")
+        t |> equal(error, "")
+    }
+    t |> run("the speed build's sidecar reads with the converter's reader, the defines swapped") @(t : T?) {
+        var error : string
+        let text = speed_sidecar(fread(SIDECAR), error)
+        t |> equal(error, "")
+        let path = path_join(scratch("doom_speed_sidecar"), "doom-speed.c2das")
+        fwrite(path, text)
+        let side = read_sidecar(path, error)
+        t |> equal(error, "")
+        t |> equal(join(side.defines, ","), join(speed_defines(read_sidecar(SIDECAR, error).defines), ","))
+        t |> equal(speed_sidecar("\{\}", error), "")
+        t |> equal(error, "no single `\"{TIC_CHECKSUM_DEFINE}\"` to take out")
+    }
+}
