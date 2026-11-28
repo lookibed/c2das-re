@@ -44,7 +44,8 @@ which clang rejects` (`c_reject`). That covers a slot given a value it does not 
 the operands of a binary operator of a kind it does not take (`%`, the shifts and the bitwise
 operators integers; `*` and `/` arithmetic; `+` arithmetic, or a pointer and an integer; `-` that,
 or two pointers to compatible types; a comparison arithmetic, or a pointer and a pointer or an
-integer; `&&` and `||` scalars), a call whose argument count a prototype does not allow (fewer
+integer; `&&` and `||` scalars), the operand of a unary `-` or `+` other than an arithmetic value
+and of `~` other than an integer, a call whose argument count a prototype does not allow (fewer
 arguments than its parameters, or more when it is not variadic), and a `_Static_assert` whose
 condition is 0 (section 41).
 
@@ -109,10 +110,12 @@ size (`ARCHITECTURE_TYPES.md` section 26). A typed size expression adds pool typ
 A's table holds the folded array type and no node of its size. A null pointer constant
 (`c_is_null`, 6.3.2.3p3) is an integer constant expression of value 0, or an explicit cast of one
 to `void *`. A floating constant cast at once to an integer type is an integer constant (6.6p6),
-its value truncated toward zero (`c_float_integer`), so `(int)0.0` is a null pointer constant. A
-`_Static_assert`'s condition is folded the same way where it stands, at file scope or in a block,
-and adds nothing to the C-IR: 0 is invalid C, and a condition the builder cannot fold yet is
-refused.
+its value truncated toward zero (`c_float_integer`), so `(int)0.0` is a null pointer constant; cast
+to `_Bool` it is 1 for any nonzero value (6.3.1.2p1), so `(_Bool)0.5` is 1. A `sizeof` of a
+function type folds to GNU's 1, as clang folds it, while its node keeps the pointer width Dumper A
+writes there. A `_Static_assert`'s condition is folded the same way where it stands, at file scope
+or in a block, and adds nothing to the C-IR: 0 is invalid C, and a condition the builder cannot
+fold yet is refused.
 
 ## 42. Conversions to a slot's type {#c-exprs-slots}
 
