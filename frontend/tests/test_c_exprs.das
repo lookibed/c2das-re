@@ -100,6 +100,20 @@ def private ir_of(text : string; msvc : bool = false; unit : string = "t.c"; nam
                   library : string = "") : string {
     var p : CParser
     c_parser_open_text(p, text, unit, msvc)
+    return ir_listed(p, msvc, names, full, library)
+}
+
+// `ir_of` over C source `text` named `main.c`, read with macro expansion and no clang
+def private source_ir_of(text : string; full : bool = false) : string {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", text)
+    var p : CParser
+    c_parser_open_source(p, mem, "main.c", array<string>(), array<string>())
+    return ir_listed(p, false, false, full, "")
+}
+
+// the lines `ir_of` writes for the unit parser `p` opened
+def private ir_listed(var p : CParser; msvc, names, full : bool; library : string) : string {
     let u = c_unit(p)
     return "parse error: {p.err}" if (p.failed)
     var r = new CIr
@@ -240,9 +254,15 @@ def test_statements(t : T?) {
 
 // the places the builder gives unit `text`: each declaration's `name@file:line:col`, then its body's
 // statements' `kind@line:col`, the top level of each block in order
-def private places_of(text : string) : string {
+def private places_of(text : string; source : bool = false) : string {
     var p : CParser
-    c_parser_open_text(p, text, "t.c")
+    if (source) {
+        var mem = new PpMemoryProvider()
+        mem->add("main.c", text)
+        c_parser_open_source(p, mem, "main.c", array<string>(), array<string>())
+    } else {
+        c_parser_open_text(p, text, "t.c")
+    }
     let u = c_unit(p)
     return "parse error: {p.err}" if (p.failed)
     var r = new CIr
@@ -273,6 +293,18 @@ def private places_of(text : string) : string {
 def test_places(t : T?) {
     t |> equal(places_of("# 7 \"s.c\"\nint  g;\nint f(int x) \{\n  x = 1;\n   (\{ x; \});\n\}\n"),
                "g@s.c:7:6 f@s.c:8:5 expr@9:3 compound@10:4")
+}
+
+[test(description = "places from C source read with macro expansion: a node an expansion made at the outermost macro name, line and column, as clang's expansion location puts it, and every place in the file as read, `#line` aside, as Dumper A gives it")]
+def test_source_places(t : T?) {
+    t |> equal(places_of("#define SET(v) x = v\n#define DECL(n) int n;\nint g;\n  DECL(h)\nint f(int x) \{\n  SET(\n1);\n#line 50 \"q.c\"\n  x = 2;\n\}\n", true),
+               "g@main.c:3:5 h@main.c:4:3 f@main.c:5:5 expr@6:3 expr@9:3")
+}
+
+[test(description = "a macro expansion's parentheses are marked only around a shift or a bitwise operator, as Dumper A marks them; the source's own all")]
+def test_macro_parens(t : T?) {
+    t |> equal(source_ir_of("#define SQ(x) ((x) * (x))\n#define OR(a, b) ((a) | (b))\nint f(int a) \{ return SQ(a) + OR(a, 1) + (a); \}", true),
+               "return add<int>(add<int>(mul<int>(LValueToRValue<int>(a), LValueToRValue<int>(a)), bor<int>(LValueToRValue<int>(a), 1<int>)()), LValueToRValue<int>(a())) ; TABLE int:32:true:int func:0:0:false")
 }
 
 [test(description = "the table order: a declaration's type, then its initializer's node types before their operands', a body's expressions where they stand")]
