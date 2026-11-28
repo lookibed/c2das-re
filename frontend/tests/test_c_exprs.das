@@ -289,10 +289,11 @@ def private places_of(text : string; source : bool = false) : string {
     return join(out, " ")
 }
 
-[test(description = "places from the builder's own tokens: the file and line a line marker gives, the column the token stands at in the text; a declaration at its name, a statement at its first token, a GNU statement block used as a statement at its expression statement's")]
+[test(description = "places from the builder's own tokens: the file and line a line marker gives, the column the token stands at in the text; a declaration at its name, a statement at its first token, a GNU statement block used as a statement at its expression statement's, a hoisted static's and a block extern's null at its name")]
 def test_places(t : T?) {
     t |> equal(places_of("# 7 \"s.c\"\nint  g;\nint f(int x) \{\n  x = 1;\n   (\{ x; \});\n\}\n"),
                "g@s.c:7:6 f@s.c:8:5 expr@9:3 compound@10:4")
+    t |> equal(places_of("int v;\nvoid f(void) \{\n  static int s;\n   extern int v;\n\}\n"), "v@t.c:1:5 f_s@t.c:3:14 f@t.c:2:6 null@3:14 null@4:15")
 }
 
 [test(description = "places from C source read with macro expansion: a node an expansion made at the outermost macro name, line and column, as clang's expansion location puts it, and every place in the file as read, `#line` aside, as Dumper A gives it")]
@@ -571,7 +572,7 @@ def test_operator_forms(t : T?) {
 def test_marks_and_order(t : T?) {
     t |> equal(ir_of("void g(volatile int *vp) \{ *vp; \}", full = true), "expr LValueToRValue<int>(deref<int>(LValueToRValue<int*>(vp))^) ; TABLE void int:32:true:int ptr:1 func:0:2:false")
     t |> equal(ir_of("volatile int a[2]; void g(void) \{ a[0]; \}", full = true),
-               "G a:int[2]=- ; expr LValueToRValue<int>(index<int>(ArrayToPointerDecay<int*>(a), 0<int>)^) ; TABLE int:32:true:int array:0:2 void func:2::false ptr:0")
+               "G a:int[2]=- ; expr LValueToRValue<int>(index<int>(ArrayToPointerDecay<int*>(a~), 0<int>)^) ; TABLE int:32:true:int array:0:2 void func:2::false ptr:0")
     t |> equal(ir_of("void g(int x) \{ (x); \}", full = true), "expr LValueToRValue<int>(x()) ; TABLE void int:32:true:int func:0:1:false")
     t |> equal(ir_of("int g(void) \{ return (short)1 ? (char)2 : 3; \}", full = true),
                "return cond<int>(IntegralCast<int>(IntegralCast!<short>(1<int>)), IntegralCast<int>(IntegralCast!<char>(2<int>)), 3<int>) ; TABLE int:32:true:int func:0::false int:16:true:short int:8:false:char")

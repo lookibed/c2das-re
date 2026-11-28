@@ -24,7 +24,7 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   flags, `--dialect linux|msvc` (repeatable, both by default), `--ratchet <file>` with
   `--update-ratchet` (section 3). It prints
   each unit that is not an agreement, a line per dialect and the total; with `--ratchet` exit 0
-  when every listed unit stays byte-identical, else exit 0 when no scalar-only unit differs or is
+  when every listed unit stays byte-identical, else exit 0 when no unit differs or is
   refused and Dumper A failed on none; 1 otherwise and when no unit is named.
 - `fixtures/` - `conversions.c`, every conversion group of the scalar world (all three comparisons
   agree); `redeclared.c`, types a declaration interns that no other declaration names (a block
@@ -33,8 +33,8 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   no expression names; `expr_only.c`, a type only an expression names; `header.c`, an own header's
   typedef; `decl_order.c`, declarations whose expressions bring no type first; `expr_first.c`, an
   expression's type used before a declaration uses it; `differs.c`, a unit whose table, C-IR and
-  census differ (clang gives `strlen` its builtin's `size_t` result); `aggregate.c`, a record the
-  builder refuses; `refused.c`, a scalar-only unit the builder refuses (a wide string literal).
+  census differ (clang gives `strlen` its builtin's `size_t` result); `aggregate.c`, a record whose initializer the
+  builder refuses (A.3); `aligned_record.c`, an aligned record byte for byte; `refused.c`, a scalar-only unit the builder refuses (a wide string literal).
 - The tests are `compare/tests/test_types_compare.das`.
 
 ## 2. What is compared {#compared}
@@ -44,10 +44,9 @@ Dumper C (`dumper_c_tu` of `converter/dumper_c.das`: clang's preprocessing, the 
 and builder, which place every node by their own tokens) with no sidecar input either.
 
 A unit is classed per dialect: Dumper A failed (nothing compared); with aggregates, when Dumper A's
-table holds a record, a union or an enum, which the builder refuses until the Aggregates phase (a
-builder that builds such a unit is printed); else scalar-only, where the builder's refusal or the
-parser's is printed and counted, and four comparisons are made, each printing its first
-difference:
+table holds a record, a union or an enum; else scalar-only, and core when its table holds no array
+either. Every unit Dumper A dumps is built by Dumper C: the builder's refusal or the parser's is
+printed and counted, and four comparisons are made, each printing its first difference:
 
 - the type tables, entry by entry by structural name (`type_name`): an integer by its spelling,
   width and sign, a float by its spelling and width, a pointer, an array, a function and a typedef
@@ -67,10 +66,11 @@ difference:
   fields and the producer set aside, `frontend/ARCHITECTURE_DIFF.md`): places and parentheses
   included, the plan's C.6.
 
-A scalar-only unit agrees when all four are equal; one that differs in its bytes alone differs in
-places or parentheses (`frontend/ARCHITECTURE_NAMES.md` section 88). A scalar-only unit whose table holds no
-array type either is a core unit, the set the Core phase's acceptance names: its printed line says
-`core`, and the totals count the core units and their byte-identical ones apart.
+A unit agrees when all four are equal; one that differs in its bytes alone differs in places or
+parentheses (`frontend/ARCHITECTURE_NAMES.md` section 88). Its printed line names its dialect and
+class (`aggregate`, `core`), and the totals count the byte-identical units per class: with
+aggregates, scalar-only, and core, the set the Core phase's acceptance names (a scalar-only unit
+whose table holds no array type).
 
 ## 3. The ratchet
 

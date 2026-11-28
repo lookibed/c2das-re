@@ -1,4 +1,4 @@
-/* a record: Dumper A types it, the builder refuses it until the Aggregates phase */
+/* a record with an initializer: Dumper A types it, the builder refuses its initializer until A.3 */
 struct point {
     int x, y;
 };

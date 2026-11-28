@@ -67,9 +67,9 @@ storage classes and function specifiers give no type. A typedef name gives the p
 bound to, and `typeof` of a type name that type name's type. Under the msvc dialect `size_t`,
 which clang declares there before the unit, is `unsigned long long`.
 
-Records, unions and enums are the Aggregates phase: the builder refuses them where they stand,
-and its keys (by structure, a typedef by name) take them as further kinds. It refuses, with the
-place of the construct, `file:line:col: <construct> is not typed yet`: a struct, union or enum type,
+A struct, union or enum specifier gives the type `c_records.das` builds for its tag
+(`ARCHITECTURE_RECORDS.md`), keyed by its identity. The builder refuses, with the place of the
+construct, `file:line:col: <construct> is not typed yet`:
 `_Complex`, `_Atomic`, `typeof` of an expression, `_Alignas`, an attribute naming `mode`,
 `vector_size` or `ext_vector_type` in either spelling (in the specifiers, on a pointer, around a
 parenthesised declarator, after a declarator, a parameter, an old-style parameter's declaration
@@ -111,8 +111,8 @@ unit's end, and Dumper A reads that type at the declaration. So the builder give
 one does (with a size, an initializer, or tentatively); a later `extern` declaration with no size
 changes nothing, and one with a size is refused (the completion it makes waits for the Aggregates
 phase). A prefixed (wide or UTF) string literal, any other designator (a range, a nested one, a
-non-constant index), an elided brace in an array of arrays and any other initializer of an unsized
-array are refused.
+non-constant index), an elided brace in an array of arrays or of records and any other initializer
+of an unsized array are refused.
 
 
 ## 28. The own libc headers {#c-types-library}

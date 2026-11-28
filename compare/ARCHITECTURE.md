@@ -63,10 +63,10 @@ daslang; this repository never builds it inside a test and never vendors it.
   `test_pp_oracle.das`, the pp-token oracle of `pp/` over dump text it writes and over its
   edge-case unit through the pinned clang; `test_parse_oracle.das`, the parse oracle of `parse/`
   over its fixtures and the units it writes through the pinned clang, over dumps it writes or
-  mutates, and over `run.das` run as a child; `test_layout_oracle.das`, the layout oracle of
-  `layout/` over dump text it writes and over the rule fixtures and units it writes, through the
-  pinned clang; `test_types_compare.das`, the C-IR oracle of `types/` over tables it builds and over
-  its fixtures through Dumper A and the builder; `_common.das`, what they share.
+  mutates, and over `run.das` run as a child; `test_types_compare.das`, the C-IR oracle of
+  `types/` over tables it builds and over its fixtures through Dumper A and the builder;
+  `test_layout_oracle.das`, the layout oracle of `layout/` over dump text it writes and over the
+  rule fixtures and units it writes, through the pinned clang; `_common.das`, what they share.
 - `pp/` - the pp-token oracle of Dumper C's lexer against clang (`pp/ARCHITECTURE.md`), not a part
   of the head-to-head: it lives here because it starts clang, which nothing under `frontend/` may.
 - `parse/` - the parse oracle of Dumper C's parser against clang's tree (`parse/ARCHITECTURE.md`),

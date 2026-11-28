@@ -14,8 +14,9 @@ expressions, type names, declarations, records, enums, statements and function d
 (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`, section 23), the
 type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60), the
 expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 38 to
-45), names and places (`ARCHITECTURE_NAMES.md`, 86-88), the C-IR byte diff (`ARCHITECTURE_DIFF.md`,
-89) and the record layout (`ARCHITECTURE_LAYOUT*.md`, 79-85); no converter pass calls them yet.
+45), names and places (`ARCHITECTURE_NAMES.md`, 86-88), records and enums (`ARCHITECTURE_RECORDS.md`,
+61-67), the C-IR byte diff (`ARCHITECTURE_DIFF.md`, 89) and the record layout
+(`ARCHITECTURE_LAYOUT*.md`, 79-85); no converter pass calls them yet.
 
 ## 1. File charters
 
@@ -61,8 +62,9 @@ expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS
   One module, since the grammar's parts call each other.
 - `c_types.das` - the C-IR type table of a unit (`ARCHITECTURE_TYPES.md`): the pool of types met,
   qualified ones apart, each use interning a type into `CirTu.types`, the specifiers, declarators
-  and initializer-sized arrays, the typedef scopes. It writes `converter/cir.das`'s structures and
-  requires no other converter module.
+  and initializer-sized arrays, the typedef and tag scopes, a record's and an enum's entry. It writes
+  `converter/cir.das`'s structures; its one other converter module is `bit_units.das` (`c_layout`).
+- `c_records.das` - records and enums as types, tags bound, anchors, `dims` (`ARCHITECTURE_RECORDS.md`).
 - `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
   constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 38 to 44).
 - `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
@@ -89,15 +91,13 @@ expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS
 - `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
   block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
   forms, and a unit with real bodies with its allocation probe.
-- `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, the text the
-  parser tests read.
+- `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, for the parser tests.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and
   line-marker case, the places and spellings of expanded tokens, the preprocessor's errors; every expression and type-name form as a dumped tree, the ambiguities, every
   refusal and malformed input with its message, the nesting bound, and the allocation probes.
 - `tests/test_pp_lexer.das` - every token class and edge case of section 4, the placing through
-  splices, interning, and the no-allocation probe over a real header. The clang comparison lives
-  outside this folder: `compare/pp/` (section 2).
-- `tests/test_c_defines.das` - the parser and the reader, and that each table reads clean.
+  splices, interning, and the no-allocation probe over a real header; the clang comparison is
+  `compare/pp/` (section 2). `tests/test_c_defines.das` - the parser and the reader, each table clean.
 - `tests/_own_header_names.das` - `header_names`, the headers of `include/` as a program includes
   them, for the header tests of `include/tests/` and of `converter/tests/` (repo root); a `require`
   path cannot spell the folder `include`, a daslang keyword, so the helper is here.

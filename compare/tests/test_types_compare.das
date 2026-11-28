@@ -214,18 +214,18 @@ def test_ratchet_runs(t : T?) {
     t |> equal(fread(ratchet), text)
 }
 
-[test(description = "a run's counts: Dumper A failed, aggregates refused or typed, scalar-only refused, agreeing, differing in the table, the C-IR or the census")]
+[test(description = "a run's counts: Dumper A failed, a unit with aggregates refused or byte-identical, a scalar-only one refused, agreeing, differing in the table, the C-IR or the census")]
 def test_count(t : T?) {
     var n : TypesTotals
     t |> equal(count_types(n, TypesResult(unit = "a.c", dialect = "linux", dumper_error = "boom")), "a.c [linux]: Dumper A failed: boom")
-    t |> equal(count_types(n, TypesResult(unit = "b.c", dialect = "msvc", aggregate = true, builder_error = "builder: x")), "")
-    t |> equal(count_types(n, TypesResult(unit = "c.c", dialect = "msvc", aggregate = true)), "c.c [msvc]: aggregates in Dumper A's table, but the builder typed the unit")
+    t |> equal(count_types(n, TypesResult(unit = "b.c", dialect = "msvc", aggregate = true, builder_error = "builder: x")), "b.c [msvc, aggregate]: refused: builder: x")
+    t |> equal(count_types(n, TypesResult(unit = "c.c", dialect = "msvc", aggregate = true, whole = true, cir = true, census = true, bytes = true)), "")
     t |> equal(count_types(n, TypesResult(unit = "d.c", dialect = "linux", builder_error = "parser: y")), "d.c [linux]: refused: parser: y")
     t |> equal(count_types(n, TypesResult(unit = "e.c", dialect = "linux", whole = true, cir = true, census = true, bytes = true, core = true)), "")
     t |> equal(count_types(n, TypesResult(unit = "f.c", dialect = "linux", whole = true, cir = true, bytes = true, difference = "census z")), "f.c [linux]: differs: census z")
     t |> equal(count_types(n, TypesResult(unit = "g.c", dialect = "linux", census = true, core = true, difference = "table entry 0: z")), "g.c [linux, core]: differs: table entry 0: z")
     t |> equal(count_types(n, TypesResult(unit = "h.c", dialect = "linux", whole = true, census = true, difference = "C-IR x")), "h.c [linux]: differs: C-IR x")
-    t |> equal(describe_types_totals("all", n), "all: 8 units, 1 Dumper A failed, 2 with aggregates, 5 scalar-only: 3 whole table, 2 C-IR, 3 census, 2 bytes agree; 3 differ, 1 refused; core (no array) 1/2 byte-identical")
+    t |> equal(describe_types_totals("all", n), "all: 8 units, 1 Dumper A failed, 2 refused, 4 whole table, 3 C-IR, 4 census, 3 bytes agree, 3 differ; byte-identical: aggregates 1/2, scalar-only 2/5, core (no array) 1/2")
 }
 
 // the fixture `name` compared under `dialect` as `whole/cir/census/bytes/aggregate`, the builder's error
@@ -237,7 +237,7 @@ def private compared(name, dialect : string) : string {
     return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate and a constant array size refused; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree; a unit clang types otherwise differs in all four", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate's initializer and a constant array size refused; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree; a unit clang types otherwise differs in all four", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
@@ -248,7 +248,7 @@ def test_fixtures(t : T?) {
             t |> equal(compared("header.c", dialect), "true/true/true/true/false")
             t |> equal(compared("decl_order.c", dialect), "true/true/true/true/false")
             t |> equal(compared("expr_first.c", dialect), "true/true/true/true/false")
-            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
+            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:8:22: an initializer list of a struct or union is not typed yet")
             let size = dialect == "linux" ? "unsigned long" : "unsigned long long"
             t |> equal(compared("differs.c", dialect), "false/false/false/false/false table entry 0: builder int/32s, Dumper A {size}/64u; C-IR decl 1 (main).body.t: builder int/32s, Dumper A {size}/64u; census anomaly\tIntegralCast implicit directly over a call's result builder 0, Dumper A 1 | chain\tIntegralCast builder 0, Dumper A 1 | clause\t6.3.1.3p3 integer to signed, implementation-defined builder 0, Dumper A 1; bytes line 16: ours \"w\": 32, | theirs \"w\": 64,")
             t |> equal(compared("refused.c", dialect), "false/false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")
@@ -299,7 +299,24 @@ def test_run_types(t : T?) {
                  "--dialect", "linux", "{FIXTURES}/conversions.c"]
     var out : string
     t |> equal(run_and_capture(argv, out, 600.0), 0)
-    t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 with aggregates, 1 scalar-only: 1 whole table, 1 C-IR, 1 census, 1 bytes agree; 0 differ, 0 refused; core (no array) 0/0 byte-identical") >= 0, out)
+    t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 refused, 1 whole table, 1 C-IR, 1 census, 1 bytes agree, 0 differ; byte-identical: aggregates 0/0, scalar-only 1/1, core (no array) 0/0") >= 0, out)
+}
+
+// what run.das prints for fixture `unit` under linux, run as a child
+def private run_das_output(unit : string) : string {
+    let argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
+                 "--dialect", "linux", "{FIXTURES}/{unit}"]
+    var out : string
+    run_and_capture(argv, out, 600.0)
+    return out
+}
+
+[test(description = "run.das's totals count the aggregate units and their byte-identical ones: a unit that differs only in its initializer refusal, and one byte for byte", timeout = 600)]
+def test_run_types_aggregates(t : T?) {
+    let refused = run_das_output("aggregate.c")
+    t |> success(find(refused, "total: 1 units, 0 Dumper A failed, 1 refused, 0 whole table, 0 C-IR, 0 census, 0 bytes agree, 0 differ; byte-identical: aggregates 0/1, scalar-only 0/0") >= 0, refused)
+    let identical = run_das_output("aligned_record.c")
+    t |> success(find(identical, "total: 1 units, 0 Dumper A failed, 0 refused, 1 whole table, 1 C-IR, 1 census, 1 bytes agree, 0 differ; byte-identical: aggregates 1/1, scalar-only 0/0") >= 0, identical)
 }
 
 
