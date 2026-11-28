@@ -61,17 +61,17 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
 
 //! The error, at token `tok`: a construct clang rejects (`what` is invalid C there), so the unit
 //! has no C-IR, as Dumper A's clang gives it none; no rejection follows another error.
-def c_reject(var b : CTypes; var p : CParser; tok : int; what : string) {
+def c_reject(var b : CTypes; p : CParser; tok : int; what : string) {
     b.err = "{c_where(p.unit, tok)}: {what} is invalid C, which clang rejects"
 }
 
 //! The first error, at token `tok`: a construct the builder does not type yet, and `why` after it.
-def c_refuse(var b : CTypes; var p : CParser; tok : int; what : string; why : string = "") {
+def c_refuse(var b : CTypes; p : CParser; tok : int; what : string; why : string = "") {
     refuse(b, p, tok, what, why)
 }
 
 // the first error, at token `tok`: a construct the builder does not type yet, and `why` after it
-def private refuse(var b : CTypes; var p : CParser; tok : int; what : string; why : string = "") {
+def private refuse(var b : CTypes; p : CParser; tok : int; what : string; why : string = "") {
     if (empty(b.err)) {
         b.err = "{c_where(p.unit, tok)}: {what} is not typed yet{why}"
     }
@@ -357,7 +357,7 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
 }
 
 // false with the error set when list `at` holds `_Atomic`
-def private no_atomic(var b : CTypes; var p : CParser; at : int) : bool {
+def private no_atomic(var b : CTypes; p : CParser; at : int) : bool {
     var n = at
     while (n >= 0) {
         if (p.ast.nodes[n].kind == CNode.SPEC_KEYWORD && p.ast.nodes[n].op == int(CTok.ATOMIC)) {
@@ -706,7 +706,7 @@ def private gives_size(p : CParser; d, init : int) : bool {
 //! definition, unless a later definition of the name follows; -1 with the error set when a later
 //! `extern` declaration sizes it.
 [arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
-def c_tentative(var b : CTypes; var p : CParser; t, sym, id : int) : int {
+def c_tentative(var b : CTypes; p : CParser; t, sym, id : int) : int {
     let u = b.unqualified[t]
     return t if (b.pool[u].k != "array" || b.pool[u].count >= 0)
     var after = false

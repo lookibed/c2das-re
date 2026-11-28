@@ -24,7 +24,7 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
 }
 
 // the location of token `tok` as a C-IR place
-def private loc_of(var p : CParser; tok : int) : CirLoc {
+def private loc_of(p : CParser; tok : int) : CirLoc {
     let t = p.unit.toks[tok]
     return CirLoc(file = c_file_name(p.unit, t.file), line = t.line, col = t.col)
 }
@@ -576,7 +576,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
 }
 
 // whether external declaration `decl` stands in a file under the own libc headers' folder
-def private in_library(r : CIr; var p : CParser; decl : int) : bool {
+def private in_library(r : CIr; p : CParser; decl : int) : bool {
     return false if (empty(r.b.library_dir))
     let file = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
     return starts_with(file, r.b.library_dir)

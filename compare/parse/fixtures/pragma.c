@@ -1,6 +1,6 @@
-/* a pragma clang -E keeps: the preprocessor's ledger takes it, and the declarations around it parse */
+/* pragmas clang -E keeps that change no C-IR: the preprocessor's ledger takes them, and the declarations around them parse */
 int before;
-#pragma pack(1)
+#pragma GCC diagnostic push
 int after;
 #pragma GCC diagnostic ignored "-Wunused"
 int last(void);

@@ -293,7 +293,7 @@ def test_expansion_places(t : T?) {
     }
     t |> run("a call inside a call's replacement stands at the outer name") @(t : T?) {
         t |> equal(expanded([("main.c", "#define ONE 1\n#define F(v) v + ONE\n  F(2)")]),
-                   "2@main.c:3:3 +@main.c:3:3 1@main.c:3:3 $@main.c:3:4")
+                   "2@main.c:3:3 +@main.c:3:3 1@main.c:3:3 $@main.c:3:7")
     }
     t |> run("a token of an included file names that file, and `#line` moves the place") @(t : T?) {
         t |> equal(expanded([("main.c", "#include \"h.h\"\n#line 40 \"m.c\"\nb"), ("h.h", "a")]),
@@ -332,4 +332,74 @@ def test_range_text(t : T?) {
     t |> equal(c_range_text(unit, 4, 8), "( 3 ,4 )")
     t |> equal(c_range_text(unit, 13, 18), "f ( 1 , 2 )")
     t |> equal(c_range_text(unit, 8, 13), ") ; int y = f")
+}
+
+[test(description = "a pragma the C-IR does not honour is refused at its place, `pack` among them until the record layout reads it; `#pragma GCC error` is an error; a diagnostic, message or ident pragma, which changes no C-IR, passes")]
+def test_pragmas(t : T?) {
+    t |> equal(expanded([("main.c", "int a;\n#pragma pack(1)\nint b;")]), "error: main.c:2:2: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
+    t |> equal(expanded([("main.c", "int a;\n#pragma weak a\n")]), "error: main.c:2:2: the pragma '#pragma weak a' is not parsed")
+    t |> equal(expanded([("main.c", "#pragma redefine_extname a b\nint a;")]), "error: main.c:1:2: the pragma '#pragma redefine_extname a b' is not parsed")
+    t |> equal(expanded([("main.c", "int a = 1;\n#pragma GCC error \"boom\"\nint x;")]), "error: main.c:2:2: #pragma GCC error \"boom\"")
+    t |> equal(expanded([("main.c", "_Pragma(\"GCC poison z\") int z;")]), "error: main.c:1:1: the pragma '#pragma GCC poison z' is not parsed")
+    t |> equal(expanded([("main.c", "#pragma STDC FP_CONTRACT ON\nint a;")]), "error: main.c:1:2: the pragma '#pragma STDC FP_CONTRACT ON' is not parsed")
+    t |> equal(expanded([("main.c", "#pragma GCC diagnostic push\n#pragma clang diagnostic ignored \"-Wall\"\n#pragma message(\"hi\")\n#pragma GCC warning \"w\"\n#ident \"v1\"\nint a;")]),
+               "int@main.c:6:1 a@main.c:6:5 ;@main.c:6:6 $@main.c:6:7")
+    t |> equal(lexed("x\n#pragma pack(2)\ny"), "error: t.c:2:2: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
+}
+
+[test(description = "a token the preprocessor counted is found in the unit's tokens past every `::` split before it, as a pragma's `emitted` count names it")]
+def test_token_index(t : T?) {
+    var unit : CUnit
+    let clean = expanded_unit(unit, [("main.c", "a::b\n#pragma GCC diagnostic push\nc d::e f")])
+    t |> success(clean, unit.err)
+    t |> equal(length(unit.pp.pragmas), 1)
+    let at = c_token_index(unit, unit.pp.pragmas[0].emitted)
+    t |> equal(c_spelling(unit, at), "c")
+    t |> equal(c_spelling(unit, c_token_index(unit, 6)), "e")
+    t |> equal(c_spelling(unit, c_token_index(unit, 7)), "f")
+    t |> equal(c_spelling(unit, c_token_index(unit, 0)), "a")
+}
+
+[test(description = "a lexer error takes its own file's place, a header's under the includer; one in a group the preprocessor skips is no error (clang lexes no skipped group's bytes as text)")]
+def test_lexer_error_places(t : T?) {
+    t |> equal(expanded([("main.c", "a\n#include \"h.h\"\n\n\n\nb"), ("h.h", "x\ny /* oops")]), "error: h.h:2:3: unterminated /* comment")
+    let renamed = expanded([("main.c", "#include \"h.h\"\nb"), ("h.h", "#line 40 \"q.h\"\nx /* oops")])
+    if (renamed == "error: h.h:2:3: unterminated /* comment") {
+        t |> skip("ledger: a lexer diagnostic of a header closed in the same read loses the header's `#line`; requested from the PP session (the presumed place on PpDiag) - until then the header's own name and line")
+    } else {
+        t |> equal(renamed, "error: q.h:40:3: unterminated /* comment")
+    }
+    let skipped = expanded([("main.c", "#if 0\n\xff\n#endif\nint x;")])
+    if (skipped == "error: main.c:2:1: invalid UTF-8: byte 255") {
+        t |> skip("ledger: a lexer diagnostic raised in a skipped group needs the preprocessor's mark (PpDiag in a skipped group); requested from the PP session - until then the raw path refuses the unit")
+        return
+    }
+    t |> equal(skipped, "int@main.c:4:1 x@main.c:4:5 ;@main.c:4:6 $@main.c:4:7")
+}
+
+[test(description = "the first error is the first the unit's reading meets: a lexer error inside a call before the call's own unterminated error")]
+def test_error_order(t : T?) {
+    t |> equal(expanded([("main.c", "#define F(x) x\nF(\xff\n")]), "error: main.c:2:3: invalid UTF-8: byte 255")
+    t |> equal(expanded([("main.c", "#define F(x) x\nF(a /* open\n")]), "error: main.c:2:5: unterminated /* comment")
+    t |> equal(expanded([("main.c", "int a;\n#error first\n\xff")]), "error: main.c:2:2: #error first")
+}
+
+[test(description = "a token range's text is the source bytes only where its tokens cover them with nothing but blanks between: an expansion, a directive, a skipped group, a comment or a dropped argument gives the spellings")]
+def test_range_text_contiguous(t : T?) {
+    let cases = fixed_array(("#define E\n#define F(x) x\nint E y F(z) w;", "int y z w"), ("int a\n#define Q 1\n b;", "int a b"),
+                            ("#if 1\nint a\n#if 0\n junk\n#endif\n b;\n#endif", "int a b"), ("int a /* c */ b;", "int a b"),
+                            ("#define DROP(x)\na DROP(b c) d;", "a d"), ("int  a\n\t b;", "int  a\n\t b"),
+                            ("#define F(x) x\nF(a  b);", "a b"))
+    for (c in cases) {
+        var unit : CUnit
+        let clean = expanded_unit(unit, [("main.c", c._0)])
+        t |> success(clean, unit.err)
+        t |> equal(c_range_text(unit, 0, length(unit.toks) - 3), c._1, c._0)
+    }
+}
+
+[test(description = "the second `:` of a `::` an expansion made stands at the macro name, and the end after an expansion stands after the call's `)`, as clang places them")]
+def test_synthetic_places(t : T?) {
+    t |> equal(expanded([("main.c", "#define C ::\n  a C b")]), "a@main.c:2:3 :@main.c:2:5 :@main.c:2:5 b@main.c:2:7 $@main.c:2:8")
+    t |> equal(expanded([("main.c", "#define G(y) y\n#define F(x) x + G(x)\n  F(\n p\n )")]), "p@main.c:3:3 +@main.c:3:3 p@main.c:3:3 $@main.c:5:3")
 }

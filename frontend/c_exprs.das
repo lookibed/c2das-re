@@ -400,7 +400,7 @@ def private pointers_assign(var r : CIr; from, to : int) : bool {
 //! `_Bool`, pointers to incompatible types, a value of no scalar type for a scalar - is invalid C,
 //! null with the error set at token `tok`.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-slots")]
-def c_assigned(var r : CIr; var p : CParser; var x : CirExpr?; target, tok : int) : CirExpr? {
+def c_assigned(var r : CIr; p : CParser; var x : CirExpr?; target, tok : int) : CirExpr? {
     let to = unq(r, target)
     let is_null = c_is_null(r, x)
     var v = c_rvalue(r, x)
@@ -463,7 +463,7 @@ def c_size_t(var r : CIr) : int => c_builtin(r.b, r.b.tu.target.long_w == r.b.tu
 // 6.5.14 say: arithmetic by the usual arithmetic conversions, a shift's operands each promoted, a
 // pointer operand read, a null pointer constant compared against a pointer converted to it
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
-def private binary(var r : CIr; var p : CParser; op : string; var a, b : CirExpr?; tok : int) : CirExpr? {
+def private binary(var r : CIr; p : CParser; op : string; var a, b : CirExpr?; tok : int) : CirExpr? {
     if (!operands_valid(r, op, a.t, b.t)) {
         c_reject(r.b, p, tok, "this operator on operands of these types")
         return null
@@ -822,7 +822,7 @@ def c_size_of(r : CIr; t : int) : int64 {
 
 // a `sizeof` node of pool type `of_t` at token `tok`, its operand expression (or null) kept in
 // `a` until `c_exprs_use` has interned its types
-def private sizeof_node(var r : CIr; var p : CParser; of_t : int; var operand : CirExpr?; tok : int) : CirExpr? {
+def private sizeof_node(var r : CIr; p : CParser; of_t : int; var operand : CirExpr?; tok : int) : CirExpr? {
     let size = c_size_of(r, of_t)
     if (size < 0l) {
         c_refuse(r.b, p, tok, "sizeof of a type without a size")
@@ -895,7 +895,7 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok : 
 // by the usual arithmetic conversions, a null pointer constant arm converted to the other arm's
 // pointer type, a `void *` arm taking the other, two other pointers both made `void *`
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
-def private conditional(var r : CIr; var p : CParser; var c, a, b : CirExpr?; tok : int) : CirExpr? {
+def private conditional(var r : CIr; p : CParser; var c, a, b : CirExpr?; tok : int) : CirExpr? {
     c = c_promote(r, c)
     let a_null = c_is_null(r, a)
     let b_null = c_is_null(r, b)
@@ -931,7 +931,7 @@ def private conditional(var r : CIr; var p : CParser; var c, a, b : CirExpr?; to
 // an arm of another type converted to it; to incompatible ones `void *`, both converted, as clang
 // does; -2 with the error set where one points at a function with no parameter, as the pool cannot
 // tell `()` from `(void)` there
-def private pointer_arms(var r : CIr; var p : CParser; var a, b : CirExpr?&; tok : int) : int {
+def private pointer_arms(var r : CIr; p : CParser; var a, b : CirExpr?&; tok : int) : int {
     let quals = r.b.quals[r.b.pool[a.t].to] | r.b.quals[r.b.pool[b.t].to]
     let ta = unq(r, r.b.pool[a.t].to)
     let tb = unq(r, r.b.pool[b.t].to)
@@ -958,7 +958,7 @@ def private pointer_arms(var r : CIr; var p : CParser; var a, b : CirExpr?&; tok
 // a unary operator `k` over `a` at token `tok` (C11 6.5.3): `-`, `+` and `~` promote, `!` reads,
 // `&` takes the address, `*` reads the pointer, `++` and `--` keep the operand
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
-def private unary(var r : CIr; var p : CParser; k : int; var a : CirExpr?; post : bool; tok : int) : CirExpr? {
+def private unary(var r : CIr; p : CParser; k : int; var a : CirExpr?; post : bool; tok : int) : CirExpr? {
     if (k == int(CTok.INC) || k == int(CTok.DEC)) {
         let op = k == int(CTok.INC) ? (post ? "postinc" : "preinc") : (post ? "postdec" : "predec")
         return new CirExpr(e = "un", t = unq(r, a.t), op = op, a = a)
@@ -985,7 +985,7 @@ def private unary(var r : CIr; var p : CParser; k : int; var a : CirExpr?; post 
 // type; compound, the right operand converted to the computation type, a shift's and a pointer's
 // promoted alone
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-slots")]
-def private assignment(var r : CIr; var p : CParser; k : int; var a, b : CirExpr?; tok : int) : CirExpr? {
+def private assignment(var r : CIr; p : CParser; k : int; var a, b : CirExpr?; tok : int) : CirExpr? {
     let op = assign_op(k)
     let t = unq(r, a.t)
     if (empty(op)) {
