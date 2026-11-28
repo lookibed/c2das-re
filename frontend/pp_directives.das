@@ -7,6 +7,7 @@ require strings
 require daslib/strings_boost
 require daslib/fio
 require pp_lexer public
+require pp_eval public
 require c_defines
 
 //! Where the preprocessor reads a file: `exists` answers whether `path` names a readable file,
@@ -92,7 +93,6 @@ struct PpDiagnostic {
     pname : int     //!< the presumed file name, an index of `Preprocessor.names`
     pline : uint
     what : string
-    undecided : bool    //!< met in a group chosen past an `#if` left to PP.4
 }
 
 //! A token kept past its lexer: its spelling is `len` bytes at `at` of the owner's text pool.
@@ -120,7 +120,6 @@ struct PpMacro {
     file : int
     line : int
     col : int
-    undecided : bool    //!< defined in a group chosen past an `#if` left to PP.4
 }
 
 //! Why an `#include` read no file.
@@ -252,16 +251,15 @@ class PpExpansion {
     def macro_changed(var pp : Preprocessor; name : PpToken; undef : bool) : void {
         pass
     }
+    def is_builtin(pp : Preprocessor; sym : int) : bool => false
 }
 
 //! An open conditional: `active` while its current group is read, `taken` once a group was (or
-//! the conditional sits in a skipped group, so none will be), `undecided` once an `#if` or `#elif`
-//! of it was left to PP.4, so the group read may not be clang's.
+//! the conditional sits in a skipped group, so none will be).
 struct PpCond {
     active : bool
     taken : bool
     seen_else : bool
-    undecided : bool
     file : int
     line : int
     col : int
@@ -372,6 +370,7 @@ struct Preprocessor {
     expansion : PpExpansion?            //!< the macro expansion `pp_next_token` hands out through; none: the directive layer's tokens
     buffer_data : array<uint8?>         //!< per buffer id, the first byte of a file's working buffer, valid for the unit's life
     closed : array<array<uint8>>        //!< the working buffers of the closed files, kept so their spellings outlive them
+    eval : PpEval                       //!< the `#if` evaluator: its line, target, feature table (the caller's to set) and last diagnostics
 }
 
 def private intern_text(var pp : Preprocessor; text : string) : int => intern_name(pp.lx.flex.syms, text)
@@ -428,24 +427,14 @@ def private register_file(var pp : Preprocessor; path, identity : string) : int 
 
 def private presumed_line(pp : Preprocessor; line : int) : uint => uint(line) + pp.state.line_delta
 
-//! Whether an open conditional chose its group past an `#if` left to PP.4.
-def pp_in_undecided_group(pp : Preprocessor) : bool {
-    for (c in pp.conds) {
-        return true if (c.undecided)
-    }
-    return false
-}
-
 def private diagnose_at(var pp : Preprocessor; severity : PpSeverity; at : PpToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
-                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
-                                  undecided = pp_in_undecided_group(pp)))
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
 }
 
 def private diagnose_held(var pp : Preprocessor; severity : PpSeverity; at : PpHeld; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
-                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
-                                  undecided = pp_in_undecided_group(pp)))
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
 }
 
 def private diagnose(var pp : Preprocessor; severity : PpSeverity; what : string) {
@@ -517,6 +506,7 @@ def pp_start(var pp : Preprocessor; var provider : PpFileProvider?; main : strin
              search : array<string>) : bool {
     pp.provider = provider
     pp.search := search
+    pp.eval.target = pp_eval_target(predefines)
     intern_directives(pp)
     var bytes : array<uint8>
     let path = normalized_path(main)
@@ -685,7 +675,7 @@ def pp_macro_body_text(pp : Preprocessor; m : PpMacro) : string {
 
 def private push_cond(var pp : Preprocessor; value : int; at : PpToken) {
     let outer = !skipping(pp)
-    pp.conds |> push(PpCond(active = outer && value == 1, taken = !outer || value == 1, undecided = value < 0, file = at.file,
+    pp.conds |> push(PpCond(active = outer && value == 1, taken = !outer || value == 1, file = at.file,
                             line = at.line, col = at.col))
 }
 
@@ -703,42 +693,83 @@ def private if_guard_sym(pp : Preprocessor) : int {
     return -1
 }
 
-//! The `#if`/`#elif` condition of `pp.line`, 1 or 0: the hook the PP.4 evaluator fills. Until then
-//! it reads `0`, `1`, `defined X` and `defined(X)`, each under any number of `!`; any other
-//! expression is a diagnostic naming PP.4 and -1, read as false.
-[arch(at="ARCHITECTURE_PP.md#pp-if-hook")]
-def private eval_condition(var pp : Preprocessor; at : PpToken) : int {
-    let n = length(pp.line)
-    var i = 0
-    var negate = false
-    while (i < n && pp.line[i].kind == int(PpTok.EXCLAIM)) {
-        negate = !negate
-        i++
-    }
-    var value = false
-    var ok = false
-    if (i < n && pp.line[i].kind == int(PpTok.PP_NUMBER) && (held_is(pp.line[i], pp.line_text, "0") || held_is(pp.line[i], pp.line_text, "1"))) {
-        value = held_is(pp.line[i], pp.line_text, "1")
-        ok = true
-        i++
-    } elif (i < n && pp.line[i].sym == pp.sym_defined) {
-        let paren = i + 1 < n && pp.line[i + 1].kind == int(PpTok.LPAREN)
-        let name = i + (paren ? 2 : 1)
-        if (name < n && pp.line[name].kind == int(PpTok.IDENTIFIER) && (!paren || (name + 1 < n && pp.line[name + 1].kind == int(PpTok.RPAREN)))) {
-            value = pp_defined(pp, pp.line[name].sym)
-            ok = true
-            i = name + (paren ? 2 : 1)
+//! Whether `sym` is defined: a macro, or a builtin name of the expansion (`__FILE__`, the `__has_*`
+//! family) that no `#undef` removed, as `defined` and `#ifdef` answer in clang.
+def pp_is_defined(var pp : Preprocessor; sym : int) : bool => pp_defined(pp, sym) || (pp.expansion != null && pp.expansion->is_builtin(pp, sym))
+
+//! the header name the tokens `first` to `last` of `pp.line` spell: one `"..."` string literal, or
+//! the spellings from `<` to `>` joined, a blank where a token has space, as clang builds the name
+def private line_header_name(pp : Preprocessor; first, last : int) : string {
+    return held_spelling(pp.line[first], pp.line_text) if (first == last)
+    return build_string() $(var out) {
+        out |> write("<")
+        for (i in range(first + 1, last + 1)) {
+            if (pp.line[i].has_space) {
+                out |> write(" ")
+            }
+            out |> write(held_spelling(pp.line[i], pp.line_text))
         }
     }
-    if (n == 0) {
-        diagnose_at(pp, PpSeverity.error, at, "#if with no expression")
-        return 0
+}
+
+//! where `#include_next` and `__has_include_next` search from: past the current inclusion's
+//! include-path folder; 0 with the reason when there is none (the main file, or a file found by an
+//! absolute path or by the main file's folder)
+def private next_search_from(pp : Preprocessor) : tuple<from : int; why : string> {
+    let found_at = pp.state.found_at
+    return (from = 0, why = "in primary source file") if (empty(pp.frames))
+    return (from = 0, why = "in file found relative to primary source file or found by absolute path; will search from start of include path") if (found_at < 0)
+    return (from = found_at + 1, why = "")
+}
+
+//! the answer of `__has_include` (`next`: `__has_include_next`) for the header name of
+//! `pp.line`'s tokens `first` to `last`: 1 when the search finds a file; `embed`: `__has_embed`'s,
+//! 0 for none, 2 for an empty file, 1 for another
+[arch(at="ARCHITECTURE_EVAL.md#pp-eval-queries")]
+def private include_answer(var pp : Preprocessor; first, last : int; next, embed : bool) : int {
+    let spelled = line_header_name(pp, first, last)
+    let name = slice(spelled, 1, length(spelled) - 1)
+    return 0 if (empty(name))
+    var tried : array<string>
+    let found = search_file(pp, name, first_character(spelled) == '<', next ? next_search_from(pp).from : 0, tried)
+    return 0 if (empty(found._0))
+    return 1 if (!embed)
+    var bytes : array<uint8>
+    return 0 if (!pp.provider->read(found._0, bytes))
+    return empty(bytes) ? 2 : 1
+}
+
+//! The `#if`/`#elif` condition of `pp.line` through the evaluator (`pp_eval.das`): 1 or 0, and -1
+//! when an error fails it, so its group is skipped as clang skips it. Its diagnostics go to
+//! `pp.diags` at their tokens.
+[arch(at="ARCHITECTURE_PP.md#pp-if-hook")]
+def private eval_condition(var pp : Preprocessor; at : PpToken) : int {
+    pp.eval.toks |> clear()
+    pp.eval.toks |> reserve(length(pp.line))
+    for (h in pp.line) {
+        pp.eval.toks |> push(PpEvalToken(kind = h.kind, sym = h.sym, at = h.at, len = h.len))
     }
-    if (!ok || i != n) {
-        diagnose_at(pp, PpSeverity.error, at, "#if expression needs the PP.4 evaluator: {held_text(pp.line, pp.line_text)}")
-        return -1
+    pp.eval.text |> clear()
+    pp.eval.text |> reserve(length(pp.line_text))
+    pp.eval.text |> push_from(pp.line_text)
+    let result = pp_eval_condition(pp.eval) $(what, sym, first, last) {
+        if (what == PpEvalAsk.defined) {
+            return pp_is_defined(pp, sym) ? 1 : 0
+        } elif (what == PpEvalAsk.builtin) {
+            return pp.expansion == null || pp.expansion->is_builtin(pp, sym) ? 1 : 0
+        }
+        return include_answer(pp, first, last, what == PpEvalAsk.has_include_next, what == PpEvalAsk.has_embed)
     }
-    return value != negate ? 1 : 0
+    for (d in pp.eval.diags) {
+        let severity = d.error ? PpSeverity.error : PpSeverity.warning
+        if (d.token >= 0) {
+            diagnose_held(pp, severity, pp.line[d.token], d.what)
+        } else {
+            diagnose_at(pp, severity, !empty(pp.line) ? pp.last_tok : at, d.what)
+        }
+    }
+    return -1 if (result.failed)
+    return result.value ? 1 : 0
 }
 
 //! a directive outside the guard's group ends the file's chance of an include guard
@@ -778,7 +809,7 @@ def private do_ifdef(var pp : Preprocessor; at : PpToken; negate : bool) {
     if (sym >= 0) {
         extra_tokens(pp, name)
     }
-    push_cond(pp, sym >= 0 && pp_defined(pp, sym) != negate ? 1 : 0, at)
+    push_cond(pp, sym >= 0 && pp_is_defined(pp, sym) != negate ? 1 : 0, at)
     if (negate) {
         guard_opened(pp, sym)
     }
@@ -836,13 +867,12 @@ def private do_elif(var pp : Preprocessor; at : PpToken; d : PpDirective) {
         expand_condition(pp)
         let answer = eval_condition(pp, at)
         value = answer == 1
-        pp.conds[top].undecided ||= answer < 0
     } else {
         let sym = read_macro_name(pp, at, name)
         if (sym >= 0) {
             extra_tokens(pp, name)
         }
-        value = sym >= 0 && pp_defined(pp, sym) == (d == PpDirective.hash_elifdef)
+        value = sym >= 0 && pp_is_defined(pp, sym) == (d == PpDirective.hash_elifdef)
     }
     pp.conds[top].active = value
     pp.conds[top].taken = value
@@ -1017,7 +1047,6 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
     } elif (old < 0 && pp.expansion != null) {
         pp.expansion->macro_changed(pp, name_at, false)
     }
-    m.undecided = pp_in_undecided_group(pp)
     pp.macro_of |> insert(m.name, length(pp.macros))
     pp.macros |> emplace(m)
 }
@@ -1096,12 +1125,11 @@ def private enter_file(var pp : Preprocessor; at : PpToken; spelled : string; ne
     }
     var from = 0
     if (next) {
-        let found_at = pp.state.found_at
-        if (empty(pp.frames) || found_at < 0) {
-            diagnose_at(pp, PpSeverity.warning, at, empty(pp.frames) ? "#include_next in primary source file" : "#include_next in file found relative to primary source file or found by absolute path; will search from start of include path")
-        } else {
-            from = found_at + 1
+        let start = next_search_from(pp)
+        if (!empty(start.why)) {
+            diagnose_at(pp, PpSeverity.warning, at, "#include_next {start.why}")
         }
+        from = start.from
     }
     var tried : array<string>
     let found = search_file(pp, name, angled, from, tried)
@@ -1176,7 +1204,7 @@ def private include_expanded(var pp : Preprocessor; at : PpToken; d : PpDirectiv
     var spelled = ""
     var used = 0
     if (n >= 1 && pp.line[0].kind == int(PpTok.STRING_LITERAL) && pp.line_text[pp.line[0].at] == '"'u8) {
-        spelled = held_spelling(pp.line[0], pp.line_text)
+        spelled = line_header_name(pp, 0, 0)
         used = 1
     } elif (n >= 1 && pp.line[0].kind == int(PpTok.LESS)) {
         var close = 1
@@ -1187,18 +1215,8 @@ def private include_expanded(var pp : Preprocessor; at : PpToken; d : PpDirectiv
             diagnose_at(pp, PpSeverity.error, at, "expected '>'")
             return
         }
-        if (close < n) {
-            spelled = build_string() $(var out) {
-                out |> write("<")
-                for (i in range(1, close + 1)) {
-                    if (pp.line[i].has_space) {
-                        out |> write(" ")
-                    }
-                    out |> write(held_spelling(pp.line[i], pp.line_text))
-                }
-            }
-            used = close + 1
-        }
+        spelled = line_header_name(pp, 0, close)
+        used = close + 1
     }
     if (empty(spelled)) {
         diagnose_at(pp, PpSeverity.error, at, "expected \"FILENAME\" or <FILENAME>")
@@ -1592,8 +1610,7 @@ def private end_file(var pp : Preprocessor) : bool {
     while (length(pp.conds) > pp.state.cond_base) {
         let c = pp.conds[length(pp.conds) - 1]
         pp.diags |> push(PpDiagnostic(severity = PpSeverity.error, file = c.file, line = c.line, col = c.col, pname = pp.state.pname,
-                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive",
-                                      undecided = pp_in_undecided_group(pp)))
+                                      pline = presumed_line(pp, c.line), what = "unterminated conditional directive"))
         pp.conds |> pop()
     }
     if (pp.state.guard == GuardState.closed) {

@@ -260,12 +260,12 @@ def test_conditionals(t : T?) {
     }
 }
 
-[test(description = "the #if evaluator reads 0, 1 and defined until PP.4; any other expression is a diagnostic naming PP.4 and false")]
+[test(description = "#if and #elif ask the evaluator (frontend/pp_eval.das) with no expansion set: an undefined name is 0, and an error skips the group with its diagnostic")]
 def test_if_hook(t : T?) {
     t |> equal(preprocessed("#define X\n#if defined X\na\n#endif\n#if defined(X)\nb\n#endif\n#if !defined(Y)\nc\n#endif\n#if !!1\nd\n#endif\n#if 0\ne\n#endif\n"), "a b c d")
-    var pp <- started([("main.c", "#if X > 1\nno\n#elif 1\nyes\n#endif\n#if\n#endif\n")])
+    var pp <- started([("main.c", "#if X > 1\nno\n#elif 2 * 3 == 6\nyes\n#endif\n#if\n#endif\n")])
     t |> equal(stream(pp), "yes")
-    t |> equal(diagnostics(pp), "E 1:2 #if expression needs the PP.4 evaluator: X > 1 | E 6:2 #if with no expression")
+    t |> equal(diagnostics(pp), "E 6:2 expected value in expression")
 }
 
 [test(description = "#ifdef sees the predefined-macro table of the linux dialect, defined before the first line")]
@@ -598,21 +598,11 @@ def test_include_read_fails(t : T?) {
     t |> equal(inclusions(pp), "\"x.h\":-:not_found")
 }
 
-[test(description = "#if reads only 0, 1 and a whole defined X or defined(X): another number, defined of a non-name, an unclosed or trailing form is left to PP.4")]
-def test_if_hook_rejects(t : T?) {
-    var pp <- started([("main.c", "#define X\n#if 2\na\n#endif\n#if 10\nb\n#endif\n#if defined 1\nc\n#endif\n#if defined(X Y\nd\n#endif\n#if 1 && 0\ne\n#endif\n")])
-    t |> equal(stream(pp), "")
-    t |> equal(diagnostics(pp), "E 2:2 #if expression needs the PP.4 evaluator: 2 | E 5:2 #if expression needs the PP.4 evaluator: 10 | E 8:2 #if expression needs the PP.4 evaluator: defined 1 | E 11:2 #if expression needs the PP.4 evaluator: defined(X Y | E 14:2 #if expression needs the PP.4 evaluator: 1 && 0")
-}
-
-[test(description = "a conditional with an #if or #elif left to PP.4 is marked undecided while it is open, a nested one on its own")]
-def test_undecided_conditionals(t : T?) {
-    var undecided <- started([("main.c", "#if 1\n#if X > 1\n#elif 1\nin\n#endif\n#elif Y\n#endif\n#if 0\n#elif Z\n#else\n#if 1\nlast\n")])
-    var marks : array<string>
-    while (pp_next_token(undecided)) {
-        marks |> push("{pp_token_spelling(undecided)}:{join([for (c in undecided.conds); c.undecided ? "u" : "d"], "")}")
-    }
-    t |> equal(join(marks, " "), "in:du last:ud")
+[test(description = "with no expansion set, a macro in an #if line is a name worth 0, and the evaluator's errors - defined of a non-name, an unclosed defined(, trailing tokens - are placed at their tokens")]
+def test_if_hook_errors(t : T?) {
+    var pp <- started([("main.c", "#define X 2\n#if X\na\n#endif\n#if 10\nb\n#endif\n#if defined 1\nc\n#endif\n#if defined(X Y\nd\n#endif\n#if 1 && 0\ne\n#endif\n#if 1 2\nf\n#endif\n")])
+    t |> equal(stream(pp), "b")
+    t |> equal(diagnostics(pp), "E 8:13 macro name must be an identifier | E 11:15 missing ')' after 'defined' | E 17:7 token is not a valid binary operator in a preprocessor subexpression")
 }
 
 [test(description = "a #pragma pack read by clang's grammar: each malformed form gets clang's warning at clang's column and no ledger entry")]
@@ -731,12 +721,12 @@ def test_clang_directive_messages(t : T?) {
     t |> equal(diagnostics(va_opt), "W 1:15 __VA_OPT__ can only appear in the expansion of a variadic macro")
 }
 
-[test(description = "a macro defined, and a diagnostic met, in a group chosen past an #if left to PP.4 are marked so; outside every such group, in the same read, they are not")]
-def test_undecided_marks(t : T?) {
+[test(description = "a macro defined, and a diagnostic met, in a group an #if chose belong to that group alone; the directive lines are counted in skipped groups too")]
+def test_chosen_groups(t : T?) {
     var pp <- started([("main.c", "#define A 1\n#if X > 1\n#define B 2\n#else\n#define C 3\n#error in\n#endif\n#define D 4\n#error out\nz\n")])
     t |> equal(stream(pp), "z")
-    t |> equal(join([for (m in pp.macros); "{pp_name(pp, m.name)}{m.undecided ? "?" : ""}"], " "), "A C? D")
-    t |> equal(join([for (d in pp.diags); "{d.what}{d.undecided ? "?" : ""}"], " | "), "#if expression needs the PP.4 evaluator: X > 1 | #error in? | #error out")
+    t |> equal(join([for (m in pp.macros); pp_name(pp, m.name)], " "), "A C D")
+    t |> equal(join([for (d in pp.diags); d.what], " | "), "#error in | #error out")
     var counted <- started([("main.c", "#if 1\n#endif\n#define g(x) x\n#if 0\n#elif 1\n#endif\n")])
     stream(counted)
     t |> equal(counted.directives_read, 6)

@@ -546,19 +546,26 @@ def test_builtins_and_pastes_allocate_no_string(t : T?) {
 
 [test(description = "in an #if line the < ... > of __has_include and __has_include_next is left as written, as defined's operand is; other operands, __has_attribute's among them, are expanded as clang does")]
 def test_has_include_operand(t : T?) {
-    let pp4 = "E 3:2 #if expression needs the PP.4 evaluator: "
     let defs = "#define linux 1\n#define HDR <stddef.h>\n"
-    t |> equal(expanded("{defs}#if __has_include(<linux/version.h>) && linux\n#endif\n").diags, "{pp4}__has_include(<linux/version.h>) && 1")
-    t |> equal(expanded("{defs}#if __has_include_next( <linux/x.h> )\n#endif\n").diags, "{pp4}__has_include_next( <linux/x.h> )")
-    t |> equal(expanded("{defs}#if __has_include(HDR) + __has_attribute(linux)\n#endif\n").diags, "{pp4}__has_include(<stddef.h>) + __has_attribute(1)")
-    t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "{pp4}__has_include 1")
+    t |> equal(expanded("{defs}#if __has_include(<linux/version.h>) && linux\nyes\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_include_next( <linux/x.h> )\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_include(HDR) + __has_attribute(linux)\n#endif\n").diags, "E 1:15 builtin feature check macro requires a parenthesized identifier")
+    t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "E 3:5 missing '(' after '__has_include'")
+}
+
+[test(description = "the operand of __has_feature, __has_builtin, __has_warning and __is_target_os stays as written, as clang reads it unexpanded")]
+def test_query_operand_unexpanded(t : T?) {
+    let defs = "#define linux 1\n#define c_atomic nope\n#define W \"-Wunused\"\n"
+    t |> equal(expanded("{defs}#if __is_target_os(linux)\nos\n#endif\n#if __has_feature(c_atomic)\nfeature\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_warning(W)\n#endif\n").diags, "E 4:19 expected string literal in '__has_warning'")
+    t |> equal(expanded("#define B __builtin_expect\n#if __has_builtin(B) || __has_builtin B\n#endif\n").diags, "E 2:25 missing '(' after '__has_builtin'")
 }
 
 [test(description = "an argument in an #if line is pre-expanded before defined reads it, as clang does: F(defined X) of a defined X hands the evaluator defined 1, clang's error there")]
 def test_defined_in_argument(t : T?) {
     let r = expanded("#define X 1\n#define F(x) x\n#if F(defined X)\nyes\n#endif\nend\n")
     t |> equal(r.out, "end")
-    t |> equal(r.diags, "E 3:2 #if expression needs the PP.4 evaluator: defined 1")
+    t |> equal(r.diags, "E 1:11 macro name must be an identifier")
     t |> equal(expanded("#define F(x) x\n#if F(defined X)\nyes\n#else\nno\n#endif\n").out, "no")
 }
 
