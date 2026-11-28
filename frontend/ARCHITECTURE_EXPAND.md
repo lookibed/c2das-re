@@ -257,16 +257,27 @@ tell from its tree.
 
 The C-IR's `macros` table takes, for each macro a marked expansion uses, its name, parameters, file
 and line from `PpMacro`, its text and its uses. `pp_macro_markable` is the spec's rule for which
-macros those can be: function-like, not variadic, no `#` or `##` in the body. `pp_macro_text`
-spells the `#define` on one line from the working buffer's bytes of its line, from the name
-(`PpMacro.buffer`, `at`, `stop`): continuations are already joined there, and each comment or
-run of blanks between two tokens is one blank, literals kept, so `#define F(a,b ,c)` keeps its own
-spacing. `pp_macro_uses(m, k)` counts how many times the full expansion holds argument `k`: each
-use of the parameter in the body, and each argument of a function-like macro the body calls times
-that macro's own count for it; the name a body calls is its one definition in the unit, and -1
-when the unit made two that differ (`pp_same_definition`), and a call of the macro itself is a name,
-as its painted name is. The count is -1 - unknown - for a variadic macro, a parameter that is an
-operand of `#` or `##` or is called as a function, and an argument passed to a callee whose own
-count is unknown, a cycle of macros among them. Counts are computed once per macro and kept
-(`uses_at`, `uses`), so they are asked once the unit is read.
+macros those can be: function-like, not variadic, no `#` or `##` in the body. `pp_macro_text` spells
+the `#define` on one line from the working buffer's bytes of its line, from the name
+(`PpMacro.buffer`, `at`, `stop`): continuations are already joined there, so a splice is no
+separator (`a\` and `+x` on the next line give `a+x`, as the spec's "one blank between tokens the
+source separated" reads), and each comment or run of blanks between two tokens is one blank,
+literals kept, so `#define F(a,b ,c)` keeps its own spacing. `pp_macro_uses(m, k)` counts how many
+times the full expansion holds argument `k`: each use of the parameter in the body, and each
+argument of a function-like macro the body calls times that macro's own count for it; the name a
+body calls is its one definition among the definitions the unit has made when asked, and -1 when it
+made two that differ (`pp_same_definition`), and a call of the macro itself is a name, as its
+painted name is. The count is -1 - unknown - for a variadic macro, a parameter that is an operand of
+`#` or `##` or is called as a function, an argument passed to a callee whose own count is unknown,
+and a parameter inside parentheses that follow a callee whose replacement can end in a macro's name
+(its last token a macro's name, a `)`, or a parameter whose argument ends in a macro's name, a `)`
+or a parameter of the caller), since the rescan may call that name with them (`#define F TWICE` and
+`F(x)`, `K(0)(x)` with `#define K(a) TWICE`), the callee object-like or function-like;
+`ID(floor)(x)` with `#define ID(op) op` calls a function, and counts. A macro on a cycle of macros
+whose counts ask each other gives -1 for every parameter, whichever of them is asked first: the
+macros being computed are a stack (`uses_stack`), and a call that meets one of them marks it and
+every macro above it (`uses_cyclic`). Counts are kept (`uses_at`, `uses`) while the unit makes no
+definition (`uses_generation`): a `#define` drops them, an `#undef` keeps them, since every
+definition stays one the rule reads; so a count asked mid-unit is the count of the definitions made
+so far, and asked again after the unit, the count of all of them.
 

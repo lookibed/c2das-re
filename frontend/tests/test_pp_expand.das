@@ -802,6 +802,7 @@ def private macro_texts(text : string) : string {
 def test_macro_text(t : T?) {
     t |> equal(macro_texts("#define SQ(x) ((x) * (x))\n#  define  F(a,b ,c)\\\n  a/*c*/+b  // end\n#define S \"a  /* b */\" '\\''\n#define E()\n#define O\n"),
                "#define SQ(x) ((x) * (x)) | #define F(a,b ,c) a +b | #define S \"a  /* b */\" '\\'' | #define E() | #define O")
+    t |> equal(macro_texts("#define G(x) a\\\n+x\n#define H(x) a \\\n+x\n"), "#define G(x) a+x | #define H(x) a +x")
 }
 
 // `NAME=uses,...` of each function-like macro of `text`, and `!` after a name the C-IR never marks
@@ -828,7 +829,51 @@ def test_macro_uses(t : T?) {
     t |> equal(macro_uses("#define A(x) B(x)\n#define B(x) A(x) x\n"), "A=-1 B=-1")
 }
 
-[test(description = "the record's readers allocate nothing: a token's expansion place and copies, an argument's text into a buffer with room; a unit of many calls whose arguments are copied grows the record geometrically")]
+[test(description = "a parameter inside parentheses a callee's replacement can turn into a call is not counted: a callee ending in a macro's name or a ')' - an object-like alias of a function-like macro, or a parameter whose argument is such a name or a parameter - gives -1; a callee ending in anything else, a plain function's name among them, leaves the parentheses plain")]
+def test_macro_uses_through_a_returned_name(t : T?) {
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define F TWICE\n#define M(x) F(x)\n"), "TWICE=2 M=-1")
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define K(a) TWICE\n#define M(x) K(0)(x)\n"), "TWICE=2 K=0 M=-1")
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define L(a) K(a)\n#define K(a) TWICE\n#define M(x) L(0)(x)\n"), "TWICE=2 L=0 K=0 M=-1")
+    t |> equal(macro_uses("#define G(a) a+1\n#define Z 0\n#define M(x) G(0)(x) + Z\n#define N(x) Z + (x)\n"), "G=1 M=1 N=1")
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define ID(op) op\n#define FL(x) (ID(floor)(x))\n#define TW(x) ID(TWICE)(x)\n#define P(x, f) ID(f)(x)\n"),
+               "TWICE=2 ID=1 FL=1 TW=-1 P=-1,1")
+}
+
+// `NAME=uses,...` of the macros `names` of `text`, asked in that order
+def private uses_in_order(text : string; names : array<string>) : string {
+    var pp <- started([("main.c", text)])
+    stream(pp)
+    var lines : array<string>
+    for (name in names) {
+        for (m in range(length(pp.macros))) {
+            continue if (pp_name(pp, pp.macros[m].name) != name)
+            var inscope uses <- [for (k in range(length(pp.macros[m].params))); "{pp_macro_uses(pp, m, k)}"]
+            lines |> push("{name}={join(uses, ",")}")
+        }
+    }
+    return join(lines, " ")
+}
+
+[test(description = "a cycle of macros gives -1 for every parameter of every macro on it, whichever is asked first; a macro calling into the cycle without passing it the parameter keeps its count")]
+def test_macro_uses_cycle_any_order(t : T?) {
+    let text = "#define A(x) B(x, 1)\n#define B(p, q) p + A(q)\n#define C(z) z + B(0, 1)\n"
+    t |> equal(uses_in_order(text, ["A", "B", "C"]), "A=-1 B=-1,-1 C=1")
+    t |> equal(uses_in_order(text, ["B", "A", "C"]), "B=-1,-1 A=-1 C=1")
+    t |> equal(uses_in_order(text, ["C", "B", "A"]), "C=1 B=-1,-1 A=-1")
+}
+
+[test(description = "a count asked mid-unit is the count of the definitions made so far, and a #define after it drops it: asked again after the unit, it reads every definition")]
+def test_macro_uses_mid_unit(t : T?) {
+    var pp <- started([("main.c", "#define G(x) x\n#define H(x) G(x)\n#define J(x) K(x)\nfirst\n#undef G\n#define G(x) x x\n#define K(x) x x x\nlast\n")])
+    t |> success(pp_next_token(pp))
+    let h = pp_macro_index(pp, "H")
+    let j = pp_macro_index(pp, "J")
+    t |> equal("{pp_macro_uses(pp, h, 0)} {pp_macro_uses(pp, j, 0)}", "1 1")
+    stream(pp)
+    t |> equal("{pp_macro_uses(pp, h, 0)} {pp_macro_uses(pp, j, 0)}", "-1 3")
+}
+
+[test(description = "the record's readers allocate nothing: a token's expansion place and copies, an argument's text into a buffer with room; a unit of many calls whose arguments are copied grows the record geometrically, under a ceiling measured with slack that linear growth breaks")]
 def test_record_readers_allocate_nothing(t : T?) {
     let text = "#define B(y) [y y]\n#define A(x, z) B(x) z\n#define S(p) A(p, q)\nfirst\n" + repeat("A(a  b, c) S(d) ", 1000)
     var pp <- started([("main.c", text)])

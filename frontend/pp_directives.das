@@ -283,7 +283,8 @@ struct PpArgCopy {
 //! of a name no macro defines and of every `#undef`, before the table changes. It keeps the call
 //! record and the pool of the spellings it made, the argument copies (`copies`, entry 0 none), the
 //! texts of the arguments no stretch of a file spells (`arg_text`), and the per-macro parameter
-//! counts `pp_macro_uses` computes once (`uses_at`, an index of `uses` per macro, -1 not yet).
+//! counts `pp_macro_uses` computes (`uses_at`, an index of `uses` per macro, -1 not yet, -2 being
+//! computed), valid while the unit has made `uses_generation` definitions.
 class PpExpansion {
     calls : array<PpCall>
     call_args : array<PpCallArg>
@@ -292,6 +293,9 @@ class PpExpansion {
     arg_text : array<uint8>
     uses : array<int>
     uses_at : array<int>
+    uses_generation : int
+    uses_stack : array<int>             //!< the macros whose counts are being computed, the first asked first
+    uses_cyclic : array<bool>           //!< per macro being computed: it lies on a cycle of the macros being computed
     called_def : table<int; int>    //!< per name a body calls: its one definition, -2 when it has two
     def abstract next_token(var pp : Preprocessor) : bool
     def abstract expand_line(var pp : Preprocessor; condition : bool) : void

@@ -166,32 +166,57 @@ def pp_macro_text(pp : Preprocessor; m : int; var out : array<uint8>) {
 }
 
 //! How many times the full expansion of macro `m` holds the tokens of argument `k` (the C-IR's
-//! `uses[k]`): its parameter's uses in the body, each argument of a macro the body calls counted
-//! as often as that macro uses it; -1 when it cannot be told - `m` variadic, the parameter an
-//! operand of `#` or `##` or called as a function, a call of a macro whose use of the argument is
-//! not known or whose name has two definitions. Computed once per macro, so it is read once the
-//! unit is preprocessed: a body's call resolves among every definition the unit made.
+//! `uses[k]`): its parameter's uses in the body, each argument of a macro the body calls counted as
+//! often as that macro uses it; -1 when it cannot be told - `m` variadic, the parameter an operand
+//! of `#` or `##` or called as a function, a call of a macro whose use of the argument is not known
+//! or whose name has two definitions, an argument inside parentheses a callee's replacement can
+//! make a macro's call of (`#define F TWICE`, then `F(x)`), `m` on a cycle of macros. A body's call
+//! resolves among every definition the unit has made when asked; the counts are kept until the next
+//! `#define`.
 [arch(at="ARCHITECTURE_EXPAND.md#pp-macro-facts")]
 def pp_macro_uses(var pp : Preprocessor; m, k : int) : int {
     var ex = pp.expansion
+    if (ex.uses_generation != length(pp.macros)) {
+        ex.uses_generation = length(pp.macros)
+        ex.uses |> clear()
+        ex.uses_at |> clear()
+        ex.called_def |> clear()
+        ex.uses_cyclic |> clear()
+    }
     if (m >= length(ex.uses_at)) {
         let was = length(ex.uses_at)
         ex.uses_at |> resize(length(pp.macros))
+        ex.uses_cyclic |> resize(length(pp.macros))
         for (i in range(was, length(ex.uses_at))) {
             ex.uses_at[i] = -1
+            ex.uses_cyclic[i] = false
         }
+    }
+    if (ex.uses_at[m] == -2) {
+        let from = find_index(ex.uses_stack, m)
+        for (i in range(from, length(ex.uses_stack))) {
+            ex.uses_cyclic[ex.uses_stack[i]] = true
+        }
+        return -1
     }
     if (ex.uses_at[m] == -1) {
         ex.uses_at[m] = -2
+        ex.uses_stack |> push(m)
         let n = length(pp.macros[m].params)
         let at = length(ex.uses)
         ex.uses |> resize(at + n)
         for (p in range(n)) {
             ex.uses[at + p] = pp.macros[m].variadic ? -1 : param_uses(pp, m, p, pp.macros[m].first, pp.macros[m].first + pp.macros[m].count)
         }
+        ex.uses_stack |> pop()
+        if (ex.uses_cyclic[m]) {
+            for (p in range(n)) {
+                ex.uses[at + p] = -1
+            }
+        }
         ex.uses_at[m] = at
     }
-    return ex.uses_at[m] == -2 ? -1 : ex.uses[ex.uses_at[m] + k]
+    return ex.uses[ex.uses_at[m] + k]
 }
 
 // the one definition of the name `sym` a body calls, -1 for none, -2 when the unit has two that differ
@@ -261,12 +286,17 @@ def private param_uses(var pp : Preprocessor; m, p, lo, hi : int) : int {
             continue
         }
         let callee = called ? called_definition(pp, h.sym) : -1
-        if (callee == -1 || (callee >= 0 && !pp.macros[callee].function_like) || callee == m) {
+        if (callee == -1 || callee == m) {
+            j++
+            continue
+        }
+        if (callee >= 0 && !pp.macros[callee].function_like) {
+            return -1 if (call_after(pp, m, p, callee, -1, -1, j + 1, hi))
             j++
             continue
         }
         let close = close_of(pp, j + 1, hi)
-        return -1 if (close < 0)
+        return -1 if (close < 0 || call_after(pp, m, p, callee, j + 2, close, close + 1, hi))
         var a = j + 2
         var k = 0
         while (true) {
@@ -286,6 +316,41 @@ def private param_uses(var pp : Preprocessor; m, p, lo, hi : int) : int {
         j = close + 1
     }
     return total
+}
+
+// whether the parentheses at body index `at` follow a call of `callee` whose replacement can end in
+// a macro's name (`ends_in_macro_name`; its arguments body indices `lo .. close`) and hold parameter
+// `p` of `m`: the rescan may make them that macro's call, so the parameter's uses are not known
+def private call_after(var pp : Preprocessor; m, p, callee, lo, close, at, hi : int) : bool {
+    return false if (at >= hi || pp.macro_body[at].kind != int(PpTok.LPAREN) || !ends_in_macro_name(pp, m, callee, lo, close))
+    let group = close_of(pp, at, hi)
+    return group < 0 || param_uses(pp, m, p, at + 1, group) != 0
+}
+
+// whether the replacement of `callee` (-2: a name of two definitions) can end in a macro's name: its
+// last token is a `)`, the name of a macro, or a parameter whose argument - body indices `lo ..
+// close` of `m` - ends in a `)`, a parameter of `m` or a macro's name
+def private ends_in_macro_name(var pp : Preprocessor; m, callee, lo, close : int) : bool {
+    return true if (callee < 0)
+    let mac & = unsafe(pp.macros[callee])
+    return false if (mac.count == 0)
+    let tail = pp.macro_body[mac.first + mac.count - 1]
+    return true if (tail.kind == int(PpTok.RPAREN))
+    return false if (tail.kind != int(PpTok.IDENTIFIER))
+    let k = mac.function_like ? param_index(pp, callee, tail.sym) : -1
+    return called_definition(pp, tail.sym) != -1 if (k < 0)
+    return true if (lo < 0 || mac.variadic && k == length(mac.params) - 1)
+    var a = lo
+    for (_i in range(k)) {
+        let end = arg_end(pp, a, close)
+        return true if (end >= close)
+        a = end + 1
+    }
+    let end = arg_end(pp, a, close)
+    return true if (end <= a)
+    let last = pp.macro_body[end - 1]
+    return true if (last.kind == int(PpTok.RPAREN))
+    return last.kind == int(PpTok.IDENTIFIER) && (param_index(pp, m, last.sym) >= 0 || called_definition(pp, last.sym) != -1)
 }
 
 // the end of the argument from body index `from` before `close`: its comma at the top level, or `close`
