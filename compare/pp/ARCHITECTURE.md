@@ -129,7 +129,10 @@ up and the rest of the streams is one difference. Every difference is classed
 
 Every `#if` is decided by PP.4's evaluator, PP.2 alone included (its macros then are names worth
 0, as `frontend/ARCHITECTURE_PP.md` section 11 states), with the `linux` feature table loaded, so
-no difference waits for PP.4. A unit's class (`pp2_class`) is the latest its differences wait for,
+no difference waits for PP.4. PP.2 alone reads an `#if` or `#line` that names a macro otherwise than
+clang, which expands it: past the first such line (`Preprocessor.unexpanded`, `pp3_from`) every
+difference ending there and every error met there needs PP.3, so a unit whose condition tests a
+macro's value is classed as waiting for PP.3, not as PP.2's own defect. A unit's class (`pp2_class`) is the latest its differences wait for,
 raised to needs PP.3 by a place left to PP.3 with no difference; it differs when one difference
 differs, when the preprocessor has an error of its own - one naming PP.3 is not -, when the pragma
 counts disagree with nothing left to PP.3 to explain them (clang has more: `_Pragma` in an

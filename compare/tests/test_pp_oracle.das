@@ -383,6 +383,27 @@ def test_pp2_tokens_bookkeeping(t : T?) {
     t |> equal(join(rm.errors, " | "), "cannot read compare/pp/fixtures/pp2/no_such_unit.c")
 }
 
+[test(description = "in PP.2's stream alone an #if or #line naming a macro is left to PP.3: a difference ending past it, and an error met past it, wait for PP.3, so the unit needs PP.3, not differs", timeout = 1200)]
+def test_pp2_macro_condition_needs_pp3(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp2_macro_if")
+    mkdir_rec(work)
+    let unit = unit_file("macro_if.c", "int z;\n#define N 2\n#if defined N && N > 1\nint a;\n#else\nint b;\n#error PP.2 alone takes this group\n#endif\n")
+    let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5)
+    t |> equal(r.error, "")
+    t |> equal(r.pp3_from, 3)
+    t |> equal(join(r.errors, " | "), "")
+    t |> equal(r.cls, Pp2Class.needs_pp3, "{r.shown}")
+    let defined_only = unit_file("defined_only.c", "#define N 2\n#if defined N || defined(N)\nint a;\n#endif\n")
+    let rd <- compare_unit_pp2(defined_only, work, flags, setup.entries, setup.search, 5)
+    t |> equal(rd.pp3_from, -1)
+    t |> equal(rd.cls, Pp2Class.clean, "{rd.shown}")
+}
+
 [test(description = "a corpus that is unknown or whose folder is missing, a suite not fetched among them, is an error, never an empty corpus")]
 def test_corpus_units_errors(t : T?) {
     var error : string

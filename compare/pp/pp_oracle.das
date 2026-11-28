@@ -472,7 +472,8 @@ struct Pp2Result {
     pp_pragmas : int
     clang_pragma_at : array<int>    //!< the place of each `#pragma` and `#ident` line of clang's output, in order
     pp_pragma_at : array<int>       //!< the place of each pragma and pack entry, in order
-    errors : array<string>  //!< the preprocessor's errors, past those naming PP.3
+    errors : array<string>  //!< the preprocessor's errors, past those naming PP.3 and those met past `pp3_from`
+    pp3_from : int = -1     //!< PP.2's stream alone: the place of the first directive line that names a macro only PP.3 reads (`Preprocessor.unexpanded`)
     gave_up : bool          //!< the alignment passed its limit: the streams past their common ends are one difference
     error : string          //!< clang failed on the unit: nothing compared
     shown : array<string>
@@ -566,9 +567,12 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
     var depth = 0
     while (more) {
         more = pp_next_token(pp)
+        if (result.pp3_from < 0 && !empty(pp.unexpanded)) {
+            result.pp3_from = pp.unexpanded[0]
+        }
         for (i in range(seen, length(pp.diags))) {
             let what = pp.diags[i].what
-            if (find(what, "PP.3") >= 0) {
+            if (find(what, "PP.3") >= 0 || (result.pp3_from >= 0 && pp.diags[i].severity != PpSeverity.warning)) {
                 result.pp3_at |> push(length(tokens))
             } elif (pp.diags[i].severity != PpSeverity.warning) {
                 result.errors |> push("{pp.diags[i].line}:{pp.diags[i].col} {what}")
@@ -736,13 +740,15 @@ def private pp2_span(d : Pp2Difference; clang : array<OracleToken>; ours : array
     return span
 }
 
-//! The class of difference `d`: needs PP.3 when PP.2's side, or the token either side of it,
+//! The class of difference `d`: needs PP.3 when it ends past a directive line naming a macro PP.2
+//! alone read as a name (`pp3_from`), or when PP.2's side, or the token either side of it,
 //! names a macro PP.2 defined or one of clang's builtin macros or stands in a function-like macro's
 //! call, or a place left to PP.3 lies in its span - never in PP.3's expanded stream; else it differs.
 [arch(at="ARCHITECTURE.md#pp2")]
 def pp2_difference_class(r : Pp2Result; d : Pp2Difference; clang : array<OracleToken>; ours : array<Pp2Token>) : Pp2Class {
     let span = pp2_span(d, clang, ours)
     return Pp2Class.differs if (r.expanded)
+    return Pp2Class.needs_pp3 if (r.pp3_from >= 0 && span.y >= r.pp3_from)
     let near = int2(max(span.x - 1, 0), min(span.y + 1, length(ours)))
     for (j in range(near.x, near.y)) {
         return Pp2Class.needs_pp3 if (ours[j].macro || ours[j].in_call || key_exists(CLANG_BUILTIN_MACROS, ours[j].tok.spelling))
