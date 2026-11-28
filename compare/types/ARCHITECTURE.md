@@ -28,7 +28,8 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   typedef's type under a name with an entry, a redeclaration's array; all three agree);
   `walk_bodies.c`, declarations in branches, a loop body and an old-style parameter list whose types
   no expression names; `expr_only.c`, a type only an expression names; `header.c`, an own header's
-  typedef; `aggregate.c`, a record the builder refuses; `refused.c`, a scalar-only unit the builder
+  typedef; `decl_order.c`, declarations whose expressions bring no type first; `expr_first.c`, an
+  expression's type used before a declaration uses it; `aggregate.c`, a record the builder refuses; `refused.c`, a scalar-only unit the builder
   refuses.
 - The tests are `compare/tests/test_types_compare.das`.
 

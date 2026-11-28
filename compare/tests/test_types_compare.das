@@ -128,6 +128,8 @@ def test_fixtures(t : T?) {
             t |> equal(compared("walk_bodies.c", dialect), "true/true/true/false")
             t |> equal(compared("expr_only.c", dialect), "true/true/true/false")
             t |> equal(compared("header.c", dialect), "true/true/true/false")
+            t |> equal(compared("decl_order.c", dialect), "true/true/true/false")
+            t |> equal(compared("expr_first.c", dialect), "true/true/true/false")
             t |> equal(compared("aggregate.c", dialect), "false/false/false/true builder: {FIXTURES}/aggregate.c:2:1: a struct type is not typed yet")
             t |> equal(compared("refused.c", dialect), "false/false/false/false builder: {FIXTURES}/refused.c:2:11: an array size other than an integer literal is not typed yet")
         }
