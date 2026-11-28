@@ -115,7 +115,9 @@ the oracle counts those lines of the `-E` output (`pragma_lines`) against PP.2's
 entries, and places each: a line's place is the count of clang's tokens on the lines before it
 (`pragma_places`), an entry's the tokens PP.2 handed out before it (`emitted`). Clang prints a
 `#pragma GCC warning` or `GCC error` too, which PP.2 raises as a diagnostic and keeps in no ledger
-(`frontend/ARCHITECTURE_PP.md#pp-poison`), so such a line is not counted.
+(`frontend/ARCHITECTURE_PP.md#pp-poison`), so such a line is not counted: its kind is the whole
+word `warning` or `error`, ended by the line or a blank, as clang's `-E` prints the line with one
+blank between its tokens - `GCC warningfoo` is a pragma PP.2 keeps.
 
 A macro clang expands shifts every later token, so the two streams are aligned, not compared
 position by position: `pp2_differences` takes Myers' shortest edit script by kind, spelling and

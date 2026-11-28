@@ -517,9 +517,15 @@ def pragma_lines(text : string) : int => length(pragma_line_numbers(text))
 def private is_pragma_message(directive : string) : bool {
     return false if (!starts_with(directive, "pragma"))
     let rest = strip(slice(directive, 6))
-    return false if (!starts_with(rest, "GCC ") && !starts_with(rest, "GCC\t"))
+    return false if (!starts_with(rest, "GCC "))
     let kind = strip(slice(rest, 3))
-    return starts_with(kind, "warning") || starts_with(kind, "error")
+    for (word in ["warning", "error"]) {
+        if (starts_with(kind, word)) {
+            let after = slice(kind, length(word), length(word) + 1)
+            return empty(after) || after == " "
+        }
+    }
+    return false
 }
 
 // the numbers, from 1, of the `#pragma` and `#ident` lines of `text`

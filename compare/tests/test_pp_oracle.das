@@ -249,10 +249,11 @@ def test_run_oracle(t : T?) {
     t |> equal(run_oracle(raw), 1)
 }
 
-[test(description = "the #pragma and #ident lines of clang's -E output are counted, a blank after the # included, and no other line: a #pragma GCC warning or GCC error line is a diagnostic of PP.2's, not a ledger entry")]
+[test(description = "the #pragma and #ident lines of clang's -E output are counted, a blank after the # included, and no other line: a #pragma GCC warning or GCC error line is a diagnostic of PP.2's, not a ledger entry, its kind matched as a whole word")]
 def test_pragma_lines(t : T?) {
     t |> equal(pragma_lines("int x;\n#pragma pack(1)\n  #  pragma weak w\n# 3 \"a.c\"\npragma;\n#ident \"v\"\nident;\n"), 3)
     t |> equal(pragma_lines("#pragma GCC warning \"w\"\n#pragma GCC error \"e\"\n#pragma GCC diagnostic push\n#pragma clang warning \"k\"\n"), 2)
+    t |> equal(pragma_lines("#pragma GCC warningfoo\n#pragma GCC errors x\n#pragma GCC warning(\"p\")\n#pragma GCC error\"e\"\n#pragma GCC warning\n"), 2)
 }
 
 // clang-side tokens of `spellings`, a blank between them, each an identifier
