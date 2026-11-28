@@ -118,9 +118,11 @@ of an unsized array are refused.
 ## 28. The own libc headers {#c-types-library}
 
 Dumper A dumps no declaration outside the program (its file policy), so the own headers' types
-enter the table only where the unit uses them. The builder reads `clang -E` text, whose line
-markers name each declaration's file: a declaration in a file whose name starts with the folder the
-builder is opened with (`c_types_open`'s `library_dir`) adds no type. Its typedef names are bound to
+enter the table only where the unit uses them. Each declaration's token names its file: a
+declaration in a file whose name starts with the folder the builder is opened with
+(`c_types_open`'s `library_dir`), or, given a program root (`c_ir_open`'s `program_dir`), in a file
+whose full path lies outside it, adds no type and no declaration; a C file outside the root is the
+error Dumper A gives, its definitions would stay external. Its typedef names are bound to
 their pool types, or, for one the builder refuses, to the refusal, which a use in the unit reports;
 its function names count as declared for the block rule of section 24.
 

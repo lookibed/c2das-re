@@ -55,6 +55,9 @@ struct CTypes {
     cases : table<int64; bool>      //!< the case values of the innermost switch read so far
     tu_prefix : string              //!< the unit's file stem as an identifier, a file static's prefix
     linkage_names : table<string; string>   //!< a name with internal linkage to its C-IR name
+    external_names : table<string>          //!< a name declared with external linkage
+    program_dir : string                    //!< the program root, `/` last; "" for none: every file but the own headers'
+    in_program_of : table<int; bool>        //!< per file name of the unit, whether its declarations are the program's
     file_scope_names : table<string>        //!< every name declared at file scope or by a block-scope `extern` or prototype
     hoisted_names : table<string>           //!< the names of the statics hoisted so far
     fn_all_locals : table<string>           //!< the parameter and variable names of the function being read, renames included
@@ -586,7 +589,7 @@ def private is_end(p : CParser; d : int) : bool {
 [arch(at="ARCHITECTURE_TYPES.md#c-types-declarators")]
 def private constant_value(var b : CTypes; var p : CParser; n : int; what : string) : int {
     var v = 0l
-    let folded = b.fold != null && invoke(b.fold, b, p, n, v)
+    let folded = invoke(b.fold, b, p, n, v)
     if (!folded) {
         refuse(b, p, p.ast.nodes[n].tok, "an {what} other than an integer constant expression")
         return -2

@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
             jobs="$2"; shift ;;
         --list-gates)
             cat <<'TABLE'
-env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin; dasFlex fetched at its pin
+env          fast   DASLANG_ROOT is a built daScript with dastest, lint, das-fmt, the review-md walker, the watchdog and dasClangBind, at or past the VERSIONS.md pin; PATH_TO_LIBCLANG's clang is the pinned version; dasFlex a checkout of its own at its pin; under the tests lane, Lua fetched at its pin
 native       fast   scripts/build_crt.sh builds dasCRuntime (the crt module) against DASLANG_ROOT
 untracked    fast   `git ls-files --others --exclude-standard` prints nothing
 format       fast   das-fmt --verify over every .das folder (mirrors daScript's CI format gate)
@@ -48,9 +48,20 @@ changed_das() { git diff --name-only "$base" -- '*.das' 2>/dev/null; git ls-file
 pass() { echo "[PASS] $1"; }
 fail() { echo "[FAIL] $1 - $2"; return 1; }
 skipped() { echo "[SKIP] $1 - $2"; }
+# the tests lane's inputs are checked here, before any gate runs: a missing fetch found by the last
+# suite of a --full run costs the whole run
 gate_env() {
     scripts/verify_daslang.sh >/dev/null || { fail env "scripts/verify_daslang.sh names what is missing"; return 1; }
-    scripts/fetch_dasflex.sh >/dev/null && pass env || fail env "scripts/fetch_dasflex.sh cannot put dasFlex at the VERSIONS.md pin"
+    local want got
+    want=$(grep -m1 '^libclang: ' VERSIONS.md | grep -o 'LLVM [0-9][0-9.]*' | cut -d' ' -f2)
+    got=$("${PATH_TO_LIBCLANG:-}/bin/clang" --version 2>/dev/null | grep -o 'clang version [0-9][0-9.]*' | cut -d' ' -f3)
+    [ -n "$want" ] && [ "$got" = "$want" ] || { fail env "PATH_TO_LIBCLANG=${PATH_TO_LIBCLANG:-} gives clang '${got:-none}', VERSIONS.md pins $want: every clang oracle reads its dump"; return 1; }
+    [ -L fetch/dasFlex ] && { fail env "fetch/dasFlex is a symlink; scripts/fetch_dasflex.sh needs a checkout of its own at the pin"; return 1; }
+    scripts/fetch_dasflex.sh >/dev/null || { fail env "scripts/fetch_dasflex.sh cannot put dasFlex at the VERSIONS.md pin"; return 1; }
+    if { [ $full = 1 ] || [ ${#only[@]} -gt 0 ]; } && wants tests; then
+        lua/fetch.sh >/dev/null || { fail env "lua/fetch.sh cannot put Lua at the VERSIONS.md pin, which lua/tests and compare/tests read"; return 1; }
+    fi
+    pass env
 }
 gate_native() { local out; out=$(scripts/build_crt.sh 2>&1) && pass native || { echo "$out" | tail -20; fail native "dasCRuntime does not build"; }; }
 gate_untracked() { local u; u=$(git ls-files --others --exclude-standard); [ -z "$u" ] && pass untracked || fail untracked "$(echo "$u" | tr '\n' ' ')"; }
@@ -116,10 +127,19 @@ test_groups=(converter/tests compare/tests lua/tests chibicc/tests ports/tests p
 # PREFLIGHT_ISOLATED_SUITES replaces the list (a space between suites), for a test of the arm
 read -ra isolated_suites <<< "${PREFLIGHT_ISOLATED_SUITES-probes converter/tests c_runtime/tests doom/tests}"
 iso_threads=2
+# a suite's whole-run budget in seconds where dastest's default (1200) is too short on a loaded box:
+# compare/tests converts real projects in test_projects.das (13 minutes alone under load) and shares a
+# work folder, so it cannot run isolated; PREFLIGHT_SUITE_TIMEOUTS replaces the list, `suite=seconds`
+read -ra suite_timeouts <<< "${PREFLIGHT_SUITE_TIMEOUTS-compare/tests=3600}"
+suite_timeout() {
+    local e
+    for e in "${suite_timeouts[@]}"; do [ "${e%%=*}" = "$1" ] && { echo "${e#*=}"; return; }; done
+}
 run_suite() {
-    local iso=() s
+    local iso=() budget=() s t
     for s in "${isolated_suites[@]}"; do [ "$s" = "$1" ] && iso=(--isolated-mode --isolated-mode-threads "$iso_threads"); done
-    das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$1" --failures-only "${iso[@]}"
+    t=$(suite_timeout "$1"); [ -n "$t" ] && budget=(--timeout "$t")
+    das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$1" --failures-only "${iso[@]}" "${budget[@]}"
 }
 suite_file() { echo "$tests_logs/${1//\//_}.$2"; }
 # prints, in suite_order, every suite whose run has ended and that no unfinished suite precedes; with
@@ -162,7 +182,8 @@ gate_tests() {
         # one suite after another in print order, each single-threaded, its output streamed
         for d in "${tests_order[@]}"; do
             [ -d "$d" ] || continue
-            das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only || tests_rc=1
+            t=$(suite_timeout "$d")
+            das "$DASLANG_ROOT/dastest/dastest.das" -- --test "$d" --failures-only ${t:+--timeout "$t"} || tests_rc=1
         done
     else
         tests_logs=$(mktemp -d) || { fail tests "no scratch folder for the suites' output"; return 1; }

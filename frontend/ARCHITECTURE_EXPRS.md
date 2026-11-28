@@ -19,7 +19,7 @@ the walk: a variable from its declaration on, so its own initializer sees it), `
 `cast` for an explicit cast, and `sizeof_v` with Dumper A's size of the type (a scalar its width, a
 pointer and a function the pointer width, `long double` its 64 bits, an array its count of
 elements). Parentheses set `paren` (a macro expansion's only around a shift or a bitwise operator,
-`ARCHITECTURE_NAMES.md` section 48); `__extension__` is its operand. A reference, a subscript and a
+`ARCHITECTURE_NAMES.md` section 88); `__extension__` is its operand. A reference, a subscript and a
 dereference of a volatile-qualified type set `vol`.
 
 A reference to a function an old-style definition defined has the type `R ()`, as clang's reference
@@ -147,7 +147,8 @@ is an `IntegralCast` over `1`). The slots:
 - a call's arguments: within a prototype's parameters each to its parameter's type; past them, or
   when the callee has no prototype, by the default argument promotions (6.5.2.2p6: promoted, `float`
   to `double`); a call by name of a function an old-style definition defined converts its arguments
-  to that definition's parameter types promoted, as clang does.
+  to that definition's parameter types promoted, as clang does. A name in parentheses (`(f)(1)`)
+  calls by name all the same: its prototype counts the arguments and its definition converts them.
 
 An explicit cast takes its operand as a value (to `void` too) and its kind from the two types:
 `NoOp` when they differ in qualifiers at their pointer and array levels at most (a function type's
@@ -158,9 +159,9 @@ kinds as above, `ToVoid`, `NullToPointer` for a null pointer constant integer to
 ## 43. Literals {#c-exprs-literals}
 
 An integer literal takes the first type of its list that holds its value (6.4.4.1): decimal with no
-suffix `int`, `long`, `long long`; octal or hex with no suffix the signed and unsigned types of each
-rank in turn; `u`, `l`, `ll` and their combinations their own lists; the widths the dialect's. Its
-`v` is the decimal value. Under msvc an `ll` literal without `u` past `long long` is a `long long`
+suffix `int`, `long`, `long long`; octal, hex or GNU binary (`0b`, read in base 2) with no suffix
+the signed and unsigned types of each rank in turn; `u`, `l`, `ll` and their combinations their own
+lists; the widths the dialect's. Its `v` is the decimal value. Under msvc an `ll` literal without `u` past `long long` is a `long long`
 of the wrapped value, as clang's MSVC compatibility types it (`0xc000000080000000LL` is
 -4611686016279904256). A character constant is an `int` of the one byte it holds, read as plain
 `char` (unsigned under both dialects); with `L` the dialect's `wchar_t` (`int`, msvc's

@@ -15,3 +15,6 @@ perf/profiles/** linguist-generated
 metrics/readability_*.json linguist-generated
 metrics/criteria_*.json linguist-generated
 compare/results_*.json linguist-generated
+
+# tables a reader parses line by line: a CRLF checkout breaks parse_features and the byte diff
+frontend/predefined/*.defs text eol=lf

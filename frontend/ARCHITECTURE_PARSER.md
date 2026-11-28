@@ -63,14 +63,14 @@ Directives are the preprocessor's: a line marker, `#line`, `#pragma` and every o
 are done there, and a `#` or `##` the preprocessor hands out is a stray token. A pragma the
 preprocessor records (`pp.pragmas`, `pp.packs`) is refused at its place, `the pragma '#pragma
 <text>' is not parsed`, unless the C-IR may pass it by (`PASSED_PRAGMAS`): a `GCC diagnostic`,
-`clang diagnostic`, `message` or `GCC warning` pragma and `#ident` change no C-IR. `pack` is refused
-until the record layout reads `pp.packs`; `#pragma GCC error "<text>"` is the error it asks for.
+`clang diagnostic` or `message` pragma and `#ident` change no C-IR. `pack` is refused until the
+record layout reads `pp.packs`; `GCC error`, `GCC warning` and `GCC poison` are the preprocessor's.
 
 The first error ends the read, `file:line:col: what` in `unit.err`: a token's, a pragma's, the
-preprocessor's (`pp.diags`, a warning being none) or the lexer's (`pp.lx.diags`, placed in its own
-file by that file's `#line` state, else its path). Of those one read meets the first in reading
-order wins: in one file the earlier place, an unterminated call or conditional (placed at its start)
-counted at the file's end; across files the one recorded first.
+preprocessor's (`pp.diags`, a warning being none, where the read stood when it raised it) or the
+lexer's of a consumed token (`pp.lx.diags` at its presumed place; none clang does not raise, in a
+skipped group or on a directive's line). The first in reading order wins: in one file the earlier
+place; across files the one the `#include` lines that entered them (`pp.inclusions`) reach first.
 
 ## 15. The tree {#c-ast}
 

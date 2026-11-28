@@ -37,6 +37,12 @@ def private lane(groups, jobs, isolated : string; var out : string&) : int {
 
 def private lane(groups : string; jobs : int; var out : string&) : int => lane(groups, "{jobs}", "", out)
 
+// the tests lane over `groups` with `jobs`, `timeouts` the suites' whole-run budgets (`suite=seconds`, a space between)
+def private budgeted_lane(groups, jobs, timeouts : string; var out : string&) : int {
+    let cmd = "PREFLIGHT_TEST_GROUPS=\"$1\" PREFLIGHT_ISOLATED_SUITES= PREFLIGHT_SUITE_TIMEOUTS=\"$3\" exec bash scripts/preflight.sh --only tests --jobs \"$2\" 2>&1"
+    return run_and_capture(["bash", "-c", cmd, "lane", groups, jobs, timeouts], out, 300.0)
+}
+
 // whether `first` appears in `out` before `second`, both present
 def private before(out, first, second : string) : bool {
     let a = find(out, first)
@@ -110,6 +116,16 @@ def test_parallel_lane(t : T?) {
         t |> success(!(out |> contains("isolated mode")), out)
         t |> equal(lane("{iso};{fast}", "1", iso, out), 0, out)
         t |> success(!(out |> contains("isolated mode")), out)
+    }
+    t |> run("a suite's budget bounds its whole run, in parallel and with --jobs 1; a suite without one keeps dastest's") @(t : T?) {
+        var out : string
+        for (jobs in ["2", "1"]) {
+            t |> equal(budgeted_lane("{slow};{fast}", jobs, "{slow}=1", out), 1, "--jobs {jobs}: {out}")
+            t |> success(out |> contains("[FAIL] tests - a suite is red"), "--jobs {jobs}: {out}")
+            t |> success(!(out |> contains("SLOW-AFTER-SLEEP")), "--jobs {jobs}: {out}")
+            t |> equal(budgeted_lane("{slow};{fast}", jobs, "{fast}=1", out), 0, "--jobs {jobs}: {out}")
+            t |> success(out |> contains("SLOW-AFTER-SLEEP"), "--jobs {jobs}: {out}")
+        }
     }
     rmdir_rec(dir)
 }

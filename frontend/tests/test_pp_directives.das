@@ -205,7 +205,7 @@ def test_line(t : T?) {
     t |> equal(join(placed, " "), "a:main.c:1/1 b:main.c:100/3 c:main.c:102/5 d:other.c:7/7 e:marked.c:40/9 h:h.h:1/1 f:marked.c:42/11")
     var bad <- started([("main.c", "#line 0x10\n#line 4294967296\n#line 5 L\"w\"\n#line\n#line 9 \"n\" z\n#line N\n# 4294967296 \"m\"\ny\n")])
     t |> equal(stream(bad), "y")
-    t |> equal(diagnostics(bad), "E 1:7 #line directive requires a simple digit sequence | E 2:7 #line directive requires a positive integer argument | E 3:9 invalid filename for #line directive | E 4:2 #line directive requires a positive integer argument | W 5:13 extra tokens at end of #line directive | E 6:2 #line of macro-expanded tokens needs PP.3: N | E 7:3 line marker directive requires a positive integer argument")
+    t |> equal(diagnostics(bad), "E 1:7 #line directive requires a simple digit sequence | E 2:7 #line directive requires a positive integer argument | E 3:9 invalid filename for #line directive | E 4:2 #line directive requires a positive integer argument | W 5:13 extra tokens at end of #line directive | E 6:7 #line directive requires a positive integer argument | E 7:3 line marker directive requires a positive integer argument")
     t |> equal(pp.diags |> length, 0)
 }
 
@@ -260,12 +260,51 @@ def test_conditionals(t : T?) {
     }
 }
 
-[test(description = "the #if evaluator reads 0, 1 and defined until PP.4; any other expression is a diagnostic naming PP.4 and false")]
+[test(description = "#if and #elif ask the evaluator (frontend/pp_eval.das) with no expansion set: an undefined name is 0, and an error skips the group with its diagnostic")]
 def test_if_hook(t : T?) {
     t |> equal(preprocessed("#define X\n#if defined X\na\n#endif\n#if defined(X)\nb\n#endif\n#if !defined(Y)\nc\n#endif\n#if !!1\nd\n#endif\n#if 0\ne\n#endif\n"), "a b c d")
-    var pp <- started([("main.c", "#if X > 1\nno\n#elif 1\nyes\n#endif\n#if\n#endif\n")])
+    var pp <- started([("main.c", "#if X > 1\nno\n#elif 2 * 3 == 6\nyes\n#endif\n#if\n#endif\n")])
     t |> equal(stream(pp), "yes")
-    t |> equal(diagnostics(pp), "E 1:2 #if expression needs the PP.4 evaluator: X > 1 | E 6:2 #if with no expression")
+    t |> equal(diagnostics(pp), "E 6:2 expected value in expression")
+}
+
+[test(description = "a line marker and a #line read allocate nothing once their names are known: no string and no heap block per marker, a file name stored once, its simple, octal and hex escapes read as clang reads them")]
+def test_line_markers_allocate_nothing(t : T?) {
+    let markers = "# 5 \"a.c\"\nx\n# 7 \"b\\\\c\\x41\\101\\t.h\" 1\ny\n#line 9\nz\n# 3 \"a.c\" 2\nw\n#line 11 \"a.c\"\nv\n"
+    var pp <- started([("main.c", "first\n" + repeat(markers, 500))])
+    for (_ in range(6)) {
+        t |> success(pp_next_token(pp))
+    }
+    let strings = int(string_heap_allocation_count())
+    let heap = int(heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    let strings_used = int(string_heap_allocation_count()) - strings
+    let heap_used = int(heap_allocation_count()) - heap
+    t |> equal(count, 2495)
+    t |> equal(diagnostics(pp), "")
+    t |> equal("{strings_used} strings, {heap_used} heap blocks", "0 strings, 0 heap blocks")
+    t |> equal(join([for (n in pp.names); n], " "), "main.c <built-in> a.c b\\cAA\t.h")
+}
+
+[test(description = "with no expansion set, an #if, #elif or #line naming a macro outside defined's operand records the tokens handed out before it")]
+def test_unexpanded_lines(t : T?) {
+    var pp <- started([("main.c", "#define N 1\na\n#if defined N || defined(N)\nb\n#endif\n#if N\n#elif N\n#endif\nc\n#line N\nd\n")])
+    t |> equal(stream(pp), "a b c d")
+    t |> equal(join([for (p in pp.unexpanded); "{p}"], " "), "2 2 3")
+}
+
+[test(description = "with no expansion set, a conditional is undecided when its line reads a macro otherwise than clang - never for a function-like name without (, a query operand clang reads unexpanded or __has_include's <...> -; its group marks its diagnostics and definitions, defined or #ifdef of such a definition is undecided too, a builtin name the expansion replaces makes it undecided, an evaluator error stays decided unless it stands at a macro name, and #line's error on a macro is marked")]
+def test_undecided_conditionals(t : T?) {
+    var pp <- started([("main.c", "#define F(x) x\n#define N 1\n#if F || __has_builtin(N) || __has_include(<N.h>)\n#endif\na\n#if !N\n#define D 1\n#error in\n#endif\n#ifdef D\nb\n#endif\n#if defined(D)\n#endif\n#if F(1)\n#endif\n#if 1 +\n#endif\n#define L 7\n#line L\n#if __LINE__ > 0\n#endif\n")])
+    t |> equal(stream(pp), "a b")
+    t |> equal(join([for (p in pp.unexpanded); "{p}"], " "), "1 1 2 2 2 2")
+    t |> equal(join([for (d in pp.diags); "{d.line}:{d.undecided ? "undecided" : "decided"}"], " "), "8:undecided 15:undecided 17:decided 20:undecided")
+    t |> success(pp.macros[pp_macro_index(pp, "D")].undecided)
+    t |> success(!pp.macros[pp_macro_index(pp, "N")].undecided)
+    t |> success(empty(pp.conds))
 }
 
 [test(description = "#ifdef sees the predefined-macro table of the linux dialect, defined before the first line")]
@@ -598,21 +637,11 @@ def test_include_read_fails(t : T?) {
     t |> equal(inclusions(pp), "\"x.h\":-:not_found")
 }
 
-[test(description = "#if reads only 0, 1 and a whole defined X or defined(X): another number, defined of a non-name, an unclosed or trailing form is left to PP.4")]
-def test_if_hook_rejects(t : T?) {
-    var pp <- started([("main.c", "#define X\n#if 2\na\n#endif\n#if 10\nb\n#endif\n#if defined 1\nc\n#endif\n#if defined(X Y\nd\n#endif\n#if 1 && 0\ne\n#endif\n")])
-    t |> equal(stream(pp), "")
-    t |> equal(diagnostics(pp), "E 2:2 #if expression needs the PP.4 evaluator: 2 | E 5:2 #if expression needs the PP.4 evaluator: 10 | E 8:2 #if expression needs the PP.4 evaluator: defined 1 | E 11:2 #if expression needs the PP.4 evaluator: defined(X Y | E 14:2 #if expression needs the PP.4 evaluator: 1 && 0")
-}
-
-[test(description = "a conditional with an #if or #elif left to PP.4 is marked undecided while it is open, a nested one on its own")]
-def test_undecided_conditionals(t : T?) {
-    var undecided <- started([("main.c", "#if 1\n#if X > 1\n#elif 1\nin\n#endif\n#elif Y\n#endif\n#if 0\n#elif Z\n#else\n#if 1\nlast\n")])
-    var marks : array<string>
-    while (pp_next_token(undecided)) {
-        marks |> push("{pp_token_spelling(undecided)}:{join([for (c in undecided.conds); c.undecided ? "u" : "d"], "")}")
-    }
-    t |> equal(join(marks, " "), "in:du last:ud")
+[test(description = "with no expansion set, a macro in an #if line is a name worth 0, and the evaluator's errors - defined of a non-name, an unclosed defined(, trailing tokens - are placed at their tokens")]
+def test_if_hook_errors(t : T?) {
+    var pp <- started([("main.c", "#define X 2\n#if X\na\n#endif\n#if 10\nb\n#endif\n#if defined 1\nc\n#endif\n#if defined(X Y\nd\n#endif\n#if 1 && 0\ne\n#endif\n#if 1 2\nf\n#endif\n")])
+    t |> equal(stream(pp), "b")
+    t |> equal(diagnostics(pp), "E 8:13 macro name must be an identifier | E 11:15 missing ')' after 'defined' | E 17:7 token is not a valid binary operator in a preprocessor subexpression")
 }
 
 [test(description = "a #pragma pack read by clang's grammar: each malformed form gets clang's warning at clang's column and no ledger entry")]
@@ -731,13 +760,194 @@ def test_clang_directive_messages(t : T?) {
     t |> equal(diagnostics(va_opt), "W 1:15 __VA_OPT__ can only appear in the expansion of a variadic macro")
 }
 
-[test(description = "a macro defined, and a diagnostic met, in a group chosen past an #if left to PP.4 are marked so; outside every such group, in the same read, they are not")]
-def test_undecided_marks(t : T?) {
+[test(description = "a macro defined, and a diagnostic met, in a group an #if chose belong to that group alone; the directive lines are counted in skipped groups too")]
+def test_chosen_groups(t : T?) {
     var pp <- started([("main.c", "#define A 1\n#if X > 1\n#define B 2\n#else\n#define C 3\n#error in\n#endif\n#define D 4\n#error out\nz\n")])
     t |> equal(stream(pp), "z")
-    t |> equal(join([for (m in pp.macros); "{pp_name(pp, m.name)}{m.undecided ? "?" : ""}"], " "), "A C? D")
-    t |> equal(join([for (d in pp.diags); "{d.what}{d.undecided ? "?" : ""}"], " | "), "#if expression needs the PP.4 evaluator: X > 1 | #error in? | #error out")
+    t |> equal(join([for (m in pp.macros); pp_name(pp, m.name)], " "), "A C D")
+    t |> equal(join([for (d in pp.diags); d.what], " | "), "#error in | #error out")
     var counted <- started([("main.c", "#if 1\n#endif\n#define g(x) x\n#if 0\n#elif 1\n#endif\n")])
     stream(counted)
     t |> equal(counted.directives_read, 6)
+}
+
+[test(description = "with no expansion set, a #line whose operand names no macro is no unexpanded line: clang reads it the same, an error, so nothing is left to PP.3")]
+def test_line_undefined_name_not_marked(t : T?) {
+    var pp <- started([("main.c", "a\n#line N\nb\n")])
+    t |> equal(stream(pp), "a b")
+    t |> equal(diagnostics(pp), "E 2:7 #line directive requires a positive integer argument")
+    t |> equal(length(pp.unexpanded), 0)
+}
+
+// every lexer diagnostic, `<file>:<line>:<col> <what>`, `skipped` after one met in a skipped group, a `|` between them
+def private lexer_diagnostics(pp : Preprocessor) : string {
+    let parts <- [for (d in pp.lx.diags); "{d.file}:{d.line}:{d.col} {d.what}{d.skipped ? " skipped" : ""}"]
+    return join(parts, " | ")
+}
+
+[test(description = "a lexer diagnostic met in a skipped group is marked skipped, as clang does not diagnose a group it skips: a bad byte on the line after #if 0, inside it and in a nested conditional, an unterminated comment; one on the line after #else, in an included file and on the line after the #include is not")]
+def test_lexer_diags_in_skipped_groups(t : T?) {
+    var pp <- started([("main.c", "a \xff\n#if 0\n\xff b\nc \xff\n#if 1\n\xff\n#endif\n#else\n\xff d\n#endif\n#include \"h.h\"\n\xff e\n#if 0\n/* open\n"),
+                       ("h.h", "h \xff\n")])
+    t |> equal(stream(pp), "a \xff \xff d h \xff \xff e")
+    t |> equal(lexer_diagnostics(pp), ("0:1:3 invalid UTF-8: byte 255 | 0:3:1 invalid UTF-8: byte 255 skipped | 0:4:3 invalid UTF-8: byte 255 skipped | " +
+                                       "0:6:1 invalid UTF-8: byte 255 skipped | 0:9:1 invalid UTF-8: byte 255 | 0:12:1 invalid UTF-8: byte 255 | " +
+                                       "2:1:3 invalid UTF-8: byte 255 | 0:14:1 unterminated /* comment skipped"))
+    t |> equal(diagnostics(pp), "E 13:2 unterminated conditional directive")
+}
+
+[test(description = "a lexer diagnostic carries the presumed line and file #line gives its place, kept when the header it was met in closes in the same read, and the includer's for the token after an #include line")]
+def test_lexer_diag_presumed_place(t : T?) {
+    var pp <- started([("main.c", "#line 20 \"m.c\"\n#include \"h.h\"\n\xff z\n"), ("h.h", "#line 50 \"p.h\"\nh\n/* open")])
+    t |> success(pp_next_token(pp))
+    t |> equal(pp_token_spelling(pp), "h")
+    t |> success(pp_next_token(pp))
+    t |> equal(pp_token_spelling(pp), "\xff")
+    let shown <- [for (d in pp.lx.diags); "{pp.names[d.pname]}:{int64(d.pline)} {d.line}:{d.col} {d.what}"]
+    t |> equal(join(shown, " | "), "m.c:21 3:1 invalid UTF-8: byte 255 | p.h:51 3:1 unterminated /* comment")
+}
+
+[test(description = "an unterminated conditional is placed at its #if and raised past the last byte of the file that left it open, an included one too; an unterminated comment's end counted; a directive diagnostic is raised at the token the reader stands on")]
+def test_unterminated_conditional_raised_at_end(t : T?) {
+    var pp <- started([("main.c", "#include \"h.h\"\n#if 1\nx\n"), ("h.h", "#ifdef A\n#else\n\n")])
+    t |> equal(stream(pp), "x")
+    let shown <- [for (d in pp.diags); "{d.file}:{d.line}:{d.col} raised {d.raised.file}:{d.raised.offset}:{d.raised.line}:{d.raised.col} {d.what}"]
+    t |> equal(join(shown, " | "), ("2:1:2 raised 2:16:4:1 unterminated conditional directive | " +
+                                    "0:2:2 raised 0:23:4:1 unterminated conditional directive"))
+    var comment <- started([("main.c", "#if 1\n/* open\nmore")])
+    stream(comment)
+    t |> equal("{comment.diags[0].raised.offset}:{comment.diags[0].raised.line}:{comment.diags[0].raised.col}", "18:3:5")
+    var direct <- started([("main.c", "#bogus x\ny\n")])
+    stream(direct)
+    t |> equal("{direct.diags[0].line}:{direct.diags[0].col} raised {direct.diags[0].raised.line}:{direct.diags[0].raised.col}", "1:2 raised 1:2")
+}
+
+[test(description = "#pragma GCC poison makes each later use of its names clang's error - in the text, a later macro body, #ifdef, defined, #undef, a #define's name, an #elif line evaluated and another pragma - but not in a skipped group or a repeated poison; a defined macro warns, a token that is no name is an error ending the list; no ledger entry")]
+def test_pragma_poison(t : T?) {
+    var pp <- started([("main.c", ("#define OLD foo\n#pragma GCC poison foo bar\nint foo;\n#define AFTER bar\n#ifdef foo\n#endif\n#if defined(bar)\n#endif\n" +
+                                   "#undef foo\n#define foo 1\n#if 0\nfoo\n#endif\n#pragma GCC poison foo\n#pragma GCC poison OLD\n#pragma GCC poison a \"s\" c\n" +
+                                   "c a\n#pragma weird foo\n#pragma GCC poison zz\n#if 0\n#elif defined(zz)\n#endif\n#pragma clang poison zed\nzed\n#pragma GCC poison\n"))])
+    t |> equal(stream(pp), "int foo ; c a zed")
+    t |> equal(diagnostics(pp), ("E 3:5 attempt to use a poisoned identifier | E 4:15 attempt to use a poisoned identifier | " +
+                                 "E 5:8 attempt to use a poisoned identifier | E 7:13 attempt to use a poisoned identifier | " +
+                                 "E 9:8 attempt to use a poisoned identifier | E 10:9 attempt to use a poisoned identifier | " +
+                                 "W 15:20 poisoning existing macro | E 16:22 can only poison identifier tokens | " +
+                                 "E 17:3 attempt to use a poisoned identifier | E 18:15 attempt to use a poisoned identifier | " +
+                                 "E 21:15 attempt to use a poisoned identifier | E 24:1 attempt to use a poisoned identifier"))
+    t |> equal(pragma_rows(pp), "18:2@5 weird foo")
+}
+
+// every lexer diagnostic, `<line>:<col> <what>` and its marks, `skipped`, `directive` and `undecided`, a `|` between them
+def private lexer_marks(pp : Preprocessor) : string {
+    let parts <- [for (d in pp.lx.diags); "{d.line}:{d.col} {d.what}{d.skipped ? " skipped" : ""}{d.directive ? " directive" : ""}{d.undecided ? " undecided" : ""}"]
+    return join(parts, " | ")
+}
+
+[test(description = "an #elif or #else line ending an active group is read as that group's, as clang reads it: a poisoned name on it is an error and its bad byte is not skipped; the line of one ending a skipped group or met in one stays quiet")]
+def test_elif_else_after_active_group_read_active(t : T?) {
+    var pp <- started([("main.c", ("#pragma GCC poison zap\n#if 1\n#elif zap \xff\n#endif\n#if 1\n#else zap \xff\n#endif\n#if 0\n#elif 1\n#else zap\n#endif\n" +
+                                   "#if 1\n#elif 1\n#else zap \xff\n#endif\n#if 0\n#if 1\n#else zap\n#endif\n#endif\n"))])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), ("E 3:7 attempt to use a poisoned identifier | E 6:7 attempt to use a poisoned identifier | " +
+                                 "W 6:7 extra tokens at end of #else directive | E 10:7 attempt to use a poisoned identifier | " +
+                                 "W 10:7 extra tokens at end of #else directive"))
+    t |> equal(lexer_marks(pp), ("3:11 invalid UTF-8: byte 255 directive | 6:11 invalid UTF-8: byte 255 directive | " +
+                                 "14:11 invalid UTF-8: byte 255 skipped directive"))
+}
+
+[test(description = "an #error or #warning line is read raw, as clang reads it: a poisoned name in its message is no error")]
+def test_error_warning_lines_raw(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison zap\n#warning zap here\n#error zap\nzap\n")])
+    t |> equal(stream(pp), "zap")
+    t |> equal(diagnostics(pp), "W 2:2 #warning zap here | E 3:2 #error zap | E 4:1 attempt to use a poisoned identifier")
+}
+
+[test(description = "a bad byte on an active directive's line is marked directive, as clang does not diagnose it; one in the text is not, and an unterminated comment on a directive's line is no directive mark")]
+def test_lexer_diag_directive_mark(t : T?) {
+    var pp <- started([("main.c", "#define X 1 \xff\n#pragma foo \xff\n#include \xff\n\xff y\n#define Y /* open\n")])
+    t |> equal(stream(pp), "\xff y")
+    t |> equal(lexer_marks(pp), ("1:13 invalid UTF-8: byte 255 directive | 2:13 invalid UTF-8: byte 255 directive | " +
+                                 "3:10 invalid UTF-8: byte 255 directive | 4:1 invalid UTF-8: byte 255 | 5:11 unterminated /* comment"))
+}
+
+[test(description = "a lexer diagnostic met on a #line line keeps the presumed place the line had; the next line's takes the new one")]
+def test_lexer_diag_on_line_directive_old_place(t : T?) {
+    var pp <- started([("main.c", "int a;\n#line 100 \"z.c\" /* open\nmore\n")])
+    stream(pp)
+    let shown <- [for (d in pp.lx.diags); "{pp.names[d.pname]}:{int64(d.pline)} {d.line}:{d.col} {d.what}"]
+    t |> equal(join(shown, " | "), "main.c:2 2:17 unterminated /* comment")
+    var next <- started([("main.c", "#line 100 \"z.c\"\n\xff\n")])
+    stream(next)
+    let moved <- [for (d in next.lx.diags); "{next.names[d.pname]}:{int64(d.pline)} {d.line}:{d.col}"]
+    t |> equal(join(moved, " | "), "z.c:100 2:1")
+}
+
+[test(description = "an unterminated comment opening on a directive's line is the line's, as clang reads it with the line: not skipped though the directive opens a skipped group; one opening on the line after #if 0 is skipped")]
+def test_unterminated_comment_on_directive_line(t : T?) {
+    for (text in ["#if 0 /* open", "#ifdef NOPE /* open", "#if 1\n#else /* open", "#if 1\n#elif 1 /* open", "#if 0\n#else /* open"]) {
+        var pp <- started([("main.c", text)])
+        stream(pp)
+        t |> equal(length(pp.lx.diags), 1, text)
+        t |> success(!pp.lx.diags[0].skipped, "{text}: {lexer_marks(pp)}")
+    }
+    var after <- started([("main.c", "#if 0\n/* open")])
+    stream(after)
+    t |> equal(lexer_marks(after), "2:1 unterminated /* comment skipped")
+}
+
+[test(description = "a lexer diagnostic met in a group an undecided conditional chose is marked undecided, the skipped group too, since clang may read it; one after its #endif is not")]
+def test_lexer_diag_undecided_mark(t : T?) {
+    var pp <- started([("main.c", "#define N 1\n#if N\n\xff a\n#endif\n\xff b\n")])
+    stream(pp)
+    t |> equal(lexer_marks(pp), "3:1 invalid UTF-8: byte 255 skipped undecided | 5:1 invalid UTF-8: byte 255")
+}
+
+[test(description = "#pragma GCC poison passes over __VA_ARGS__ and __VA_OPT__, as clang does: a variadic body using them is no error")]
+def test_poison_va_args_passed_over(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison __VA_ARGS__ __VA_OPT__\n#define F(...) __VA_OPT__(,) __VA_ARGS__\nF(x)\n")])
+    t |> equal(stream(pp), "F ( x )")
+    t |> equal(diagnostics(pp), "")
+}
+
+[test(description = "#pragma GCC error and GCC warning are an error and a warning at the pragma's kind with the value of their plain string literals, joined, parenthesized or not; any other form is clang's error at clang's token; #pragma clang warning stays a ledger entry")]
+def test_pragma_gcc_message(t : T?) {
+    var pp <- started([("main.c", ("#pragma GCC error \"boom here\"\n#pragma GCC warning (\"x\\\"y\\tz\" \"!\")\n#pragma GCC error\n#pragma GCC warning L\"wide\"\n" +
+                                   "#pragma GCC error (\"a\" x)\n#pragma GCC warning \"a\" )\n#pragma GCC warning (\n#pragma GCC error (\"a\"\n" +
+                                   "#pragma GCC warning (42)\n#pragma clang warning \"kept\"\n#pragma GCC warning \"\\101\\x42\"\n"))])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), ("E 1:13 boom here | W 2:13 x\"y\tz! | E 3:13 pragma error requires parenthesized string | " +
+                                 "E 4:13 pragma warning requires parenthesized string | E 5:24 pragma error requires parenthesized string | " +
+                                 "E 6:25 pragma warning requires parenthesized string | E 7:22 expected string literal in pragma warning | " +
+                                 "E 8:23 pragma error requires parenthesized string | E 9:22 expected string literal in pragma warning | W 11:13 AB"))
+    t |> equal(pragma_rows(pp), "10:2@0 clang warning \"kept\"")
+}
+
+[test(description = "a bad byte on the line of a directive that opens a skipped group is read with that line, not the group: clang lexes it (its 'extra tokens at end of #ifdef' warning at 1:13), so the diagnostic is not skipped; the line after is")]
+def test_lexer_diag_on_skip_opening_line(t : T?) {
+    var pp <- started([("main.c", "#ifdef NOPE \xff\n\xff\n#endif\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(lexer_diagnostics(pp), "0:1:13 invalid UTF-8: byte 255 | 0:2:1 invalid UTF-8: byte 255 skipped")
+    t |> equal(diagnostics(pp), "W 1:13 extra tokens at end of #ifdef directive")
+}
+
+[test(description = "a poisoned name as an #include operand is clang's error at it: the header-name read passes its token through consumed")]
+def test_poison_include_operand(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison foo\n#include foo\nx\n")])
+    t |> equal(stream(pp), "x")
+    t |> success(starts_with(diagnostics(pp), "E 2:10 attempt to use a poisoned identifier | "), diagnostics(pp))
+}
+
+[test(description = "#elifdef and #elifndef after an untaken group read their name as an active group's: a poisoned one is clang's error at it")]
+def test_poison_elifdef_evaluated(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison foo\n#if 0\n#elifdef foo\n#endif\n#if 0\n#elifndef foo\n#endif\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "E 3:10 attempt to use a poisoned identifier | E 6:11 attempt to use a poisoned identifier")
+}
+
+[test(description = "#pragma GCC and #pragma clang alone are ledger entries, no poison or message: the two-token guards hold")]
+def test_pragma_gcc_clang_alone(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC\n#pragma clang\nint x;\n")])
+    t |> equal(stream(pp), "int x ;")
+    t |> equal(diagnostics(pp), "")
+    t |> equal(pragma_rows(pp), "1:2@0 GCC | 2:2@0 clang")
 }

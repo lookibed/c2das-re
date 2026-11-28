@@ -57,8 +57,8 @@ printed and counted, and four comparisons are made, each printing its first diff
   lists, a cast's kind and explicitness among them, every name (a declaration's, a parameter's, a
   local's, a reference's), types by structural name. Set aside: the places, and what the
   preprocessor alone knows - the macro fields and whether parentheses are the
-  source's own or a macro body's (Dumper A keeps a macro body's only around a shift or a bitwise
-  operator; `clang -E` text keeps no trace of a macro);
+  source's own or a macro body's (both keep a macro body's only around a shift or a bitwise
+  operator, and the byte comparison checks them);
 - the conversion census of `metrics/conversion_census_count.das` (`census_tu`) over both units,
   key by key: every count of every dimension (castKind, pair, context, rule, clause, chain,
   anomaly) equal, the plan's C.3 acceptance;
@@ -67,16 +67,22 @@ printed and counted, and four comparisons are made, each printing its first diff
   included, the plan's C.6.
 
 A unit agrees when all four are equal; one that differs in its bytes alone differs in places or
-parentheses (`frontend/ARCHITECTURE_NAMES.md` section 48), which Dumper C takes from `clang -E`
-text where an `#if` needs PP.4. Its printed line names its dialect and class (`aggregate`, `core`),
-and the totals count the byte-identical units per class: with aggregates, scalar-only, and core,
-the set the Core phase's acceptance names (a scalar-only unit whose table holds no array type).
+parentheses (`frontend/ARCHITECTURE_NAMES.md` section 88). Its printed line names its dialect and
+class (`aggregate`, `core`), and the totals count the byte-identical units per class: with
+aggregates, scalar-only, and core, the set the Core phase's acceptance names (a scalar-only unit
+whose table holds no array type).
 
 ## 3. The ratchet
 
 `--ratchet <file>` names a suite's list of byte-identical units (`suites/<suite>/dumper_c_identical.txt`),
-one `<dialect> <id>` line each, `id` the file stem. A run fails when a listed unit it compares is
-not byte-identical, and reports a byte-identical one the list lacks; `--update-ratchet` adds every
-byte-identical unit of the run to the list, sorted, and keeps the lines of units the run did not
-compare. A list only grows: a run where a listed unit is no longer byte-identical writes nothing
-and fails. The lists are written by this run alone, never by hand.
+one `<dialect> <id>` line each, `id` the file stem; a file that does not exist is an error. Only
+the suite's units are keyed: a unit named on the command line is no suite's, its stem may be any
+file's, so it is never checked against the list nor written to it. A run fails when a listed unit
+it compares is not byte-identical, and reports a byte-identical one the list lacks; a run over a
+whole suite (no unit named besides) also reports each listed unit the suite no longer holds.
+`--update-ratchet` adds every byte-identical suite unit of the run to the list, sorted, keeps the
+lines of units the run did not compare and, over a whole suite, drops those the suite no longer
+holds. A list only grows otherwise: a run where a listed unit is no longer byte-identical writes
+nothing and fails. The lists are written by this run alone, never by hand. Nothing runs the suite
+ratchets on its own: the byte acceptance of a change that can move them runs them; the mechanism's
+test is `compare/tests/test_types_compare.das`.

@@ -10,7 +10,7 @@ clang 22: `tests/test_c_layout.das` holds every rule below on a record of
 `compare/layout/fixtures/rules.c`, and `compare/layout/` compares the rules with clang on every
 record of the suites and the projects.
 
-## 50. The interface and what is refused {#c-layout-record}
+## 79. The interface and what is refused {#c-layout-record}
 
 `c_record_layout` takes a `CLayoutRecord`: the dialect (a predefined-macro table's name), struct
 or union, the record's `packed` and `aligned(N)` (the largest of its `aligned` attributes, 0 for
@@ -24,7 +24,7 @@ type requires (`required_align`, read under `msvc` alone), its type class, and i
 type's size and alignment are the caller's: a scalar's by the dialect, an array's by its element,
 a nested record's by that record's own layout, a typedef's `aligned` included under `linux`, which
 can lower an alignment as clang lets a typedef do (under `msvc` the type's below its typedefs,
-`ARCHITECTURE_LAYOUT_MSVC.md` section 54). A bitfield's size and
+`ARCHITECTURE_LAYOUT_MSVC.md` section 83). A bitfield's size and
 alignment are those of its declared type, which is its storage unit; a flexible array member's
 alignment is its element's.
 
@@ -52,7 +52,7 @@ one, else the record's) are set, and no number is, for:
   overflows; the check adds the most padding a member's largest alignment can add, so a record
   within that much of the limit is refused too.
 
-## 51. Members {#c-layout-members}
+## 80. Members {#c-layout-members}
 
 A member that is no bitfield is placed at the first offset past the previous member's end that
 is a multiple of its alignment. Its alignment is its type's, or 1 when the member or the record
@@ -65,7 +65,7 @@ The size is the end of the last member, rounded up to that alignment; a struct w
 bytes, as GNU C has it. `long double` is 16 bytes aligned to 16, a fact of the type, which the
 caller passes.
 
-## 52. Bitfields {#c-layout-bitfields}
+## 81. Bitfields {#c-layout-bitfields}
 
 A bitfield starts at the first bit the previous member left unused: after a bitfield, inside its
 last byte; after any other member, at its end. It moves up to the next multiple of its alignment
@@ -83,7 +83,7 @@ so `struct { char a; int : 0; char b; }` is 5 bytes aligned to 1. The record end
 holding its last bit, rounded to its alignment. In a union every bitfield starts at bit 0 and
 takes its width rounded up to bytes.
 
-## 53. The C-IR record and its `packed` verdict {#c-layout-cir}
+## 82. The C-IR record and its `packed` verdict {#c-layout-cir}
 
 `c_layout_into_cir` writes a layout into a C-IR record type whose fields the caller has built,
 one per member in the same order, as Dumper A does (`converter/ARCHITECTURE_DUMPER.md`): the size

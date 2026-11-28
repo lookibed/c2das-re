@@ -101,6 +101,8 @@ def private changed(change : block<(var a, b : CirTu) : void>) : string {
 
 [test(description = "the C-IR comparison reports each field it compares: an expression's value, bytes, operator, character mark, vol, trait value and type, argument and item counts, an item's position and value, an argument and each operand; a statement's type, value, mark, label, body count, expressions and statements; a declaration's kind, name, linkage, origin, parameters and initializer")]
 def test_cir_fields(t : T?) {
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].name = "y"; }, "decl 0 (main).body.0.name: builder , Dumper A y")
+    t |> equal(changed() $(var _a, b) { b.decls[0].name = "x"; }, "decl 0 (main).name: builder , Dumper A x")
     let e = "decl 0 (main).body.0.e"
     t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.v = "7"; }, "{e}.v: builder , Dumper A 7")
     t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.bytes |> push(uint8(65)); }, "{e}.bytes: builder [], Dumper A [ 0x41]")
@@ -191,6 +193,27 @@ def test_ratchet_text(t : T?) {
     t |> equal(text, "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux 00002\nlinux 00009\nmsvc 00001\n")
 }
 
+[test(description = "over a whole suite a listed unit the run did not compare under one of its dialects is stale, and the update drops it; a key of a dialect the run left out stays")]
+def test_ratchet_stale(t : T?) {
+    let listed <- ratchet_keys("linux 00001\nlinux 00007\nmsvc 00007\n")
+    let seen <- {"linux 00001" => true}
+    let stale <- ratchet_stale(listed, seen, ["linux"])
+    t |> equal(join(stale, ","), "linux 00007")
+    t |> equal(ratchet_text(listed, ["linux 00001"], stale), "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux 00001\nmsvc 00007\n")
+}
+
+[test(description = "a ratchet file that does not exist is an error; a unit named on the command line is no suite's: never checked against the list nor written to it", timeout = 600)]
+def test_ratchet_runs(t : T?) {
+    let missing = path_join(test_temp_dir(), "no_such_ratchet.txt")
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], ratchet = missing, units <- ["{FIXTURES}/differs.c"])), 1)
+    t |> success(!stat(missing).is_reg)
+    let ratchet = path_join(test_temp_dir(), "ratchet.txt")
+    let text = "# a list\nlinux differs\n"
+    fwrite(ratchet, text)
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], ratchet = ratchet, update_ratchet = true, units <- ["{FIXTURES}/conversions.c", "{FIXTURES}/differs.c"])), 0)
+    t |> equal(fread(ratchet), text)
+}
+
 [test(description = "a run's counts: Dumper A failed, a unit with aggregates refused or byte-identical, a scalar-only one refused, agreeing, differing in the table, the C-IR or the census")]
 def test_count(t : T?) {
     var n : TypesTotals
@@ -239,7 +262,7 @@ def test_aggregate_kinds(t : T?) {
     t |> success(has_aggregate([CirType(k = "enum", name = "E")]))
 }
 
-[test(description = "the builder's C-IR refuses a unit the parser refuses and one it cannot read, naming the step", timeout = 600)]
+[test(description = "the builder's C-IR refuses a unit the parser refuses, a file the preprocessor cannot read, and an #error the preprocessor reaches through an evaluated #if, each naming the step", timeout = 600)]
 def test_builder_refusals(t : T?) {
     let dir = path_join(test_temp_dir(), "edges")
     mkdir_rec(dir)
@@ -255,6 +278,13 @@ def test_builder_refusals(t : T?) {
     builder_tu(path_join(dir, "missing.c"), target_lp64_linux(), missing, error)
     t |> success(starts_with(error, "parser: cannot read "), error)
     delete_tu(missing)
+    error = ""
+    let evaluated = path_join(dir, "evaluated.c")
+    fwrite(evaluated, "#if 1 + 1\n#error boom\n#endif\nint x;\n")
+    var stood_in : CirTu
+    builder_tu(evaluated, target_lp64_linux(), stood_in, error)
+    t |> success(starts_with(error, "parser: ") && find(error, "#error boom") >= 0, error)
+    delete_tu(stood_in)
 }
 
 [test(description = "run_types: a unit that agrees passes, a refused one fails, no unit fails; the c-testsuite folder missing is an error; run.das as a child prints the totals", timeout = 600)]
@@ -289,3 +319,38 @@ def test_run_types_aggregates(t : T?) {
     t |> success(find(identical, "total: 1 units, 0 Dumper A failed, 0 refused, 1 whole table, 1 C-IR, 1 census, 1 bytes agree, 0 differ; byte-identical: aggregates 1/1, scalar-only 0/0") >= 0, identical)
 }
 
+
+[test(description = "a unit agreeing in all but its bytes differs; the gcc-torture corpus unfetched is an error; a ratchet key of a name with no dot")]
+def test_count_bytes_and_corpus(t : T?) {
+    var n : TypesTotals
+    t |> equal(count_types(n, TypesResult(unit = "i.c", dialect = "linux", whole = true, cir = true, census = true, difference = "bytes line 1: x")), "i.c [linux]: differs: bytes line 1: x")
+    t |> equal(n.differ, 1)
+    var error : string
+    let units <- gcc_torture_units(test_temp_dir(), error)
+    t |> success(empty(units) && ends_with(error, "is missing (fetch it with suites/gcc_torture/fetch.sh)"), error)
+    t |> equal(ratchet_key("linux", "x/00012"), "linux 00012")
+}
+
+// a fetched c-testsuite under a new root holding the fixtures `names`, and that root
+def private suite_root(name : string; names : array<string>) : string {
+    let root = path_join(test_temp_dir(), name)
+    let folder = path_join(root, "suites/c_testsuite/fetch/c-testsuite/tests/single-exec")
+    mkdir_rec(folder)
+    for (unit in names) {
+        fwrite(path_join(folder, unit), fread("{FIXTURES}/{unit}"))
+    }
+    return root
+}
+
+[test(description = "a whole-suite ratchet run: a listed unit no longer byte-identical fails it and nothing is written though another grew; a listed unit the suite no longer holds is reported and the update drops it", timeout = 900)]
+def test_ratchet_suite_runs(t : T?) {
+    let root = suite_root("suite", ["conversions.c", "differs.c"])
+    let ratchet = path_join(root, "ratchet.txt")
+    let regressed = "# list\nlinux differs\n"
+    fwrite(ratchet, regressed)
+    t |> equal(run_types(TypesArgs(c_testsuite = true, root = root, dialect <- ["linux"], ratchet = ratchet, update_ratchet = true)), 1)
+    t |> equal(fread(ratchet), regressed)
+    fwrite(ratchet, "# list\nlinux nosuch\n")
+    t |> equal(run_types(TypesArgs(c_testsuite = true, root = root, dialect <- ["linux"], ratchet = ratchet, update_ratchet = true)), 0)
+    t |> equal(fread(ratchet), "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux conversions\n")
+}

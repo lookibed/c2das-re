@@ -4,7 +4,8 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 describes `c_records.das`, which builds a unit's struct, union and enum types, and what
 `c_types.das`, `c_exprs.das` and `c_ir.das` do with them, so that the C-IR equals Dumper A's
 (`converter/ARCHITECTURE_DUMPER.md` section 3, `docs/c-ir-spec.md` section 3). The layout of a
-record is `ARCHITECTURE_LAYOUT.md`'s.
+record is `ARCHITECTURE_LAYOUT.md`'s. `tests/test_c_records.das` holds each construct under both
+dialects and every refusal with its place.
 
 ## 61. Tags and definitions {#c-records-definitions}
 
