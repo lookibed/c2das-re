@@ -467,9 +467,7 @@ def private statement_block(var r : CIr; var p : CParser; e : int) : int {
 
 // whether type-name node `t` names `void`
 def private is_void_name(var r : CIr; var p : CParser; t : int) : bool {
-    let saved = r.b.err
     let ty = c_type_name_type(r.b, p, t)
-    r.b.err = saved
     return ty >= 0 && r.b.pool[ty].k == "void"
 }
 
@@ -556,16 +554,13 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         }
     } else {
         ok = parameters(r, p, f, cd.params)
-        var param = c_is_void_list(r.b, p, p.ast.nodes[f].b) ? -1 : p.ast.nodes[f].b
+        var param = p.ast.nodes[f].b
         while (ok && param >= 0) {
-            let psym = c_declarator_name(p.ast, p.ast.nodes[param].b)
-            if (psym >= 0) {
-                c_ir_bind(r, psym, CId(t = c_param_type(r.b, p, param), old_style = -1))
-            }
+            c_ir_bind(r, c_declarator_name(p.ast, p.ast.nodes[param].b), CId(t = c_param_type(r.b, p, param), old_style = -1))
             param = p.ast.nodes[param].next
         }
     }
-    r.ret = r.b.unqualified[r.b.pool[t].ret]
+    r.ret = r.b.pool[t].ret
     var body : array<CirStmt?>
     ok = ok && statement(r, p, n.d, name, body)
     c_types_scope_close(r.b)

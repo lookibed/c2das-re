@@ -371,7 +371,7 @@ def test_pointer_operands(t : T?) {
     t |> equal(ir_of("void g(int *p) \{ p - p; \}", true), "expr sub<long long>(LValueToRValue<int*>(p), LValueToRValue<int*>(p))")
 }
 
-[test(description = "operands and slots of types clang rejects: integer - pointer, && of void, a pointer compared with or added to a floating value, * of void; pointers to incompatible types, function results, parameter lists and variadics")]
+[test(description = "operands and slots of types clang rejects: integer - pointer, && of void, a pointer compared with or added to a floating value, * of void; pointers to incompatible types, integer types of other ranks, function results, parameter lists and variadics; pointers to integer types of one rank and the other sign assign")]
 def test_incompatible_types(t : T?) {
     let rejected = "this operator on operands of these types is invalid C, which clang rejects"
     t |> equal(ir_of("void g(int *p) \{ 1 - p; \}"), "error: t.c:1:18: {rejected}")
@@ -387,6 +387,9 @@ def test_incompatible_types(t : T?) {
     t |> equal(ir_of("void g(int (*f)(int, ...), int (*h)(int)) \{ f = h; \}"), "error: t.c:1:45: {slot}")
     t |> equal(ir_of("void g(int (*f)(int, int), int (*h)(int)) \{ f = h; \}"), "error: t.c:1:45: {slot}")
     t |> equal(ir_of("void g(int (*f)(int), int (*h)(long)) \{ f = h; \}"), "error: t.c:1:41: {slot}")
+    t |> equal(ir_of("void g(short *s) \{ char *c = s; \}"), "error: t.c:1:30: {slot}")
+    t |> equal(ir_of("void g(_Bool *b) \{ unsigned char *c = b; \}"), "error: t.c:1:39: {slot}")
+    t |> equal(ir_of("void g(unsigned short *u) \{ short *s = u; \}"), "s:short*=BitCast<short*>(LValueToRValue<unsigned short*>(u))")
 }
 
 [test(description = "compatible function pointers: one with no parameter takes a prototype by BitCast, ?: of them takes the prototype; arrays of different counts are incompatible under ?:")]

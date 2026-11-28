@@ -59,12 +59,10 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.err = ""
 }
 
-//! The first error, at token `tok`: a construct clang rejects (`what` is invalid C there), so
-//! the unit has no C-IR, as Dumper A's clang gives it none.
+//! The error, at token `tok`: a construct clang rejects (`what` is invalid C there), so the unit
+//! has no C-IR, as Dumper A's clang gives it none; no rejection follows another error.
 def c_reject(var b : CTypes; var p : CParser; tok : int; what : string) {
-    if (empty(b.err)) {
-        b.err = "{c_where(p.unit, tok)}: {what} is invalid C, which clang rejects"
-    }
+    b.err = "{c_where(p.unit, tok)}: {what} is invalid C, which clang rejects"
 }
 
 //! The first error, at token `tok`: a construct the builder does not type yet, and `why` after it.
@@ -91,8 +89,6 @@ def c_type_key(t : CirType) : string {
         return "ptr:{t.to}"
     } elif (t.k == "array") {
         return "array:{t.elem}:{t.count}"
-    } elif (t.k == "func" && t.name == BUILTIN_FN) {
-        return "func:builtin"
     } elif (t.k == "func") {
         let listed = join([for (x in t.params); string(x)], ",")
         return "func:{t.ret}:{listed}:{t.variadic}"
@@ -113,13 +109,10 @@ def private pooled(var b : CTypes; var t : CirType) : int {
     return idx
 }
 
-//! The name that marks a pool function type as the type clang gives a reference to a builtin
-//! function, `<builtin fn type>`: in the table `void (...)`, keyed apart from that type.
-let BUILTIN_FN = "<builtin fn type>"
-
-//! The pool type of a reference to a builtin function.
+//! The pool type of a reference to a builtin function, clang's `<builtin fn type>`: in the table
+//! `void (...)`, which no other type of gnu17 is (`void f(...)` takes a parameter before `...`).
 def c_builtin_fn_type(var b : CTypes) : int {
-    var t = CirType(k = "func", ret = builtin_type(b, bit(CTok.VOID)), variadic = true, name = BUILTIN_FN)
+    var t = CirType(k = "func", ret = builtin_type(b, bit(CTok.VOID)), variadic = true)
     return pooled(b, t)
 }
 
@@ -131,7 +124,7 @@ let C_RESTRICT = 4
 //! Pool type `t` with qualifiers `q` added: an array's element takes them (C11 6.7.3p9), a function
 //! type none.
 def c_qualified(var b : CTypes; t, q : int) : int {
-    return t if (t < 0 || q == 0 || (b.quals[t] | q) == b.quals[t] || b.pool[t].k == "func")
+    return t if (t < 0 || q == 0 || b.pool[t].k == "func")
     if (b.pool[t].k == "array") {
         let count = b.pool[t].count
         let elem = c_qualified(b, b.pool[t].elem, q)
@@ -225,7 +218,7 @@ def c_function(var b : CTypes; ret : int; var params : array<int>; variadic : bo
 //! The pool type of builtin type spelling `spell` as clang spells it (`int`, `unsigned long`,
 //! `double`, ...); -1 for any other spelling.
 def c_builtin(var b : CTypes; spell : string) : int {
-    let plain = starts_with(spell, "unsigned ") && spell != "unsigned char" ? slice(spell, length("unsigned ")) : spell
+    let plain = starts_with(spell, "unsigned ") ? slice(spell, length("unsigned ")) : spell
     for (entry in BUILTINS) {
         if (entry.spell == plain) {
             return builtin_type(b, plain == spell ? entry.set : entry.set | bit(CTok.UNSIGNED))
@@ -377,17 +370,16 @@ def private no_atomic(var b : CTypes; var p : CParser; at : int) : bool {
 }
 
 //! The type a value of pool type `t` takes under the default argument promotions (C11 6.5.2.2p6):
-//! an integer narrower than `int` is `int`, `float` is `double`, any other type its own,
-//! unqualified.
+//! an integer narrower than `int` is `int`, `float` is `double`, any other type its own, made a
+//! function type's parameter, which drops its qualifiers.
 def c_promoted(var b : CTypes; t : int) : int {
-    let u = b.unqualified[t]
-    assume ty = b.pool[u]
+    assume ty = b.pool[t]
     if (ty.k == "int" && ty.w < b.tu.target.int_w) {
         return builtin_type(b, bit(CTok.INT))
     } elif (ty.k == "float" && ty.w == 32) {
         return builtin_type(b, bit(CTok.DOUBLE))
     }
-    return u
+    return t
 }
 
 // whether declarator `d` is at its end: none, its name, or parentheses around one

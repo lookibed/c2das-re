@@ -28,7 +28,7 @@ type), and a block declaration of a function declared before binds its prototype
 its block, though it adds no declaration (`int f(); ... { int f(double); f(1); }` converts the
 argument to `double`). `__builtin_expect` is the one builtin function typed, only as a callee: its
 reference has the type clang gives a builtin, `<builtin fn type>` (`c_builtin_fn_type`, in the table
-`void (...)`, keyed apart), and its decay is to a pointer to its prototype `long (long, long)`.
+`void (...)`, a type no declaration of gnu17 has), and its decay is to a pointer to its prototype `long (long, long)`.
 
 Refused, at the construct's place: an identifier no variable or function in scope names (an enum
 constant among them, until the Aggregates phase), a builtin other than as a callee, GNU's `?:` with
