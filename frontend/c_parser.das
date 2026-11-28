@@ -81,8 +81,17 @@ def c_is_typedef(p : CParser; sym : int) : bool => sym >= 0 && sym < length(p.sc
 //! Linux): `__builtin_va_list`, `__builtin_ms_va_list`, `__int128_t`, `__uint128_t`,
 //! `__NSConstantString`, and under msvc `size_t`; false when the tokens hold an error, which `err`
 //! then holds.
-def c_parser_open_text(var p : CParser; text, name : string; msvc : bool = false) : bool {
-    let clean = c_tokens_of_text(p.unit, text, name)
+def c_parser_open_text(var p : CParser; text, name : string; msvc : bool = false) : bool =>
+    parser_reset(p, c_tokens_of_text(p.unit, text, name), msvc)
+
+//! Open the parser as `c_parser_open_text` does, over the C source `main` read through `provider`
+//! and preprocessed with macro expansion (`c_tokens_expand`).
+def c_parser_open_source(var p : CParser; var provider : PpFileProvider?; main : string; predefines, search : array<string>;
+                         msvc : bool = false; epoch : int64 = -1l) : bool =>
+    parser_reset(p, c_tokens_expand(p.unit, provider, main, predefines, search, epoch), msvc)
+
+//! the parser reset over the tokens just read, `clean` when they hold no error
+def private parser_reset(var p : CParser; clean, msvc : bool) : bool {
     p.ast.nodes |> clear()
     p.ast.nodes |> reserve(length(p.unit.toks))
     p.scopes.binding |> clear()
@@ -1208,6 +1217,26 @@ def private static_assert_decl(var p : CParser) : int {
     return node(p, CNode.STATIC_ASSERT, at, 0, condition, message)
 }
 
+//! adjacent string literals at the cursor, none of them prefixed, as one string node: the text an
+//! asm label, template, constraint or clobber takes (clang takes no wide or Unicode one there); -1
+//! and an error otherwise, the refusal naming `place`
+def private unprefixed_literal(var p : CParser; place : string) : int {
+    if (kind(p) != int(CTok.STRING_LITERAL)) {
+        fail(p, "a string literal")
+        return -1
+    }
+    let at = p.pos
+    while (kind(p) == int(CTok.STRING_LITERAL) && c_byte(p.unit, p.pos, 0) == '"') {
+        p.pos++
+    }
+    if (kind(p) == int(CTok.STRING_LITERAL)) {
+        refuse(p, "a prefixed string literal in {place}")
+        return -1
+    }
+    p.pos = at
+    return string_literal(p)
+}
+
 //! a declarator's tail after it: a GNU asm label `__asm__("name")`, then attributes; `before` holds
 //! the attributes written before the declarator
 def private init_declarator(var p : CParser; d, before : int) : int {
@@ -1216,19 +1245,8 @@ def private init_declarator(var p : CParser; d, before : int) : int {
         let at = p.pos
         p.pos++
         take(p, CTok.LPAREN)
-        if (kind(p) != int(CTok.STRING_LITERAL)) {
-            fail(p, "a string literal")
-            return -1
-        }
-        while (kind(p) == int(CTok.STRING_LITERAL) && p.unit.lx.flex.bytes[p.unit.toks[p.pos].start] == uint8('"')) {
-            p.pos++
-        }
-        if (kind(p) == int(CTok.STRING_LITERAL)) {
-            refuse(p, "a prefixed string literal in an asm label")
-            return -1
-        }
-        p.pos = at + 2
-        let name = string_literal(p)
+        let name = unprefixed_literal(p, "an asm label")
+        return -1 if (name < 0)
         take(p, CTok.RPAREN)
         asm_name = node(p, CNode.ASM_LABEL, at, 0, name)
     }
@@ -1283,13 +1301,13 @@ def private identifier_list_refused(var p : CParser; d : int) : bool {
     return true
 }
 
-// init-declarator `id` (declarator `d`) of an old-style definition's declaration list typed into
-// function declarator `f`'s identifier list; an initializer there is an error at its first token
-def private old_style_name(var p : CParser; f, d, id : int) {
-    if (!p.failed && p.ast.nodes[id].c >= 0) {
+//! declarator `d` of an old-style declaration list with its init-declarator `id`: no asm label,
+//! and the name typed in function declarator `f`'s identifier list
+def private old_style_declarator(var p : CParser; f, d, id : int) {
+    if (p.ast.nodes[id].c >= 0) {
         p.pos = p.ast.nodes[p.ast.nodes[id].c].tok
         fail(p, "';'")
-    } elif (!p.failed) {
+    } else {
         type_old_style_param(p, f, d)
     }
 }
@@ -1346,7 +1364,7 @@ def private definition(var p : CParser; at, extension, specs, id, f : int) : int
         var listed = p.ast.nodes[f].b
         while (!p.failed && listed >= 0) {
             if (p.ast.nodes[listed].b < 0) {
-                fail(p, "a declaration of parameter '{pp_symbol_text(p.unit.lx, p.ast.nodes[listed].a)}'")
+                fail(p, "a declaration of parameter '{c_symbol_text(p.unit, p.ast.nodes[listed].a)}'")
             }
             listed = p.ast.nodes[listed].next
         }
@@ -1384,7 +1402,7 @@ def private declaration(var p : CParser; place : CPlace; f : int) : int {
     if (specs < 0) {
         fail(p, "a declaration")
         return -1
-    } elif (!typed && !(place == CPlace.FILE && kind(p) == int(CTok.SEMI) && attributes_only(p.ast, specs))) {
+    } elif (!typed && !((place == CPlace.FILE || extension == 1) && kind(p) == int(CTok.SEMI) && attributes_only(p.ast, specs))) {
         untyped(p, specs_at)
         return -1
     }
@@ -1412,8 +1430,8 @@ def private declaration(var p : CParser; place : CPlace; f : int) : int {
         }
         if (identifier_list_refused(p, d)) {
             break
-        } elif (place == CPlace.OLD_STYLE) {
-            old_style_name(p, f, d, id)
+        } elif (place == CPlace.OLD_STYLE && !p.failed) {
+            old_style_declarator(p, f, d, id)
         }
         first = false
         c_declare(p, c_declarator_name(p.ast, d), binding)
@@ -1453,6 +1471,7 @@ def c_unit(var p : CParser) : int {
 //! the token at `t` and those after it start a declaration in a block, past any `__extension__`s:
 //! a storage class, a function specifier, `_Static_assert`, or a type name's first token, but an
 //! identifier followed by `:`, which is a label, and attributes followed by `;`, a null statement
+//! unless an `__extension__` before them makes a declaration of attributes alone, as clang takes it
 [arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
 def private declaration_starts(p : CParser) : bool {
     var t = p.pos
@@ -1471,7 +1490,7 @@ def private declaration_starts(p : CParser) : bool {
                 break if (depth == 0)
             }
         }
-        return p.unit.toks[t].kind != int(CTok.SEMI)
+        return p.unit.toks[t].kind != int(CTok.SEMI) || p.unit.toks[p.pos].kind == int(CTok.EXTENSION)
     }
     return ((k >= int(CTok.TYPEDEF) && k <= int(CTok.NORETURN)) || k == int(CTok.STATIC_ASSERT)
         || (type_starts_at(p, t) && !(k == int(CTok.IDENTIFIER) && p.unit.toks[min(t + 1, p.last)].kind == int(CTok.COLON))))
@@ -1487,7 +1506,7 @@ def private compound(var p : CParser) : int {
     c_scope_open(p)
     var items = CList()
     while (!p.failed && kind(p) != int(CTok.RBRACE) && kind(p) != int(CTok.EOF)) {
-        c_append(p.ast, items, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : c_statement(p))
+        c_append(p.ast, items, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : statement(p, true))
     }
     take(p, CTok.RBRACE)
     c_scope_close(p)
@@ -1543,10 +1562,13 @@ def private label_statement(var p : CParser; n, s : int) {
 }
 
 //! A statement at the cursor (C11 6.8). A run of labels is read in a loop, each the statement of
-//! the one before, so a long run costs no recursion; after labels a block's `}` or a declaration
-//! may stand, as clang takes it.
+//! the one before, so a long run costs no recursion.
+def c_statement(var p : CParser) : int => statement(p, false)
+
+//! a statement at the cursor, `in_block` when it is an item of a compound statement: only there may
+//! a block's `}` or a declaration follow labels, as clang takes it
 [arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
-def c_statement(var p : CParser) : int {
+def private statement(var p : CParser; in_block : bool) : int {
     var first = -1
     var last = -1
     while (!p.failed) {
@@ -1561,7 +1583,9 @@ def c_statement(var p : CParser) : int {
     }
     return -1 if (p.failed)
     return unlabeled(p) if (last < 0)
-    if (kind(p) != int(CTok.RBRACE)) {
+    if (!in_block) {
+        label_statement(p, last, unlabeled(p))
+    } elif (kind(p) != int(CTok.RBRACE)) {
         label_statement(p, last, declaration_starts(p) ? declaration(p, CPlace.BLOCK, -1) : unlabeled(p))
     }
     return first
@@ -1673,26 +1697,36 @@ def private for_statement(var p : CParser) : int {
     return n
 }
 
-//! the operands of one asm section, each kept as its tokens to a `,`, `:` or `)` outside brackets
-def private asm_operands(var p : CParser) : int {
+//! the operands of one asm section: each an optional `[name]`, its constraint and its expression in
+//! parentheses, read as an expression so a declaration in it binds as clang binds it; a clobber
+//! section's are string literals
+[arch(at="ARCHITECTURE_STATEMENTS.md#c-statements")]
+def private asm_operands(var p : CParser; clobbers : bool) : int {
     var list = CList()
     if (kind(p) == int(CTok.COLON) || kind(p) == int(CTok.RPAREN)) {
         return list.head
     }
     while (!p.failed) {
         let at = p.pos
-        var depth = 0
-        while (kind(p) != int(CTok.EOF)) {
-            let k = kind(p)
-            break if (depth == 0 && (k == int(CTok.COMMA) || k == int(CTok.COLON) || k == int(CTok.RPAREN)))
-            depth += k == int(CTok.LPAREN) || k == int(CTok.LBRACKET) ? 1 : k == int(CTok.RPAREN) || k == int(CTok.RBRACKET) ? -1 : 0
-            p.pos++
+        if (clobbers) {
+            c_append(p.ast, list, unprefixed_literal(p, "an asm statement"))
+        } else {
+            var name = -1
+            if (accept(p, CTok.LBRACKET)) {
+                if (kind(p) != int(CTok.IDENTIFIER)) {
+                    fail(p, "an asm operand name")
+                    break
+                }
+                name = sym(p)
+                p.pos++
+                take(p, CTok.RBRACKET)
+            }
+            let constraint = p.failed ? -1 : unprefixed_literal(p, "an asm statement")
+            take(p, CTok.LPAREN)
+            let e = p.failed ? -1 : c_expression(p)
+            take(p, CTok.RPAREN)
+            c_append(p.ast, list, node(p, CNode.ASM_OPERAND, at, 0, name, constraint, e))
         }
-        if (p.pos == at) {
-            fail(p, "an asm operand")
-            break
-        }
-        c_append(p.ast, list, node(p, CNode.ASM_OPERAND, at, 0, at, p.pos - 1))
         break if (!accept(p, CTok.COMMA))
     }
     return list.head
@@ -1721,16 +1755,13 @@ def private asm_statement(var p : CParser) : int {
         p.pos++
     }
     take(p, CTok.LPAREN)
-    if (!p.failed && kind(p) != int(CTok.STRING_LITERAL)) {
-        fail(p, "a string literal")
-    }
-    let n = node(p, CNode.ASM, at, flags, p.failed ? -1 : string_literal(p))
+    let n = node(p, CNode.ASM, at, flags, p.failed ? -1 : unprefixed_literal(p, "an asm statement"))
     if (accept(p, CTok.COLON)) {
-        p.ast.nodes[n].b = asm_operands(p)
+        p.ast.nodes[n].b = asm_operands(p, false)
         if (accept(p, CTok.COLON)) {
-            p.ast.nodes[n].c = asm_operands(p)
+            p.ast.nodes[n].c = asm_operands(p, false)
             if (accept(p, CTok.COLON)) {
-                p.ast.nodes[n].d = asm_operands(p)
+                p.ast.nodes[n].d = asm_operands(p, true)
             }
         }
     }

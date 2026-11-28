@@ -5,7 +5,9 @@ module c_tokens public
 
 require strings
 require math
-require pp_lexer public
+require daslib/strings_boost
+require pp_directives public
+require pp_expand
 
 //! The kind of a C token (C11 6.4, translation phase 7). A punctuator keeps the value `PpTok`
 //! gives it; a keyword's kind is 300 and up, grouped so a class of keywords is one range.
@@ -151,41 +153,107 @@ let KEYWORDS <- fixed_array(
     ("__label__", CTok.LOCAL_LABEL), ("__real__", CTok.REAL_PART), ("__real", CTok.REAL_PART),
     ("__imag__", CTok.IMAG_PART), ("__imag", CTok.IMAG_PART))
 
-//! One C token: `start` and `len` are bytes of the unit's text past translation phase 2 (the
-//! lexer's working buffer); `file`, `line` and `col` place it as the line markers before it say.
+//! One C token: its kind and symbol, where its spelling lies - `spelled`, `buffer`, `at` and `len`
+//! as the preprocessor's `PpOutToken` has them, but a `scratch` spelling (a pasted or stringified
+//! token, or one spelled by its symbol) is `len` bytes at `at` of the unit's own `pool` - and its
+//! presumed place: `file` an index of the preprocessor's `names`, `line` and `col`, of the outermost
+//! macro name for a token of an expansion. `read_file` and `read_line` place it in the file as read,
+//! `#line` and line markers aside, where clang's expansion location puts it; `expanded` marks a
+//! token a macro expansion made.
 struct CToken {
     kind : int
     sym : int       //!< the interned name of an IDENTIFIER or a keyword; -1 for every other kind
-    start : int
+    spelled : PpSpelled
+    buffer : int
+    at : int
     len : int
-    file : int      //!< 0 the unit's own name, then each file a line marker names, in order of first sight
+    file : int      //!< 0 the unit's own name, then each name a file, `#line` or a line marker gives, in order of first sight
     line : int
     col : int
+    read_file : int     //!< an index of the preprocessor's `names`; a preprocessed unit's tokens have only their presumed place
+    read_line : int
+    expanded : bool
 }
 
-//! A unit's C tokens, an EOF token last, and what reading them needs: the lexer (its bytes and its
-//! interner), the files the line markers name, and the keyword kind of each interned symbol.
+//! A unit's C tokens, an EOF token last, and what reading them needs: the preprocessor that hands
+//! out its tokens (and holds the interner, the files and their names), the spellings of pasted and
+//! stringified tokens, and the keyword kind of each interned symbol.
 struct CUnit {
-    lx : PpLexer
+    pp : Preprocessor
     toks : array<CToken>
-    name : string           //!< the name of file 0
-    file_syms : array<int>  //!< per file past 0, the interned bytes of its name between the quotes
+    pool : array<uint8>     //!< the `scratch` spellings of `toks`, copied before the next token is read
+    splits : array<int>     //!< per `::` read as two `:` tokens, its index among the preprocessor's tokens
     kind_of_sym : array<int> //!< per symbol, its C kind once known: a keyword's kind or IDENTIFIER; 0 before
     err : string            //!< the first error, `file:line:col: what`; "" when the tokens are clean
 }
 
-//! the bytes `[start, start + len)` of the unit's text as a string, for a message or a dump
-def c_text(unit : CUnit; start, len : int) : string => slice(unit.lx.flex.bytes, start, start + len)
+//! The bytes of token `t`'s spelling, valid while the unit is.
+def c_span(unit : CUnit; t : int) : tuple<data : uint8 const?; len : int> {
+    let tok = unit.toks[t]
+    if (tok.spelled == PpSpelled.scratch) {
+        return (data = unsafe(addr(unit.pool[tok.at])), len = tok.len)
+    } elif (tok.spelled == PpSpelled.body) {
+        return (data = unsafe(addr(unit.pp.macro_text[tok.at])), len = tok.len)
+    }
+    return (data = unsafe(pp_buffer_data(unit.pp, tok.buffer) + tok.at), len = tok.len)
+}
+
+//! Byte `i` of token `t`'s spelling.
+def c_byte(unit : CUnit; t, i : int) : int => int(unsafe(c_span(unit, t).data[i]))
 
 //! The spelling of token `t`.
-def c_spelling(unit : CUnit; t : int) : string => c_text(unit, unit.toks[t].start, unit.toks[t].len)
+def c_spelling(unit : CUnit; t : int) : string {
+    if (unit.toks[t].len == 0) {
+        return ""
+    }
+    let span = c_span(unit, t)
+    return build_string() $(var out) {
+        for (i in range(span.len)) {
+            out |> write_char(int(unsafe(span.data[i])))
+        }
+    }
+}
+
+// whether token `t` follows token `t - 1` in one file's bytes with nothing but blanks between them:
+// both read from the file, no expansion's, and no directive, skipped group or comment in between
+def private follows(unit : CUnit; data : uint8 const?; t : int) : bool {
+    let tok = unit.toks[t]
+    let prev = unit.toks[t - 1]
+    return false if (tok.spelled != PpSpelled.source || tok.expanded || tok.buffer != prev.buffer || tok.at < prev.at + prev.len)
+    for (i in range(prev.at + prev.len, tok.at)) {
+        let b = int(unsafe(data[i]))
+        return false if (b != ' ' && b != '\t' && b != '\n' && b != '\r' && b != '\v' && b != '\f')
+    }
+    return true
+}
+
+//! The text of tokens `first` to `last`: the bytes between them as written when the tokens cover
+//! them, each read from one file with nothing but blanks between, else their spellings with a blank
+//! between each two.
+[arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
+def c_range_text(unit : CUnit; first, last : int) : string {
+    let head = unit.toks[first]
+    let data = head.spelled == PpSpelled.source ? pp_buffer_data(unit.pp, head.buffer) : null
+    var in_place = head.spelled == PpSpelled.source && !head.expanded
+    for (t in range(first + 1, last + 1)) {
+        in_place = in_place && follows(unit, data, t)
+    }
+    if (!in_place) {
+        return join([for (t in range(first, last + 1)); c_spelling(unit, t)], " ")
+    }
+    let stop = unit.toks[last].at + unit.toks[last].len
+    return build_string() $(var out) {
+        for (i in range(head.at, stop)) {
+            out |> write_char(int(unsafe(data[i])))
+        }
+    }
+}
 
 //! The name of file `file`.
-def c_file_name(var unit : CUnit; file : int) : string =>
-    file == 0 ? unit.name : pp_symbol_text(unit.lx, unit.file_syms[file - 1])
+def c_file_name(unit : CUnit; file : int) : string => unit.pp.names[file]
 
 //! `file:line:col` of token `t`.
-def c_where(var unit : CUnit; t : int) : string {
+def c_where(unit : CUnit; t : int) : string {
     let tok = unit.toks[t]
     return "{c_file_name(unit, tok.file)}:{tok.line}:{tok.col}"
 }
@@ -203,36 +271,39 @@ def c_kind_name(k : int) : string {
 }
 
 //! The symbol of `name` in the unit's interner, interned when new.
-def c_symbol(var unit : CUnit; name : string) : int => intern_name(unit.lx.flex.syms, name)
+def c_symbol(var unit : CUnit; name : string) : int => intern_name(unit.pp.lx.flex.syms, name)
 
-def private byte_at(unit : CUnit; at : int) : int => int(unsafe(unit.lx.flex.data[at]))
+//! The text of symbol `sym`.
+def c_symbol_text(var unit : CUnit; sym : int) : string => pp_symbol_text(unit.pp.lx, sym)
+
+def private byte_of(data : uint8 const?; i : int) : int => int(unsafe(data[i]))
 
 def private is_digit(b : int) : bool => is_number(b)
 
 def private is_hex_digit(b : int) : bool => is_digit(b) || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 
 //! the first byte at or after `at` and before `stop` that `digit` does not take
-def private digits_end(unit : CUnit; at, stop : int; hex : bool) : int {
+def private digits_end(data : uint8 const?; at, stop : int; hex : bool) : int {
     var i = at
-    while (i < stop && (hex ? is_hex_digit(byte_at(unit, i)) : is_digit(byte_at(unit, i)))) {
+    while (i < stop && (hex ? is_hex_digit(byte_of(data, i)) : is_digit(byte_of(data, i)))) {
         i++
     }
     return i
 }
 
 //! an integer suffix spans `[at, stop)`: `u` and `l`, `ll` (one case) in either order, each once
-def private is_int_suffix(unit : CUnit; at, stop : int) : bool {
+def private is_int_suffix(data : uint8 const?; at, stop : int) : bool {
     var i = at
     var u = false
     var l = false
     while (i < stop) {
-        let b = byte_at(unit, i)
+        let b = byte_of(data, i)
         if ((b == 'u' || b == 'U') && !u) {
             u = true
             i++
         } elif ((b == 'l' || b == 'L') && !l) {
             l = true
-            i += i + 1 < stop && byte_at(unit, i + 1) == b ? 2 : 1
+            i += i + 1 < stop && byte_of(data, i + 1) == b ? 2 : 1
         } else {
             return false
         }
@@ -241,118 +312,90 @@ def private is_int_suffix(unit : CUnit; at, stop : int) : bool {
 }
 
 //! a floating suffix spans `[at, stop)`: none, or one of `f`, `F`, `l`, `L`
-def private is_float_suffix(unit : CUnit; at, stop : int) : bool =>
-    at == stop || (at + 1 == stop && (byte_at(unit, at) == 'f' || byte_at(unit, at) == 'F' || byte_at(unit, at) == 'l' || byte_at(unit, at) == 'L'))
+def private is_float_suffix(data : uint8 const?; at, stop : int) : bool =>
+    at == stop || (at + 1 == stop && (byte_of(data, at) == 'f' || byte_of(data, at) == 'F' || byte_of(data, at) == 'l' || byte_of(data, at) == 'L'))
 
 //! after a mantissa ending at `at`: an exponent `e`/`p` (`binary` picks), its sign and digits, then
 //! a floating suffix, up to `stop`
-def private is_float_tail(unit : CUnit; at, stop : int; binary : bool) : bool {
+def private is_float_tail(data : uint8 const?; at, stop : int; binary : bool) : bool {
     var i = at
-    let b = i < stop ? byte_at(unit, i) : 0
+    let b = i < stop ? byte_of(data, i) : 0
     if (binary ? (b == 'p' || b == 'P') : (b == 'e' || b == 'E')) {
         i++
-        if (i < stop && (byte_at(unit, i) == '+' || byte_at(unit, i) == '-')) {
+        if (i < stop && (byte_of(data, i) == '+' || byte_of(data, i) == '-')) {
             i++
         }
-        let digits = digits_end(unit, i, stop, false)
+        let digits = digits_end(data, i, stop, false)
         return false if (digits == i)
         i = digits
     }
-    return is_float_suffix(unit, i, stop)
+    return is_float_suffix(data, i, stop)
 }
 
-//! The constant kind of the pp-number at `[start, start + len)` (C11 6.4.4.1, 6.4.4.2, binary
-//! `0b` as GNU C has it): INT_CONSTANT, FLOAT_CONSTANT, or EOF when it is no constant. Its value is
-//! not read here.
+//! The constant kind of the pp-number spelled by the `len` bytes at `data` (C11 6.4.4.1, 6.4.4.2,
+//! binary `0b` as GNU C has it): INT_CONSTANT, FLOAT_CONSTANT, or EOF when it is no constant. Its
+//! value is not read here.
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
-def private number_kind(unit : CUnit; start, len : int) : int {
-    let stop = start + len
-    let second = len > 1 ? byte_at(unit, start + 1) : 0
-    let lead_zero = byte_at(unit, start) == '0'
+def private number_kind(data : uint8 const?; len : int) : int {
+    let stop = len
+    let second = len > 1 ? byte_of(data, 1) : 0
+    let lead_zero = byte_of(data, 0) == '0'
     if (lead_zero && (second == 'x' || second == 'X')) {
-        let whole = digits_end(unit, start + 2, stop, true)
+        let whole = digits_end(data, 2, stop, true)
         var i = whole
         var frac = whole
-        if (i < stop && byte_at(unit, i) == '.') {
-            frac = digits_end(unit, i + 1, stop, true)
+        if (i < stop && byte_of(data, i) == '.') {
+            frac = digits_end(data, i + 1, stop, true)
             i = frac
         }
-        let has_digits = whole > start + 2 || frac > whole + 1
-        if (has_digits && i < stop && (byte_at(unit, i) == 'p' || byte_at(unit, i) == 'P')) {
-            return int(is_float_tail(unit, i, stop, true) ? CTok.FLOAT_CONSTANT : CTok.EOF)
+        let has_digits = whole > 2 || frac > whole + 1
+        if (has_digits && i < stop && (byte_of(data, i) == 'p' || byte_of(data, i) == 'P')) {
+            return int(is_float_tail(data, i, stop, true) ? CTok.FLOAT_CONSTANT : CTok.EOF)
         }
-        return int(whole > start + 2 && whole == i && is_int_suffix(unit, i, stop) ? CTok.INT_CONSTANT : CTok.EOF)
+        return int(whole > 2 && whole == i && is_int_suffix(data, i, stop) ? CTok.INT_CONSTANT : CTok.EOF)
     }
     if (lead_zero && (second == 'b' || second == 'B')) {
-        var i = start + 2
-        while (i < stop && (byte_at(unit, i) == '0' || byte_at(unit, i) == '1')) {
+        var i = 2
+        while (i < stop && (byte_of(data, i) == '0' || byte_of(data, i) == '1')) {
             i++
         }
-        return int(i > start + 2 && is_int_suffix(unit, i, stop) ? CTok.INT_CONSTANT : CTok.EOF)
+        return int(i > 2 && is_int_suffix(data, i, stop) ? CTok.INT_CONSTANT : CTok.EOF)
     }
-    let whole = digits_end(unit, start, stop, false)
+    let whole = digits_end(data, 0, stop, false)
     var i = whole
-    let b = i < stop ? byte_at(unit, i) : 0
+    let b = i < stop ? byte_of(data, i) : 0
     if (b == '.' || b == 'e' || b == 'E') {
         if (b == '.') {
-            i = digits_end(unit, i + 1, stop, false)
+            i = digits_end(data, i + 1, stop, false)
         }
-        return int(is_float_tail(unit, i, stop, false) ? CTok.FLOAT_CONSTANT : CTok.EOF)
+        return int(is_float_tail(data, i, stop, false) ? CTok.FLOAT_CONSTANT : CTok.EOF)
     }
     if (lead_zero) {
-        for (k in range(start, whole)) {
-            return int(CTok.EOF) if (byte_at(unit, k) > '7')
+        for (k in range(whole)) {
+            return int(CTok.EOF) if (byte_of(data, k) > '7')
         }
     }
-    return int(is_int_suffix(unit, whole, stop) ? CTok.INT_CONSTANT : CTok.EOF)
-}
-
-//! the decimal value of the pp-number token in the lexer, -1 when it holds any other byte
-def private decimal_value(unit : CUnit) : int {
-    let t & = unsafe(unit.lx.flex.tok)
-    var value = 0
-    for (i in range(t.start, t.start + t.len)) {
-        let b = byte_at(unit, i)
-        return -1 if (!is_digit(b) || value > 100000000)
-        value = value * 10 + b - '0'
-    }
-    return value
-}
-
-//! the first error of the unit, at the lexer's token
-def private token_error(var unit : CUnit; file, line_delta : int; what : string) {
-    unit.err = "{c_file_name(unit, file)}:{unit.lx.tok.line + line_delta}:{unit.lx.tok.col}: {what}"
-}
-
-//! the file id of the line marker's name in the lexer's string-literal token, added when new
-def private marker_file(var unit : CUnit) : int {
-    let t & = unsafe(unit.lx.flex.tok)
-    let sym = intern(unit.lx.flex.syms, unit.lx.flex.data, t.start + 1, t.len - 2)
-    for (k in range(length(unit.file_syms))) {
-        return k + 1 if (unit.file_syms[k] == sym)
-    }
-    unit.file_syms |> push(sym)
-    return length(unit.file_syms)
+    return int(is_int_suffix(data, whole, stop) ? CTok.INT_CONSTANT : CTok.EOF)
 }
 
 def private hex_value(b : int) : int => b <= '9' ? b - '0' : (b | 0x20) - 'a' + 10
 
-//! the identifier at `[start, start + len)` holds a universal character name C11 6.4.3p2 forbids: one
-//! naming a character below U+00A0 other than `$`, `@` and a backquote, a surrogate, or a code
-//! point past U+10FFFF; the pp-lexer takes only well-formed UCNs into an identifier
+//! the identifier spelled by the `len` bytes at `data` holds a universal character name C11
+//! 6.4.3p2 forbids: one naming a character below U+00A0 other than `$`, `@` and a backquote, a
+//! surrogate, or a code point past U+10FFFF; the pp-lexer takes only well-formed UCNs into an
+//! identifier
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
-def private names_basic_character(unit : CUnit; start, len : int) : bool {
-    var i = start
-    let stop = start + len
-    while (i < stop) {
-        if (byte_at(unit, i) != '\\') {
+def private names_basic_character(data : uint8 const?; len : int) : bool {
+    var i = 0
+    while (i < len) {
+        if (byte_of(data, i) != '\\') {
             i++
             continue
         }
-        let digits = byte_at(unit, i + 1) == 'u' ? 4 : 8
+        let digits = byte_of(data, i + 1) == 'u' ? 4 : 8
         var value = 0l
         for (d in range(digits)) {
-            value = value * 16l + int64(hex_value(byte_at(unit, i + 2 + d)))
+            value = value * 16l + int64(hex_value(byte_of(data, i + 2 + d)))
         }
         let basic = value < int64(0xA0) && value != int64(0x24) && value != int64(0x40) && value != int64(0x60)
         return true if (basic || (value >= int64(0xD800) && value <= int64(0xDFFF)) || value > int64(0x10FFFF))
@@ -361,38 +404,84 @@ def private names_basic_character(unit : CUnit; start, len : int) : bool {
     return false
 }
 
-//! Open the unit over `bytes`, the text of a preprocessed translation unit, named `name`: the
-//! keyword spellings are interned once, so a token's kind is one index by its symbol.
-def c_tokens_open(var unit : CUnit; var bytes : array<uint8>; name : string) {
-    unit.name = name
+//! the provider of one file in memory, the bytes of a preprocessed unit: read once, the bytes
+//! moved to the lexer
+class private TextProvider : PpFileProvider {
+    path : string
+    bytes : array<uint8>
+    def override exists(path : string) : bool => path == self.path
+    def override read(path : string; var bytes : array<uint8>) : bool {
+        return false if (path != self.path)
+        delete bytes
+        bytes <- self.bytes
+        return true
+    }
+    def override identity(path : string) : string => path
+}
+
+//! a fresh preprocessor for the unit, the interner of the last one kept so a symbol keeps its id
+def private reset(var unit : CUnit) {
+    flex_symbols_detach(unit.pp.lx.flex.syms)
+    var syms <- unit.pp.lx.flex.syms
+    unsafe {
+        delete unit.pp
+    }
+    unit.pp <- Preprocessor()
+    unit.pp.lx.flex.syms <- syms
     unit.err = ""
     unit.toks |> clear()
-    unit.file_syms |> clear()
-    pp_open(unit.lx, bytes, 0, name)
+    unit.pool |> clear()
+    unit.splits |> clear()
+}
+
+//! the keyword spellings interned once, so a token's kind is one index by its symbol
+def private keywords(var unit : CUnit) {
     var syms <- [for (kw in KEYWORDS); c_symbol(unit, kw._0)]
     unit.kind_of_sym |> clear()
-    unit.kind_of_sym |> resize(symbol_count(unit.lx.flex.syms))
+    unit.kind_of_sym |> resize(symbol_count(unit.pp.lx.flex.syms))
     for (sym, kw in syms, KEYWORDS) {
         unit.kind_of_sym[sym] = int(kw._1)
     }
 }
 
-//! the C token kind of the pp-token in the lexer, or EOF when it is no C token
+//! Open the unit over `bytes`, the text of a preprocessed translation unit, named `name`: the
+//! directive layer reads it, so its line markers place the tokens, and expands no macro.
+[arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
+def c_tokens_open(var unit : CUnit; var bytes : array<uint8>; name : string) {
+    reset(unit)
+    var provider = new TextProvider(path = normalized_path(name))
+    provider.bytes <- bytes
+    let none : array<string>
+    pp_start(unit.pp, provider, name, none, none)
+    keywords(unit)
+}
+
+//! Open the unit over the C source `main` read through `provider`, preprocessed with macro
+//! expansion as `pp_expand_start` does it.
+[arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
+def c_tokens_expand_open(var unit : CUnit; var provider : PpFileProvider?; main : string; predefines : array<string>;
+                         search : array<string>; epoch : int64 = -1l) {
+    reset(unit)
+    pp_expand_start(unit.pp, provider, main, predefines, search, epoch)
+    keywords(unit)
+}
+
+//! the C token kind of the preprocessor's token, or EOF when it is no C token
 def private c_kind_of(var unit : CUnit) : int {
-    let k = unit.lx.tok.kind
+    let k = unit.pp.tok.tok.kind
     if (k == int(PpTok.IDENTIFIER)) {
-        let sym = unit.lx.tok.sym
+        let sym = unit.pp.tok.tok.sym
         return unit.kind_of_sym[sym] if (sym < length(unit.kind_of_sym) && unit.kind_of_sym[sym] != 0)
-        let t & = unsafe(unit.lx.flex.tok)
-        return int(CTok.EOF) if (names_basic_character(unit, t.start, t.len))
+        let span = pp_token_span(unit.pp)
+        return int(CTok.EOF) if (names_basic_character(span.data, span.len))
         if (sym >= length(unit.kind_of_sym)) {
             unit.kind_of_sym |> resize(max(sym + 1, 2 * length(unit.kind_of_sym)))
         }
         unit.kind_of_sym[sym] = int(CTok.IDENTIFIER)
         return int(CTok.IDENTIFIER)
     } elif (k == int(PpTok.PP_NUMBER)) {
-        let t & = unsafe(unit.lx.flex.tok)
-        return number_kind(unit, t.start, t.len)
+        let span = pp_token_span(unit.pp)
+        return number_kind(span.data, span.len)
     } elif (k == int(PpTok.CHAR_CONSTANT)) {
         return int(CTok.CHAR_CONSTANT)
     } elif (k == int(PpTok.STRING_LITERAL)) {
@@ -403,88 +492,191 @@ def private c_kind_of(var unit : CUnit) : int {
     return int(CTok.EOF)
 }
 
-//! the line marker or directive whose `#` the lexer holds, read to the end of its line: a marker
-//! `# <line> "<file>" <flags>` (or `#line`) moves the place of the lines after it; any other
-//! directive is an error. False after an error; `more` answers whether a token follows the line.
+//! the preprocessor's token as a C token of kind `kind`: placed at its presumed line and file, and
+//! at the column of the outermost macro name when an expansion made it, and in the file as read
+//! when the preprocessor expands macros (a preprocessed unit has only its presumed place); a `scratch` or `symbol`
+//! spelling copied into the unit's pool
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
-def private line_marker(var unit : CUnit; var file, line_delta : int&; var more : bool&) : bool {
-    let hash_line = unit.lx.tok.line
-    more = pp_next(unit.lx)
-    if (more && !unit.lx.tok.at_bol && unit.lx.tok.kind == int(PpTok.IDENTIFIER) && pp_spelling_is(unit.lx, "line")) {
-        more = pp_next(unit.lx)
-    }
-    let value = more && !unit.lx.tok.at_bol && unit.lx.tok.kind == int(PpTok.PP_NUMBER) ? decimal_value(unit) : -1
-    if (value < 0) {
-        let what = more && !unit.lx.tok.at_bol ? "the directive '#{pp_spelling(unit.lx)}'" : "an empty directive '#'"
-        token_error(unit, file, line_delta, "{what} is not parsed")
-        return false
-    }
-    var new_file = file
-    more = pp_next(unit.lx)
-    if (more && !unit.lx.tok.at_bol && unit.lx.tok.kind == int(PpTok.STRING_LITERAL)) {
-        if (byte_at(unit, unit.lx.flex.tok.start) != '"') {
-            token_error(unit, file, line_delta, "a line marker's file name '{pp_spelling(unit.lx)}' is not parsed")
-            return false
+def private kept(var unit : CUnit; kind : int) : CToken {
+    let out & = unsafe(unit.pp.tok)
+    var call = out.call
+    var at = out.tok
+    if (call >= 0) {
+        let calls & = unsafe(unit.pp.expansion.calls)
+        while (calls[call].parent >= 0) {
+            call = calls[call].parent
         }
-        new_file = marker_file(unit)
-        more = pp_next(unit.lx)
+        at = calls[call].name
     }
-    while (more && !unit.lx.tok.at_bol) {
-        more = pp_next(unit.lx)
+    let as_read = unit.pp.expansion != null
+    var tok = CToken(kind = kind, sym = out.tok.sym, spelled = out.spelled, buffer = out.buffer, at = out.at, len = out.len,
+                     file = out.pname, line = int(out.pline), col = at.col, read_file = as_read ? unit.pp.files[at.file].name : out.pname,
+                     read_line = as_read ? at.line : int(out.pline), expanded = out.call >= 0)
+    if (out.spelled == PpSpelled.scratch || out.spelled == PpSpelled.symbol) {
+        let span = pp_token_span(unit.pp)
+        tok.spelled = PpSpelled.scratch
+        tok.at = length(unit.pool)
+        unit.pool |> resize(tok.at + span.len)
+        for (i in range(span.len)) {
+            unit.pool[tok.at + i] = unsafe(span.data[i])
+        }
     }
-    file = new_file
-    line_delta = value - hash_line - 1
-    return true
+    return tok
 }
 
-//! the `::` the lexer holds as two `:` tokens: C17 has no `::`, and GNU asm spells `:` twice
-def private colons(var unit : CUnit; file, line_delta : int) {
-    let t & = unsafe(unit.lx.flex.tok)
-    let colon = CToken(kind = int(CTok.COLON), sym = -1, start = t.start, len = 1, file = file,
-                       line = unit.lx.tok.line + line_delta, col = unit.lx.tok.col)
-    unit.toks |> push(colon) // nolint:STYLE012 - the colons append to the unit's tokens
-    unit.toks |> push(CToken(kind = colon.kind, sym = -1, start = colon.start + 1, len = 1, file = file, line = colon.line, col = colon.col + 1))
+//! The pragmas the C-IR may pass by, as the text after `pragma` starts: a diagnostic's, a message's
+//! and a warning's, which change no C-IR; `#ident` too. Any other pragma the preprocessor records is
+//! refused, `pack` until the record layout reads `pp.packs`.
+let PASSED_PRAGMAS <- fixed_array("GCC diagnostic", "clang diagnostic", "message", "GCC warning")
+
+//! the two diagnostics the preprocessor places at a construct's start but meets at its file's end
+let private MET_AT_END <- fixed_array("unterminated function-like macro invocation", "unterminated conditional directive")
+
+//! how far the read took each record the preprocessor fills
+struct private ReadMarks {
+    diags : int
+    lexer : int
+    pragmas : int
+    packs : int
 }
 
-//! Read the unit's tokens to its end: identifiers become keywords by their symbol, pp-numbers
-//! integer or floating constants, line markers move the place of the tokens after them. False
-//! after the first error, which `unit.err` holds with its place; the tokens end with EOF either way.
+//! an error the read met: where it met it in the file as read, and its text
+struct private Met {
+    file : int
+    line : int
+    col : int
+    at_end : bool       //!< placed at its construct, met at its file's end
+    text : string
+}
+
+// the presumed name and line of physical line `line` of file `file`: by the `#line` state of its
+// inclusion while it is read, else as its path names it
+def private presumed(unit : CUnit; file, line : int) : tuple<name : int; line : int> {
+    if (unit.pp.state.file == file) {
+        return (name = unit.pp.state.pname, line = int(uint(line) + unit.pp.state.line_delta))
+    }
+    for (k in range(length(unit.pp.frames))) {
+        let st & = unsafe(unit.pp.frames[length(unit.pp.frames) - 1 - k].state)
+        return (name = st.pname, line = int(uint(line) + st.line_delta)) if (st.file == file)
+    }
+    return (name = unit.pp.files[file].name, line = line)
+}
+
+// `what` placed at physical `line`:`col` of file `file`
+def private met_at(unit : CUnit; file, line, col : int; what : string) : Met {
+    let at = presumed(unit, file, line)
+    return Met(file = file, line = line, col = col, text = "{unit.pp.names[at.name]}:{at.line}:{col}: {what}")
+}
+
+// `m` in `best` when the read met it first: of one file, the earlier place, a construct met at the
+// file's end after every place; of two files, the one recorded first
+def private earliest(var best : Met; m : Met) {
+    if (empty(best.text)) {
+        best = m
+    } elif (m.file == best.file && (m.at_end != best.at_end ? best.at_end : m.line < best.line || (m.line == best.line && m.col < best.col))) {
+        best = m
+    }
+}
+
+// why pragma `pr` is refused, "" when the C-IR may pass it by
+def private pragma_refusal(pr : PpPragma) : string {
+    return "" if (pr.ident)
+    for (passed in PASSED_PRAGMAS) {
+        return "" if (pr.text == passed || starts_with(pr.text, "{passed} ") || starts_with(pr.text, "{passed}("))
+    }
+    return starts_with(pr.text, "GCC error") ? "#pragma {pr.text}" : "the pragma '#pragma {pr.text}' is not parsed"
+}
+
+//! the first error the read met past `marks`, into `unit.err`: the preprocessor's (a warning is
+//! none), the lexer's, a pragma's the C-IR does not pass by
+[arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
+def private diagnosed(var unit : CUnit; var marks : ReadMarks&) : bool {
+    var best : Met
+    for (k in range(marks.diags, length(unit.pp.diags))) {
+        let d & = unsafe(unit.pp.diags[k])
+        continue if (d.severity == PpSeverity.warning)
+        if (d.line == 0) {
+            earliest(best, Met(file = -1, text = d.what))
+        } else {
+            earliest(best, Met(file = d.file, line = d.line, col = d.col, at_end = has_value(MET_AT_END, d.what),
+                               text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
+        }
+    }
+    for (k in range(marks.lexer, length(unit.pp.lx.diags))) {
+        let d & = unsafe(unit.pp.lx.diags[k])
+        earliest(best, met_at(unit, d.file, d.line, d.col, d.what))
+    }
+    for (k in range(marks.pragmas, length(unit.pp.pragmas))) {
+        let pr & = unsafe(unit.pp.pragmas[k])
+        let why = pragma_refusal(pr)
+        if (!empty(why)) {
+            earliest(best, Met(file = pr.file, line = pr.line, col = pr.col, text = "{unit.pp.names[pr.pname]}:{int(pr.pline)}:{pr.col}: {why}"))
+        }
+    }
+    for (k in range(marks.packs, length(unit.pp.packs))) {
+        let pk & = unsafe(unit.pp.packs[k])
+        earliest(best, met_at(unit, pk.file, pk.line, pk.col, "the pragma '#pragma pack' is not parsed (the record layout does not read it yet)"))
+    }
+    marks = ReadMarks(diags = length(unit.pp.diags), lexer = length(unit.pp.lx.diags), pragmas = length(unit.pp.pragmas), packs = length(unit.pp.packs))
+    unit.err = best.text
+    return !empty(unit.err)
+}
+
+//! The index in the unit's tokens of the preprocessor's token `emitted` (its count of the tokens
+//! before it, as a pragma's `emitted` gives it): past one more for each `::` split before it.
+def c_token_index(unit : CUnit; emitted : int) : int {
+    var at = emitted
+    for (k in unit.splits) {
+        at += k < emitted ? 1 : 0
+    }
+    return at
+}
+
+//! Read the unit's tokens to its end, as the preprocessor hands them out: identifiers become
+//! keywords by their symbol, pp-numbers integer or floating constants. False after the first
+//! error, the preprocessor's or a token's, which `unit.err` holds with its place; the tokens end
+//! with EOF either way.
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
 def c_tokens_read(var unit : CUnit) : bool {
-    var file = 0
-    var line_delta = 0
-    var more = pp_next(unit.lx)
-    while (more && empty(unit.err)) {
-        if (unit.lx.tok.kind == int(PpTok.HASH) && unit.lx.tok.at_bol) {
-            line_marker(unit, file, line_delta, more)
-            continue
-        }
+    var marks : ReadMarks
+    while (true) {
+        let more = pp_next_token(unit.pp)
+        break if (diagnosed(unit, marks) || !more)
+        let pk = unit.pp.tok.tok.kind
         let kind = c_kind_of(unit)
-        if (unit.lx.tok.kind == int(PpTok.COLONCOLON)) {
-            colons(unit, file, line_delta)
-            more = pp_next(unit.lx)
+        if (pk == int(PpTok.COLONCOLON)) {
+            var colon = kept(unit, int(CTok.COLON))
+            colon.len = 1
+            unit.splits |> push(unit.pp.emitted - 1)
+            unit.toks |> push(colon) // nolint:STYLE012 - the colons append to the unit's tokens
+            unit.toks |> push(CToken(kind = colon.kind, sym = -1, spelled = colon.spelled, buffer = colon.buffer, at = colon.at + 1, len = 1,
+                                     read_file = colon.read_file, read_line = colon.read_line, expanded = colon.expanded,
+                                     file = colon.file, line = colon.line, col = colon.expanded ? colon.col : colon.col + 1))
             continue
         } elif (kind == int(CTok.EOF)) {
-            let pk = unit.lx.tok.kind
             let what = pk == int(PpTok.PP_NUMBER) ? "invalid numeric constant" : pk == int(PpTok.IDENTIFIER) ? "invalid universal character name in" : "stray"
-            token_error(unit, file, line_delta, "{what} '{pp_spelling(unit.lx)}'")
+            let at = kept(unit, kind)
+            unit.err = "{c_file_name(unit, at.file)}:{at.line}:{at.col}: {what} '{pp_token_spelling(unit.pp)}'"
             break
         }
-        let t & = unsafe(unit.lx.flex.tok)
-        unit.toks |> push(CToken(kind = kind, sym = unit.lx.tok.sym, start = t.start, len = t.len,
-                                 file = file, line = unit.lx.tok.line + line_delta, col = unit.lx.tok.col))
-        more = pp_next(unit.lx)
+        unit.toks |> push(kept(unit, kind))
     }
-    if (empty(unit.err) && !empty(unit.lx.diags)) {
-        let d = unit.lx.diags[0]
-        unit.err = "{c_file_name(unit, file)}:{d.line + line_delta}:{d.col}: {d.what}"
-    }
-    var end = CToken(kind = int(CTok.EOF), sym = -1, start = unit.lx.flex.len, file = file, line = 1, col = 1)
+    var end = CToken(kind = int(CTok.EOF), sym = -1, file = 0, line = 1, col = 1, read_line = 1)
     if (!empty(unit.toks)) {
         let last = unit.toks[length(unit.toks) - 1]
         end.file = last.file
         end.line = last.line
+        end.read_file = last.read_file
+        end.read_line = last.read_line
         end.col = last.col + last.len
+        if (last.expanded) {
+            // after the call's `)`, the last token the main file's lexer read
+            end.file = unit.pp.state.pname
+            end.line = int(uint(unit.pp.lx.tok.line) + unit.pp.state.line_delta)
+            end.col = unit.pp.lx.tok.col + unit.pp.lx.tok.len
+            end.read_file = unit.pp.files[unit.pp.lx.file].name
+            end.read_line = unit.pp.lx.tok.line
+        }
     }
     unit.toks |> push(end)
     return empty(unit.err)
@@ -500,5 +692,12 @@ def c_tokens_of_text(var unit : CUnit; text : string; name : string) : bool {
         }
     }
     c_tokens_open(unit, bytes, name)
+    return c_tokens_read(unit)
+}
+
+//! `c_tokens_expand_open` and `c_tokens_read`.
+def c_tokens_expand(var unit : CUnit; var provider : PpFileProvider?; main : string; predefines : array<string>;
+                    search : array<string>; epoch : int64 = -1l) : bool {
+    c_tokens_expand_open(unit, provider, main, predefines, search, epoch)
     return c_tokens_read(unit)
 }

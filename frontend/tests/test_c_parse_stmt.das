@@ -83,11 +83,14 @@ def test_gnu(t : T?) {
     t |> equal(stmt("y = (\{ int z = 1; z + 1; \});"),
                "(expr_stmt (assign = (ident y) (stmt_expr (compound [(decl 0 [(spec int)] [(init_decl (d_name z) (int 1) -)]) (expr_stmt (binary + (ident z) (int 1)))]))))")
     t |> equal(stmt("asm(\"nop\");"), "(asm 0 (string \"nop\") [] [] [])")
-    t |> equal(stmt("__asm__ __volatile__ (\"\" ::: \"memory\");"), "(asm 1 (string \"\") [] [] [(asm_operand \"memory\")])")
+    t |> equal(stmt("__asm__ __volatile__ (\"\" ::: \"memory\");"), "(asm 1 (string \"\") [] [] [(string \"memory\")])")
     t |> equal(stmt("asm volatile inline (\"mov %1, %0\" : \"=r\"(x) : [in] \"r\"(y + 1), \"m\"(a[(1)]) : \"cc\", \"memory\");"),
-               "(asm 3 (string \"mov %1, %0\") [(asm_operand \"=r\"(x))] [(asm_operand [in] \"r\"(y + 1)) (asm_operand \"m\"(a[(1)]))] [(asm_operand \"cc\") (asm_operand \"memory\")])")
+               "(asm 3 (string \"mov %1, %0\") [(asm_operand - (string \"=r\") (ident x))] [(asm_operand in (string \"r\") (binary + (ident y) (int 1))) (asm_operand - (string \"m\") (index (ident a) (paren (int 1))))] [(string \"cc\") (string \"memory\")])")
     t |> equal(stmt("asm(\"\" : : : );"), "(asm 0 (string \"\") [] [] [])")
-    t |> equal(stmt("asm(\"\" :: \"r\"(x));"), "(asm 0 (string \"\") [] [(asm_operand \"r\"(x))] [])")
+    t |> equal(stmt("asm(\"\" :: \"r\"(x));"), "(asm 0 (string \"\") [] [(asm_operand - (string \"r\") (ident x))] [])")
+    t |> equal(stmt("\{ asm(\"\" :: \"r\"(sizeof(enum \{ T \}))); sizeof(T); \}"),
+               "(compound [(asm 0 (string \"\") [] [(asm_operand - (string \"r\") (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -)))] []) (expr_stmt (sizeof_expr (paren (ident T))))])")
+    t |> equal(stmt("\{ __extension__ __attribute__((unused)); \}"), "(compound [(decl 1 [(attribute __attribute__((unused)))] [])])")
 }
 
 [test(description = "scopes: a block's declarations end with it, a `for` declaration with the `for` (the probe's f7 and f15), a typedef shadowed in a block is a type again after it (f1, f5), and a selection statement's body is a scope of its own")]
@@ -139,6 +142,11 @@ def test_refusals(t : T?) {
     t |> equal(stmt("p = &&l;"), "error: t.c:1:5: a label address (&&label) is not parsed")
     t |> equal(stmt("\{ int g(void) \{ return 0; \} \}"), "error: t.c:1:15: a nested function definition is not parsed")
     t |> equal(stmt("\{ __attribute__((x)) x++; \}"), "error: t.c:1:3: a specifier list with no type specifier is not parsed")
+    t |> equal(stmt("asm(L\"nop\");"), "error: t.c:1:5: a prefixed string literal in an asm statement is not parsed")
+    t |> equal(stmt("asm(\"\" L\"nop\");"), "error: t.c:1:8: a prefixed string literal in an asm statement is not parsed")
+    t |> equal(stmt("asm(u8\"nop\");"), "error: t.c:1:5: a prefixed string literal in an asm statement is not parsed")
+    t |> equal(stmt("asm(\"\" : L\"=r\"(x));"), "error: t.c:1:10: a prefixed string literal in an asm statement is not parsed")
+    t |> equal(stmt("asm(\"\" ::: u\"memory\");"), "error: t.c:1:12: a prefixed string literal in an asm statement is not parsed")
 }
 
 [test(description = "a malformed statement ends with a located error at each position: a block's end, each parenthesis, `while` after `do`, each `;` of a `for`, a label, a `case`, an asm statement's parts, and a declaration where a statement must stand")]
@@ -166,7 +174,14 @@ def test_malformed(t : T?) {
         ("asm(x);", "t.c:1:5: expected a string literal, got 'x'"),
         ("asm \"\";", "t.c:1:5: expected '(', got '\"\"'"),
         ("asm volatile volatile (\"\");", "t.c:1:14: expected '(', got 'volatile'"),
-        ("asm(\"\" : , );", "t.c:1:10: expected an asm operand, got ','"),
+        ("asm(\"\" : , );", "t.c:1:10: expected a string literal, got ','"),
+        ("asm(\"\" : [1] \"r\"(x));", "t.c:1:11: expected an asm operand name, got '1'"),
+        ("asm(\"\" : [o \"r\"(x));", "t.c:1:13: expected ']', got '\"r\"'"),
+        ("asm(\"\" : \"=r\" x);", "t.c:1:15: expected '(', got 'x'"),
+        ("asm(\"\" : \"=r\"(x);", "t.c:1:17: expected ')', got ';'"),
+        ("if (1) l: int x;", "t.c:1:11: expected an expression, got 'int'"),
+        ("switch (1) case 1: int x;", "t.c:1:20: expected an expression, got 'int'"),
+        ("while (1) l: int x;", "t.c:1:14: expected an expression, got 'int'"),
         ("asm(\"\" : \"r\"(x) : : : );", "t.c:1:21: expected ')', got ':'"),
         ("asm(\"\" : \"r\"(x", "t.c:1:15: expected ')', got end of input"),
         ("asm(\"nop\")", "t.c:1:11: expected ';', got end of input"))
@@ -245,4 +260,24 @@ def test_whole_unit(t : T?) {
     t |> equal(definitions, 3, "function definitions")
     t |> equal(strings_used, 0, "string allocations")
     t |> success(heap_used <= 16, "heap allocations {heap_used} over {length(p.unit.toks)} tokens")
+}
+
+[test(description = "the audit's arms: each required parenthesis is located when missing; an `else if` chain closes every scope it opened; the lookahead past several `__extension__` and attribute groups reaches a declaration, and an unclosed attribute ends at the input's end; an asm statement with outputs alone keeps them; a `_Static_assert` as a `for` declaration; 256 nested `if`s with null bodies are exactly the bound")]
+def test_audit_arms(t : T?) {
+    t |> equal(stmt("x = (\{ 1; \};"), "error: t.c:1:12: expected ')', got ';'")
+    t |> equal(stmt("while (1 ;"), "error: t.c:1:10: expected ')', got ';'")
+    t |> equal(stmt("do ; while 1);"), "error: t.c:1:12: expected '(', got '1'")
+    t |> equal(stmt("do ; while (1;"), "error: t.c:1:14: expected ')', got ';'")
+    t |> equal(stmt("for ;;) ;"), "error: t.c:1:5: expected '(', got ';'")
+    t |> equal(stmt("for (;;i ;"), "error: t.c:1:10: expected ')', got ';'")
+    t |> equal(stmt("\{ if (sizeof(enum \{ T \})) ; else if (1) ; T x; \}"),
+               "(compound [(if (sizeof_type (type_name [(enum - 1 [(enumerator T -)])] -)) (null) (if (int 1) (null) -)) (decl 0 [(typedef_name T)] [(init_decl (d_name x) - -)])])")
+    t |> equal(stmt("\{ __extension__ __extension__ int x; \}"), "(compound [(decl 1 [(spec int)] [(init_decl (d_name x) - -)])])")
+    t |> equal(stmt("\{ __attribute__((unused)) __attribute__((unused)); \}"),
+               "(compound [(null [(attribute __attribute__((unused))) (attribute __attribute__((unused)))])])")
+    t |> equal(stmt("\{ __attribute__((unused)"), "error: t.c:1:25: expected ')' closing __attribute__, got end of input")
+    t |> equal(stmt("asm(\"\" : \"=r\"(x));"), "(asm 0 (string \"\") [(asm_operand - (string \"=r\") (ident x))] [] [])")
+    t |> equal(stmt("for (_Static_assert(1);;) ;"), "(for (static_assert (int 1) -) - - (null))")
+    t |> success(stmt("{repeat("if (1) ", 256)};") |> starts_with("(if (int 1) (if (int 1)"))
+    t |> equal(stmt("{repeat("if (1) ", 257)};"), "error: t.c:1:1797: nesting deeper than 256 levels is not parsed")
 }

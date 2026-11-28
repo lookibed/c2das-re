@@ -6,7 +6,7 @@ what Dumper A dumps (`converter/dumper_a.das`'s `dump_init_list`): an `init_list
 its items `{pos, v}` in the order of their positions, a position no item names left out (its
 value is zero), every designator resolved to the position it names.
 
-## 57. Initializers and lists {#c-inits-lists}
+## 68. Initializers and lists {#c-inits-lists}
 
 `c_initializer` gives the initializer node of an object of a pool type its C-IR (C11 6.7.9): a
 string literal for a character array (an array of 8-bit integers), braced alone or not, is the
@@ -21,7 +21,7 @@ list's count, `c_init_count`, is one past the last position the list fills at it
 built over the array with no count (`int b[] = {[1 ... 3] = 4}` has 4 elements, `struct P a[] =
 {1, 2, 3}` of a two-member `P` has 2).
 
-## 58. Positions and the order of a list {#c-inits-order}
+## 69. Positions and the order of a list {#c-inits-order}
 
 A list fills one object, its current object (6.7.9p17). A struct's positions are its field
 indices, an unnamed bit-field skipped, since it is padding and clang gives it no item (`struct {
@@ -34,7 +34,7 @@ the item before it filled, the first position for the first item. An item past t
 position is dropped, as clang drops it with a warning; it is not typed. An item for a position an
 earlier item filled replaces it.
 
-## 59. Designators {#c-inits-designators}
+## 70. Designators {#c-inits-designators}
 
 An item's designators are resolved from the list's own object: `.member` (or the old GNU
 `member:`, which the parser reads as it) names a field of a struct or union, through the anonymous
@@ -52,18 +52,18 @@ array, a member the record does not have, an index other than an integer constan
 range followed by another designator, and a designator into a subobject an earlier item gave a
 whole value (`{.a = p, .a.x = 1}`, clang's designated update of `p`, which Dumper A does not dump).
 
-## 60. Elided braces {#c-inits-elision}
+## 71. Elided braces {#c-inits-elision}
 
 A value at the position of an aggregate subobject that does not initialize the subobject whole has
 the subobject's braces elided (6.7.9p20): the subobject's list opens at that position and the value
 goes to its first position, again with braces elided while that position is an aggregate; the items
-after it fill the subobject while it has positions, then the object around it goes on (section 58).
+after it fill the subobject while it has positions, then the object around it goes on (section 69).
 A braced list, a string literal for a character array, and a value of the subobject's own record
 type (`struct Q q = {p, 1}` with `p` a `struct P`: the value converted to the record, its read)
 initialize a subobject whole; any other value, a string literal for an array of other than 8-bit
 integers among them, opens its braces. A value at a flexible array member's position is refused.
 
-## 61. Compound literals {#c-inits-compound}
+## 72. Compound literals {#c-inits-compound}
 
 `(T){...}` is a `compound_lit` of type `T` over its list (`c_compound_literal`): an aggregate's
 list as an initializer's (sections 57 to 60), an unsized array's count taken from its list as an

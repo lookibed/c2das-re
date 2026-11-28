@@ -2,19 +2,37 @@
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family. It
 describes Dumper C's parser: the C tokens it reads, the tree it builds, and how it decides what it
-reads. The parser reads expressions, type names, declarations with their record and enum bodies, statements,
-function definitions and whole units.
+reads. The parser reads expressions, type names, declarations with their record and enum bodies,
+function definitions and whole units; its statements are `ARCHITECTURE_STATEMENTS.md`.
 
 ## 14. The C tokens {#c-tokens}
 
-`c_tokens.das` turns the pp-tokens of section 4 into C tokens (C11 5.1.1.2, translation phase 7).
-Its input today is a preprocessed unit, the text `clang -E` prints. `c_tokens_open` takes the bytes
-and opens the pp-lexer on them; `c_tokens_read` reads every token into `unit.toks`, an array of
-small plain structs, and ends it with one EOF token. A token is its kind (`CTok`), its symbol, its
-byte range in the lexer's working buffer, and its place: a file id, a line and a column.
+`c_tokens.das` turns the tokens the preprocessor hands out into C tokens (C11 5.1.1.2, translation
+phase 7). The unit holds a `Preprocessor` (`ARCHITECTURE_PP.md`) read with `pp_next_token`: over a
+preprocessed unit, the text `clang -E` prints (`c_tokens_open`: `pp_start` over one file in memory),
+or over C source with macro expansion (`c_tokens_expand_open`: `pp_expand_start` over a file
+provider). `c_tokens_read` reads every token into `unit.toks`, small plain structs, then one EOF.
+A token is its kind (`CTok`), its symbol, where its spelling lies, and its presumed place: a file name id
+(an index of the preprocessor's `names`: 0 the unit's own name, 1 the predefined macros' buffer,
+then each name a file, `#line` or a line marker gives), a line and a column. A token of the source
+stands at its own place; a token an expansion makes, a macro body's or an argument's, stands at the
+outermost macro name of its call, line and column, as clang's expansion location does, and is
+marked `expanded`; `read_file` and `read_line` place it in the file as read, `#line` aside (over
+`-E` text, its presumed place). The end after an expansion stands after the call's `)`.
 
-Nothing is allocated per token. The token array grows by doubling. A keyword is found by its
-symbol: `c_tokens_open` interns every keyword spelling in the lexer's interner once and records
+The spelling is kept where the preprocessor keeps it (`PpSpelled`): a file's working buffer, the
+macro body pool or a symbol, all valid for the unit's life, read through `pp_span_of`. A pasted or
+stringified token's spelling lies in the expansion's pool, which the next `pp_next_token` may
+clear, so it is copied into the unit's own `pool` as it is read. `c_span` gives a token's bytes,
+`c_spelling` a string of them, and `c_range_text` the text of a run of tokens: the bytes between
+its ends as written when the tokens cover them - each read from one file, none an expansion's, with
+nothing but blanks between, so no directive, skipped group, comment or dropped argument - else the
+spellings with a blank between each two.
+
+Nothing is allocated per token. The token array and the pool grow by doubling; what a directive
+costs (a line marker's name, say) is the preprocessor's. Each open starts a new preprocessor and
+hands it the interner of the last one, so a name keeps its symbol from unit to unit. A keyword is
+found by its symbol: each open interns every keyword spelling in the interner once and records
 each one's kind in `kind_of_sym`, an array indexed by symbol, so an identifier's kind costs one
 index. A symbol the array does not know yet is read once, on its first token: a universal
 character name in it that C11 6.4.3p2 forbids (one naming a character below U+00A0 other than
@@ -37,19 +55,22 @@ neither is an error, `invalid numeric constant '<spelling>'`; so is an imaginary
 is not computed here. A punctuator keeps the kind `PpTok` gives it, so a digraph has the kind of
 the punctuator it spells. A character constant and a string literal stay one token each; adjacent
 string literals are joined by the parser. A `::`, which the pp-lexer reads as one token, is two
-`:` tokens, as clang reads it in C17. `#` and `##` outside a line marker, a pp-token of kind OTHER
-and an unterminated comment are errors.
+`:` tokens, as clang reads it in C17, the second a column on (at the macro name for an expansion's);
+`unit.splits` records each, so `c_token_index` maps a pragma's `emitted` count to a token. A `#`, a
+`##` and a pp-token of kind OTHER are errors.
 
-A `#` that starts a line opens a line marker, `# <line> "<file>" <flags>` as `clang -E` writes it,
-or `#line <line> "<file>"`. The lines after it are placed at that line, in that file; a marker with
-no file keeps the file. A file name with a string prefix (`L"w.h"`) is an error. The file name is
-interned as the bytes between its quotes, so a file a marker names again has its first id; file 0 is the unit's own name. Any other directive (`#pragma`
-among them) is an error naming it. The first error ends the read and `unit.err` holds it as
-`file:line:col: what`.
+Directives are the preprocessor's: a line marker, `#line`, `#pragma` and every other directive
+are done there, and a `#` or `##` the preprocessor hands out is a stray token. A pragma the
+preprocessor records (`pp.pragmas`, `pp.packs`) is refused at its place, `the pragma '#pragma
+<text>' is not parsed`, unless the C-IR may pass it by (`PASSED_PRAGMAS`): a `GCC diagnostic`,
+`clang diagnostic`, `message` or `GCC warning` pragma and `#ident` change no C-IR. `pack` is refused
+until the record layout reads `pp.packs`; `#pragma GCC error "<text>"` is the error it asks for.
 
-The token view reads the pp-lexer itself, not the directive layer of section 5, so it reads the
-line markers of a preprocessed unit with its own reader and shares nothing with the directive
-layer's `#line` (section 10): it takes the name's bytes as written, escapes included, and no flag.
+The first error ends the read, `file:line:col: what` in `unit.err`: a token's, a pragma's, the
+preprocessor's (`pp.diags`, a warning being none) or the lexer's (`pp.lx.diags`, placed in its own
+file by that file's `#line` state, else its path). Of those one read meets the first in reading
+order wins: in one file the earlier place, an unterminated call or conditional (placed at its start)
+counted at the file's end; across files the one recorded first.
 
 ## 15. The tree {#c-ast}
 
@@ -204,8 +225,8 @@ specifiers hold `typedef`, else as an ordinary identifier. So `int T = T;` reads
 typedef name declared again as the same typedef stays a typedef name. Before the first token the
 table holds the typedef names clang declares in every C unit of the dialect's triples:
 `__builtin_va_list`, `__builtin_ms_va_list`, `__NSConstantString`, `__int128_t` and
-`__uint128_t`, and under msvc `size_t` (`c_parser_open_text`'s `msvc`). The two 128-bit names
-name a refused type, so a use of either is refused there, `the __int128 type is not parsed`.
+`__uint128_t`, and under msvc `size_t` (the `msvc` of `c_parser_open_text` and
+`c_parser_open_source`). The two 128-bit names name a refused type, so a use of either is refused there, `the __int128 type is not parsed`.
 
 `c_declaration` reads a declaration in a block. A function definition has no place there, so its
 `{` is `expected ';'`; an old-style identifier list outside a definition is invalid C (C11
@@ -273,6 +294,7 @@ scope, so a body reads `typedef char T; int f(enum { T = 1 } x) { return sizeof(
 enumerator, as clang does. An identifier list opens no prototype scope: its names are bound by the declaration
 list, in the definition's scope.
 
-The body is a compound statement (`ARCHITECTURE_STATEMENTS.md`, section 23) read in the scope the definition opens:
-`c_parameters_declare` binds the parameter names of the definition's own function declarator in
-it, so a parameter shadows a typedef name in the body and the name is a type again after it.
+The body is a compound statement (`ARCHITECTURE_STATEMENTS.md` section 23) read in the scope the
+definition opens, which `c_parameters_declare` fills with the definition's own prototype scope: a
+parameter or an enumerator of a parameter's type shadows a typedef name in the body, and the name
+is a type again after it.

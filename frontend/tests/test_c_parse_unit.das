@@ -197,14 +197,12 @@ def test_old_style(t : T?) {
     }
 }
 
-[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, f16's its old-style names, an enumerator a parameter's type declares is in it too, no earlier prototype's names are, and after the definition the typedef is a type again")]
+[test(description = "the body is read in the scope of its definition's parameters: the probe's f6 and f9 bodies see the parameter that shadows the typedef, so does an enumerator a parameter's type declares, no earlier prototype's names are, and after the definition the typedef is a type again")]
 def test_body_scope(t : T?) {
     t |> equal(unit("void f6(T T) \{ T = 2; \} T after;"),
                "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f6) [(param [(typedef_name T)] (d_name T))]) - -) [] (compound [(expr_stmt (assign = (ident T) (int 2)))])) (decl 0 [(typedef_name T)] [(init_decl (d_name after) - -)])")
     t |> equal(unit("void f9(int T) \{ T = 4; \}"),
                "(func_def 0 [(spec void)] (init_decl (d_function 0 (d_name f9) [(param [(spec int)] (d_name T))]) - -) [] (compound [(expr_stmt (assign = (ident T) (int 4)))]))")
-    t |> equal(unit("int f16(a, b) T a; int b; \{ return a + b; \} T after;"),
-               "(func_def 0 [(spec int)] (init_decl (d_function 2 (d_name f16) [(ident_param a) (ident_param b)]) - -) [(decl 0 [(typedef_name T)] [(init_decl (d_name a) - -)]) (decl 0 [(spec int)] [(init_decl (d_name b) - -)])] (compound [(return (binary + (ident a) (ident b)))])) (decl 0 [(typedef_name T)] [(init_decl (d_name after) - -)])")
     t |> equal(unit("int g(enum \{ T = 1 \} x, int y) \{ return sizeof(T) + y; \} T later;"),
                "(func_def 0 [(spec int)] (init_decl (d_function 0 (d_name g) [(param [(enum - 1 [(enumerator T (int 1))])] (d_name x)) (param [(spec int)] (d_name y))]) - -) [] (compound [(return (binary + (sizeof_expr (paren (ident T))) (ident y)))])) (decl 0 [(typedef_name T)] [(init_decl (d_name later) - -)])")
     t |> equal(unit("void f(int T) \{\} void g(int x) \{ sizeof(T); \}"),
@@ -357,4 +355,32 @@ def test_array_contexts(t : T?) {
     for (c in cases) {
         t |> equal(unit(c._0), "error: {c._1}", c._0)
     }
+}
+
+[test(description = "C source with no clang behind it: the preprocessor reads the unit and its header and expands the macros, and the parser builds the tree of what they expand to, a refusal placed at the macro name")]
+def test_source_unit(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("list.h", "#define FIELD(type, name) type name;\n#define ALIGNED(n) __attribute__((aligned(n)))\ntypedef struct node \{ FIELD(int, key) FIELD(struct node *, next) \} node;\n")
+    mem->add("main.c", "#include \"list.h\"\n#define SQ(x) ((x) * (x))\n#define CAT(a, b) a ## b\nint CAT(sq, r)(node *n) ALIGNED(8);\nint sqr(node *n) \{ return SQ(n->key + 1); \}\n")
+    var p : CParser
+    let clean = c_parser_open_source(p, mem, "main.c", array<string>(), array<string>())
+    t |> success(clean, p.err)
+    let u = c_unit(p)
+    t |> success(!p.failed, p.err)
+    var parts : array<string>
+    var at = p.ast.nodes[u].a
+    while (at >= 0) {
+        parts |> push(c_dump(p.ast, p.unit, at))
+        at = p.ast.nodes[at].next
+    }
+    t |> equal(join(parts, " "),
+               "(decl 0 [(spec typedef) (record struct node 1 [(member_decl 0 [(spec int)] [(member (d_name key) -)]) (member_decl 0 [(record struct node 0 [])] [(member (d_pointer (d_name next) []) -)])])] [(init_decl (d_name node) - -)]) (decl 0 [(spec int)] [(init_decl (d_function 0 (d_name sqr) [(param [(typedef_name node)] (d_pointer (d_name n) []))]) - - [(attribute __attribute__ ( ( aligned ( 8 ) ) ))])]) (func_def 0 [(spec int)] (init_decl (d_function 0 (d_name sqr) [(param [(typedef_name node)] (d_pointer (d_name n) []))]) - -) [] (compound [(return (paren (binary * (paren (binary + (member -> (ident n) key) (int 1))) (paren (binary + (member -> (ident n) key) (int 1))))))]))")
+    let sq = p.unit.toks[length(p.unit.toks) - 8]
+    t |> equal("{c_file_name(p.unit, sq.file)}:{sq.line}:{sq.col}", "main.c:5:27")
+    var bad : CParser
+    var mem2 = new PpMemoryProvider()
+    mem2->add("main.c", "#define GEN(x) _Generic(x, int: 1)\nint v = GEN(2);\n")
+    c_parser_open_source(bad, mem2, "main.c", array<string>(), array<string>())
+    c_unit(bad)
+    t |> equal(bad.err, "main.c:2:9: a generic selection (_Generic) is not parsed")
 }

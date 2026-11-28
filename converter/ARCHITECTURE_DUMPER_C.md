@@ -6,13 +6,14 @@ Dumper C, the clang-free C-IR builder of `frontend/` (`frontend/ARCHITECTURE_TYP
 
 ## 1. The driver {#dumper-c}
 
-`dumper_c_tu` builds a unit's C-IR with Dumper C: clang preprocesses the unit under Dumper A's
-flags (`dumper_frontend_flags`: the dialect's triple and predefined-macro table, `-funsigned-char`,
-`-nostdinc` and the own headers) into text whose line markers name each token's file and line, the
-parser reads that text, and `c_ir_unit` builds the C-IR, the own headers' folder as the library.
-Every place in the C-IR is the builder's own token's (`frontend/ARCHITECTURE_NAMES.md` section 39):
-clang gives the text and nothing else. Clang stands in here for Dumper C's own preprocessor until it
-expands macros; nothing under `frontend/` starts clang. A sidecar's `defines`, `include_dirs` and
+`dumper_c_tu` builds a unit's C-IR with Dumper C: the frontend's preprocessor reads the unit
+(`c_parser_open_source`: the dialect's predefined-macro table, the own headers' folder searched, the
+file system through `PpFioProvider`), the parser reads its tokens, and `c_ir_unit` builds the C-IR,
+the own headers' folder as the library. Every place in the C-IR is the builder's own token's
+(`frontend/ARCHITECTURE_NAMES.md` section 48). Where an `#if` or `#elif` needs the evaluator PP.4
+brings (`dumper_c_needs_evaluator`), clang preprocesses the unit under Dumper A's flags
+(`dumper_frontend_flags`) and the parser reads that text, whose tokens have only the place its line
+markers present; nothing under `frontend/` starts clang. A sidecar's `defines`, `include_dirs` and
 `include_files` are refused, since the builder takes none yet; the C-IR's producer is
 `c2das-dumper-c 0.1`.
 

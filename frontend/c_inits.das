@@ -131,7 +131,7 @@ def private designator_path(var r : CIr; var p : CParser; dn : CNodeRec; top : F
             c_refuse(r, p, dn.tok, "a member designator of other than a struct or union")
             return <- path
         }
-        let name = pp_symbol_text(p.unit.lx, dn.a)
+        let name = c_symbol_text(p.unit, dn.a)
         path <- c_member_path(r, top.t, name)
         if (empty(path)) {
             c_refuse(r, p, dn.tok, "a designator of a member '{name}' its record does not have, which")
@@ -146,6 +146,11 @@ def private designator_path(var r : CIr; var p : CParser; dn : CNodeRec; top : F
     var w = 0l
     if (!c_fold_node(r, p, dn.a, v) || (dn.b >= 0 && !c_fold_node(r, p, dn.b, w))) {
         c_refuse(r, p, dn.tok, "an array index other than an integer constant expression")
+        return <- path
+    }
+    // a position past 2^31 - 2 leaves the array no count clang's 32-bit size holds
+    if (v >= 2147483647l || w >= 2147483647l) {
+        c_refuse(r, p, dn.tok, "an array sized past 2^31 - 1")
         return <- path
     }
     path |> push(int(v))
@@ -192,7 +197,7 @@ def private place(var r : CIr; var p : CParser; var stack : array<Frame>; n : in
     var v : CirExpr?
     if (node.kind == CNode.INIT_LIST || (node.kind == CNode.STRING && is_char_array(r, st)) || !is_aggregate(r, st)) {
         if (typed != null) {
-            v = c_assigned(r, typed, st)
+            v = c_assigned(r, p, typed, st, node.tok)
         } else {
             v = c_initializer(r, p, n, st)
         }
@@ -204,7 +209,7 @@ def private place(var r : CIr; var p : CParser; var stack : array<Frame>; n : in
                 return false if (typed == null)
             }
             if (unq(r, typed.t) == unq(r, st)) {
-                v = c_assigned(r, typed, st)
+                v = c_assigned(r, p, typed, st, node.tok)
             }
         }
         if (v == null) {
@@ -311,7 +316,7 @@ def c_initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? {
         return s
     } elif (n.kind != CNode.INIT_LIST) {
         var x = c_expr(r, p, init)
-        return x == null ? null : c_assigned(r, x, t)
+        return x == null ? null : c_assigned(r, p, x, t, n.tok)
     }
     let first = n.a
     if (!is_aggregate(r, t)) {

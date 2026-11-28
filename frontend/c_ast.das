@@ -165,8 +165,8 @@ let NODE_FORMS <- fixed_array(
     ("break", "-----"),
     ("return", "-n---"),
     ("stmt_expr", "-n---"),         // GNU `({ ... })`, its compound statement
-    ("asm", "inlll"),               // 1 `volatile`, 2 `inline`; the template, outputs, inputs, clobbers
-    ("asm_operand", "-r---"))       // an asm operand's or clobber's tokens
+    ("asm", "inlll"),               // 1 `volatile`, 2 `inline`; the template, outputs, inputs, clobbers (strings)
+    ("asm_operand", "-snn-"))       // the `[name]` (- for none), the constraint, the expression
 
 //! One node: its kind, its fields by `NODE_FORMS`, the next node of the list it is in, and `tok`,
 //! the token it starts at, which places it.
@@ -224,15 +224,14 @@ def private field_text(var unit : CUnit; node : CNodeRec; role, v : int) : strin
     if (role == 'k') {
         return c_kind_name(v)
     } elif (role == 's') {
-        return v < 0 ? "-" : pp_symbol_text(unit.lx, v)
+        return v < 0 ? "-" : c_symbol_text(unit, v)
     } elif (role == 'i') {
         return "{v}"
     } elif (role == 't') {
         let count = node.kind == CNode.STRING ? node.b : 1
         return join([for (k in range(count)); c_spelling(unit, v + k)], " ")
     }
-    let last = unit.toks[node.b]
-    return c_text(unit, unit.toks[v].start, last.start + last.len - unit.toks[v].start)
+    return c_range_text(unit, v, node.b)
 }
 
 //! The tree under node `n` as one line: `(<name> <fields>)`, a missing node `-`, a list `[...]`;

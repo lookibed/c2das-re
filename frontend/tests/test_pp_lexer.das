@@ -440,3 +440,21 @@ def test_no_allocation(t : T?) {
     t |> equal(again.y, 0, "heap allocations, every name known")
     t |> equal(again.z, 0, "string allocations, every name known")
 }
+
+[test(description = "the current token's range in the working buffer and the buffer's first byte: a token past a splice is read there with the splice removed")]
+def test_token_range(t : T?) {
+    var lx : PpLexer
+    pp_open_text(lx, "ab c\\\nd e", 0)
+    var seen : array<string>
+    while (pp_next(lx)) {
+        let r = pp_token_range(lx)
+        let data = pp_buffer_data(lx)
+        seen |> push(build_string() $(var out) {
+            out |> write("{r.start}+{r.len}:")
+            for (i in range(r.start, r.start + r.len)) {
+                out |> write_char(int(unsafe(data[i])))
+            }
+        })
+    }
+    t |> equal(join(seen, " "), "0+2:ab 3+2:cd 6+1:e")
+}

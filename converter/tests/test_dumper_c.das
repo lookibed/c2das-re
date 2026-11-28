@@ -53,3 +53,28 @@ def test_dasflex_missing(t : T?) {
     t |> equal(dasflex_missing(bare), "--dumper c needs dasFlex at {bare}/fetch/dasFlex: scripts/fetch_dasflex.sh fetches it")
     t |> equal(dasflex_missing(getcwd()), "")
 }
+
+// Dumper C's C-IR of unit `text` written as `<name>` under the test folder: its first function's
+// first statement's place and the C-IR text past the producer, or `error: ` and the error
+def private dumped_c(name, text : string) : string {
+    let path = path_join(test_temp_dir(), name)
+    fwrite(path, text)
+    var tu : CirTu
+    var error : string
+    dumper_c_tu(path, target_lp64_linux(), default_clang(), DumpInputs(), tu, error)
+    var listed = "error: {error}"
+    if (empty(error)) {
+        let last = tu.decls[length(tu.decls) - 1]
+        listed = "{last.name}@{last.loc.line}:{last.loc.col} body@{last.body.body[0].loc.line}:{last.body.body[0].loc.col}"
+    }
+    delete_tu(tu)
+    return listed
+}
+
+[test(description = "Dumper C reads C source through the frontend's preprocessor, the own headers searched and the predefined macros defined, so a node an expansion made stands at its macro name; every place in the file as read, `#line` aside; where an #if needs PP.4, clang -E stands in", timeout = 600)]
+def test_dumper_c_source(t : T?) {
+    t |> equal(dumped_c("raw.c", "#include <stddef.h>\n#define RET(v) return (v)\n#line 50\nint f(void) \{\n  RET(\n__LP64__);\n\}\n"), "f@4:5 body@5:3")
+    t |> equal(dumped_c("pp4.c", "#if __LINE__ > 0\n#define RET(v) return (v)\n#endif\nint f(void) \{\n  RET(\n1);\n\}\n"), "f@4:5 body@5:3")
+    t |> success(dumper_c_needs_evaluator("main.c:1:2: #if expression needs the PP.4 evaluator: 1 + 1"))
+    t |> success(!dumper_c_needs_evaluator("main.c:1:2: #error x"))
+}

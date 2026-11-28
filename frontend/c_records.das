@@ -29,7 +29,7 @@ def private tag_kind(p : CParser; n : int) : string {
 def private tag_tok(var p : CParser; n : int) : int {
     let node = p.ast.nodes[n]
     return node.tok if (node.a < 0)
-    let tag = pp_symbol_text(p.unit.lx, node.a)
+    let tag = c_symbol_text(p.unit, node.a)
     var t = node.tok + 1
     while (t < length(p.unit.toks) - 1 && c_spelling(p.unit, t) != tag) {
         t++
@@ -115,9 +115,10 @@ def c_layout_attributes(var b : CTypes; var p : CParser; at : int; var packed : 
 }
 
 //! The `dims` of a declarator `d` of pool type `t` (`docs/c-ir-spec.md` section 3): per array level
-//! from the outermost, in the order the source spells the sizes, the enumerator a size names alone
-//! (`enum_t` its pool enum; its value is the level's count), else `enum_t` 0 and no item; none
-//! when no size names one, as Dumper A records them.
+//! from the outermost, the sizes the source spells taken in order (a level with no size spells
+//! none, so the sizes after it meet the levels before theirs, as Dumper A meets them), the
+//! enumerator a size names alone when its value is that level's count (`enum_t` its pool enum),
+//! else `enum_t` 0 and no item; none when no size names one so, as Dumper A records them.
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-dims")]
 def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
     var sizes : array<int>
@@ -138,8 +139,8 @@ def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
         var dim = CirDim()
         if (size.kind == CNode.IDENT) {
             let id = b.ids?[size.a] ?? CId()
-            if (id.enum_t >= 0) {
-                dim = CirDim(enum_t = id.enum_t, item = pp_symbol_text(p.unit.lx, size.a))
+            if (id.enum_t >= 0 && id.enum_v == int64(b.pool[level].count)) {
+                dim = CirDim(enum_t = id.enum_t, item = c_symbol_text(p.unit, size.a))
                 named = true
             }
         }
@@ -153,7 +154,7 @@ def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
 }
 
 // whether token `tok` stands in a file under the own libc headers' folder
-def private in_library_file(b : CTypes; var p : CParser; tok : int) : bool => !empty(b.library_dir) && starts_with(c_file_name(p.unit, p.unit.toks[tok].file), b.library_dir)
+def private in_library_file(b : CTypes; p : CParser; tok : int) : bool => !empty(b.library_dir) && starts_with(c_file_name(p.unit, p.unit.toks[tok].file), b.library_dir)
 
 // the layout requirement of pool type `t` under msvc: a record's, through arrays; 0 for any other
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]
@@ -234,7 +235,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
             width = int(v)
         }
         let sym = node.a >= 0 ? c_declarator_name(p.ast, node.a) : -1
-        let name = sym >= 0 ? pp_symbol_text(p.unit.lx, sym) : ""
+        let name = sym >= 0 ? c_symbol_text(p.unit, sym) : ""
         var dims <- node.a >= 0 ? c_dims(b, p, node.a, t) : array<CirDim>()
         add_member(b, p, t, name, width, node.tok, own_packed, own_aligned, dims, fields, rec)
         x = node.next
@@ -248,11 +249,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
 def private build_record(var b : CTypes; var p : CParser; n, pt : int) : bool {
     b.tag_built[n] = pt
     let node = p.ast.nodes[n]
-    if (node.a >= 0) {
-        b.defined_tags[node.a] = true
-    }
-    b.tag_names[b.pool[pt].name] = true
-    if (node.a >= 0 && pp_symbol_text(p.unit.lx, node.a) == "__jmp_buf_tag") {
+    if (node.a >= 0 && c_symbol_text(p.unit, node.a) == "__jmp_buf_tag") {
         c_refuse(b, p, node.tok, "glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`,")
         return false
     }
@@ -303,10 +300,6 @@ def private as_int(v : int64) : int64 {
 def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
     b.tag_built[n] = pt
     let node = p.ast.nodes[n]
-    if (node.a >= 0) {
-        b.defined_tags[node.a] = true
-    }
-    b.tag_names[b.pool[pt].name] = true
     if (in_library_file(b, p, node.tok)) {
         b.library_tags[pt] = true
     }
@@ -319,6 +312,9 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
     }
     let msvc = is_msvc(b.tu.target)
     let int_t = c_builtin(b, "int")
+    // the type an enumerator has while the body is read: `int` for a value `int` holds, else its
+    // initializer's, or with none the one before's (clang's rule under linux)
+    var prev_t = int_t
     var items : array<CirEnumItem>
     var next = 0l
     var lowest = 0l
@@ -327,18 +323,24 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
     while (e >= 0) {
         let en = p.ast.nodes[e]
         var v = next
-        if (en.b >= 0 && (b.fold == null || !invoke(b.fold, b, p, en.b, v))) {
+        var init_t = prev_t
+        if (en.b >= 0 && (b.fold_type == null || !invoke(b.fold_type, b, p, en.b, v, init_t))) {
             c_refuse(b, p, p.ast.nodes[en.b].tok, "an enumerator value other than an integer constant expression")
             return false
         }
-        if (msvc) {
+        // under msvc an initializer's value is converted to the enum's `int` at once; one counted on
+        // from the one before is read unwrapped in the body, and wrapped in the enum
+        if (msvc && en.b >= 0) {
             v = as_int(v)
         }
-        let name = pp_symbol_text(p.unit.lx, en.a)
-        items |> push(CirEnumItem(name = name, v = v))
-        c_ir_bind(b, en.a, CId(t = int_t, old_style = -1, enum_t = pt, enum_v = v, name = name))
-        lowest = min(lowest, v)
-        highest = max(highest, v)
+        let held = msvc ? as_int(v) : v
+        let name = c_symbol_text(p.unit, en.a)
+        items |> push(CirEnumItem(name = name, v = held))
+        let own_t = v >= -2147483648l && v <= 2147483647l ? int_t : en.b >= 0 ? init_t : v <= 4294967295l && prev_t == int_t ? c_builtin(b, "unsigned int") : prev_t
+        c_ir_bind(b, en.a, CId(t = own_t, old_style = -1, enum_t = pt, enum_v = v, name = name))
+        prev_t = own_t
+        lowest = min(lowest, held)
+        highest = max(highest, held)
         next = v + 1l
         e = en.next
     }
@@ -371,14 +373,13 @@ def private bind_enumerators(var b : CTypes; p : CParser; n, pt : int) {
 }
 
 // specifier `n` with a body defined: its pool type, the tag's earlier incomplete one where a use
-// came first, built now; `hint` names a record or enum with no tag (a typedef's name). False with
-// the error set for a tag defined again or used before its definition in a scope it does not
-// reach
+// came first, built now, named as `c_tag_names` names it. False with the error set for a tag
+// defined again in its own scope, an enum defined again in another and a tag of another kind
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-definitions")]
-def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) : int {
+def private define_tag(var b : CTypes; var p : CParser; n : int) : int {
     let node = p.ast.nodes[n]
     let kind = tag_kind(p, n)
-    var tag = node.a >= 0 ? pp_symbol_text(p.unit.lx, node.a) : hint
+    let tag = b.tag_names_of?[n] ?? ""
     var pt = -1
     if (node.a >= 0 && c_tag_in_scope(b, node.a)) {
         pt = b.tags?[node.a] ?? -1
@@ -387,12 +388,9 @@ def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) 
             return -1
         }
     } else {
-        if (node.a >= 0 && key_exists(b.defined_tags, node.a)) {
-            if (kind == "enum") {
-                c_refuse(b, p, node.tok, "an enum tag defined again in another scope")
-                return -1
-            }
-            tag = free_tag_name(b, p, tag)
+        if (kind == "enum" && node.a >= 0 && key_exists(b.defined_tags, "enum {c_symbol_text(p.unit, node.a)}")) {
+            c_refuse(b, p, node.tok, "an enum tag defined again in another scope")
+            return -1
         }
         pt = new_tag(b, kind, tag)
         if (kind == "enum") {
@@ -402,6 +400,9 @@ def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) 
             c_types_bind_tag(b, node.a, pt)
         }
     }
+    if (node.a >= 0) {
+        b.defined_tags["{kind} {c_symbol_text(p.unit, node.a)}"] = true
+    }
     let ok = kind == "enum" ? build_enum(b, p, n, pt) : build_record(b, p, n, pt)
     if (!ok) {
         b.tag_built |> erase(n)
@@ -409,20 +410,122 @@ def private define_tag(var b : CTypes; var p : CParser; n : int; hint : string) 
     return ok ? pt : -1
 }
 
-// the name a later definition of tag `tag` takes, as Dumper A names it: the first `<tag><n>` from 1
-// that no record, enum, typedef, file-scope name or identifier in scope spells
-[arch(at="ARCHITECTURE_RECORDS.md#c-records-definitions")]
-def private free_tag_name(b : CTypes; var p : CParser; tag : string) : string {
-    var n = 1
-    while (true) {
-        let name = "{tag}{n}"
-        let sym = c_symbol(p.unit, name)
-        if (!key_exists(b.tag_names, name) && !key_exists(b.file_scope_names, name) && !key_exists(b.typedefs, sym) && !key_exists(b.ids, sym) && !key_exists(b.tags, sym)) {
-            return name
-        }
-        n++
+// the name a record or enum with no tag takes from typedef declaration `decl`, as clang gives one
+// for linkage: the first declarator that is the name alone (in parentheses or not), when the
+// specifiers carry no qualifier; "" for any other
+def private typedef_hint(var p : CParser; decl : int) : string {
+    var spec = p.ast.nodes[decl].a
+    while (spec >= 0) {
+        let s = p.ast.nodes[spec]
+        return "" if (s.kind == CNode.SPEC_KEYWORD && (s.op == int(CTok.CONST) || s.op == int(CTok.VOLATILE) || s.op == int(CTok.RESTRICT)))
+        spec = s.next
     }
-    return tag
+    var id = p.ast.nodes[decl].b
+    while (id >= 0) {
+        var d = p.ast.nodes[id].a
+        while (d >= 0 && p.ast.nodes[d].kind == CNode.D_PAREN) {
+            d = p.ast.nodes[d].a
+        }
+        return c_symbol_text(p.unit, p.ast.nodes[d].a) if (d >= 0 && p.ast.nodes[d].kind == CNode.D_NAME)
+        id = p.ast.nodes[id].next
+    }
+    return ""
+}
+
+// what `c_tag_names` gathers over the unit: the record definitions with a tag in source order,
+// the names a numbered tag avoids, each untagged definition's typedef name
+struct private TagNaming {
+    records : array<int>
+    taken : table<string>
+}
+
+// node `n` and the nodes under it, in source order, into `naming` and `b.tag_names_of`
+def private gather_names(var b : CTypes; var p : CParser; n : int; var naming : TagNaming) {
+    return if (n < 0)
+    let node = p.ast.nodes[n]
+    let library = in_library_file(b, p, node.tok)
+    if ((node.kind == CNode.SPEC_RECORD || node.kind == CNode.SPEC_ENUM) && node.b == 1) {
+        if (node.a >= 0) {
+            b.tag_names_of[n] = c_symbol_text(p.unit, node.a)
+            if (!library) {
+                naming.taken |> insert(b.tag_names_of[n])
+                if (node.kind == CNode.SPEC_RECORD) {
+                    naming.records |> push(n)
+                }
+            }
+        } elif (!key_exists(b.tag_names_of, n)) {
+            b.tag_names_of[n] = ""
+        }
+    } elif (node.kind == CNode.DECL || node.kind == CNode.FUNC_DEF) {
+        let typedef_decl = node.kind == CNode.DECL && c_declares_typedef(p, node.a)
+        if (typedef_decl) {
+            let hint = typedef_hint(p, n)
+            var spec = node.a
+            while (spec >= 0) {
+                let s = p.ast.nodes[spec]
+                if ((s.kind == CNode.SPEC_RECORD || s.kind == CNode.SPEC_ENUM) && s.b == 1 && s.a < 0) {
+                    b.tag_names_of[spec] = hint
+                }
+                spec = s.next
+            }
+        }
+        var id = node.kind == CNode.DECL ? node.b : -1
+        while (id >= 0) {
+            let sym = c_declarator_name(p.ast, p.ast.nodes[id].a)
+            if (sym >= 0 && (typedef_decl || !library)) {
+                naming.taken |> insert(c_symbol_text(p.unit, sym))
+            }
+            id = p.ast.nodes[id].next
+        }
+        if (node.kind == CNode.FUNC_DEF && !library && node.b >= 0) {
+            let sym = c_declarator_name(p.ast, p.ast.nodes[node.b].a)
+            if (sym >= 0) {
+                naming.taken |> insert(c_symbol_text(p.unit, sym))
+            }
+        }
+    }
+    let form = NODE_FORMS[int(node.kind)]._1
+    peek_data(form) $(roles) {
+        for (k, child in range(1, 5), fixed_array(node.a, node.b, node.c, node.d)) {
+            let role = int(roles[k])
+            if (role == 'n') {
+                gather_names(b, p, child, naming)
+            } elif (role == 'l' || role == 'a') {
+                var at = child
+                while (at >= 0) {
+                    gather_names(b, p, at, naming)
+                    at = p.ast.nodes[at].next
+                }
+            }
+        }
+    }
+}
+
+//! The name each record and enum definition of unit node `u` takes, as Dumper A names them
+//! (`converter/dumper_a.das`'s `name_shared_tags`): a tagged one its tag, but the second and later
+//! definitions of one `struct T` or `union T` in source order the first `T<n>` from 1 that no
+//! record or enum definition's tag, typedef name (the own headers' too) or variable or function name
+//! of the unit spells; one with no tag the name a typedef gives it for linkage (`typedef_hint`),
+//! else "".
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-definitions")]
+def c_tag_names(var b : CTypes; var p : CParser; u : int) {
+    var naming : TagNaming
+    gather_names(b, p, u, naming)
+    var first : table<string>
+    for (n in naming.records) {
+        let tag = b.tag_names_of?[n] ?? ""
+        let spelling = "{tag_kind(p, n)} {tag}"
+        if (!key_exists(first, spelling)) {
+            first |> insert(spelling)
+            continue
+        }
+        var k = 1
+        while (key_exists(naming.taken, "{tag}{k}")) {
+            k++
+        }
+        naming.taken |> insert("{tag}{k}")
+        b.tag_names_of[n] = "{tag}{k}"
+    }
 }
 
 //! The pool type of struct, union or enum specifier `n` (`CTypes.tag_type`): a definition's, built
@@ -437,15 +540,15 @@ def c_tag_type(var b : CTypes; var p : CParser; n : int) : int {
     if (node.b == 1) {
         let built = b.tag_built?[n] ?? -1
         return built if (built >= 0)
-        if (b.defining == 0) {
+        if (b.defining == 0 || b.in_type_name > 0) {
             c_refuse(b, p, node.tok, "{kind_name(p, n)} defined in this place")
             return -1
         }
-        return define_tag(b, p, n, "")
+        return define_tag(b, p, n)
     }
     let why = b.untyped_tags?[node.a] ?? ""
     if (!empty(why)) {
-        c_refuse(b, p, node.tok, "the tag '{pp_symbol_text(p.unit.lx, node.a)}'", ": {why}")
+        c_refuse(b, p, node.tok, "the tag '{c_symbol_text(p.unit, node.a)}'", ": {why}")
         return -1
     }
     let known = b.tags?[node.a] ?? -1
@@ -466,7 +569,7 @@ def c_tag_type(var b : CTypes; var p : CParser; n : int) : int {
         c_types_bind_tag(b, node.a, built)
         return built
     }
-    let pt = new_tag(b, kind, pp_symbol_text(p.unit.lx, node.a))
+    let pt = new_tag(b, kind, defined >= 0 ? b.tag_names_of?[defined] ?? "" : c_symbol_text(p.unit, node.a))
     if (kind == "enum") {
         b.pool[pt].spell = "enum {b.pool[pt].name}"
     }
@@ -486,9 +589,17 @@ def c_tag_complete(var b : CTypes; var p : CParser) : bool {
     while (!empty(b.tag_pending)) {
         let next = b.tag_pending[0]
         b.tag_pending |> erase(0)
-        b.defining++
-        let ok = p.ast.nodes[next.x].kind == CNode.SPEC_ENUM ? build_enum(b, p, next.x, next.y) : build_record(b, p, next.x, next.y)
-        b.defining--
+        var ok = false
+        // the definition stands at file scope: its members read the file scope's names
+        c_in_file_scope(b) $(var fb) {
+            // the definition stands where a declaration does, not in the type name of the use
+            let in_type_name = fb.in_type_name
+            fb.in_type_name = 0
+            fb.defining++
+            ok = p.ast.nodes[next.x].kind == CNode.SPEC_ENUM ? build_enum(fb, p, next.x, next.y) : build_record(fb, p, next.x, next.y)
+            fb.defining--
+            fb.in_type_name = in_type_name
+        }
         return false if (!ok)
     }
     return true
@@ -541,13 +652,12 @@ def c_tag_lookahead(var b : CTypes; var p : CParser; u : int) {
     }
 }
 
-//! The definitions of specifier list `specs` walked as Dumper A walks them: each built (`hint`
-//! names one with no tag), the definitions among its members first, then interned and anchored by
+//! The definitions of specifier list `specs` walked as Dumper A walks them: each built, the definitions among its members first, then interned and anchored by
 //! a `record` or `enumdef` declaration at its tag (its keyword with none). An own header's
 //! (`library`) is built alone: it is interned and anchored where the unit first uses it. False with
 //! the error set for one the builder refuses.
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-order")]
-def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; hint : string; library : bool) : bool {
+def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; library : bool) : bool {
     var at = specs
     while (at >= 0) {
         let n = p.ast.nodes[at]
@@ -555,7 +665,7 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; hint : strin
             var pt = b.tag_built?[at] ?? -1
             if (pt < 0) {
                 b.defining++
-                pt = define_tag(b, p, at, hint)
+                pt = define_tag(b, p, at)
                 b.defining--
                 return false if (pt < 0)
             }
@@ -568,7 +678,7 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; hint : strin
                     var m = n.c
                     while (m >= 0) {
                         if (p.ast.nodes[m].kind == CNode.MEMBER_DECL) {
-                            return false if (!c_tag_definitions(b, p, p.ast.nodes[m].a, "", false))
+                            return false if (!c_tag_definitions(b, p, p.ast.nodes[m].a, false))
                         }
                         m = p.ast.nodes[m].next
                     }
@@ -580,7 +690,7 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; hint : strin
                     let tok = tag_tok(p, at)
                     let place = p.unit.toks[tok]
                     let name = b.pool[pt].name
-                    b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = CirLoc(file = c_file_name(p.unit, place.file), line = place.line, col = place.col)))
+                    b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = CirLoc(file = c_file_name(p.unit, place.read_file), line = place.read_line, col = place.col)))
                 }
             }
         }

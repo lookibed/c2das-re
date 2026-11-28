@@ -129,11 +129,11 @@ struct CBinary {
 // even, a value below `2^emin` keeping fewer bits (a subnormal), one past `2^(emax+1)` infinite
 def private rounded(q : array<uint>; t : int; sticky : bool; precision, emin, emax : int) : CBinary {
     let len = bit_length(q)
-    return CBinary(m = 0ul, exp = 0) if (len == 0)
     let top = len - 1 - t
     let lsb = max(top - (precision - 1), emin - (precision - 1))
     let drop = lsb + t
     var m = 0ul
+    var carried = false
     if (drop <= 0) {
         m = bits_of(q, 0, len) << uint64(-drop)
     } else {
@@ -142,11 +142,13 @@ def private rounded(q : array<uint>; t : int; sticky : bool; precision, emin, em
         let rest = sticky || any_below(q, drop - 1)
         if (half && (rest || (m & 1ul) != 0ul)) {
             m++
+            // the rounding carries out of the significand: past `precision` bits, or out of all 64
+            carried = m == 0ul || (precision < 64 && m == 1ul << uint64(precision))
         }
     }
     var exp = lsb
-    if (m == 1ul << uint64(precision)) {
-        m >>= 1ul
+    if (carried) {
+        m = 1ul << uint64(precision - 1)
         exp++
     }
     let high = m == 0ul ? exp : exp + 63 - int(clz(m))
@@ -167,8 +169,15 @@ def private decimal_digits(text : string; var n : array<uint>; var fraction : in
     trimmed(n)
 }
 
-// the value `n * 10^e10` rounded as `rounded` says
-def private decimal_value(n : array<uint>; e10 : int; precision, emin, emax : int) : CBinary {
+// the decimal exponent past which every value of the types here (an x87 long double's at the
+// most, 10^4932 to 10^-4951) is infinity or zero: an exponent beyond it is clamped to it, which
+// gives the same rounding at once
+let private DECIMAL_REACH = 5200
+
+// the value `n * 10^exponent` rounded as `rounded` says
+def private decimal_value(n : array<uint>; exponent : int; precision, emin, emax : int) : CBinary {
+    let digits = bit_length(n) * 3 / 10 + 1
+    let e10 = clamp(exponent, -DECIMAL_REACH - digits, DECIMAL_REACH - digits)
     if (e10 >= 0) {
         var big := n
         for (_ in range(e10)) {
@@ -270,7 +279,6 @@ def private decimal_text(a : array<uint>) : string {
         digits |> push(uint8(int(carry) + '0'))
         trimmed(rest)
     }
-    return "0" if (empty(digits))
     return build_string() $(var w) {
         for (i in range(length(digits))) {
             w |> write_char(int(digits[length(digits) - 1 - i]))
@@ -340,12 +348,19 @@ def c_hex_float(v : CBinary) : string {
     return "0x{lead}{empty(hex) ? "" : "."}{hex}p{sign}{abs(exp)}"
 }
 
-//! Floating constant `spelled` of C type `kind` (`float`, `double` or `long double`, its suffix
-//! gone) as Dumper A writes it: clang's value (a `long double` read as a double, the dialect's
-//! width), through clang's decimal text of it (nine digits for a `float`, seventeen for a double,
-//! which read back to the same double), as a hex-float.
+//! Floating constant `spelled` of C type `kind` (`float`, `double`, `long double` where it is a
+//! double, `extended` for linux's x87 `long double`; its suffix gone) as Dumper A writes it: clang's
+//! value in the type, through clang's decimal text of it (nine digits for a `float`, seventeen for
+//! a double, which read back to the same double, twenty-one for x87's), read as a double, as a
+//! hex-float.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-floats")]
 def c_float_literal(spelled : string; kind : string) : string {
+    if (kind == "extended") {
+        // the linux `long double`: x87's 64-bit significand, then clang's 21-digit text of it
+        let x = c_float_value(spelled, 64, -16382, 16383)
+        let dec = c_float_decimal(x, 21)
+        return c_hex_float(c_float_value("{dec.text}e{dec.e10}", 53, -1022, 1023))
+    }
     if (kind == "float") {
         let f = c_float_value(spelled, 24, -126, 127)
         return "inf" if (f.inf)
@@ -354,3 +369,29 @@ def c_float_literal(spelled : string; kind : string) : string {
     }
     return c_hex_float(c_float_value(spelled, 53, -1022, 1023))
 }
+
+//! The integer value of hex-float `hex` (as `c_hex_float` writes it) truncated toward zero, into
+//! `v`; false for `inf` and a value past 63 bits.
+def c_float_integer(hex : string; var v : int64&) : bool {
+    let at_p = find(hex, "p")
+    return false if (at_p < 0)
+    let digits = slice(hex, 2, at_p)
+    let dot = find(digits, ".")
+    let fraction = dot < 0 ? 0 : length(digits) - dot - 1
+    var m = 0ul
+    for (ch in replace(digits, ".", "")) {
+        m = (m << 4ul) | uint64(is_number(ch) ? ch - '0' : (ch | 0x20) - 'a' + 10)
+    }
+    let exponent = slice(hex, at_p + 1)
+    let negative = starts_with(exponent, "-")
+    let magnitude = to_int(negative || starts_with(exponent, "+") ? slice(exponent, 1) : exponent)
+    let shift = (negative ? -magnitude : magnitude) - 4 * fraction
+    if (shift >= 0) {
+        return false if (shift > 62 || (m >> uint64(63 - shift)) != 0ul)
+        v = int64(m << uint64(shift))
+    } else {
+        v = -shift >= 64 ? 0l : int64(m >> uint64(-shift))
+    }
+    return true
+}
+

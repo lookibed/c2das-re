@@ -228,3 +228,65 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("int f(void) \{ enum E \{ A \} a; return 0; \} enum E \{ B \};"), "error: t.c:1:43: an enum tag defined again in another scope is not typed yet")
     t |> equal(cir_of("struct __jmp_buf_tag \{ int a; \};"), "error: t.c:1:1: glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`, is not typed yet")
 }
+
+[test(description = "a record built at an earlier use in a block reads its members in its definition's file scope: the file's typedef, tag and enumerator, not the block's")]
+def test_early_scope(t : T?) {
+    t |> equal(cir_of("typedef int T; int f(void)\{ typedef double T; struct S *p = 0; return p == 0; \} struct S \{ T x; \}; struct S gs;"), "int:32:true:int; typedef:T:0; func:0::false; float:64:double; struct S 4/4 \{x:0@0\}; ptr:4 | p:5=NullToPointer<5>(0<0>) | eq<0>(LValueToRValue<5>(p), NullToPointer<5>(0<0>)) | record 4 1:88 | gs:4")
+    t |> equal(cir_of("struct In \{int i;\}; int f(void)\{ struct In \{double d;\}; struct S *p = 0; return p == 0; \} struct S \{ struct In in; \}; struct S gs;"), "struct In 4/4 \{i:1@0\}; int:32:true:int; func:1::false; struct In1 8/8 \{d:4@0\}; float:64:double; struct S 4/4 \{in:0@0\}; ptr:5 | record 0 1:8 | record 3 1:41 | p:6=NullToPointer<6>(0<1>) | eq<1>(LValueToRValue<6>(p), NullToPointer<6>(0<1>)) | record 5 1:98 | gs:5")
+    t |> equal(cir_of("enum \{N=2\}; int f(void)\{ enum \{N=5\}; struct S *p = 0; return p == 0; \} struct S \{ int a[N]; \}; struct S gs;"), "enum  'enum (unnamed at t.c:1:1)' unsigned \{N=2\}; int:32:true:int; func:1::false; enum  'enum (unnamed at t.c:1:26)' unsigned \{N=5\}; struct S 8/4 \{a:5@0[0.N]\}; array:1:2; ptr:4 | enumdef 0 1:1 | enumdef 3 1:26 | p:6=NullToPointer<6>(0<1>) | eq<1>(LValueToRValue<6>(p), NullToPointer<6>(0<1>)) | record 4 1:79 | gs:4")
+}
+
+[test(description = "while an enum's body is read an enumerator int does not hold has its initializer's type, one with none the one before's; under msvc an initializer is an int at once")]
+def test_enum_body_types(t : T?) {
+    t |> equal(cir_of("enum E \{ ALL = 0xFFFFFFFF, Q = ALL / 16, R = (ALL > 0) \}; int arr[R + 1];"), "enum E 'enum E' unsigned \{ALL=4294967295,Q=268435455,R=1\}; int:32:true:int; array:1:2 | enumdef 0 1:6 | arr:2")
+    t |> equal(cir_of("enum E \{ ALL = 0xFFFFFFFF, Q = ALL / 16, R = (ALL > 0) \}; int arr[R + 1];", true), "enum E 'enum E' \{ALL=-1,Q=0,R=0\}; int:32:true:int; array:1:1 | enumdef 0 1:6 | arr:2")
+    t |> equal(cir_of("enum E2 \{ A = 2147483647, B, C = B / 2 \}; int arr2[C > 0 ? 1 : 2];"), "enum E2 'enum E2' unsigned \{A=2147483647,B=2147483648,C=1073741824\}; int:32:true:int; array:1:1 | enumdef 0 1:6 | arr2:2")
+    t |> equal(cir_of("enum E2 \{ A = 2147483647, B, C = B / 2 \}; int arr2[C > 0 ? 1 : 2];", true), "enum E2 'enum E2' \{A=2147483647,B=-2147483648,C=1073741824\}; int:32:true:int; array:1:1 | enumdef 0 1:6 | arr2:2")
+    t |> equal(cir_of("enum E3 \{ L = 4294967295, M = L / 16, N = (L > 0) \}; int arr3[N + 1];"), "enum E3 'enum E3' unsigned \{L=4294967295,M=268435455,N=1\}; int:32:true:int; array:1:2 | enumdef 0 1:6 | arr3:2")
+    t |> equal(cir_of("enum E3 \{ L = 4294967295, M = L / 16, N = (L > 0) \}; int arr3[N + 1];", true), "enum E3 'enum E3' \{L=-1,M=0,N=0\}; int:32:true:int; array:1:1 | enumdef 0 1:6 | arr3:2")
+}
+
+[test(description = "a bit-field promotes through an assignment, a compound assignment, a comma's right operand and a prefix ++ or --, as clang's getSourceBitField sees it")]
+def test_bitfield_sources(t : T?) {
+    t |> equal(cir_of("struct S \{ unsigned b : 3; \} s; long f(void)\{ return (s.b = 7) - 8; \} long g(void)\{ return (0, s.b) - 8; \} long h(void)\{ return ++s.b - 8; \} long k(void)\{ return (s.b += 1) - 8; \}"), "struct S 4/4 \{b:1@0/0:3\}; int:32:false:unsigned int; int:64:true:long; func:2::false; int:32:true:int | record 0 1:8 | s:0 | IntegralCast<2>(sub<4>(IntegralCast<4>(assign<1>(s.0<1>, IntegralCast<1>(7<4>))), 8<4>)) | IntegralCast<2>(sub<4>(IntegralCast<4>(<1>(0<4>, LValueToRValue<1>(s.0<1>))), 8<4>)) | IntegralCast<2>(sub<4>(IntegralCast<4>(preinc<1>(s.0<1>)), 8<4>)) | IntegralCast<2>(sub<4>(IntegralCast<4>(assignadd<1>(s.0<1>, 1<4>)), 8<4>))")
+    t |> equal(cir_of("struct S \{ unsigned b : 3; long l : 40; \} s; long f(void)\{ return (s.l = 1) - 8; \} long g(void)\{ return --s.b - 8; \} long h(void)\{ return s.b++ - 8; \}"), "struct S 8/8 \{b:1@0/0:3 l:2@0/3:40\}; int:32:false:unsigned int; int:64:true:long; func:2::false; int:32:true:int | record 0 1:8 | s:0 | sub<2>(assign<2>(s.1<2>, IntegralCast<2>(1<4>)), IntegralCast<2>(8<4>)) | IntegralCast<2>(sub<4>(IntegralCast<4>(predec<1>(s.0<1>)), 8<4>)) | IntegralCast<2>(sub<1>(postinc<1>(s.0<1>), IntegralCast<1>(8<4>)))")
+}
+
+[test(description = "a record with no tag is named by a typedef's first declarator that is the name alone, parenthesized too, also when built early at a use; a qualified typedef names none")]
+def test_untagged_names(t : T?) {
+    t |> equal(cir_of("typedef struct N N; typedef struct \{ int a; \} Q; struct N \{ Q q; int v; \}; N gn;"), "struct N 8/4 \{q:1@0 v:2@4\}; struct Q 4/4 \{a:2@0\}; int:32:true:int; typedef:N:0; typedef:Q:1 | record 1 1:29 | record 0 1:57 | gn:0")
+    t |> equal(cir_of("typedef const struct \{ int a; \} CQ; CQ cq; typedef volatile enum \{ E1 \} VE; VE ve;"), "struct  4/4 \{a:1@0\}; int:32:true:int; typedef:CQ:0; enum  'enum (unnamed at t.c:1:61)' unsigned \{E1=0\}; typedef:VE:3 | record 0 1:15 | cq:0 | enumdef 3 1:61 | ve:3")
+    t |> equal(cir_of("typedef struct \{ int a; \} (PQ); PQ pq;"), "struct PQ 4/4 \{a:1@0\}; int:32:true:int; typedef:PQ:0 | record 0 1:9 | pq:0")
+    t |> equal(cir_of("typedef struct \{ int a; \} *P, Q; Q q; P p;"), "struct Q 4/4 \{a:1@0\}; int:32:true:int; ptr:0; typedef:P:2; typedef:Q:0 | record 0 1:9 | q:0 | p:2")
+}
+
+[test(description = "numbered tags as Dumper A gives them: definitions of one struct or union spelling in source order, avoiding every tag, typedef, variable and function name of the unit but parameters")]
+def test_numbered_names(t : T?) {
+    t |> equal(cir_of("struct S *gp; int f(void)\{ struct S \{int a;\} s; s.a = 1; return s.a; \} struct S \{char c;\}; struct S gs;"), "struct S1 1/1 \{c:1@0\}; int:8:false:char; ptr:0; int:32:true:int; func:3::false; struct S 4/4 \{a:3@0\} | gp:2 | record 5 1:35 | s:5 | assign<3>(s.0<3>, 1<3>) | LValueToRValue<3>(s.0<3>) | record 0 1:79 | gs:0")
+    t |> equal(cir_of("struct T \{ char c; \}; int f(void)\{ struct T \{int a;\} t; t.a = 1; return t.a; \} struct T1 \{ int z; \}; struct T gt; struct T1 g1;"), "struct T 1/1 \{c:1@0\}; int:8:false:char; int:32:true:int; func:2::false; struct T2 4/4 \{a:2@0\}; struct T1 4/4 \{z:2@0\} | record 0 1:8 | record 4 1:43 | t:4 | assign<2>(t.0<2>, 1<2>) | LValueToRValue<2>(t.0<2>) | record 5 1:87 | gt:0 | g1:5")
+    t |> equal(cir_of("struct T \{ char c; \}; int f(void)\{ struct T \{int a;\} t; t.a = 1; return t.a; \} typedef long T1; T1 g1; struct T gt;"), "struct T 1/1 \{c:1@0\}; int:8:false:char; int:32:true:int; func:2::false; struct T2 4/4 \{a:2@0\}; int:64:true:long; typedef:T1:5 | record 0 1:8 | record 4 1:43 | t:4 | assign<2>(t.0<2>, 1<2>) | LValueToRValue<2>(t.0<2>) | g1:5 | gt:0")
+    t |> equal(cir_of("struct T \{ char c; \} gt; int f(int T1)\{ struct T \{double d;\} t; t.d = T1; return (int)t.d; \}"), "struct T 1/1 \{c:1@0\}; int:8:false:char; int:32:true:int; func:2:2:false; struct T1 8/8 \{d:5@0\}; float:64:double | record 0 1:8 | gt:0 | record 4 1:48 | t:4 | assign<5>(t.0<5>, IntegralToFloating<5>(LValueToRValue<2>(T1))) | FloatingToIntegral!<2>(LValueToRValue<5>(t.0<5>))")
+    t |> equal(cir_of("struct S \{ int a; \} gs; int f(void)\{ union S \{ int a; char c; \} u; u.a = 1; return u.a; \}"), "struct S 4/4 \{a:1@0\}; int:32:true:int; func:1::false; union S 4/4 \{a:1@0 c:4@0\}; int:8:false:char | record 0 1:8 | gs:0 | record 3 1:44 | u:3 | assign<1>(u.0<1>, 1<1>) | LValueToRValue<1>(u.0<1>)")
+    t |> equal(cir_of("enum S \{ SA \} ge; int f(void)\{ struct S \{ int a; \} s; s.a = 1; return s.a; \}"), "enum S 'enum S' unsigned \{SA=0\}; int:32:true:int; func:1::false; struct S 4/4 \{a:1@0\} | enumdef 0 1:6 | ge:0 | record 3 1:39 | s:3 | assign<1>(s.0<1>, 1<1>) | LValueToRValue<1>(s.0<1>)")
+    t |> equal(cir_of("struct S \{ int a; \} gs; int f(void)\{ int S1 = 2; struct S \{ char c; \} s; s.c = 1; return s.c + S1; \}"), "struct S 4/4 \{a:1@0\}; int:32:true:int; func:1::false; struct S2 1/1 \{c:4@0\}; int:8:false:char | record 0 1:8 | gs:0 | record 3 1:57 | S1:1=2<1> | s:3 | assign<4>(s.0<4>, IntegralCast<4>(1<1>)) | add<1>(IntegralCast<1>(LValueToRValue<4>(s.0<4>)), LValueToRValue<1>(S1))")
+    t |> equal(cir_of("struct U \{ int a; \} gu; int f(void)\{ struct U \{ char c; \} u; u.c = 1; return u.c; \} int g(void)\{ struct U \{ short h; \} v; v.h = 1; return v.h; \}"), "struct U 4/4 \{a:1@0\}; int:32:true:int; func:1::false; struct U1 1/1 \{c:4@0\}; int:8:false:char; struct U2 2/2 \{h:6@0\}; int:16:true:short | record 0 1:8 | gu:0 | record 3 1:45 | u:3 | assign<4>(u.0<4>, IntegralCast<4>(1<1>)) | IntegralCast<1>(LValueToRValue<4>(u.0<4>)) | record 5 1:105 | v:5 | assign<6>(v.0<6>, IntegralCast<6>(1<1>)) | IntegralCast<1>(LValueToRValue<6>(v.0<6>))")
+    t |> equal(cir_of("struct T \{ char c; \} gt; int T1(void)\{ struct T \{ int a; \} t; t.a = 1; return t.a; \}"), "struct T 1/1 \{c:1@0\}; int:8:false:char; int:32:true:int; func:2::false; struct T2 4/4 \{a:2@0\} | record 0 1:8 | gt:0 | record 4 1:47 | t:4 | assign<2>(t.0<2>, 1<2>) | LValueToRValue<2>(t.0<2>)")
+}
+
+[test(description = "a level with no size shifts the sizes after it to the levels before theirs; a size whose value is not its level's count names none")]
+def test_dims_unsized(t : T?) {
+    t |> equal(cir_of("enum \{ N = 4 \}; int a[][N] = \{ \{1\}, \{2\} \}; extern int e[][N]; int f(void)\{ return e[0][1]; \}"), "enum  'enum (unnamed at t.c:1:1)' unsigned \{N=4\}; int:32:true:int; array:1:4; array:2:2; array:2:-1; func:1::false; ptr:1; ptr:2 | enumdef 0 1:1 | a:3 | e:4 | LValueToRValue<1>(index<1>(ArrayToPointerDecay<6>(index<2>(ArrayToPointerDecay<7>(e), 0<1>)), 1<1>))")
+    t |> equal(cir_of("enum \{ N = 4 \}; struct F \{ int n; int d[][N]; \}; struct F *fp; int f(void)\{ return fp->n; \}"), "enum  'enum (unnamed at t.c:1:1)' unsigned \{N=4\}; struct F 4/4 \{n:2@0 d:4@4\}; int:32:true:int; array:2:4; array:3:-1; ptr:1; func:2::false | enumdef 0 1:1 | record 1 1:24 | fp:5 | LValueToRValue<2>(LValueToRValue<5>(fp)->0<2>)")
+}
+
+[test(description = "a record defined in a type name inside a member's array size is refused at its keyword")]
+def test_type_name_definition(t : T?) {
+    t |> equal(cir_of("struct S \{ char a[sizeof(struct Z \{ int a; long b; \})]; \}; struct S gs;"), "error: t.c:1:26: a struct defined in this place is not typed yet")
+}
+
+[test(description = "a pointer to an enum assigns to one to its integer type, and under msvc, where the enum is an int, to one to unsigned int with the pointer-sign warning")]
+def test_enum_pointer_assign(t : T?) {
+    t |> equal(cir_of("enum E \{ A \}; unsigned f(unsigned *p); unsigned g(void) \{ enum E e = A; return f(&e); \}"), "enum E 'enum E' unsigned \{A=0\}; int:32:false:unsigned int; ptr:1; func:1:2:false; func:1::false; int:32:true:int; ptr:3; ptr:0 | enumdef 0 1:6 | e:0=IntegralCast<0>(0.A<5>) | call<1>(FunctionToPointerDecay<6>(f))")
+    t |> equal(cir_of("enum E \{ A \}; unsigned f(unsigned *p); unsigned g(void) \{ enum E e = A; return f(&e); \}", true), "enum E 'enum E' \{A=0\}; int:32:false:unsigned int; ptr:1; func:1:2:false; func:1::false; int:32:true:int; ptr:3; ptr:0 | enumdef 0 1:6 | e:0=IntegralCast<0>(0.A<5>) | call<1>(FunctionToPointerDecay<6>(f))")
+}
+
