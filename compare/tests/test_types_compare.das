@@ -191,6 +191,27 @@ def test_ratchet_text(t : T?) {
     t |> equal(text, "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux 00002\nlinux 00009\nmsvc 00001\n")
 }
 
+[test(description = "over a whole suite a listed unit the run did not compare under one of its dialects is stale, and the update drops it; a key of a dialect the run left out stays")]
+def test_ratchet_stale(t : T?) {
+    let listed <- ratchet_keys("linux 00001\nlinux 00007\nmsvc 00007\n")
+    let seen <- {"linux 00001" => true}
+    let stale <- ratchet_stale(listed, seen, ["linux"])
+    t |> equal(join(stale, ","), "linux 00007")
+    t |> equal(ratchet_text(listed, ["linux 00001"], stale), "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\nlinux 00001\nmsvc 00007\n")
+}
+
+[test(description = "a ratchet file that does not exist is an error; a unit named on the command line is no suite's: never checked against the list nor written to it", timeout = 600)]
+def test_ratchet_runs(t : T?) {
+    let missing = path_join(test_temp_dir(), "no_such_ratchet.txt")
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], ratchet = missing, units <- ["{FIXTURES}/differs.c"])), 1)
+    t |> success(!stat(missing).is_reg)
+    let ratchet = path_join(test_temp_dir(), "ratchet.txt")
+    let text = "# a list\nlinux differs\n"
+    fwrite(ratchet, text)
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], ratchet = ratchet, update_ratchet = true, units <- ["{FIXTURES}/conversions.c", "{FIXTURES}/differs.c"])), 0)
+    t |> equal(fread(ratchet), text)
+}
+
 [test(description = "a run's counts: Dumper A failed, aggregates refused or typed, scalar-only refused, agreeing, differing in the table, the C-IR or the census")]
 def test_count(t : T?) {
     var n : TypesTotals
@@ -239,7 +260,7 @@ def test_aggregate_kinds(t : T?) {
     t |> success(has_aggregate([CirType(k = "enum", name = "E")]))
 }
 
-[test(description = "the builder's C-IR refuses a unit the parser refuses and one clang -E refuses, each naming the step", timeout = 600)]
+[test(description = "the builder's C-IR refuses a unit the parser refuses, a file the preprocessor cannot read, and one clang -E refuses where it stands in for an #if PP.4 evaluates, each naming the step", timeout = 600)]
 def test_builder_refusals(t : T?) {
     let dir = path_join(test_temp_dir(), "edges")
     mkdir_rec(dir)
@@ -253,8 +274,15 @@ def test_builder_refusals(t : T?) {
     error = ""
     var missing : CirTu
     builder_tu(path_join(dir, "missing.c"), target_lp64_linux(), missing, error)
-    t |> success(starts_with(error, "clang -E: "), error)
+    t |> success(starts_with(error, "parser: cannot read "), error)
     delete_tu(missing)
+    error = ""
+    let evaluated = path_join(dir, "evaluated.c")
+    fwrite(evaluated, "#if 1 + 1\n#error boom\n#endif\nint x;\n")
+    var stood_in : CirTu
+    builder_tu(evaluated, target_lp64_linux(), stood_in, error)
+    t |> success(starts_with(error, "clang -E: ") && find(error, "boom") >= 0, error)
+    delete_tu(stood_in)
 }
 
 [test(description = "run_types: a unit that agrees passes, a refused one fails, no unit fails; the c-testsuite folder missing is an error; run.das as a child prints the totals", timeout = 600)]

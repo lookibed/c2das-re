@@ -304,10 +304,10 @@ struct TypesArgs {
     @clarg_name = "gcc-torture"
     @clarg_doc = "compare the fetched gcc-torture execute units its expected_pass.txt lists (Dumper A's passing ids)"
     gcc_torture : bool
-    @clarg_doc = "the ratchet of byte-identical units: every line `<dialect> <id>` it lists must stay byte-identical (exit 1 otherwise); a byte-identical unit it lacks is reported"
+    @clarg_doc = "the ratchet of byte-identical suite units, a file that exists: every line `<dialect> <id>` it lists must stay byte-identical (exit 1 otherwise); a byte-identical unit it lacks is reported, and over a whole suite a listed unit the run did not compare; units named on the command line are no suite's and never checked"
     ratchet : string
     @clarg_name = "update-ratchet"
-    @clarg_doc = "add to --ratchet every unit of this run that is byte-identical; nothing is written when a listed unit is no longer byte-identical"
+    @clarg_doc = "add to --ratchet every suite unit of this run that is byte-identical, and over a whole suite drop the lines of units it no longer holds; nothing is written when a listed unit is no longer byte-identical"
     update_ratchet : bool
     @clarg_positional
     @clarg_doc = "units compared besides the corpus"
@@ -343,10 +343,18 @@ def ratchet_keys(text : string) : table<string; bool> {
     return <- {for (line in split(text, "\n")); line => true; where !empty(line) && !starts_with(line, "#")}
 }
 
-//! The text of a ratchet that lists `listed` and the byte-identical units `identical`, sorted: a
-//! list only grows, so a key the run did not compare stays.
-def ratchet_text(listed : table<string; bool>; identical : array<string>) : string {
-    var all <- [for (key in keys(listed)); key]
+//! The keys of `listed` under one of `dialects` that `seen`, the keys a whole-suite run compared,
+//! lacks: units the suite no longer holds, sorted.
+def ratchet_stale(listed : table<string; bool>; seen : table<string; bool>; dialects : array<string>) : array<string> {
+    var stale <- [for (key in keys(listed)); key; where !key_exists(seen, key) && has_value(dialects, slice(key, 0, max(find(key, " "), 0)))]
+    sort(stale)
+    return <- stale
+}
+
+//! The text of a ratchet that lists `listed` but `dropped` and the byte-identical units
+//! `identical`, sorted: a list only grows, but for the units its suite no longer holds.
+def ratchet_text(listed : table<string; bool>; identical : array<string>; dropped : array<string> = array<string>()) : string {
+    var all <- [for (key in keys(listed)); key; where !has_value(dropped, key)]
     all |> push_from([for (key in identical); key; where !key_exists(listed, key)])
     sort(all)
     return "# units whose Dumper C C-IR is Dumper A's byte for byte (compare/types/run.das); the ratchet, kept sorted\n" + join([for (k in all); "{k}\n"], "")
@@ -382,25 +390,33 @@ def run_types(args : TypesArgs) : int {
         to_log(LOG_ERROR, "{error}\n")
         return 1
     }
+    let suite_units = length(units)
     units |> push_from(args.units)
     if (empty(units)) {
         to_log(LOG_ERROR, "no unit to compare: name units, --c-testsuite or --gcc-torture\n")
         return 1
     }
+    if (!empty(args.ratchet) && !stat(args.ratchet).is_reg) {
+        to_log(LOG_ERROR, "the ratchet {args.ratchet} is no file\n")
+        return 1
+    }
     let listed <- empty(args.ratchet) ? table<string; bool>() : ratchet_keys(fread(args.ratchet))
+    var seen : table<string; bool>
     var identical : array<string>
     var regressed = 0
     var dialects := empty(args.dialect) ? ["linux", "msvc"] : args.dialect
     var total : TypesTotals
     for (dialect in dialects) {
         var t : TypesTotals
-        for (unit in units) {
+        for (unit, k in units, count()) {
             let r = compare_types(unit, target_by_name(dialect))
             let line = count_types(t, r)
             if (!empty(line)) {
                 print("{line}\n")
             }
+            continue if (k >= suite_units)
             let key = ratchet_key(dialect, unit)
+            seen[key] = true
             if (r.bytes) {
                 identical |> push(key)
                 if (!empty(args.ratchet) && !key_exists(listed, key)) {
@@ -426,8 +442,14 @@ def run_types(args : TypesArgs) : int {
         total.differ += t.differ
     }
     print("{describe_types_totals("total", total)}\n")
-    if (args.update_ratchet && !empty(args.ratchet) && regressed == 0) {
-        fwrite(args.ratchet, ratchet_text(listed, identical))
+    let whole_suite = (args.c_testsuite || args.gcc_torture) && empty(args.units)
+    let stale <- whole_suite ? ratchet_stale(listed, seen, dialects) : array<string>()
+    for (key in stale) {
+        print("ratchet: {key} is listed but the suite holds no such unit\n")
+    }
+    let grown = !empty(stale) || length([for (key in identical); key; where !key_exists(listed, key)]) > 0
+    if (args.update_ratchet && !empty(args.ratchet) && regressed == 0 && grown) {
+        fwrite(args.ratchet, ratchet_text(listed, identical, stale))
     }
     if (!empty(args.ratchet)) {
         return regressed == 0 ? 0 : 1

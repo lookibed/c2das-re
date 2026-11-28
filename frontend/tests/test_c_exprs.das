@@ -594,3 +594,14 @@ def test_declared_qualifiers(t : T?) {
     t |> equal(ir_of("void f(int a[volatile 2]) \{ a; \}"), "expr LValueToRValue<int*>(a~)")
     t |> equal(ir_of("int * volatile p; void g(void) \{ p; \}"), "expr LValueToRValue<int*>(p~)")
 }
+
+[test(description = "a declaration's linkage clang rejects is invalid C: a static after a non-static declaration, a file-scope object with no storage class after a static one; an extern or a function after a static keeps its internal linkage")]
+def test_linkage_clash(t : T?) {
+    t |> equal(ir_of("static int k; int k;"), "error: t.c:1:19: a non-static declaration of 'k' after a static one is invalid C, which clang rejects")
+    t |> equal(ir_of("static int k; static int k; int k;"), "error: t.c:1:33: a non-static declaration of 'k' after a static one is invalid C, which clang rejects")
+    t |> equal(ir_of("int k; static int k;"), "error: t.c:1:19: a static declaration of 'k' after a non-static one is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(void) \{ extern int k; \} static int k;"), "error: t.c:1:43: a static declaration of 'k' after a non-static one is invalid C, which clang rejects")
+    t |> equal(ir_of("int f(void); static int f(void) \{ return 0; \}"), "error: t.c:1:25: a static declaration of 'f' after a non-static one is invalid C, which clang rejects")
+    t |> equal(ir_of("static int k = 1; extern int k; static int f(void); int f(void) \{ return k; \}", false, "u.c", true),
+               "u__k=1<int> ; u__f() ; u__f() ; return LValueToRValue<int>(u__k)")
+}

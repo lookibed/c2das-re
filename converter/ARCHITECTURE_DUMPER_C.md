@@ -13,7 +13,16 @@ the own headers' folder as the library. Every place in the C-IR is the builder's
 (`frontend/ARCHITECTURE_NAMES.md` section 48). Where an `#if` or `#elif` needs the evaluator PP.4
 brings (`dumper_c_needs_evaluator`), clang preprocesses the unit under Dumper A's flags
 (`dumper_frontend_flags`) and the parser reads that text, whose tokens have only the place its line
-markers present; nothing under `frontend/` starts clang. A sidecar's `defines`, `include_dirs` and
+markers present; nothing under `frontend/` starts clang. The builder leaves out the declarations of
+a file outside the program root (the sidecar's `program_root`, else the main file's folder) as it
+leaves out the own headers', and a C file outside it is an error, as Dumper A's file policy has it;
+a main file outside the root is refused before it is read.
+
+Dumper C writes no macro spelling yet: its C-IR has no `macro`, `fn_macro` or `macros` (A.6 of the
+plan brings them), so a `--dumper c` module carries no named constant and folds no function-like
+macro expansion into a call of its `[c_macro] def`; the das differs from `--dumper a`'s in those
+places alone, and a sidecar's `no_fold` naming a macro fails under `--dumper c`, as it names no
+macro the program expands. A sidecar's `defines`, `include_dirs` and
 `include_files` are refused, since the builder takes none yet; the C-IR's producer is
 `c2das-dumper-c 0.1`.
 

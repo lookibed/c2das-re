@@ -8,8 +8,9 @@ require dumper_c
 
 //! The child `pipeline.das` runs for `--dumper c` (`ARCHITECTURE_DUMPER_C.md`):
 //! `daslang -load_module dasCRuntime -load_module c_runtime -load_module fetch/dasFlex
-//! converter/dumper_c_main.das -- <file.c> <linux|msvc> <clang> <out.cir.json>` writes the unit's
-//! C-IR text to the last file and exits 0, or prints why it failed and exits 1.
+//! converter/dumper_c_main.das -- <file.c> <linux|msvc> <clang> <out.cir.json> [<program root>]`
+//! writes the unit's C-IR text to `<out.cir.json>` and exits 0, or prints why it failed and exits 1;
+//! the program root is the sidecar's `program_root` ("" or none: the file's folder).
 
 [export]
 def main : int {
@@ -19,12 +20,13 @@ def main : int {
         at++
     }
     if (at + 4 >= length(args)) {
-        print("usage: dumper_c_main.das -- <file.c> <linux|msvc> <clang> <out.cir.json>\n")
+        print("usage: dumper_c_main.das -- <file.c> <linux|msvc> <clang> <out.cir.json> [<program root>]\n")
         return 1
     }
     var tu : CirTu
     var error : string
-    dumper_c_tu(args[at + 1], target_by_name(args[at + 2]), args[at + 3], DumpInputs(), tu, error)
+    let root = at + 5 < length(args) ? args[at + 5] : ""
+    dumper_c_tu(args[at + 1], target_by_name(args[at + 2]), args[at + 3], DumpInputs(program_root = root), tu, error)
     if (!empty(error)) {
         print("dumper C: {error}\n")
         delete_tu(tu)

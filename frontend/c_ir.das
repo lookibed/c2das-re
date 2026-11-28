@@ -6,6 +6,7 @@ module c_ir public
 require strings
 require daslib/strings_boost
 require daslib/cmp
+require daslib/fio
 require math
 require c_exprs public
 
@@ -17,9 +18,13 @@ require c_exprs public
 let C_IR_PRODUCER = "c2das-dumper-c 0.1"
 
 //! Open the builder over the dialect `target` with an empty unit; `library_dir` is the own libc
-//! headers' folder (`c_types_open`).
-def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
+//! headers' folder (`c_types_open`), `program_dir` the program root ("": every other file is the
+//! program's), each with `/` last.
+def c_ir_open(var r : CIr; target : CirTarget; library_dir : string; program_dir : string = "") {
     c_types_open(r, target, library_dir)
+    r.program_dir = program_dir
+    r.in_program_of |> clear()
+    r.external_names |> clear()
     r.tu.decls |> clear()
     r.ids |> clear()
     r.id_undo |> clear()
@@ -231,12 +236,24 @@ def private local_name(var r : CIr; c_name : string) : string {
     return name
 }
 
-// the C-IR name of a file-scope declaration of `c_name`: `<stem>__<name>` with internal linkage,
-// which a later declaration without `static` keeps (C11 6.2.2p4), else its own
+// the C-IR name of a declaration of `c_name` with linkage at token `tok`: `<stem>__<name>` with
+// internal linkage, which a later declaration without `static` keeps (C11 6.2.2p4), else its own;
+// "" with the error set where clang rejects the linkage (6.2.2p7): a `static` declaration after one
+// with external linkage, or a `plain_object` (a file-scope object with no storage class) after a
+// `static` one
 [arch(at="ARCHITECTURE_NAMES.md#c-names-statics")]
-def private linkage_name(var r : CIr; c_name : string; is_static : bool) : string {
+def private linkage_name(var r : CIr; p : CParser; c_name : string; is_static, plain_object : bool; tok : int) : string {
+    if (is_static && key_exists(r.external_names, c_name)) {
+        c_reject(r, p, tok, "a static declaration of '{c_name}' after a non-static one")
+        return ""
+    } elif (plain_object && key_exists(r.linkage_names, c_name)) {
+        c_reject(r, p, tok, "a non-static declaration of '{c_name}' after a static one")
+        return ""
+    }
     if (is_static) {
         r.linkage_names[c_name] = "{r.tu_prefix}__{c_name}"
+    } elif (!key_exists(r.linkage_names, c_name)) {
+        r.external_names |> insert(c_name)
     }
     return r.linkage_names?[c_name] ?? c_name
 }
@@ -327,7 +344,8 @@ def private function_declaration(var r : CIr; var p : CParser; sym, spelled, f :
     let t = c_linked(r, p, spelled, sym, f, tok)
     return false if (t < 0)
     let name = c_symbol_text(p.unit, sym)
-    let linked = linkage_name(r, name, is_static && !local)
+    let linked = linkage_name(r, p, name, is_static && !local, false, tok)
+    return false if (empty(linked))
     var fid = function_id(r, p, sym, t, f)
     fid.name = linked
     c_ir_bind(r, sym, fid)
@@ -386,11 +404,12 @@ def private typedef_declaration(var r : CIr; sym : int; name : string; t : int; 
     c_types_bind(r, sym, t)
 }
 
-// the C-IR name of object `name` declared `global`ly or in a block: a file-scope or `extern` one's
-// linkage name, a hoisted static's `<fn>_<name>` (recorded as hoisted), a local's own
-def private object_name(var r : CIr; name : string; global, is_static, is_extern : bool) : string {
+// the C-IR name of object `name` declared `global`ly or in a block at token `tok`: a file-scope or
+// `extern` one's linkage name ("" with the error set where clang rejects it), a hoisted static's
+// `<fn>_<name>` (recorded as hoisted), a local's own
+def private object_name(var r : CIr; p : CParser; name : string; global, is_static, is_extern : bool; tok : int) : string {
     if (global || (is_extern && !is_static)) {
-        return linkage_name(r, name, global && is_static)
+        return linkage_name(r, p, name, global && is_static, global && !is_static && !is_extern, tok)
     } elif (!is_static) {
         return local_name(r, name)
     }
@@ -443,7 +462,8 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         return false if (t < 0)
         let ti = c_types_use(r, t)
         let global = empty(fn)
-        let linked = object_name(r, name, global, is_static, is_extern)
+        let linked = object_name(r, p, name, global, is_static, is_extern, p.ast.nodes[id].tok)
+        return false if (empty(linked))
         c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked))
         let init = p.ast.nodes[id].b
         var value = init >= 0 ? used(r, initializer(r, p, init, t)) : null
@@ -725,7 +745,8 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     let t = spelled < 0 ? spelled : c_linked(r, p, spelled, sym, f, p.ast.nodes[n.b].tok)
     let ti = c_types_use(r, t)
     return false if (ti < 0)
-    let linked = linkage_name(r, name, has_storage(p, n.a, CTok.STATIC))
+    let linked = linkage_name(r, p, name, has_storage(p, n.a, CTok.STATIC), false, name_tok(p, d, n.tok))
+    return false if (empty(linked))
     var cd = new CirDecl(k = "func", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), loc = loc_of(p, name_tok(p, d, n.tok)))
     r.declared[sym] = true
     if (old_style) {
@@ -774,11 +795,27 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     return ok
 }
 
-// whether external declaration `decl` stands in a file under the own libc headers' folder
-def private in_library(r : CIr; p : CParser; decl : int) : bool {
-    return false if (empty(r.library_dir))
-    let file = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
-    return starts_with(file, r.library_dir)
+// whether external declaration `decl` stands in a file that is no file of the program, whose
+// declarations are a library's: under the own libc headers' folder, or outside the program root,
+// as Dumper A leaves them out
+[arch(at="ARCHITECTURE_TYPES.md#c-types-library")]
+def private in_library(var r : CIr; p : CParser; decl : int) : bool {
+    let file = p.unit.toks[p.ast.nodes[decl].tok].file
+    if (!key_exists(r.in_program_of, file)) {
+        let name = c_file_name(p.unit, file)
+        let full = empty(r.program_dir) ? name : get_full_file_name(name)
+        r.in_program_of[file] = (empty(r.library_dir) || !starts_with(name, r.library_dir)) && (empty(r.program_dir) || starts_with(full, r.program_dir))
+    }
+    return !(r.in_program_of?[file] ?? true)
+}
+
+// the error, at external declaration `decl`, of a C file outside the program root, whose
+// definitions would stay external, as Dumper A gives it; false when there is none
+def private outside_c_file(var r : CIr; p : CParser; decl : int) : bool {
+    let name = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
+    return false if (empty(r.program_dir) || !ends_with(name, ".c") || (!empty(r.library_dir) && starts_with(name, r.library_dir)))
+    r.err = "{c_where(p.unit, p.ast.nodes[decl].tok)}: {name} is a C file outside the program root {r.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root"
+    return true
 }
 
 // a library declaration, which adds no type and no declaration: its typedef names bound to their
@@ -838,6 +875,7 @@ def c_ir_unit(var r : CIr; var p : CParser; u : int) : bool {
     r.unit_items = at
     while (empty(r.err) && at >= 0) {
         if (in_library(r, p, at)) {
+            break if (outside_c_file(r, p, at))
             library_declaration(r, p, at)
         } elif (p.ast.nodes[at].kind == CNode.FUNC_DEF) {
             definition(r, p, at)

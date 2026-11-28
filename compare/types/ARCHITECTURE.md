@@ -76,8 +76,14 @@ array type either is a core unit, the set the Core phase's acceptance names: its
 ## 3. The ratchet
 
 `--ratchet <file>` names a suite's list of byte-identical units (`suites/<suite>/dumper_c_identical.txt`),
-one `<dialect> <id>` line each, `id` the file stem. A run fails when a listed unit it compares is
-not byte-identical, and reports a byte-identical one the list lacks; `--update-ratchet` adds every
-byte-identical unit of the run to the list, sorted, and keeps the lines of units the run did not
-compare. A list only grows: a run where a listed unit is no longer byte-identical writes nothing
-and fails. The lists are written by this run alone, never by hand.
+one `<dialect> <id>` line each, `id` the file stem; a file that does not exist is an error. Only
+the suite's units are keyed: a unit named on the command line is no suite's, its stem may be any
+file's, so it is never checked against the list nor written to it. A run fails when a listed unit
+it compares is not byte-identical, and reports a byte-identical one the list lacks; a run over a
+whole suite (no unit named besides) also reports each listed unit the suite no longer holds.
+`--update-ratchet` adds every byte-identical suite unit of the run to the list, sorted, keeps the
+lines of units the run did not compare and, over a whole suite, drops those the suite no longer
+holds. A list only grows otherwise: a run where a listed unit is no longer byte-identical writes
+nothing and fails. The lists are written by this run alone, never by hand. Nothing runs the suite
+ratchets on its own: the byte acceptance of a change that can move them runs them; the mechanism's
+test is `compare/tests/test_types_compare.das`.

@@ -50,6 +50,9 @@ struct CTypes {
     cases : table<int64; bool>      //!< the case values of the innermost switch read so far
     tu_prefix : string              //!< the unit's file stem as an identifier, a file static's prefix
     linkage_names : table<string; string>   //!< a name with internal linkage to its C-IR name
+    external_names : table<string>          //!< a name declared with external linkage
+    program_dir : string                    //!< the program root, `/` last; "" for none: every file but the own headers'
+    in_program_of : table<int; bool>        //!< per file name of the unit, whether its declarations are the program's
     file_scope_names : table<string>        //!< every name declared at file scope or by a block-scope `extern` or prototype
     hoisted_names : table<string>           //!< the names of the statics hoisted so far
     fn_all_locals : table<string>           //!< the parameter and variable names of the function being read, renames included

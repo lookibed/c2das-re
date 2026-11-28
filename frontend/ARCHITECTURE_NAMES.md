@@ -41,6 +41,7 @@ statement the expression statement's). The builder places a token where its own 
 it (`loc_of`): over C source the preprocessor reads, its expansion location in the file as read -
 a source token's own place, a token an expansion made the outermost macro name's line and column -
 with `#line` aside, as Dumper A places it (`frontend/ARCHITECTURE_PARSER.md` section 14). A
-preprocessed unit's tokens have only the place its line markers present. A macro expansion's
+preprocessed unit's tokens have only the place its line markers present. A header named through
+`./` is placed under the preprocessor's name for it, which drops the `.` component clang keeps. A macro expansion's
 parentheses are marked only around a shift or a bitwise operator, which Dumper A keeps there; the
 source's own are all marked.

@@ -78,3 +78,71 @@ def test_dumper_c_source(t : T?) {
     t |> success(dumper_c_needs_evaluator("main.c:1:2: #if expression needs the PP.4 evaluator: 1 + 1"))
     t |> success(!dumper_c_needs_evaluator("main.c:1:2: #error x"))
 }
+
+[test(description = "main.das --dumper c on one file runs Dumper C: its C-IR file beside the module and its producer; a unit with no macro converts to the module --dumper a gives", timeout = 600)]
+def test_main_dumper_c(t : T?) {
+    let dir = path_join(test_temp_dir(), "main_c")
+    mkdir_rec(dir)
+    let unit = path_join(dir, "plain.c")
+    fwrite(unit, "static int g(int x) \{ return x * 2 + 1; \}\nint main(void) \{ return g(1) - 3; \}\n")
+    var modules : array<string>
+    for (dumper in ["a", "c"]) {
+        let out = path_join(dir, dumper)
+        var argv <- daslang_cmd(CONVERTED_MODULES)
+        argv |> push_from(["converter/main.das", "--", unit, "--out", out, "--target", "linux", "--dumper", dumper])
+        var text : string
+        t |> equal(run_and_capture(argv, text, 300.0), 0, text)
+        modules |> push(fread(path_join(out, "plain.das")))
+        let cir = fread(path_join(out, "plain.cir.json"))
+        t |> success(find(cir, "\"producer\": \"c2das-dumper-{dumper} 0.1") >= 0, dumper)
+        t |> equal(stat(path_join(out, "plain.dumper_c.cir.json")).is_reg, dumper == "c")
+    }
+    t |> success(!empty(modules[0]))
+    t |> equal(modules[1], modules[0])
+}
+
+// the byte diff of Dumper C's and Dumper A's C-IR of `c_path` under `inputs`, or the error of either
+def private both_dumpers(c_path : string; inputs : DumpInputs) : string {
+    var tu : CirTu
+    var error : string
+    dumper_c_tu(c_path, target_lp64_linux(), default_clang(), inputs, tu, error)
+    var d = new Dumper
+    dump_tu(*d, c_path, target_lp64_linux(), default_clang(), inputs)
+    let listed = !empty(error) ? "C: {error}" : !empty(d.error) ? "A: {d.error}" : cir_diff(write_cir(tu), write_cir(d.tu))
+    delete_tu(tu)
+    delete_tu(d.tu)
+    unsafe {
+        delete d
+    }
+    return listed
+}
+
+[test(description = "Dumper C leaves out the declarations of a header outside the program root as Dumper A does, takes them under a wider sidecar root, and refuses a C file outside the root and a main file outside it", timeout = 600)]
+def test_dumper_c_program_root(t : T?) {
+    mkdir_rec(path_join(test_temp_dir(), "root/d"))
+    let top = get_full_file_name(path_join(test_temp_dir(), "root"))
+    fwrite(path_join(top, "hdr.h"), "int shared_count;\nint twice(int v);\n")
+    fwrite(path_join(top, "d/q.c"), "#include \"../hdr.h\"\nint main(void) \{ return shared_count + twice(1); \}\n")
+    let q = path_join(top, "d/q.c")
+    t |> equal(both_dumpers(q, DumpInputs()), "")
+    t |> equal(both_dumpers(q, DumpInputs(program_root = top)), "")
+    var tu : CirTu
+    var error : string
+    dumper_c_tu(q, target_lp64_linux(), default_clang(), DumpInputs(), tu, error)
+    t |> equal(length([for (d in tu.decls); d; where d.name == "shared_count"]), 0)
+    delete_tu(tu)
+    dumper_c_tu(q, target_lp64_linux(), default_clang(), DumpInputs(program_root = top), tu, error)
+    t |> equal(length([for (d in tu.decls); d; where d.name == "shared_count"]), 1)
+    delete_tu(tu)
+    fwrite(path_join(top, "other.c"), "int other(void) \{ return 1; \}\n")
+    fwrite(path_join(top, "d/r.c"), "#include \"../other.c\"\nint main(void) \{ return other(); \}\n")
+    error = ""
+    dumper_c_tu(path_join(top, "d/r.c"), target_lp64_linux(), default_clang(), DumpInputs(), tu, error)
+    t |> success(find(error, "other.c is a C file outside the program root {top}/d/: its definitions would stay external") >= 0, error)
+    delete_tu(tu)
+    mkdir_rec(path_join(top, "elsewhere"))
+    error = ""
+    dumper_c_tu(q, target_lp64_linux(), default_clang(), DumpInputs(program_root = path_join(top, "elsewhere")), tu, error)
+    t |> success(starts_with(error, "the main file {q} is no file of the program"), error)
+    delete_tu(tu)
+}
