@@ -356,3 +356,31 @@ def test_array_contexts(t : T?) {
         t |> equal(unit(c._0), "error: {c._1}", c._0)
     }
 }
+
+[test(description = "C source with no clang behind it: the preprocessor reads the unit and its header and expands the macros, and the parser builds the tree of what they expand to, a refusal placed at the macro name")]
+def test_source_unit(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("list.h", "#define FIELD(type, name) type name;\n#define ALIGNED(n) __attribute__((aligned(n)))\ntypedef struct node \{ FIELD(int, key) FIELD(struct node *, next) \} node;\n")
+    mem->add("main.c", "#include \"list.h\"\n#define SQ(x) ((x) * (x))\n#define CAT(a, b) a ## b\nint CAT(sq, r)(node *n) ALIGNED(8);\nint sqr(node *n) \{ return SQ(n->key + 1); \}\n")
+    var p : CParser
+    let clean = c_parser_open_source(p, mem, "main.c", array<string>(), array<string>())
+    t |> success(clean, p.err)
+    let u = c_unit(p)
+    t |> success(!p.failed, p.err)
+    var parts : array<string>
+    var at = p.ast.nodes[u].a
+    while (at >= 0) {
+        parts |> push(c_dump(p.ast, p.unit, at))
+        at = p.ast.nodes[at].next
+    }
+    t |> equal(join(parts, " "),
+               "(decl 0 [(spec typedef) (record struct node 1 [(member_decl 0 [(spec int)] [(member (d_name key) -)]) (member_decl 0 [(record struct node 0 [])] [(member (d_pointer (d_name next) []) -)])])] [(init_decl (d_name node) - -)]) (decl 0 [(spec int)] [(init_decl (d_function 0 (d_name sqr) [(param [(typedef_name node)] (d_pointer (d_name n) []))]) - - [(attribute __attribute__ ( ( aligned ( 8 ) ) ))])]) (func_def 0 [(spec int)] (init_decl (d_function 0 (d_name sqr) [(param [(typedef_name node)] (d_pointer (d_name n) []))]) - -) [] (compound [(return (paren (binary * (paren (binary + (member -> (ident n) key) (int 1))) (paren (binary + (member -> (ident n) key) (int 1))))))]))")
+    let sq = p.unit.toks[length(p.unit.toks) - 8]
+    t |> equal("{c_file_name(p.unit, sq.file)}:{sq.line}:{sq.col}", "main.c:5:27")
+    var bad : CParser
+    var mem2 = new PpMemoryProvider()
+    mem2->add("main.c", "#define GEN(x) _Generic(x, int: 1)\nint v = GEN(2);\n")
+    c_parser_open_source(bad, mem2, "main.c", array<string>(), array<string>())
+    c_unit(bad)
+    t |> equal(bad.err, "main.c:2:9: a generic selection (_Generic) is not parsed")
+}

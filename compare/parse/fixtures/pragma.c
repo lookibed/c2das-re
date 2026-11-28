@@ -1,4 +1,6 @@
-/* a pragma clang -E keeps: the parser's tokens refuse the directive, at its place */
+/* pragmas clang -E keeps that change no C-IR: the preprocessor's ledger takes them, and the declarations around them parse */
 int before;
-#pragma pack(1)
+#pragma GCC diagnostic push
 int after;
+#pragma GCC diagnostic ignored "-Wunused"
+int last(void);
