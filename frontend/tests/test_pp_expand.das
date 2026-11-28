@@ -546,19 +546,51 @@ def test_builtins_and_pastes_allocate_no_string(t : T?) {
 
 [test(description = "in an #if line the < ... > of __has_include and __has_include_next is left as written, as defined's operand is; other operands, __has_attribute's among them, are expanded as clang does")]
 def test_has_include_operand(t : T?) {
-    let pp4 = "E 3:2 #if expression needs the PP.4 evaluator: "
     let defs = "#define linux 1\n#define HDR <stddef.h>\n"
-    t |> equal(expanded("{defs}#if __has_include(<linux/version.h>) && linux\n#endif\n").diags, "{pp4}__has_include(<linux/version.h>) && 1")
-    t |> equal(expanded("{defs}#if __has_include_next( <linux/x.h> )\n#endif\n").diags, "{pp4}__has_include_next( <linux/x.h> )")
-    t |> equal(expanded("{defs}#if __has_include(HDR) + __has_attribute(linux)\n#endif\n").diags, "{pp4}__has_include(<stddef.h>) + __has_attribute(1)")
-    t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "{pp4}__has_include 1")
+    t |> equal(expanded("{defs}#if __has_include(<linux/version.h>) && linux\nyes\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_include_next( <linux/x.h> )\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_include(HDR) + __has_attribute(linux)\n#endif\n").diags, "E 1:15 builtin feature check macro requires a parenthesized identifier")
+    t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "E 3:5 missing '(' after '__has_include'")
+}
+
+[test(description = "the < ... > of __has_include is a header name as written: a macro named like a path part is expanded next to it but not inside it, so the header is still found")]
+def test_has_include_angled_operand_unexpanded(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#define linux 1\n#if __has_include(<linux/x.h>) && linux\nyes\n#endif\n")
+    mem->add("inc/linux/x.h", "")
+    var pp : Preprocessor
+    pp_expand_start(pp, mem, "main.c", array<string>(), array<string>("inc"), 1000000000l)
+    t |> equal(stream(pp), "yes")
+    t |> equal(diagnostics(pp), "")
+}
+
+[test(description = "the operand of __has_feature, __has_builtin, __has_warning and __is_target_os stays as written, as clang reads it unexpanded")]
+def test_query_operand_unexpanded(t : T?) {
+    let defs = "#define linux 1\n#define c_atomic nope\n#define W \"-Wunused\"\n"
+    t |> equal(expanded("{defs}#if __is_target_os(linux)\nos\n#endif\n#if __has_feature(c_atomic)\nfeature\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_warning(W)\n#endif\n").diags, "E 4:19 expected string literal in '__has_warning'")
+    t |> equal(expanded("#define B __builtin_expect\n#if __has_builtin(B) || __has_builtin B\n#endif\n").diags, "E 2:25 missing '(' after '__has_builtin'")
+}
+
+[test(description = "an include guard is the #if !defined X a file writes: one a macro produces is no guard, so a second #include reads the file again as clang does")]
+def test_guard_from_macro(t : T?) {
+    let header = "#if NOT_DEFINED\n#ifdef VAR\nVAR++;\n#endif\n#endif\n"
+    let main = "#define NOT_DEFINED ! defined (guard)\n#include \"g.h\"\n#define guard\n#undef NOT_DEFINED\n#define NOT_DEFINED 1\n#define VAR five\n#include \"g.h\"\n"
+    t |> equal(expanded(main, [("g.h", header)]).out, "five ++ ;")
+}
+
+[test(description = "a #line whose number and name come from macros, a function-like one among them, is expanded first as clang does; the name's escapes are read once")]
+def test_line_operands_from_macros(t : T?) {
+    let r = expanded("#define LN(n) n\n#define NAME \"d\\\\x.c\"\n#line LN(7) NAME\n__LINE__ __FILE__\n")
+    t |> equal(r.out, "7 \"d\\\\x.c\"")
+    t |> equal(r.diags, "")
 }
 
 [test(description = "an argument in an #if line is pre-expanded before defined reads it, as clang does: F(defined X) of a defined X hands the evaluator defined 1, clang's error there")]
 def test_defined_in_argument(t : T?) {
     let r = expanded("#define X 1\n#define F(x) x\n#if F(defined X)\nyes\n#endif\nend\n")
     t |> equal(r.out, "end")
-    t |> equal(r.diags, "E 3:2 #if expression needs the PP.4 evaluator: defined 1")
+    t |> equal(r.diags, "E 1:11 macro name must be an identifier")
     t |> equal(expanded("#define F(x) x\n#if F(defined X)\nyes\n#else\nno\n#endif\n").out, "no")
 }
 

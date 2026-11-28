@@ -13,6 +13,11 @@ the converter never runs.
 
 **A diff to the directive oracle's classes (`pp2_difference_class`, `pp2_class`) classes every
 difference on its own, never a unit by its first difference or by a count, and puts a difference
-in a PP.3 or PP.4 class only when a macro token or a place left to PP.3 or PP.4 lies in it (section
-4).** A difference with no macro and no `#if` left to PP.4 is a PP.2 defect, wherever it stands,
-and a class that took it would hide it.
+in the PP.3 class only when a macro token or a place left to PP.3 lies in it (section 4), and
+never adds a class that waits for an item already done.** A difference with no macro is the
+preprocessor's own defect, wherever it stands, and a class that took it would hide it.
+
+**A diff that changes the clang flags, the clang pin, or what `pp_features.das` asks regenerates
+the feature tables with `das compare/pp/run.das -- --features` in the same change** (that no hand
+edits them is `frontend/REVIEW.md`'s duty). The tables' test in `compare/tests/test_pp_oracle.das`
+fails on a table the pinned clang does not answer.

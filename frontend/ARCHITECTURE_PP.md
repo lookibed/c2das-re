@@ -109,7 +109,8 @@ as clang marks it.
 naming the header - makes the directive's tokens a line in `pp.line`, which the expansion expands
 in place (`ARCHITECTURE_EXPAND.md` section 33); `include_expanded` then reads the name from it. With
 no expansion set the inclusion is recorded with `needs_expansion` and an error names PP.3. `#line`
-whose number is a name is expanded the same way, or left with an error.
+whose number is a name is expanded the same way; with no expansion set the name is no number, clang's
+"requires a positive integer argument".
 
 Before a found file is opened, two checks skip it with no read: it said `#pragma once` and was
 entered before, or its include guard (section 9) is a defined macro. Each `#include` of an active
@@ -127,7 +128,8 @@ error and skipped.
 ## 9. Include guards {#pp-guards}
 
 A file whose every token and directive lies inside one conditional opened by `#ifndef X`, `#if
-!defined X` or `#if !defined(X)` - comments and blank lines aside - has the include guard `X`,
+!defined X` or `#if !defined(X)` as written - not produced by a macro, which clang does not take -
+comments and blank lines aside - has the include guard `X`,
 recorded on its `PpFile` at its end; a second `#include` of it is skipped unopened while `X` is
 defined, as clang and gcc skip it. The file's progress is a state: at the start, inside the guard's
 conditional, after its `#endif`, or no guard. A token, or a directive other than the guard's own
@@ -151,14 +153,27 @@ the presumed include stack they stand for.
 ## 11. The `#if` evaluator hook {#pp-if-hook}
 
 `#if` and `#elif` copy their expression's tokens into `pp.line`, have the expansion expand them
-with `defined`'s operands left as written (`expand_condition`), and ask `eval_condition`, the one
-place PP.4's evaluator goes. Until then it answers `0`, `1`, `defined X` and `defined(X)`, each
-under any number of `!`; any other expression is an error naming PP.4 and false, so the group is
-skipped, and the conditional is marked `undecided`: the group read may not be the one clang reads,
-which the directive oracle reads off to class a difference (`compare/pp/ARCHITECTURE.md` section
-4). For the same reading a macro defined, and a diagnostic met, while such a conditional is open
-is marked `undecided` (`PpMacro`, `PpDiagnostic`). An `#elif` whose conditional already took a group evaluates nothing. `#ifdef`, `#ifndef`,
-`#elifdef` and `#elifndef` ask the macro table now.
+with `defined`'s operands left as written (`expand_condition`), and ask `eval_condition`, which
+hands the line to the evaluator of `ARCHITECTURE_EVAL.md` (`pp.eval`) and answers its questions:
+`defined` and `#ifdef` by `pp_is_defined` (a macro, or a builtin name the expansion still has),
+`__has_include` and `__has_include_next` by the search of section 8 (`include_answer`, the header
+name built as `#include` builds it, `line_header_name`), `__has_embed` by reading the file clang's
+embed lookup finds (`embed_file`, `ARCHITECTURE_EVAL.md`).
+Every condition is decided: an error the evaluator reports skips the group, as clang skips it, and
+stands in `pp.diags` at its token. With no expansion set (`pp_start` alone) a macro in the line is
+a name worth 0, the queries are answered, and no builtin name is defined. A conditional line that
+so reads a macro otherwise than clang (`line_undecided`: an object-like macro, or a function-like
+one before `(`, outside `defined`'s operand, the operand of a query clang reads unexpanded and
+`__has_include`'s `< ... >`; or `defined`, `#ifdef` and their kin asking for a macro defined in an
+undecided group) makes its conditional undecided (`PpCond.undecided`): the group it chooses may
+not be clang's, so every diagnostic raised and every macro defined while an undecided conditional
+is open is marked so, and so is an evaluator diagnostic of that line at a macro name or just past
+one. Each such line, and each `#line` line that names a macro, records the tokens handed out
+before it (`pp.unexpanded`). The dialect's char and
+`wchar_t` facts come from the predefined entries (`pp_eval_target`); the feature table is the
+caller's to load into `pp.eval.features` (`read_features`), else every feature query answers 0. An
+`#elif` whose conditional already took a group evaluates nothing, and a conditional opened in a
+skipped group evaluates none of its lines.
 
 ## 12. The macro table {#pp-macros}
 
