@@ -81,3 +81,9 @@ def test_huge_exponents(t : T?) {
     t |> equal(written("1e-9999999999"), "0x0p+0")
     t |> equal(written("1e9999999999L"), "inf")
 }
+
+[test(description = "a linux long double whose rounding to 64 bits carries out of the significand is the next power of two, never 0")]
+def test_extended_carry(t : T?) {
+    t |> equal(c_float_literal("0x1.ffffffffffffffffp0", "extended"), "0x1p+1")
+    t |> equal(c_float_literal("1.99999999999999999999", "extended"), "0x1p+1")
+}

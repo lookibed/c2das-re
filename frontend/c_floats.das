@@ -134,6 +134,7 @@ def private rounded(q : array<uint>; t : int; sticky : bool; precision, emin, em
     let lsb = max(top - (precision - 1), emin - (precision - 1))
     let drop = lsb + t
     var m = 0ul
+    var carried = false
     if (drop <= 0) {
         m = bits_of(q, 0, len) << uint64(-drop)
     } else {
@@ -142,11 +143,13 @@ def private rounded(q : array<uint>; t : int; sticky : bool; precision, emin, em
         let rest = sticky || any_below(q, drop - 1)
         if (half && (rest || (m & 1ul) != 0ul)) {
             m++
+            // the rounding carries out of the significand: past `precision` bits, or out of all 64
+            carried = m == 0ul || (precision < 64 && m == 1ul << uint64(precision))
         }
     }
     var exp = lsb
-    if (m == 1ul << uint64(precision)) {
-        m >>= 1ul
+    if (carried) {
+        m = 1ul << uint64(precision - 1)
         exp++
     }
     let high = m == 0ul ? exp : exp + 63 - int(clz(m))
