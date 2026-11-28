@@ -556,7 +556,8 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         ok = parameters(r, p, f, cd.params)
         var param = p.ast.nodes[f].b
         while (ok && param >= 0) {
-            c_ir_bind(r, c_declarator_name(p.ast, p.ast.nodes[param].b), CId(t = c_param_type(r.b, p, param), old_style = -1))
+            let psym = c_declarator_name(p.ast, p.ast.nodes[param].b)
+            c_ir_bind(r, psym, CId(t = c_param_type(r.b, p, param), old_style = -1))
             param = p.ast.nodes[param].next
         }
     }

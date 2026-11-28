@@ -23,17 +23,10 @@ def private spelled(types : array<CirType>; t : int) : string {
     return ty.k
 }
 
-// expression `x` as one line: each node its kind and type, a cast its kind (`!` explicit); with
-// `marks`, `^` after a volatile subscript or dereference and `()` after a parenthesized node
-def private shown(types : array<CirType>; x : CirExpr?; marks : bool = false) : string {
-    return "-" if (x == null)
+// literal or `sizeof` node `x` as `shown` writes it, "" for any other node
+def private shown_leaf(types : array<CirType>; x : CirExpr?) : string {
     let t = spelled(types, x.t)
-    let mark = marks ? "{x.vol && x.e != "ref" ? "^" : ""}{x.paren ? "()" : ""}" : ""
-    if (x.e == "cast") {
-        return "{x.cast_kind}{x.explicit_cast ? "!" : ""}<{t}>({shown(types, x.a, marks)}){mark}"
-    } elif (x.e == "ref") {
-        return (x.vol ? "{x.name}~" : x.name) + mark
-    } elif (x.e == "int_lit") {
+    if (x.e == "int_lit") {
         return x.is_char ? "'{x.v}'<{t}>" : "{x.v}<{t}>"
     } elif (x.e == "float_lit") {
         return "{x.v}<{t}>"
@@ -41,6 +34,23 @@ def private shown(types : array<CirType>; x : CirExpr?; marks : bool = false) : 
         return "str<{t}>"
     } elif (x.e == "sizeof_v") {
         return "sizeof<{t}>={int64(x.trait_v)}:{spelled(types, x.of_t)}"
+    }
+    return ""
+}
+
+// expression `x` as one line: each node its kind and type, a cast its kind (`!` explicit); with
+// `marks`, `^` after a volatile subscript or dereference and `()` after a parenthesized node
+def private shown(types : array<CirType>; x : CirExpr?; marks : bool = false) : string {
+    return "-" if (x == null)
+    let leaf = shown_leaf(types, x)
+    return leaf if (!empty(leaf))
+    let t = spelled(types, x.t)
+    let vol_mark = marks && x.vol && x.e != "ref" ? "^" : ""
+    let mark = vol_mark + (marks && x.paren ? "()" : "")
+    if (x.e == "cast") {
+        return "{x.cast_kind}{x.explicit_cast ? "!" : ""}<{t}>({shown(types, x.a, marks)}){mark}"
+    } elif (x.e == "ref") {
+        return (x.vol ? "{x.name}~" : x.name) + mark
     } elif (x.e == "init_list") {
         return "\{" + join([for (it in x.init_items); "{it.pos}:{shown(types, it.v, marks)}"], ", ") + "\}<{t}>"
     } elif (x.e == "call") {
