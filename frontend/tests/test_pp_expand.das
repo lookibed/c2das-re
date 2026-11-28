@@ -553,6 +553,17 @@ def test_has_include_operand(t : T?) {
     t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "E 3:5 missing '(' after '__has_include'")
 }
 
+[test(description = "the < ... > of __has_include is a header name as written: a macro named like a path part is expanded next to it but not inside it, so the header is still found")]
+def test_has_include_angled_operand_unexpanded(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#define linux 1\n#if __has_include(<linux/x.h>) && linux\nyes\n#endif\n")
+    mem->add("inc/linux/x.h", "")
+    var pp : Preprocessor
+    pp_expand_start(pp, mem, "main.c", array<string>(), array<string>("inc"), 1000000000l)
+    t |> equal(stream(pp), "yes")
+    t |> equal(diagnostics(pp), "")
+}
+
 [test(description = "the operand of __has_feature, __has_builtin, __has_warning and __is_target_os stays as written, as clang reads it unexpanded")]
 def test_query_operand_unexpanded(t : T?) {
     let defs = "#define linux 1\n#define c_atomic nope\n#define W \"-Wunused\"\n"

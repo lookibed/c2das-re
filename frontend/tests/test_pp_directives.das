@@ -770,3 +770,11 @@ def test_chosen_groups(t : T?) {
     stream(counted)
     t |> equal(counted.directives_read, 6)
 }
+
+[test(description = "with no expansion set, a #line whose operand names no macro is no unexpanded line: clang reads it the same, an error, so nothing is left to PP.3")]
+def test_line_undefined_name_not_marked(t : T?) {
+    var pp <- started([("main.c", "a\n#line N\nb\n")])
+    t |> equal(stream(pp), "a b")
+    t |> equal(diagnostics(pp), "E 2:7 #line directive requires a positive integer argument")
+    t |> equal(length(pp.unexpanded), 0)
+}

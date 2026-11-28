@@ -254,3 +254,97 @@ def test_corpus_shapes(t : T?) {
                ("(-1 >> 1) == -1", "YES"), ("'\\377' < 0", "NO"), ("defined(__x86_64__) || defined(_M_X64)", "YES"),
                ("__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__", "YES"), ("__has_builtin(__builtin_unreachable) || __GNUC__ > 4", "YES")])
 }
+
+[test(description = "<< and >> take the left operand's type, no usual conversion; >> counts the amount as clang's unsigned cast of it; a comma takes the right operand's type")]
+def test_shift_and_comma_typing(t : T?) {
+    pinned(t, [("-1 >> 1u < 0", "YES"), ("8 >> 4294967296 == 8", "YES"), ("(0u, -1) < 0", "YES")])
+}
+
+[test(description = "a multi-character constant is an int with plain char's signedness: unsigned under the dumper's -funsigned-char, so four 0xff bytes are positive")]
+def test_multichar_signedness(t : T?) {
+    pinned(t, [("'\\377\\377\\377\\377' < 0", "NO"), ("'\\377\\377\\377\\377' == 0xffffffff", "YES")])
+}
+
+[test(description = "under msvc wchar_t is a 16-bit unsigned short: L'\\0' - 1 > 0 holds and a UCN past 0xffff is too large for L''")]
+def test_msvc_wide_chars(t : T?) {
+    pinned_msvc(t, [("L'\\0' - 1 > 0", "YES"), ("L'\\xffff' == 0xffff", "YES"), ("L'\\U00010000'", "NO")])
+    var pp <- started([("main.c", "#if L'\\U00010000'\n#endif\n")], "msvc")
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "E 1:5 character too large for enclosing character literal type")
+}
+
+[test(description = "clang's overflow warning for a signed +, an unsigned << that drops a set bit, and the negation of INTMAX_MIN, each at its operator")]
+def test_overflow_warnings(t : T?) {
+    t |> equal(run_text("#if 9223372036854775807 + 1\n#endif\n").diags, "W 1:25 integer overflow in preprocessor expression")
+    t |> equal(run_text("#if (3u << 63) == 9223372036854775808u\n#endif\n").diags, "W 1:9 integer overflow in preprocessor expression")
+    t |> equal(run_text("#if -(-9223372036854775807 - 1) < 0\n#endif\n").diags, "W 1:5 integer overflow in preprocessor expression")
+}
+
+[test(description = "a sign conversion inside an operand short-circuiting skips is not reported, as clang reports it only for a live value")]
+def test_dead_sign_conversion_silent(t : T?) {
+    t |> equal(run_text("#if 0 && -1 > 0u\n#endif\n#if 1 || -1 > 0u\n#endif\n").diags, "")
+}
+
+[test(description = "a hex or binary constant past INTMAX_MAX is unsigned without a warning; a constant past UINTMAX_MAX is clang's error, yet its truncated value decides the group")]
+def test_literal_range_diagnostics(t : T?) {
+    t |> equal(run_text("#if 0xFFFFFFFFFFFFFFFF\n#endif\n#if 0b1000000000000000000000000000000000000000000000000000000000000000\n#endif\n").diags, "")
+    let huge = run_text("#if 99999999999999999999 == 7766279631452241919\nyes\n#endif\n")
+    t |> equal(huge.out, "yes")
+    t |> equal(huge.diags, "E 1:5 integer literal is too large to be represented in any integer type")
+}
+
+[test(description = "a decimal constant whose last digit carries it past UINTMAX_MAX is too large too, as clang checks the add as well as the multiply; a hex one past it likewise")]
+def test_literal_too_large_by_the_last_digit(t : T?) {
+    let r = run_text("#if 18446744073709551617 == 1\nyes\n#endif\n#if 0x10000000000000000 == 0\nhex\n#endif\n")
+    t |> equal(r.out, "yes hex")
+    t |> equal(r.diags, "E 1:5 integer literal is too large to be represented in any integer type | E 4:5 integer literal is too large to be represented in any integer type")
+}
+
+[test(description = "the simple escapes \\t \\r \\a \\b \\f \\v have C's values")]
+def test_simple_escapes(t : T?) {
+    pinned(t, [("'\\t' == 9 && '\\r' == 13 && '\\a' == 7 && '\\b' == 8 && '\\f' == 12 && '\\v' == 11", "YES")])
+}
+
+[test(description = "a delimited \\x\{...\} past the character type is clang's error at the literal")]
+def test_delimited_escape_range_error(t : T?) {
+    t |> equal(run_text("#if '\\x\{100\}'\n#endif\n").diags, "E 1:5 hex escape sequence out of range")
+}
+
+[test(description = "a hex escape past the character type fails the constant in clang, so its #if group is skipped; an octal one only truncates")]
+def test_hex_escape_out_of_range_fails_the_condition(t : T?) {
+    pinned(t, [("'\\777' == 255", "YES"), ("'\\x100' == 0", "NO"), ("'\\x\{100\}' == 0", "NO"), ("'\\o\{777\}' == 255", "NO")])
+}
+
+[test(description = "__has_include_next from a header found through the include path searches past that folder only: the header itself is not found again")]
+def test_has_include_next_skips_own_folder(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#include <a.h>\n")
+    mem->add("inc/a.h", "#if __has_include_next(<a.h>)\nnext\n#else\nnone\n#endif\n")
+    var pp : Preprocessor
+    pp_expand_start(pp, mem, "main.c", array<string>(), array<string>("inc", "inc2"), 1000000000l)
+    t |> equal(stream(pp), "none")
+}
+
+[test(description = "__has_embed answers 1 for a non-empty file, 2 for an empty one, 0 for none")]
+def test_has_embed_answers(t : T?) {
+    let files <- [("full.h", "x\n"), ("empty.h", "")]
+    t |> equal(verdict("__has_embed(\"full.h\") == 1 && __has_embed(\"empty.h\") == 2 && __has_embed(\"none.h\") == 0", files), "YES")
+}
+
+[test(description = "an #undef of a query name removes the builtin: the name is then an undefined function-like use, clang's error")]
+def test_undef_query_name(t : T?) {
+    let r = run_text("#undef __has_builtin\n#if __has_builtin(__builtin_expect)\nyes\n#else\nno\n#endif\n")
+    t |> equal(r.out, "no")
+    t |> success(find(r.diags, "E 2:5 function-like macro '__has_builtin' is not defined") >= 0, r.diags)
+}
+
+[test(description = "#elifdef and #elifndef see the builtin names as defined, as #ifdef does")]
+def test_elifdef_builtin(t : T?) {
+    t |> equal(run_text("#if 0\n#elifdef __FILE__\na\n#endif\n#if 0\n#elifndef __has_include\nb\n#else\nc\n#endif\n").out, "a c")
+}
+
+[test(description = "the operands of __has_feature and __has_builtin are read as written: a macro of that name does not change the answer")]
+def test_query_operand_verdicts(t : T?) {
+    t |> equal(run_text("#define c_atomic nope\n#if __has_feature(c_atomic)\nyes\n#endif\n").out, "yes")
+    t |> equal(run_text("#define B __builtin_expect\n#if __has_builtin(B)\nyes\n#else\nno\n#endif\n").out, "no")
+}
