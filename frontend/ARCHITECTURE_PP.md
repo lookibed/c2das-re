@@ -6,8 +6,10 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 
 `pp_directives.das` reads a translation unit as the pp-token lexer of section 4 hands out its
 tokens, does every directive, and hands out the tokens of the active groups: `pp_start` opens the
-main file, `pp_next_token` reads the next token into `pp.tok` and answers false at the end. No
-macro is expanded: a token naming a macro is handed out as it is, for PP.3's expansion to replace.
+main file, `pp_next_directive_token` reads the next token into `pp.tok` and answers false at the end. It
+expands no macro: a token naming a macro is handed out as it is. `pp_next_token` is the caller's
+read: through the macro expansion when one is set (`pp.expansion`, `ARCHITECTURE_EXPAND.md`),
+else the directive layer's, and it counts the tokens handed out (`pp.emitted`).
 A `#` that starts a line (`at_bol`) starts a directive, and the directive is read token by token
 to the next token at the start of a line, which stays the lexer's current token and is marked
 `pending` for the next read. So no line is ever materialized; a directive that needs its tokens
@@ -15,8 +17,19 @@ later (`#if`, `#pragma`, `#error`) copies them into `pp.line`, each a `PpHeld` w
 copied into the `pp.line_text` byte pool.
 
 `pp.tok` is a `PpOutToken`: the lexer's `PpToken`, placed in its physical file, and beside it the
-presumed line and file name `#line` gives it (`pline`, `pname`, an index of `pp.names`). PP.5's
-expansion record extends this struct with the expansion place and the macro call. Directive
+presumed line and file name `#line` gives it (`pline`, `pname`, an index of `pp.names`); the
+directive layer's token is spelled in its file (`spelled` `source`) and comes from no call
+(`call` -1). The expansion's fields of it are `ARCHITECTURE_EXPAND.md`'s.
+
+Every file opened in the unit gets a buffer id, the index of `pp.buffer_data`, which records the
+first byte of its lexer's working buffer (section 4: the file past translation phase 2). A file
+that closes moves its buffer to `pp.closed` instead of freeing it; moving an array keeps its
+bytes where they are, so every buffer stays at the address `buffer_data` records for the unit's
+life. A source token carries its buffer and its byte range there (`buffer`, `at`, `len`), so its
+spelling can be read after its file closed and the lexer moved on: `pp_span_of` gives any handed-out
+token's bytes, `pp_spelling_of` a string of them, `pp_token_span` and `pp_token_spelling` the
+current token's. A token reader that keeps tokens - the C tokens - keeps that range, not a copy.
+The unit holds every file's text this way, which is what clang holds too. Directive
 diagnostics (`pp.diags`) carry the physical place and the presumed one; the lexer's own
 diagnostics stay in `pp.lx.diags`. An error never stops the preprocessor: `#error` and a
 malformed directive are recorded, and reading goes on, as clang reports every error of a unit. A
@@ -38,9 +51,12 @@ nothing, an include guard (section 9) included; a number after `#` is a GNU line
 `#line` (section 10). `#import` is an `#include` that marks its file once (section 8); `#ident
 "text"` and its `#sccs` spelling are a pragma ledger entry (section 13).
 
-These diagnostics of clang have no PP.2 counterpart: `#undef` or `#define` of a builtin macro
-(`__FILE__`, `__LINE__`, the `__has_*` family), which PP.3 owns. A bad predefined entry is
-reported with no place (file 0, line 0), since the entry has none in a file.
+A `#define` or `#undef` of a builtin name (`__FILE__`, `__LINE__`, `_Pragma`, the `__has_*`
+family) is clang's warning, which the expansion gives through `PpExpansion.macro_changed`
+(`ARCHITECTURE_EXPAND.md` section 31): PP.2 alone has no builtin names and gives none. A bad
+predefined entry is reported with no place (file 0, line 0), since the entry has none in a file.
+`pp.directives_read` counts the directive lines read, in skipped groups too, which tells the
+expansion that a directive stood between two tokens (`ARCHITECTURE_EXPAND.md` section 25).
 
 ## 6. Starting a unit and the file provider {#pp-start}
 
@@ -90,9 +106,10 @@ name found nowhere is a fatal error naming every folder searched (section 5). `#
 as clang marks it.
 
 `#include` reads its name with `pp_next_header_name`. A token that is no header name - a macro
-naming the header - is left to PP.3: the directive's tokens are copied into `pp.line`, the
-inclusion is recorded with `needs_expansion`, and an error names PP.3. `#line` whose number is a
-name is left to PP.3 the same way.
+naming the header - makes the directive's tokens a line in `pp.line`, which the expansion expands
+in place (`ARCHITECTURE_EXPAND.md` section 28); `include_expanded` then reads the name from it. With
+no expansion set the inclusion is recorded with `needs_expansion` and an error names PP.3. `#line`
+whose number is a name is expanded the same way, or left with an error.
 
 Before a found file is opened, two checks skip it with no read: it said `#pragma once` and was
 entered before, or its include guard (section 9) is a defined macro. Each `#include` of an active
@@ -133,12 +150,14 @@ the presumed include stack they stand for.
 
 ## 11. The `#if` evaluator hook {#pp-if-hook}
 
-`#if` and `#elif` copy their expression's tokens into `pp.line` and ask `eval_condition`, the one
+`#if` and `#elif` copy their expression's tokens into `pp.line`, have the expansion expand them
+with `defined`'s operands left as written (`expand_condition`), and ask `eval_condition`, the one
 place PP.4's evaluator goes. Until then it answers `0`, `1`, `defined X` and `defined(X)`, each
 under any number of `!`; any other expression is an error naming PP.4 and false, so the group is
 skipped, and the conditional is marked `undecided`: the group read may not be the one clang reads,
 which the directive oracle reads off to class a difference (`compare/pp/ARCHITECTURE.md` section
-4). An `#elif` whose conditional already took a group evaluates nothing. `#ifdef`, `#ifndef`,
+4). For the same reading a macro defined, and a diagnostic met, while such a conditional is open
+is marked `undecided` (`PpMacro`, `PpDiagnostic`). An `#elif` whose conditional already took a group evaluates nothing. `#ifdef`, `#ifndef`,
 `#elifdef` and `#elifndef` ask the macro table now.
 
 ## 12. The macro table {#pp-macros}
@@ -150,7 +169,9 @@ PP.5 to record. The body is the definition's tokens, `count` of them in `pp.macr
 A function-like macro is a name followed by `(` with no space; its parameters are symbols, and a
 variadic one's last parameter is `__VA_ARGS__`, or the name of a GNU `name...`. The definition
 is refused with an error for a missing or invalid name, `defined`, a malformed parameter list,
-`##` at either end of the body, and a `#` in a function-like body before no parameter. A
+`##` at either end of the body, and a `#` in a function-like body before no parameter
+(`__VA_OPT__` counts as one). `__VA_OPT__` in a macro that is not variadic is clang's warning at
+its place, once a definition (`ARCHITECTURE_EXPAND.md` section 27 reads it). A
 redefinition that differs in parameters, spellings or the presence of whitespace between tokens
 is a warning, and the new definition holds, as in clang.
 
@@ -161,7 +182,9 @@ token follows the name with no space (`#define X+`) warns as clang's C99 mode do
 
 ## 13. The pragma and pack ledgers {#pp-pragmas}
 
-A `#pragma` is never dropped silently. `#pragma once` marks the file; `push_macro` and
+A `#pragma` is never dropped silently. `pp_pragma_line` does the pragma whose tokens are in
+`pp.line`, of a `#pragma` line or of a `_Pragma` operator (`ARCHITECTURE_EXPAND.md` section 31).
+`#pragma once` marks the file; `push_macro` and
 `pop_macro` act on the macro table (section 12). `#pragma pack(...)` is a `PpPack` in
 `pp.packs`: `pack(N)` sets, `pack()` resets to the target's default (0), `pack(push[, tag][,
 N])` saves the current alignment, `pack(pop[, tag][, N])` restores the one saved last, or the one
