@@ -40,8 +40,11 @@ the plan's PP.6 grows from it.
   `#ident` and `#sccs`. None uses a macro.
 - `fixtures/pp3/` - the expansion oracle's units: the examples of C11 6.10.3.3 to 6.10.3.5 and
   6.10.9, rescanning and deferred recursion, the GNU variadics, `#` and `##`, the builtins under
-  `SOURCE_DATE_EPOCH`, macros in `#include`, `#line` and `#if` lines, and `_Pragma`; `vers2.h` and
-  `builtins.h` are headers they include.
+  `SOURCE_DATE_EPOCH`, macros in `#include`, `#line` and `#if` lines, and `_Pragma` - its operand
+  expanded, in arguments done at the rescan, in an `#if` line - with the names of disabled macros
+  read in arguments, a directive before a call's `(`, `__VA_OPT__` in a macro that is not variadic
+  and a final `\` stringified (`pragma_args.c`); `vers2.h` and `builtins.h` are headers they
+  include.
 - `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
   (section 3).
 - The tests are `compare/tests/test_pp_oracle.das`.
@@ -98,7 +101,8 @@ own, so a token is compared by its kind, its spelling and `at_bol` only. Clang p
 it keeps, and each `#ident` or `#sccs`, as a `#pragma` or `#ident` line of its output, which its
 token dump takes as a directive, not tokens; PP.2 keeps them in its ledgers, not its stream. So
 the oracle counts those lines of the `-E` output (`pragma_lines`) against PP.2's pragma and pack
-entries.
+entries, and places each: a line's place is the count of clang's tokens on the lines before it
+(`pragma_places`), an entry's the tokens PP.2 handed out before it (`emitted`).
 
 A macro clang expands shifts every later token, so the two streams are aligned, not compared
 position by position: `pp2_differences` takes Myers' shortest edit script by kind, spelling and
@@ -119,9 +123,11 @@ up and the rest of the streams is one difference. Every difference is classed
 
 A unit's class (`pp2_class`) is the latest its differences wait for, raised to needs PP.3 or PP.4
 by a place left to either with no difference; it differs when one difference differs, when PP.2
-has an error of its own - an error naming PP.3 or PP.4, or met while a group PP.4 chooses was
-open, is not its own - or when the pragma counts disagree with nothing left to PP.4 to explain them
-(or to PP.3, when clang has more: `_Pragma` in an expansion). Each unit not clean prints its count
+has an error of its own - an error naming PP.3 or PP.4, or met in a group PP.4 chooses
+(`PpDiagnostic.undecided`), or in PP.3's stream met by a read that handed out a token of a late
+macro (section 5), is not its own - when the pragma counts disagree with nothing left to PP.4 to
+explain them (or to PP.3, when clang has more: `_Pragma` in an expansion), or when the streams
+are equal and a pragma stands at another place than clang's. Each unit not clean prints its count
 of differences of each class, every difference that differs and `--show` of each other class.
 A unit that differs fails the run; a unit clang refuses is a reference failure, listed or
 unlisted as section 3 counts it, and an unlisted one fails the run too.
@@ -133,8 +139,9 @@ section 2, the streams aligned by kind, spelling and `at_bol`, the `#pragma` lin
 ledgers, each difference classed, the reference list of section 3 applied. PP.3 hands out expanded
 tokens, so no difference needs PP.3 (`Pp2Result.expanded`): a difference waits for PP.4 as section
 4 classes it, or when a token of PP.3's side comes from the expansion of a macro defined in a
-group PP.4 chooses - a macro of its call or of a call its name came from, defined while such a
-group was open or in a read that left an `#if` to PP.4 (`late_macro`) - or it differs. `at_bol` is comparable after expansion: clang's `-E` starts a printed
+group PP.4 chooses - a macro of its call or of a call its name came from whose `#define` sat
+inside such a group (`PpMacro.undecided`, `late_macro`); a macro defined outside every such group
+is not late, though the read that defined it met one - or it differs. `at_bol` is comparable after expansion: clang's `-E` starts a printed
 line where the token's own line starts one, the first token of a replacement takes the macro
 name's, and the token after a pragma starts a line in both. Both sides run at `ORACLE_EPOCH`:
 clang reads it from `SOURCE_DATE_EPOCH`, PP.3 from `pp_expand_start`, so `__DATE__`, `__TIME__`

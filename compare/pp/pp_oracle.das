@@ -418,7 +418,7 @@ enum Pp2Class {
 //! A token PP.2 handed out, with what a difference is classed by: whether it names a macro PP.2 has
 //! defined where it stands, whether it stands in the parenthesized arguments of a function-like
 //! macro PP.2 has defined, whether it stands in a group chosen past an `#if` left to PP.4, and in
-//! PP.3's stream whether a macro of the calls it came from was defined there (`late_macro`).
+//! PP.3's stream whether a macro of the calls it came from was defined in such a group (`late_macro`).
 struct Pp2Token {
     tok : OracleToken
     macro : bool
@@ -427,12 +427,13 @@ struct Pp2Token {
     late_macro : bool
 }
 
-// whether call `c` of PP.3's record, or a call its name came from, expands a macro in `late`
-def private from_late_macro(pp : Preprocessor; late : array<bool>; c : int) : bool {
+// whether call `c` of PP.3's record, or a call its name came from, expands a macro defined in a
+// group chosen past an `#if` left to PP.4
+def private from_late_macro(pp : Preprocessor; c : int) : bool {
     var at = c
     while (at >= 0) {
         let call & = unsafe(pp.expansion.calls[at])
-        return true if (call.macro < length(late) && late[call.macro])
+        return true if (pp.macros[call.macro].undecided)
         at = call.parent
     }
     return false
@@ -460,8 +461,10 @@ struct Pp2Result {
     pp4_at : array<int>     //!< the places of the `#if`s and `#elif`s left to PP.4
     clang_pragmas : int
     pp_pragmas : int
-    errors : array<string>  //!< PP.2's errors, past those naming PP.3 or PP.4 and those in a group PP.4 chooses
-    late_errors : int       //!< PP.2's errors in a group PP.4 chooses
+    clang_pragma_at : array<int>    //!< the place of each `#pragma` and `#ident` line of clang's output, in order
+    pp_pragma_at : array<int>       //!< the place of each pragma and pack entry, in order
+    errors : array<string>  //!< PP.2's errors, past those naming PP.3 or PP.4 and the late ones
+    late_errors : int       //!< PP.2's errors in a group PP.4 chooses, or in PP.3's stream met expanding a macro defined in one
     gave_up : bool          //!< the alignment passed its limit: the streams past their common ends are one difference
     error : string          //!< clang failed on the unit: nothing compared
     shown : array<string>
@@ -495,29 +498,44 @@ def pp2_setup(var error : string&) : tuple<entries : array<string>; search : arr
 //! keeps and each `#ident` as a line, and its token dump of that output takes them as directives,
 //! not tokens, as PP.2 keeps them in its pragma and pack ledgers instead of its stream.
 [arch(at="ARCHITECTURE.md#pp2")]
-def pragma_lines(text : string) : int {
-    var lines = 0
-    for (line in split(text, "\n")) {
+def pragma_lines(text : string) : int => length(pragma_line_numbers(text))
+
+// the numbers, from 1, of the `#pragma` and `#ident` lines of `text`
+def private pragma_line_numbers(text : string) : array<int> {
+    var numbers : array<int>
+    for (line, n in split(text, "\n"), count(1)) {
         let s = strip(line)
         if (starts_with(s, "#")) {
             let directive = strip(slice(s, 1))
-            lines += starts_with(directive, "pragma") || starts_with(directive, "ident") ? 1 : 0
+            if (starts_with(directive, "pragma") || starts_with(directive, "ident")) {
+                numbers |> push(n)
+            }
         }
     }
-    return lines
+    return <- numbers
 }
 
-// whether a conditional open in `pp` chose its group past an `#if` left to PP.4
-def private any_undecided(pp : Preprocessor) : bool {
-    for (c in pp.conds) {
-        return true if (c.undecided)
+//! The place of each `#pragma` and `#ident` line of clang's `-E` output `text` in its token stream
+//! `clang`, the tokens of that output: the count of tokens on the lines before it.
+[arch(at="ARCHITECTURE.md#pp2")]
+def pragma_places(text : string; clang : array<OracleToken>) : array<int> {
+    let numbers <- pragma_line_numbers(text)
+    var places : array<int>
+    places |> reserve(length(numbers))
+    var before = 0
+    for (n in numbers) {
+        while (before < length(clang) && clang[before].line < n) {
+            before++
+        }
+        places |> push(before)
     }
-    return false
+    return <- places
 }
 
 //! The tokens PP.2 hands out for `unit` read through `fio`, and what it left to PP.3 and PP.4,
 //! into `result`. A diagnostic is placed at the tokens handed out before it; an error counts as
-//! PP.2's own unless it names PP.3 or PP.4, or a group PP.4 chooses was open around it. With
+//! PP.2's own unless it names PP.3 or PP.4, it was met in a group PP.4 chooses, or in PP.3's stream
+//! the read that met it handed out a token of a macro defined in such a group. With
 //! `result.expanded`, PP.3's expanded tokens, the time builtins at `ORACLE_EPOCH`, none marked as
 //! a macro's.
 [arch(at="ARCHITECTURE.md#pp2")]
@@ -531,35 +549,26 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
         return <- tokens
     }
     var seen = 0
-    var was_undecided = false
     var more = true
     var called = false
     var depth = 0
-    var late_macros : array<bool>
     while (more) {
-        let defined = length(pp.macros)
         more = pp_next_token(pp)
-        let undecided = any_undecided(pp)
-        var late = was_undecided || undecided
+        let undecided = pp_in_undecided_group(pp)
+        let late_macro = more && result.expanded && from_late_macro(pp, pp.tok.call)
         for (i in range(seen, length(pp.diags))) {
             let what = pp.diags[i].what
             if (find(what, "PP.4") >= 0) {
                 result.pp4_at |> push(length(tokens))
-                late = true
             } elif (find(what, "PP.3") >= 0) {
                 result.pp3_at |> push(length(tokens))
-            } elif (pp.diags[i].severity != PpSeverity.warning && late) {
+            } elif (pp.diags[i].severity != PpSeverity.warning && (pp.diags[i].undecided || late_macro)) {
                 result.late_errors++
             } elif (pp.diags[i].severity != PpSeverity.warning) {
                 result.errors |> push("{pp.diags[i].line}:{pp.diags[i].col} {what}")
             }
         }
         seen = length(pp.diags)
-        was_undecided = undecided
-        late_macros |> resize(length(pp.macros))
-        for (m in range(defined, length(pp.macros))) {
-            late_macros[m] = late
-        }
         if (more) {
             let kind = pp.tok.tok.kind
             let macro = !result.expanded && kind == int(PpTok.IDENTIFIER) && pp_defined(pp, pp.tok.tok.sym)
@@ -573,11 +582,18 @@ def pp2_tokens(unit : string; entries, search : array<string>; var result : Pp2R
             }
             called = macro && pp.macros[pp.macro_of?[pp.tok.tok.sym] ?? -1].function_like
             tokens |> push(Pp2Token(tok = OracleToken(kind = kind, spelling = pp_token_spelling(pp), at_bol = pp.tok.tok.at_bol),
-                                    macro = macro, in_call = in_call, undecided = undecided,
-                                    late_macro = result.expanded && from_late_macro(pp, late_macros, pp.tok.call)))
+                                    macro = macro, in_call = in_call, undecided = undecided, late_macro = late_macro))
         }
     }
     result.pp_pragmas = length(pp.pragmas) + length(pp.packs)
+    result.pp_pragma_at |> reserve(result.pp_pragmas)
+    for (p in pp.pragmas) {
+        result.pp_pragma_at |> push(p.emitted)
+    }
+    for (p in pp.packs) {
+        result.pp_pragma_at |> push(p.emitted)
+    }
+    sort(result.pp_pragma_at)
     return <- tokens
 }
 
@@ -744,8 +760,9 @@ def pp2_difference_class(r : Pp2Result; d : Pp2Difference; clang : array<OracleT
 }
 
 //! The class of a compared unit: it differs when PP.2 has an error of its own, a difference
-//! differs, or the pragma counts disagree with nothing left to PP.3 or PP.4 to explain them; else
-//! it needs the latest item a difference or a place left over waits for; else it is clean.
+//! differs, the pragma counts disagree with nothing left to PP.3 or PP.4 to explain them, or the
+//! streams are equal and a pragma stands at another place; else it needs the latest item a
+//! difference or a place left over waits for; else it is clean.
 [arch(at="ARCHITECTURE.md#pp2")]
 def pp2_class(r : Pp2Result) : Pp2Class {
     return Pp2Class.differs if (!empty(r.errors))
@@ -762,6 +779,10 @@ def pp2_class(r : Pp2Result) : Pp2Class {
     if (r.clang_pragmas != r.pp_pragmas) {
         let explained = cls == Pp2Class.needs_pp4 || (cls == Pp2Class.needs_pp3 && r.clang_pragmas > r.pp_pragmas)
         return Pp2Class.differs if (!explained)
+    } elif (cls == Pp2Class.clean && length(r.clang_pragma_at) == length(r.pp_pragma_at)) {
+        for (a, b in r.clang_pragma_at, r.pp_pragma_at) {
+            return Pp2Class.differs if (a != b)
+        }
     }
     return cls
 }
@@ -873,7 +894,9 @@ def compare_unit_pp2(unit, work : string; flags : array<string>; entries, search
         return <- result
     }
     let clang <- clang_tokens(dump)
-    result.clang_pragmas = pragma_lines(fread(preprocessed))
+    let text = fread(preprocessed)
+    result.clang_pragmas = pragma_lines(text)
+    result.clang_pragma_at <- pragma_places(text, clang)
     let ours <- pp2_tokens(unit, our_entries, our_search, result)
     result.clang_tokens = length(clang)
     result.pp_tokens = length(ours)
