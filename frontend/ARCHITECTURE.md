@@ -8,7 +8,7 @@ sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - 
 lexer of section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
 `#include`, the macro table, the ledgers) and the macro expansion of `ARCHITECTURE_EXPAND.md`
 (sections 29 to 36) - and the first part of Dumper C's parser, which reads the C tokens of a
-preprocessed unit, its expressions, type names, declarations, records, enums, statements and
+preprocessed unit or of C source the preprocessor expands, its expressions, type names, declarations, records, enums, statements and
 function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`,
 section 23), the type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to
 28 and 60), the expressions with their conversions and the unit's C-IR walk
@@ -39,8 +39,9 @@ C-IR builder yet.
 - `tests/test_pp_expand.das` - every expansion rule over in-memory files: the C11 6.10.3 examples,
   the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the call
   record. The comparison with clang is `compare/pp/`'s `--pp3`.
-- `c_tokens.das` - the C tokens of a preprocessed unit over the pp-lexer: keywords by symbol,
-  pp-numbers classified, line markers read (`ARCHITECTURE_PARSER.md` section 14).
+- `c_tokens.das` - the C tokens of a unit as the preprocessor hands them out, of a preprocessed
+  unit or of C source with its macros expanded: keywords by symbol, pp-numbers classified
+  (`ARCHITECTURE_PARSER.md` section 14).
 - `c_ast.das` - the tree in one node array and its one-line dump (section 15). No parsing.
 - `c_parser.das` - the recursive-descent parser: the typedef-name table, type names and
   declarators, expressions, the errors and the nesting bound, declarations, records and enums,
@@ -73,15 +74,15 @@ C-IR builder yet.
   declarator nesting bound, and the allocation probe over the preprocessed own headers.
 - `tests/test_c_parse_unit.das` - every record, enum, definition and file-scope form as a dumped
   tree, the tag and enumerator scopes, the old-style declaration list, a body's scope, the
-  refusals and malformed input, the nesting bound of the record forms, and a whole unit of headers
-  and a program with its allocation probe.
+  refusals and malformed input, the nesting bound of the record forms, a whole unit of headers
+  and a program with its allocation probe, and a unit of C source with macros parsed with no clang.
 - `tests/test_c_parse_stmt.das` - every statement and GNU statement form as a dumped tree, the
   block and `for` scopes, the refusals and malformed statements, the nesting bound of the statement
   forms, and a unit with real bodies with its allocation probe.
 - `tests/_preprocessed_headers.das` - the own headers as `clang -E` prints them, the text the
   parser tests read.
 - `tests/test_c_tokens.das`, `tests/test_c_parse_expr.das` - every token class, keyword family and
-  line-marker case; every expression and type-name form as a dumped tree, the ambiguities, every
+  line-marker case, the places and spellings of expanded tokens, the preprocessor's errors; every expression and type-name form as a dumped tree, the ambiguities, every
   refusal and malformed input with its message, the nesting bound, and the allocation probes.
 - `tests/test_pp_lexer.das` - every token class and edge case of section 4, the placing through
   splices, interning, and the no-allocation probe over a real header. The clang comparison lives

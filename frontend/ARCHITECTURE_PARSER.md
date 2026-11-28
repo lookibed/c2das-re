@@ -7,14 +7,31 @@ function definitions and whole units; its statements are `ARCHITECTURE_STATEMENT
 
 ## 14. The C tokens {#c-tokens}
 
-`c_tokens.das` turns the pp-tokens of section 4 into C tokens (C11 5.1.1.2, translation phase 7).
-Its input today is a preprocessed unit, the text `clang -E` prints. `c_tokens_open` takes the bytes
-and opens the pp-lexer on them; `c_tokens_read` reads every token into `unit.toks`, an array of
-small plain structs, and ends it with one EOF token. A token is its kind (`CTok`), its symbol, its
-byte range in the lexer's working buffer, and its place: a file id, a line and a column.
+`c_tokens.das` turns the tokens the preprocessor hands out into C tokens (C11 5.1.1.2,
+translation phase 7). The unit holds a `Preprocessor` (`ARCHITECTURE_PP.md`) and reads it with
+`pp_next_token`. Its input is either a preprocessed unit, the text `clang -E` prints, which
+`c_tokens_open` gives the directive layer alone (`pp_start` over one file in memory, no macro
+expanded), or C source, which `c_tokens_expand_open` preprocesses with macro expansion
+(`pp_expand_start` over a file provider, `ARCHITECTURE_EXPAND.md`); `c_tokens_read` reads every
+token into `unit.toks`, an array of small plain structs, and ends it with one EOF token. A token
+is its kind (`CTok`), its symbol, where its spelling lies, and its presumed place: a file name id
+(an index of the preprocessor's `names`: 0 the unit's own name, 1 the predefined macros' buffer,
+then each name a file, `#line` or a line marker gives), a line and a column. A token of the source
+stands at its own place; a token an expansion makes, a macro body's or an argument's, stands at the
+outermost macro name of its call, line and column, as clang's expansion location does.
 
-Nothing is allocated per token. The token array grows by doubling. A keyword is found by its
-symbol: `c_tokens_open` interns every keyword spelling in the lexer's interner once and records
+The spelling is kept where the preprocessor keeps it (`PpSpelled`): a file's working buffer, the
+macro body pool or a symbol, all valid for the unit's life, read through `pp_span_of`. A pasted or
+stringified token's spelling lies in the expansion's pool, which the next `pp_next_token` may
+clear, so it is copied into the unit's own `pool` as it is read. `c_span` gives a token's bytes,
+`c_spelling` a string of them, and `c_range_text` the text of a run of tokens: the bytes between
+its ends as written when every token is a source token of one file in order, else the spellings
+with a blank between each two.
+
+Nothing is allocated per token. The token array and the pool grow by doubling; what a directive
+costs (a line marker's name, say) is the preprocessor's. Each open starts a new preprocessor and
+hands it the interner of the last one, so a name keeps its symbol from unit to unit. A keyword is
+found by its symbol: each open interns every keyword spelling in the interner once and records
 each one's kind in `kind_of_sym`, an array indexed by symbol, so an identifier's kind costs one
 index. A symbol the array does not know yet is read once, on its first token: a universal
 character name in it that C11 6.4.3p2 forbids (one naming a character below U+00A0 other than
@@ -37,19 +54,13 @@ neither is an error, `invalid numeric constant '<spelling>'`; so is an imaginary
 is not computed here. A punctuator keeps the kind `PpTok` gives it, so a digraph has the kind of
 the punctuator it spells. A character constant and a string literal stay one token each; adjacent
 string literals are joined by the parser. A `::`, which the pp-lexer reads as one token, is two
-`:` tokens, as clang reads it in C17. `#` and `##` outside a line marker, a pp-token of kind OTHER
-and an unterminated comment are errors.
+`:` tokens, as clang reads it in C17. A `#`, a `##` and a pp-token of kind OTHER are errors.
 
-A `#` that starts a line opens a line marker, `# <line> "<file>" <flags>` as `clang -E` writes it,
-or `#line <line> "<file>"`. The lines after it are placed at that line, in that file; a marker with
-no file keeps the file. A file name with a string prefix (`L"w.h"`) is an error. The file name is
-interned as the bytes between its quotes, so a file a marker names again has its first id; file 0 is the unit's own name. Any other directive (`#pragma`
-among them) is an error naming it. The first error ends the read and `unit.err` holds it as
-`file:line:col: what`.
-
-The token view reads the pp-lexer itself, not the directive layer of section 5, so it reads the
-line markers of a preprocessed unit with its own reader and shares nothing with the directive
-layer's `#line` (section 10): it takes the name's bytes as written, escapes included, and no flag.
+Directives are the preprocessor's: a line marker, `#line`, `#pragma` and every other directive
+are done there, and a `#` or `##` the preprocessor hands out is a stray token. The first error ends
+the read and `unit.err` holds it as `file:line:col: what`: a token's, or the first error of the
+preprocessor's diagnostics (`pp.diags`, a warning being none) or of the lexer's (`pp.lx.diags`),
+checked after each token is read, so the first error of the unit in reading order wins.
 
 ## 15. The tree {#c-ast}
 
@@ -204,8 +215,8 @@ specifiers hold `typedef`, else as an ordinary identifier. So `int T = T;` reads
 typedef name declared again as the same typedef stays a typedef name. Before the first token the
 table holds the typedef names clang declares in every C unit of the dialect's triples:
 `__builtin_va_list`, `__builtin_ms_va_list`, `__NSConstantString`, `__int128_t` and
-`__uint128_t`, and under msvc `size_t` (`c_parser_open_text`'s `msvc`). The two 128-bit names
-name a refused type, so a use of either is refused there, `the __int128 type is not parsed`.
+`__uint128_t`, and under msvc `size_t` (the `msvc` of `c_parser_open_text` and
+`c_parser_open_source`). The two 128-bit names name a refused type, so a use of either is refused there, `the __int128 type is not parsed`.
 
 `c_declaration` reads a declaration in a block. A function definition has no place there, so its
 `{` is `expected ';'`; an old-style identifier list outside a definition is invalid C (C11

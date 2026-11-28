@@ -358,7 +358,7 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
             named = b.typedefs?[n.a] ?? -1
             if (named < 0) {
                 let why = b.untyped?[n.a] ?? ""
-                let name = pp_symbol_text(p.unit.lx, n.a)
+                let name = c_symbol_text(p.unit, n.a)
                 refuse(b, p, n.tok, "the typedef name '{name}'", empty(why) ? "" : ": {why}")
                 return -1
             }
@@ -767,7 +767,7 @@ def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
         prev_proto = c_has_prototype(p, c_name_function(p.ast, p.ast.nodes[lib.y].a))
     }
     if (prev >= 0 && b.pool[u].k != "func" && object_quals(b, prev) != object_quals(b, t)) {
-        c_reject(b, p, tok, "a redeclaration of '{pp_symbol_text(p.unit.lx, sym)}' with other qualifiers")
+        c_reject(b, p, tok, "a redeclaration of '{c_symbol_text(p.unit, sym)}' with other qualifiers")
         return -1
     }
     let proto = c_has_prototype(p, f)
@@ -781,7 +781,7 @@ def c_linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int {
         if ((functions && !proto && prev_proto) || (arrays && n.count < 0)) {
             result = prev
         } elif (!(functions && (proto || old_style) && !prev_proto) && !(arrays && a.count < 0)) {
-            refuse(b, p, tok, "a redeclaration of '{pp_symbol_text(p.unit.lx, sym)}' whose type differs from the earlier one's", " (its composite type waits for the Aggregates phase)")
+            refuse(b, p, tok, "a redeclaration of '{c_symbol_text(p.unit, sym)}' whose type differs from the earlier one's", " (its composite type waits for the Aggregates phase)")
             return -1
         }
     }

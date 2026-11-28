@@ -4,7 +4,6 @@ options indenting = 4
 module clang_side public
 
 require strings
-require math
 require daslib/json_boost
 require daslib/strings_boost
 
@@ -57,12 +56,14 @@ def private marker(line : string) : tuple<line : int; file : string> {
             at++
         }
         return if (at >= stop || b[at] != uint8('"'))
-        let name_from = at + 1
-        at = name_from
-        while (at < stop && b[at] != uint8('"')) {
-            at += b[at] == uint8('\\') ? 2 : 1
+        at++
+        mark.file = build_string() $(var out) {
+            while (at < stop && b[at] != uint8('"')) {
+                at += b[at] == uint8('\\') && at + 1 < stop ? 1 : 0
+                out |> write_char(int(b[at]))
+                at++
+            }
         }
-        mark.file = slice(b, name_from, min(at, stop))
     }
     return mark
 }

@@ -1003,7 +1003,7 @@ def private assignment(var r : CIr; var p : CParser; k : int; var a, b : CirExpr
 // a reference to identifier `sym` at token `tok`: the variable or function it names, its declared
 // type; a builtin of `BUILTIN_FUNCTIONS`, typed `<builtin fn type>`, only as a `callee`
 def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : bool = false) : CirExpr? {
-    let name = pp_symbol_text(p.unit.lx, sym)
+    let name = c_symbol_text(p.unit, sym)
     for (fn in BUILTIN_FUNCTIONS) {
         // a declaration of the name leaves it clang's builtin
         if (fn.name == name && !(r.ids?[sym] ?? CId(t = -1, old_style = -1)).builtin) {
@@ -1013,7 +1013,7 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
         }
     }
     if (!key_exists(r.ids, sym)) {
-        c_refuse(r, p, tok, "the identifier '{pp_symbol_text(p.unit.lx, sym)}', which names no variable or function the builder knows,")
+        c_refuse(r, p, tok, "the identifier '{c_symbol_text(p.unit, sym)}', which names no variable or function the builder knows,")
         return null
     }
     let id = r.ids?[sym] ?? CId()
