@@ -28,7 +28,7 @@ entry by entry. It starts clang, so it lives outside `frontend/`, whose code sta
   type used before a declaration uses it (only the declaration orders agree); `aggregate.c`, a
   record the builder refuses; `refused.c`, a scalar-only unit the builder refuses; `walk_bodies.c`,
   declarations in branches, a loop body and an old-style parameter list that no expression's type
-  names.
+  names; `expr_only.c`, a type only an expression names; `header.c`, an own header's typedef.
 - The tests are `compare/tests/test_types_compare.das`.
 
 ## 2. What is compared {#compared}

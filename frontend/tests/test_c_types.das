@@ -196,3 +196,48 @@ def test_refusals_everywhere(t : T?) {
     t |> equal(types_of("int a[] = \{[2147483646] = 1\};"), "int:32:true:int array:0:2147483647")
 }
 
+
+[test(description = "the branches each unit reaches: the other spellings of a type-changing attribute, a parameter's parenthesised or abstract declarator, hex sizes, octal and UCN escapes by length, a designator of another kind, a size a later designator does not shrink, an unsized array inside a declarator, the boundaries of old-style promotion and of a void typedef list, a function typedef parameter")]
+def test_branch_inputs(t : T?) {
+    t |> equal(types_of("int x __attribute__((__mode__(DI)));"), "error: t.c:1:22: the attribute '__mode__', which changes a type, is not typed yet")
+    t |> equal(types_of("typedef int V __attribute__((ext_vector_type(4))); V a;"), "error: t.c:1:30: the attribute 'ext_vector_type', which changes a type, is not typed yet")
+    t |> equal(types_of("void f(int (a)[3]);"), "void int:32:true:int ptr:1 func:0:2:false")
+    t |> equal(types_of("void f(int []);"), "void int:32:true:int ptr:1 func:0:2:false")
+    t |> equal(types_of("typedef char row[8]; void g(row);"), "int:8:false:char array:0:8 typedef:row:1 void ptr:0 func:3:4:false")
+    t |> equal(types_of("char a[0xA];"), "int:8:false:char array:0:10")
+    t |> equal(types_of("char s[] = \"\\1012\";"), "int:8:false:char array:0:3")
+    t |> equal(types_of("char s[] = \"\\U0001F600\";"), "int:8:false:char array:0:5")
+    t |> equal(types_of("char s[] = \"\\u20ac\";"), "int:8:false:char array:0:4")
+    t |> equal(types_of("char s[] = \"\\u0024\";"), "int:8:false:char array:0:2")
+    t |> equal(types_of("char s[] = \"\\u00E9\";"), "int:8:false:char array:0:3")
+    t |> equal(types_of("int a[] = \{.x = 1\};"), "error: t.c:1:12: an array sized by this designated initializer is not typed yet")
+    t |> equal(types_of("int a[] = \{1, 2, 3, [0] = 9\};"), "int:32:true:int array:0:3")
+    t |> equal(types_of("int (*p)[];"), "int:32:true:int array:0:-1 ptr:1")
+    t |> equal(types_of("int k(a) unsigned a; \{ return 0; \}"), "int:32:true:int int:32:false:unsigned int func:0:1:false")
+    t |> equal(types_of("typedef int I; int f(I);"), "int:32:true:int typedef:I:0 func:0:0:false")
+    t |> equal(types_of("typedef int F(int); void h(F f);"), "int:32:true:int func:0:0:false typedef:F:1 void ptr:1 func:3:4:false")
+}
+
+[test(description = "the branches of scopes, sizes and redeclarations each unit reaches: a block typedef's end restoring or erasing, a sized typedef array kept, a later extern's size through its initializer or parentheses, the result and element of a redeclaration, the prototype kept, a block variable and a block extern, an old-style body, a header's definition, _Atomic before a tag, _Alignas of a type")]
+def test_branch_scopes(t : T?) {
+    t |> equal(types_of("typedef short T; void f(void) \{ \{ typedef long T; \} T *b; \}"), "int:16:true:short typedef:T:0 void func:2::false int:64:true:long ptr:0")
+    t |> equal(types_of("# 1 \"/lib/h.h\" 1\ntypedef struct F FILE;\n# 2 \"t.c\" 2\nvoid f(void) \{ \{ typedef int FILE; \} FILE *fp; \}\n", false, "/lib/"),
+               "error: t.c:2:38: the typedef name 'FILE' is not typed yet: /lib/h.h:1:9: a struct type is not typed yet")
+    t |> equal(types_of("typedef char B[4]; B b = \"a\";"), "int:8:false:char array:0:4 typedef:B:1")
+    t |> equal(types_of("int a[]; extern int a[] = \{1, 2\};"),
+               "error: t.c:1:5: an array of unknown size defined tentatively and sized by a later extern declaration is not typed yet (its completion waits for the Aggregates phase)")
+    t |> equal(types_of("int a[]; extern int (a[5]);"),
+               "error: t.c:1:5: an array of unknown size defined tentatively and sized by a later extern declaration is not typed yet (its completion waits for the Aggregates phase)")
+    t |> equal(types_of("int f(); long f(int);"),
+               "error: t.c:1:15: a redeclaration of 'f' whose type differs from the earlier one's is not typed yet (its composite type waits for the Aggregates phase)")
+    t |> equal(types_of("extern int a[]; long a[2];"),
+               "error: t.c:1:22: a redeclaration of 'a' whose type differs from the earlier one's is not typed yet (its composite type waits for the Aggregates phase)")
+    t |> equal(types_of("int f(int); int f(); int f();"), "int:32:true:int func:0:0:false")
+    t |> equal(types_of("int a[2]; void f(void) \{ int a[3]; \}"), "int:32:true:int array:0:2 void func:2::false array:0:3")
+    t |> equal(types_of("int a[3]; void f(void) \{ extern int a[]; \}"), "int:32:true:int array:0:3 void func:2::false")
+    t |> equal(types_of("int k(a) int a; \{ long x; return 0; \}"), "int:32:true:int func:0:0:false int:64:true:long")
+    t |> equal(types_of("# 1 \"/lib/h.h\" 1\nstatic long lib_def(void) \{ return 0; \}\n# 2 \"t.c\" 2\nint f(void) \{ long lib_def(void); return 0; \}\n", false, "/lib/"),
+               "int:32:true:int func:0::false")
+    t |> equal(types_of("_Atomic struct S *p;"), "error: t.c:1:1: an _Atomic type is not typed yet")
+    t |> equal(types_of("_Alignas(int) int x;"), "error: t.c:1:1: an _Alignas alignment is not typed yet")
+}

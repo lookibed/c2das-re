@@ -3,6 +3,7 @@ options stack = 262144
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
+require daslib/fio
 require ../types/types_compare.das
 require ../../converter/cir.das
 
@@ -133,3 +134,63 @@ def test_declaration_difference(t : T?) {
     t |> equal(declaration_difference(kept, order, theirs3, none, explained), "")
 }
 
+
+[test(description = "has_aggregate takes a union and an enum; the walk skips a type index out of range, orders two places on one line by column, and reaches a declaration of another file in its own place")]
+def test_walk_edges(t : T?) {
+    t |> success(has_aggregate([CirType(k = "union", name = "U")]))
+    t |> success(has_aggregate([CirType(k = "enum", name = "E")]))
+    var tu : CirTu
+    tu.types <- sample_types()
+    var body = stmt("compound", 3)
+    var at_col1 = new CirStmt(s = "decl", t = 3, loc = CirLoc(file = "t.c", line = 5, col = 1))
+    body.body <- [at_col1, stmt("null", 6)]
+    var main = new CirDecl(k = "func", t = 5, loc = CirLoc(file = "t.c", line = 3, col = 1), body = body)
+    tu.decls <- [new CirDecl(k = "global", t = -1, loc = CirLoc(file = "t.c", line = 1, col = 1)),
+                 new CirDecl(k = "typedefdecl", t = 6, loc = CirLoc(file = "t.c", line = 5, col = 5)),
+                 main]
+    t |> equal(join(declaration_order(tu), " "), "short/16s func(short/16s;) char/8u ptr(char/8u) typedef(T=short/16s)")
+    delete_tu(tu)
+    var other : CirTu
+    other.types <- sample_types()
+    var body2 = stmt("compound", 3)
+    body2.body <- [stmt("decl", 4, 1)]
+    other.decls <- [new CirDecl(k = "global", t = 7, loc = CirLoc(file = "h.h", line = 9, col = 1)),
+                    new CirDecl(k = "func", t = 5, loc = CirLoc(file = "t.c", line = 3, col = 1), body = body2)]
+    t |> equal(join(declaration_order(other), " "), "char/8u array(char/8u,-1) short/16s func(short/16s;)")
+    delete_tu(other)
+}
+
+[test(description = "a type only an expression names is held to nothing; an own header's typedef adds no entry of its own; the builder's table refuses a unit the parser refuses, and one clang -E refuses, each naming the step", timeout = 600)]
+def test_builder_edges(t : T?) {
+    for (dialect in ["linux", "msvc"]) {
+        t |> equal(compared("expr_only.c", dialect), "false/true/false")
+        t |> equal(compared("header.c", dialect), "true/true/false")
+    }
+    let dir = path_join(test_temp_dir(), "edges")
+    mkdir_rec(dir)
+    let generic = path_join(dir, "generic.c")
+    fwrite(generic, "int x = _Generic(1, int: 2, default: 3);\n")
+    var error : string
+    let none <- builder_table(generic, dir, target_lp64_linux(), error)
+    t |> success(starts_with(error, "parser: "), error)
+    error = ""
+    let missing <- builder_table(path_join(dir, "missing.c"), dir, target_lp64_linux(), error)
+    t |> success(starts_with(error, "clang -E: "), error)
+    t |> equal(length(none) + length(missing), 0)
+}
+
+[test(description = "run_types: a unit that agrees passes, a refused one fails, no unit fails; the c-testsuite folder missing is an error; run.das as a child prints the totals", timeout = 600)]
+def test_run_types(t : T?) {
+    let work = path_join(test_temp_dir(), "work")
+    t |> equal(run_types(TypesArgs(work = work, dialect <- ["linux"], units <- ["{FIXTURES}/decl_order.c"])), 0)
+    t |> equal(run_types(TypesArgs(work = work, dialect <- ["linux"], units <- ["{FIXTURES}/refused.c"])), 1)
+    t |> equal(run_types(TypesArgs(work = work)), 1)
+    var error : string
+    let units <- c_testsuite_units(test_temp_dir(), error)
+    t |> success(ends_with(error, "is missing (fetch it with suites/c_testsuite/fetch.sh)") && empty(units), error)
+    var argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
+                 "--work", work, "--dialect", "linux", "{FIXTURES}/decl_order.c"]
+    var out : string
+    t |> equal(run_and_capture(argv, out, 600.0), 0)
+    t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 with aggregates, 1 scalar-only: 1 declaration order agrees (1 whole table), 0 differ, 0 refused") >= 0, out)
+}
