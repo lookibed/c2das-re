@@ -68,6 +68,7 @@ struct CTypes {
     fold_type : function<(var b : CTypes; var p : CParser; n : int; var v : int64&; var t : int&) : bool> //!< the same with the expression's pool type, unqualified; null for none
     tag_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< a struct, union or enum specifier's pool type (`c_records.das`); null for none
     init_count : function<(var b : CTypes; var p : CParser; init, elem : int) : int> //!< the count an unsized array takes from an initializer list (`c_inits.das`); null for none
+    init_static : bool                      //!< a static object's initializer is being read, where a flexible array member takes a value
     compound_literal : function<(var b : CTypes; var p : CParser; n : int) : CirExpr?> //!< a compound literal's C-IR (`c_inits.das`); null for none
     expr_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< the pool type of an expression, which no conversion reaches (`typeof`); null for none
     constant_expr : function<(var b : CTypes; var p : CParser; n : int) : CirExpr?> //!< an `offsetof`, an alignment, a type trait or a `__builtin_constant_p` call's C-IR (`c_consts.das`); null for none

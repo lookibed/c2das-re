@@ -152,7 +152,9 @@ def test_compound_literals(t : T?) {
 [test(description = "every initializer construct the builder does not type is refused at its place")]
 def test_refusals(t : T?) {
     t |> equal(inits_of(RECORDS + "struct P g; int f(void) \{ struct Q a = \{.a = g, .a.x = 1\}; return 0; \}"),
-               "error: t.c:1:147: a designator into a subobject an earlier initializer gave a whole value is not typed yet")
+               "error: t.c:1:147: an initializer into a subobject an earlier one gave a whole value is not typed yet")
+    t |> equal(inits_of(RECORDS + "struct P g; struct Q a = \{.a = g, .a = 1\};"),
+               "error: t.c:1:133: an initializer into a subobject an earlier one gave a whole value is not typed yet")
     t |> equal(inits_of("struct F \{ int n; int a[]; \}; struct F f = \{1, 2\};"), "error: t.c:1:48: an initializer of a flexible array member is not typed yet")
     t |> equal(inits_of("int a[2] = \{.x = 1\};"), "error: t.c:1:13: a member designator of other than a struct or union is not typed yet")
     t |> equal(inits_of(RECORDS + "struct P a = \{.w = 1\};"), "error: t.c:1:113: a designator of a member 'w' its record does not have, which is not typed yet")
@@ -164,4 +166,127 @@ def test_refusals(t : T?) {
     t |> equal(inits_of("int n; int *p = (int[])\{[n] = 1\};"), "error: t.c:1:25: an array index other than an integer constant expression is not typed yet")
     t |> equal(inits_of("int f(void) \{ return (int)\{1, 2\}; \}"), "error: t.c:1:22: a scalar compound literal of other than one value is not typed yet")
     t |> equal(inits_of("int n = \{1, 2\};"), "error: t.c:1:9: a braced scalar initializer of other than one value is not typed yet")
+}
+
+[test(description = "a designator that opens another member of a union drops the member an earlier item filled: a nested designator, a string member replaced and reopened, a union reopened by elided braces")]
+def test_union_member_replaced(t : T?) {
+    t |> equal(inits_of("struct P \{ int x, y; \}; union V \{ struct P s; int i; \}; union V v = \{.i = 5, .s.x = 1\};"), "v:union V=\{0:\{0:1\}\}")
+    t |> equal(inits_of("union U \{ int a; float b; char c[4]; \} u = \{.c = \"ab\", .a = 3, .c[1] = 'q'\};"), "u:union U=\{2:\{1:IntegralCast<char>(113)\}\}")
+    t |> equal(inits_of("struct P \{ int x, y; \}; union V \{ struct P s; int i; \}; struct T \{ union V v; int d; \} t = \{.v.i = 1, .v = 7, 3\};"),
+               "t:struct T=\{0:\{0:\{0:7, 1:3\}\}\}")
+}
+
+[test(description = "a union a later designator reopens keeps its member filled: the next positional item goes past the union, an anonymous one and a named one")]
+def test_union_reopened(t : T?) {
+    t |> equal(inits_of("struct P \{ int x, y; \}; struct S \{ union \{ struct P s; int i; \}; int d; \}; struct S g = \{.s.x = 1, .s.y = 2, 3\};"),
+               "g:struct S=\{0:\{0:\{0:1, 1:2\}\}, 1:3\}")
+    t |> equal(inits_of("struct P \{ int x, y; \}; union V \{ struct P s; int i; \}; struct T \{ union V v; int d; \} t = \{.v.s.x = 1, .v.s.y = 2, 3\};"),
+               "t:struct T=\{0:\{0:\{0:1, 1:2\}\}, 1:3\}")
+}
+
+[test(description = "a GNU range whose value opens elided braces shares the subobject: the items after it fill every element of the range; a later designator updates one element alone")]
+def test_range_elided(t : T?) {
+    t |> equal(inits_of("struct P \{ int x, y; \}; struct P a[3] = \{[0 ... 1] = 1, 2, 3\};"), "a:struct P[3]=\{0:\{0:1, 1:2\}, 1:\{0:1, 1:2\}, 2:\{0:3\}\}")
+    t |> equal(inits_of("int a[3][2] = \{[0 ... 1] = 1, 2, 3\};"), "a:int[2][3]=\{0:\{0:1, 1:2\}, 1:\{0:1, 1:2\}, 2:\{0:3\}\}")
+    t |> equal(inits_of("struct P \{ int x, y; \}; struct P a[2] = \{[0 ... 1] = 1, 2, [0].y = 9\};"), "a:struct P[2]=\{0:\{0:1, 1:9\}, 1:\{0:1, 1:2\}\}")
+}
+
+// the type of the last item of the first global's initializer list in unit `text`, as C spells it
+def private last_item_type(text : string) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c", false)
+    let u = c_unit(p)
+    return "parse error: {p.err}" if (p.failed)
+    var r = new CIr
+    c_ir_open(*r, target_lp64_linux(), "")
+    var out = ""
+    if (c_ir_unit(*r, p, u)) {
+        for (d in r.tu.decls) {
+            if (empty(out) && d.k == "global" && d.init != null && d.init.e == "init_list" && !empty(d.init.init_items)) {
+                out = spelled(r.tu.types, d.init.init_items[length(d.init.init_items) - 1].v.t)
+            }
+        }
+    } else {
+        out = "error: {r.err}"
+    }
+    delete_tu(r.tu)
+    unsafe {
+        delete r
+    }
+    return out
+}
+
+// whether the first global's initializer in unit `text` is marked as written in parentheses
+def private paren_string(text : string) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c", false)
+    let u = c_unit(p)
+    return "parse error: {p.err}" if (p.failed)
+    var r = new CIr
+    c_ir_open(*r, target_lp64_linux(), "")
+    let out = c_ir_unit(*r, p, u) ? "{r.tu.decls[0].init.paren}" : "error: {r.err}"
+    delete_tu(r.tu)
+    unsafe {
+        delete r
+    }
+    return out
+}
+
+[test(description = "a static object's flexible array member given a braced list, a string or a member designator is typed as clang types it, sized by its value; elided braces, an automatic object and a nested record refused; a designator into its elements invalid C")]
+def test_flexible_member(t : T?) {
+    let flex = "struct F \{ int n; int a[]; \}; "
+    t |> equal(inits_of(flex + "struct F f = \{2, \{3, 4\}\}; struct F g = \{.a = \{5\}, .n = 1\};"), "f:struct F=\{0:2, 1:\{0:3, 1:4\}\} ; g:struct F=\{0:1, 1:\{0:5\}\}")
+    t |> equal(last_item_type(flex + "struct F f = \{2, \{3, 4\}\};"), "int[2]")
+    t |> equal(last_item_type("struct C \{ int n; char a[]; \}; struct C c = \{2, \"ab\"\};"), "char[3]")
+    t |> equal(inits_of(flex + "struct F f = \{.a[2] = 7\};"), "error: t.c:1:45: a designator into a flexible array member's elements is invalid C, which clang rejects")
+    t |> equal(inits_of(flex + "void h(void) \{ struct F f = \{2, \{3\}\}; \}"), "error: t.c:1:63: an initializer of a flexible array member is not typed yet")
+    t |> equal(inits_of(flex + "struct G \{ struct F f; \}; struct G g = \{1, \{2\}\};"), "error: t.c:1:74: an initializer of a flexible array member is not typed yet")
+    t |> equal(inits_of(flex + "struct F *p = &(struct F)\{2, \{3\}\};"), "error: t.c:1:60: an initializer of a flexible array member is not typed yet")
+    t |> equal(inits_of(flex + "struct G \{ struct F f; \}; struct G g = \{\{1, \{2\}\}\};"), "error: t.c:1:75: an initializer of a flexible array member is not typed yet")
+}
+
+[test(description = "a character array's string literal in parentheses, and a braced string followed by excess items, initialize it as clang does")]
+def test_string_forms(t : T?) {
+    t |> equal(inits_of("char s[4] = (\"ab\"); char u[4] = \{\"ab\", 'c'\}; struct \{ char s[4]; int x; \} g = \{(\"ab\"), 1\};"),
+               "s:char[4]=str<char[4]> ; u:char[4]=str<char[4]> ; g:struct =\{0:str<char[4]>, 1:1\}")
+    t |> equal(paren_string("char s[4] = (\"ab\");"), "true")
+    t |> equal(paren_string("char s[4] = \"ab\";"), "false")
+    t |> equal(inits_of("char u[4] = \{\"ab\", zz\};"), "error: t.c:1:20: the identifier 'zz', which names no variable or function the builder knows, is not typed yet")
+    t |> equal(inits_of("char u[4] = \{\"ab\", [3] = 'c'\};"), "error: t.c:1:20: a designator after a character array's string is not typed yet")
+}
+
+[test(description = "designator indices clang rejects: below 0 (sized and unsized), past a sized array's bound, an empty GNU range; a range past 2^31 - 1 refused")]
+def test_index_bounds(t : T?) {
+    t |> equal(inits_of("int a[4] = \{[-1] = 1\};"), "error: t.c:1:13: an array index below 0 is invalid C, which clang rejects")
+    t |> equal(inits_of("struct P \{ int x, y; \}; struct P a[] = \{[-1].x = 1\};"), "error: t.c:1:41: an array index below 0 is invalid C, which clang rejects")
+    t |> equal(inits_of("int a[2] = \{[5] = 1\};"), "error: t.c:1:13: an array index past the array's bound is invalid C, which clang rejects")
+    t |> equal(inits_of("int a[4] = \{[1 ... 4] = 1\};"), "error: t.c:1:13: an array index past the array's bound is invalid C, which clang rejects")
+    t |> equal(inits_of("int a[4] = \{[3 ... 1] = 1\};"), "error: t.c:1:13: an empty array index range is invalid C, which clang rejects")
+    t |> equal(inits_of("int a[] = \{[0 ... 2147483647] = 1\};"), "error: t.c:1:12: an array sized past 2^31 - 1 is not typed yet")
+}
+
+[test(description = "a record's first position and a reopened record's skip a leading unnamed bit-field; a union reopened at its last member hands on past it; every sublist sorted by position")]
+def test_positions_reopened(t : T?) {
+    let bits = "struct B \{ int : 3; int a; int b; \}; "
+    t |> equal(inits_of(bits + "struct B g = \{1, 2\};"), "g:struct B=\{1:1, 2:2\}")
+    t |> equal(inits_of(bits + "struct Q \{ struct B s; int c; \}; struct Q q = \{.s.b = 4, .s = 7\};"), "q:struct Q=\{0:\{1:7, 2:4\}\}")
+    t |> equal(inits_of("struct P \{ int x, y; \}; union U \{ int i; struct P p; \}; struct T \{ union U u; int d; \}; struct T t = \{.u.p.x = 1, .u.p.y = 2, 3\};"),
+               "t:struct T=\{0:\{1:\{0:1, 1:2\}\}, 1:3\}")
+    t |> equal(inits_of("struct P \{ int x, y; \}; struct Q \{ struct P a; int b; \}; struct Q a = \{.a.y = 1, .a.x = 2\};"), "a:struct Q=\{0:\{0:2, 1:1\}\}")
+}
+
+[test(description = "compound literals refused: a type name the builder does not type, a record defined only after the use (clang's incomplete type), a scalar's designated value (invalid C)")]
+def test_compound_literal_refusals(t : T?) {
+    t |> equal(inits_of("int f(void) \{ return (_Complex double)\{1\}; \}"), "error: t.c:1:23: a complex type is not typed yet")
+    t |> equal(inits_of("int f(void) \{ return (struct L)\{1\}.a; \} struct L \{ int a; \};"), "error: t.c:1:32: an initializer of an incomplete record is not typed yet")
+    t |> equal(inits_of("int f(void) \{ return (int)\{[0] = 1\}; \}"), "error: t.c:1:22: a designated initializer of a scalar is invalid C, which clang rejects")
+}
+
+[test(description = "a value whose braces would open an aggregate with no elements is invalid C, as clang rejects it: an empty union or struct, a zero-length array")]
+def test_empty_aggregates(t : T?) {
+    t |> equal(inits_of("union E \{\}; struct T \{ union E e; int d; \} t = \{5\};"), "error: t.c:1:49: a value in an aggregate with no elements, whose braces clang requires, is invalid C, which clang rejects")
+    t |> equal(inits_of("struct E \{\}; struct T \{ struct E e; int d; \} t = \{5\};"), "error: t.c:1:51: a value in an aggregate with no elements, whose braces clang requires, is invalid C, which clang rejects")
+    t |> equal(inits_of("struct T \{ int z[0]; int d; \} t = \{5\};"), "error: t.c:1:36: a value in an aggregate with no elements, whose braces clang requires, is invalid C, which clang rejects")
+    t |> equal(inits_of("union E \{\}; struct T \{ union E e; int d; \} t = \{\{\}, 6\};"), "t:struct T=\{0:\{\}, 1:6\}")
+    t |> equal(inits_of("union E \{\}; union E e = \{5\};"), "e:union E=\{\}")
 }

@@ -15,7 +15,7 @@ statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22
 unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 38 to 45), with the names and places it gives
 (`ARCHITECTURE_NAMES.md`, sections 46 to 48), its records, unions and enums
 (`ARCHITECTURE_RECORDS.md`, sections 61 to 67), its initializers (`ARCHITECTURE_INITS.md`, 68 to
-72), its constant forms (`ARCHITECTURE_CONSTS.md`, 73 to 77), the byte diff of two dumpers' C-IR
+72, 78), its constant forms (`ARCHITECTURE_CONSTS.md`, 73 to 77), the byte diff of two dumpers' C-IR
 (`ARCHITECTURE_DIFF.md`, 49), and the record layout of `ARCHITECTURE_LAYOUT.md` and
 `ARCHITECTURE_LAYOUT_MSVC.md` (50 to 56). No converter pass calls Dumper C's stages yet.
 

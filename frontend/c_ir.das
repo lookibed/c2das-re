@@ -446,7 +446,9 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         let linked = object_name(r, name, global, is_static, is_extern)
         c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked, automatic = !global && !is_static && !is_extern))
         let init = p.ast.nodes[id].b
+        r.init_static = global || is_static
         var built = init >= 0 ? c_initializer(r, p, init, t) : null
+        r.init_static = false
         if (built != null && (global || is_static) && !c_static_initializer(r, p, built, p.ast.nodes[init].tok, global)) {
             delete_expr(built)
             return false
