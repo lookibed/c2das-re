@@ -14,10 +14,10 @@ statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22
 (`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60), the expressions with their conversions and the
 unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 38 to 45), with the names and places it gives
 (`ARCHITECTURE_NAMES.md`, sections 46 to 48), its records, unions and enums
-(`ARCHITECTURE_RECORDS.md`, sections 61 to 67), its initializers (`ARCHITECTURE_INITS.md`, sections
-68 to 72), the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 49), and the record
-layout of `ARCHITECTURE_LAYOUT.md` and `ARCHITECTURE_LAYOUT_MSVC.md` (sections 50 to 56). No
-converter pass calls the preprocessor, the parser, the C-IR builder or the layout yet.
+(`ARCHITECTURE_RECORDS.md`, sections 61 to 67), its initializers (`ARCHITECTURE_INITS.md`, 68 to
+72), its constant forms (`ARCHITECTURE_CONSTS.md`, 73 to 77), the byte diff of two dumpers' C-IR
+(`ARCHITECTURE_DIFF.md`, 49), and the record layout of `ARCHITECTURE_LAYOUT.md` and
+`ARCHITECTURE_LAYOUT_MSVC.md` (50 to 56). No converter pass calls Dumper C's stages yet.
 
 ## 1. File charters
 
@@ -42,13 +42,12 @@ converter pass calls the preprocessor, the parser, the C-IR builder or the layou
   the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the call
   record. The comparison with clang is `compare/pp/`'s `--pp3`.
 - `c_tokens.das` - the C tokens of a unit as the preprocessor hands them out, of a preprocessed
-  unit or of C source with its macros expanded: keywords by symbol, pp-numbers classified
-  (`ARCHITECTURE_PARSER.md` section 14).
+  unit or of C source with macros expanded: keywords by symbol, pp-numbers classified (section 14).
 - `c_ast.das` - the tree in one node array and its one-line dump (section 15). No parsing.
 - `c_parser.das` - the recursive-descent parser: the typedef-name table, type names and
   declarators, expressions, the errors and the nesting bound, declarations, records and enums,
-  function definitions and the unit, statements (sections 16 to 23).
-  One module, since the grammar's parts call each other.
+  function definitions and the unit, statements (sections 16 to 23); one module, since the
+  grammar's parts call each other.
 - `c_types.das` - the C-IR type table of a unit (`ARCHITECTURE_TYPES.md`): the pool of types met,
   qualified ones apart, each use interning a type into `CirTu.types`, the specifiers, declarators
   and initializer-sized arrays, the typedef and tag scopes, a record's and an enum's entry with its
@@ -60,11 +59,12 @@ converter pass calls the preprocessor, the parser, the C-IR builder or the layou
   (`ARCHITECTURE_INITS.md`), through hooks; `tests/test_c_inits.das` every form and refusal.
 - `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
   constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 38 to 44).
-- `c_floats.das` - floating constants as Dumper A writes them, in das alone (section 45 there).
+  `c_floats.das` - floating constants as Dumper A writes them, in das alone (section 45 there).
+- `c_consts.das` - `offsetof`, alignments, type traits, `__builtin_constant_p`, a `case` value against
+  Dumper A's fold, static initializers (`ARCHITECTURE_CONSTS.md`); `tests/test_c_consts.das` each.
 - `c_ir.das` - the unit's C-IR: the walk over declarations, definitions and bodies in Dumper A's
-  order, statements, the own headers' declarations, the names
-  (`ARCHITECTURE_TYPES.md` sections 24 and 28, `ARCHITECTURE_EXPRS.md` sections 42 and 44,
-  `ARCHITECTURE_NAMES.md`).
+  order, statements, the own headers' declarations, the names (`ARCHITECTURE_TYPES.md` sections
+  24 and 28, `ARCHITECTURE_EXPRS.md` sections 42 and 44, `ARCHITECTURE_NAMES.md`).
 - `diff.das` - the byte diff of two C-IR texts, the macro fields and the producer set aside
   (`ARCHITECTURE_DIFF.md`). `tests/test_diff.das` - equal, macro-only and producer-only differences
   agree, any other reported at its line, a text the reader refuses named.

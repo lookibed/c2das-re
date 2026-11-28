@@ -22,6 +22,7 @@ struct CId {
     name : string       //!< the name a reference to it spells in the C-IR (`ARCHITECTURE_NAMES.md`)
     enum_t : int = -1   //!< an enumerator: the pool enum type it belongs to; -1 for any other identifier
     enum_v : int64      //!< an enumerator's value
+    automatic : bool    //!< a parameter or a block-scope object of automatic storage, whose address is no constant
 }
 
 //! The C-IR type table of one unit as Dumper A builds it (`ARCHITECTURE_TYPES.md`): every type a
@@ -68,6 +69,9 @@ struct CTypes {
     tag_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< a struct, union or enum specifier's pool type (`c_records.das`); null for none
     init_count : function<(var b : CTypes; var p : CParser; init, elem : int) : int> //!< the count an unsized array takes from an initializer list (`c_inits.das`); null for none
     compound_literal : function<(var b : CTypes; var p : CParser; n : int) : CirExpr?> //!< a compound literal's C-IR (`c_inits.das`); null for none
+    expr_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< the pool type of an expression, which no conversion reaches (`typeof`); null for none
+    constant_expr : function<(var b : CTypes; var p : CParser; n : int) : CirExpr?> //!< an `offsetof`, an alignment, a type trait or a `__builtin_constant_p` call's C-IR (`c_consts.das`); null for none
+    aligned_spelled : int                   //!< 1 when the unit spells an `aligned` attribute or `_Alignas`, 0 when not, -1 before the unit is scanned
     tags : table<int; int>                  //!< a tag's symbol to its pool record or enum type
     tag_undo : array<tuple<sym : int; was : int>>   //!< the tag bindings a block's end restores
     tag_marks : array<int>
@@ -129,6 +133,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.prototyped |> clear()
     b.library_functions |> clear()
     b.unit_items = -1
+    b.aligned_spelled = -1
     b.err = ""
 }
 
@@ -534,8 +539,11 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
             named = named_type(b, p, at)
             return -1 if (named < 0)
         } elif (n.kind == CNode.SPEC_TYPEOF_EXPR) {
-            refuse(b, p, n.tok, "typeof of an expression")
-            return -1
+            named = b.expr_type != null ? invoke(b.expr_type, b, p, n.a) : -1
+            if (named < 0) {
+                refuse(b, p, n.tok, "typeof of an expression")
+                return -1
+            }
         } elif (n.kind == CNode.SPEC_ALIGNAS_EXPR || n.kind == CNode.SPEC_ALIGNAS_TYPE) {
             refuse(b, p, n.tok, "an _Alignas alignment")
             return -1

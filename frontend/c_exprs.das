@@ -27,6 +27,10 @@ let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["l
 //! in scope and the return type of the function being read.
 typedef CIr = CTypes
 
+//! The builtin whose call is the integer literal of clang's answer (`c_consts.das`), its argument
+//! never evaluated.
+let CONSTANT_P = "__builtin_constant_p"
+
 //! Open a scope of identifiers.
 def c_ir_open(var r : CIr) {
     r.id_marks |> push(length(r.id_undo))
@@ -265,7 +269,7 @@ def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
         }
         v = held_in(r, x.t, int64(u))
         return true
-    } elif (x.e == "sizeof_v") {
+    } elif (x.e == "sizeof_v" || x.e == "alignof_v" || x.e == "offsetof") {
         v = int64(x.trait_v)
         return true
     } elif (x.e == "enum_ref") {
@@ -284,7 +288,9 @@ def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
         return c_fold(r, c != 0l ? x.a : x.b, v)
     }
     var a, b : int64
-    return false if (x.e != "bin" || !c_fold(r, x.a, a) || !c_fold(r, x.b, b) || !fold_binary(x.op, !r.pool[x.a.t].is_signed, a, b, v))
+    // a shift count past the promoted left operand's width, or below 0, has no value clang states
+    let counted = x.e == "bin" && c_fold(r, x.a, a) && c_fold(r, x.b, b) && (x.op != "shl" && x.op != "shr" || (b >= 0l && b < int64(r.pool[x.t].w)))
+    return false if (!counted || !fold_binary(x.op, !r.pool[x.a.t].is_signed, a, b, v))
     v = held_in(r, x.t, v)
     return true
 }
@@ -313,9 +319,16 @@ def private fold_binary(op : string; unsigned_operands : bool; a, b : int64; var
     } elif (op == "div" || op == "rem") {
         let ua = uint64(a)
         let ub = uint64(b)
-        v = unsigned_operands ? int64(op == "div" ? ua / ub : ua % ub) : op == "div" ? a / b : a % b
+        if (unsigned_operands) {
+            v = int64(op == "div" ? ua / ub : ua % ub)
+        } elif (b == -1l) {
+            // the two's complement result clang folds, `LLONG_MIN / -1` wrapping, with no trap
+            v = op == "div" ? int64(0ul - ua) : 0l
+        } else {
+            v = op == "div" ? a / b : a % b
+        }
     } elif (op == "shl" || op == "shr") {
-        v = op == "shl" ? a << b : unsigned_operands ? int64(uint64(a) >> uint64(b)) : a >> b
+        v = op == "shl" ? int64(uint64(a) << uint64(b)) : unsigned_operands ? int64(uint64(a) >> uint64(b)) : a >> b
     } elif (op == "band" || op == "bor" || op == "bxor") {
         v = op == "band" ? (a & b) : op == "bor" ? (a | b) : (a ^ b)
     } else {
@@ -345,6 +358,15 @@ def c_fold_node(var r : CIr; var p : CParser; n : int; var v : int64&) : bool {
     let folded = x != null && c_fold(r, x, v)
     delete_expr(x)
     return folded
+}
+
+//! The pool type of parser expression node `n` as GNU `typeof` reads it: no conversion, its
+//! qualifiers kept; -1 with the error set where the expression is not typed.
+def c_expr_type(var r : CIr; var p : CParser; n : int) : int {
+    var x = c_expr(r, p, n)
+    let t = x != null ? x.t : -1
+    delete_expr(x)
+    return t
 }
 
 //! The value of parser expression node `n`, an integer constant expression, into `v` and its pool
@@ -1258,6 +1280,9 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
         return operator_expr(r, p, node)
     } elif (kind == CNode.CALL) {
         let callee = p.ast.nodes[node.a]
+        if (callee.kind == CNode.IDENT && c_symbol_text(p.unit, callee.a) == CONSTANT_P && !key_exists(r.ids, callee.a)) {
+            return invoke(r.constant_expr, r, p, n)
+        }
         var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
         return fn == null ? null : call(r, p, fn, node.b, node.tok, callee.kind == CNode.IDENT ? callee.a : -1)
     } elif (kind == CNode.INDEX) {
@@ -1266,6 +1291,8 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
         return member_access(r, p, node)
     } elif (kind == CNode.CAST || kind == CNode.SIZEOF_TYPE || kind == CNode.SIZEOF_EXPR || kind == CNode.COMPOUND_LITERAL) {
         return type_name_expr(r, p, node, n)
+    } elif (kind == CNode.OFFSETOF || kind == CNode.TYPES_COMPATIBLE || kind == CNode.ALIGNOF_TYPE || kind == CNode.ALIGNOF_EXPR) {
+        return invoke(r.constant_expr, r, p, n)
     }
     c_refuse(r, p, node.tok, "this expression")
     return null
@@ -1278,7 +1305,13 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
 def c_exprs_use(var r : CIr; var x : CirExpr?) {
     return if (x == null)
     x.t = c_types_use(r, x.t)
-    if (x.e == "sizeof_v") {
+    if (x.e == "offsetof") {
+        // the offset is the evaluator's alone: Dumper A's node holds the type and the field
+        x.of_t = c_types_use(r, x.of_t)
+        x.trait_v = 0ul
+        return
+    }
+    if (x.e == "sizeof_v" || x.e == "alignof_v") {
         if (x.a != null) {
             c_exprs_use(r, x.a)
             x.of_t = x.a.t

@@ -458,12 +458,12 @@ def test_constant_folding(t : T?) {
     t |> equal(ir_of("int *p = (char)256;"), "p=NullToPointer<int*>(IntegralCast!<char>(256<int>))")
     t |> equal(ir_of("int *p = (_Bool)256;"), "error: t.c:1:10: a value of this type in a slot of that type is invalid C, which clang rejects")
     t |> equal(ir_of("_Static_assert(1 / 0, \"z\");"), "error: t.c:1:1: a _Static_assert whose condition the builder cannot fold is not typed yet")
-    t |> equal(ir_of("void g(int x) \{ switch (x) \{ case (signed char)255: case -1 + 10: case ~1: case !0: case +3: case 1 ? 4 : 5: case 0 ? 4 : 6: ; \} \}"),
+    t |> equal(ir_of("void g(int x) \{ switch (x) \{ case (signed char)-1: case -1 + 10: case ~1: case !0: case +3: case 1 ? 4 : 5: case 0 ? 4 : 6: ; \} \}"),
                "switch LValueToRValue<int>(x) - ; case -1 ; case 9 ; case -2 ; case 1 ; case 3 ; case 4 ; case 6 ; null - -")
     t |> equal(ir_of("void g(int x) \{ switch (x) \{ case 2 + 3: case 7 - 3: case 3 * 4: case -7 / 2: case -7 % 2: case 4294967295u / 2u: case 4294967295u % 7u: case 1 << 3: case -16 >> 2: case 4294967295u >> 28: ; \} \}"),
                "switch LValueToRValue<int>(x) - ; case 5 ; case 4 ; case 12 ; case -3 ; case -1 ; case 2147483647 ; case 3 ; case 8 ; case -4 ; case 15 ; null - -")
-    t |> equal(ir_of("void g(int x) \{ switch (x) \{ case 0xffffffffffffffffu >> 60: case 0xffffffffffffffffu / 0x2000000000000000u: case 0xffffffffffffffffu % 10u: case (-1l < 0ul) + 20: ; \} \}"),
-               "switch LValueToRValue<int>(x) - ; case 15 ; case 7 ; case 5 ; case 20 ; null - -")
+    t |> equal(ir_of("_Static_assert((0xffffffffffffffffu >> 60) == 15 && 0xffffffffffffffffu / 0x2000000000000000u == 7 && 0xffffffffffffffffu % 10u == 5 && (-1l < 0ul) == 0, \"u\");"), "")
+    t |> equal(ir_of("_Static_assert((0xffffffffffffffffu >> 60) == 16, \"u\");"), "error: t.c:1:1: a _Static_assert whose condition is 0 is invalid C, which clang rejects")
     t |> equal(ir_of("void g(int x) \{ switch (x) \{ case 6 & 3: case 6 | 3: case 6 ^ 3 + 10: case 0 || 1: case 0 && 1: ; \} \}"),
                "switch LValueToRValue<int>(x) - ; case 2 ; case 7 ; case 11 ; case 1 ; case 0 ; null - -")
     t |> equal(ir_of("void g(int x) \{ switch (x) \{ case (-1 < 0u) + 20: case (1 < 2) + 30: case (2 > 1) + 40: case (2 <= 1) + 50: case (2 >= 1) + 60: case (1 != 1) + 70: case (1 == 1) + 80: ; \} \}"),

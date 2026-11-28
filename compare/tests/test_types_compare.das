@@ -214,7 +214,7 @@ def private compared(name, dialect : string) : string {
     return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate's `offsetof` and a constant array size refused; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree; a unit clang types otherwise differs in all four", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte, an aggregate's initializer holding an `offsetof` and the constant forms with clang's `__builtin_constant_p` answers among them; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree; a unit clang types otherwise differs in all four", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
@@ -225,7 +225,8 @@ def test_fixtures(t : T?) {
             t |> equal(compared("header.c", dialect), "true/true/true/true/false")
             t |> equal(compared("decl_order.c", dialect), "true/true/true/true/false")
             t |> equal(compared("expr_first.c", dialect), "true/true/true/true/false")
-            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:8:31: this expression is not typed yet")
+            t |> equal(compared("aggregate.c", dialect), "true/true/true/true/true")
+            t |> equal(compared("constants.c", dialect), "true/true/true/true/true")
             let size = dialect == "linux" ? "unsigned long" : "unsigned long long"
             t |> equal(compared("differs.c", dialect), "false/false/false/false/false table entry 0: builder int/32s, Dumper A {size}/64u; C-IR decl 1 (main).body.t: builder int/32s, Dumper A {size}/64u; census anomaly\tIntegralCast implicit directly over a call's result builder 0, Dumper A 1 | chain\tIntegralCast builder 0, Dumper A 1 | clause\t6.3.1.3p3 integer to signed, implementation-defined builder 0, Dumper A 1; bytes line 16: ours \"w\": 32, | theirs \"w\": 64,")
             t |> equal(compared("refused.c", dialect), "false/false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")

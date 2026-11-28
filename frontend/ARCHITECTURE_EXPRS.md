@@ -32,10 +32,10 @@ argument to `double`). The builtin functions typed are `__builtin_expect` and `_
 fn type>` (`c_builtin_fn_type`, in the table `void (...)`, keyed apart), and its decay is to a
 pointer to its prototype, `long (long, long)` and `void (void)`.
 
-Refused, at the construct's place: an identifier no variable or function in scope names (an enum
-constant among them, until the Aggregates phase), a builtin other than as a callee, GNU's `?:` with
-no middle operand, a member access, `va_arg`, `offsetof`, `__func__`, a compound literal,
-`_Alignof`, a statement expression other than a statement block (section 44), a dereference,
+Refused, at the construct's place: an identifier no variable, function or enumerator in scope
+names, a builtin other than as a callee, GNU's `?:` with
+no middle operand, `va_arg`, `__func__`, a statement expression other than a statement block
+(section 44), a dereference,
 subscript or call of a value of the wrong type, a cast or a conditional of types clang refuses.
 
 Invalid C that clang rejects - with Dumper A's flags too, `-w` included, so Dumper A gives such a
@@ -101,11 +101,16 @@ rank. Rank follows the spelling (`long` above `int` at one width, `long long` ab
 ## 41. Constants {#c-exprs-constants}
 
 `c_fold` evaluates an integer constant expression (C11 6.6) over typed nodes: integer and character
-literals, integer casts, `sizeof`, the unary, binary, logical and conditional operators, each step
-held in its node's type (wrapped to the width, unsigned arithmetic for unsigned operands).
-`c_fold_node` types a parser expression and folds it: the unit's one evaluator, for a `case`
-label (its `v`; a GNU range is refused), an index designator, and through `CTypes.fold` an array
-size (`ARCHITECTURE_TYPES.md` section 26). A typed size expression adds pool types only, as Dumper
+literals, enumerators, integer casts, `sizeof`, `_Alignof`, `offsetof` (`ARCHITECTURE_CONSTS.md`),
+the unary, binary, logical and conditional operators, each step held in its node's type (wrapped
+to the width, unsigned arithmetic for unsigned operands), as clang folds them: a signed overflow
+wraps, `LLONG_MIN / -1` is `LLONG_MIN` and `% -1` 0 with no trap. A division by zero and a shift
+count below 0 or past the promoted left operand's width do not fold (clang's value there is no
+integer constant's), nor does a comma operator (no integer constant expression holds one). It is
+the unit's one evaluator: for a `case` label (its `v`, checked against Dumper A's own fold,
+`ARCHITECTURE_CONSTS.md` section 77; a GNU range is refused), an index designator, and through
+`CTypes.fold` an array size (`ARCHITECTURE_TYPES.md` section 26); `c_fold_node` types a parser
+expression and folds it. A typed size expression adds pool types only, as Dumper
 A's table holds the folded array type and no node of its size. A null pointer constant
 (`c_is_null`, 6.3.2.3p3) is an integer constant expression of value 0, or an explicit cast of one
 to `void *`. A floating constant cast at once to an integer type is an integer constant (6.6p6),

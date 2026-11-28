@@ -1,4 +1,4 @@
-/* a record with an initializer: Dumper A types it, the builder refuses the `offsetof` in it until A.4 */
+/* a record with an initializer holding an `offsetof`: Dumper A and the builder agree */
 struct point {
     int x, y;
 };

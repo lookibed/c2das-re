@@ -64,13 +64,14 @@ A passes `-funsigned-char`), `signed char`, `unsigned char`, `short`, `unsigned 
 `unsigned int`, `long`, `unsigned long`, `long long`, `unsigned long long`, `_Bool` (8 bits,
 unsigned), `float`, `double`, `long double` (64 bits under both dialects), `void`. Qualifiers,
 storage classes and function specifiers give no type. A typedef name gives the pool type it is
-bound to, and `typeof` of a type name that type name's type. Under the msvc dialect `size_t`,
+bound to, `typeof` of a type name that type name's type, and `typeof` of an expression its type
+with no conversion (`ARCHITECTURE_CONSTS.md` section 73). Under the msvc dialect `size_t`,
 which clang declares there before the unit, is `unsigned long long`.
 
 A struct, union or enum specifier gives the type `c_records.das` builds for its tag
 (`ARCHITECTURE_RECORDS.md`), keyed by its identity. The builder refuses, with the place of the
 construct, `file:line:col: <construct> is not typed yet`:
-`_Complex`, `_Atomic`, `typeof` of an expression, `_Alignas`, an attribute naming `mode`,
+`_Complex`, `_Atomic`, `_Alignas`, an attribute naming `mode`,
 `vector_size` or `ext_vector_type` in either spelling (in the specifiers, on a pointer, around a
 parenthesised declarator, after a declarator, a parameter, an old-style parameter's declaration
 or an own header's typedef), `_Atomic` on a pointer or in an array parameter's brackets, and a

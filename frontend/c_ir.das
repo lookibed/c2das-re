@@ -9,6 +9,7 @@ require math
 require c_exprs public
 require c_records public
 require c_inits public
+require c_consts public
 
 //! A unit's C-IR from the parser's tree as Dumper A writes it (`ARCHITECTURE_TYPES.md`,
 //! `ARCHITECTURE_EXPRS.md`): its declarations, the statements of its function bodies, their
@@ -31,6 +32,8 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
     r.tag_type = @@c_tag_type
     r.init_count = @@c_init_count
     r.compound_literal = @@c_compound_literal
+    r.constant_expr = @@c_constant_expr
+    r.expr_type = @@c_expr_type
     r.tu_prefix = ""
     r.linkage_names |> clear()
     r.file_scope_names |> clear()
@@ -441,9 +444,14 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         let ti = c_types_use(r, t)
         let global = empty(fn)
         let linked = object_name(r, name, global, is_static, is_extern)
-        c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked))
+        c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked, automatic = !global && !is_static && !is_extern))
         let init = p.ast.nodes[id].b
-        var value = init >= 0 ? used(r, p, c_initializer(r, p, init, t)) : null
+        var built = init >= 0 ? c_initializer(r, p, init, t) : null
+        if (built != null && (global || is_static) && !c_static_initializer(r, p, built, p.ast.nodes[init].tok, global)) {
+            delete_expr(built)
+            return false
+        }
+        var value = init >= 0 ? used(r, p, built) : null
         return false if (init >= 0 && value == null)
         var dims <- table_dims(r, p, d, t)
         var g = new CirDecl(k = "global", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), init = value, loc = at)
@@ -475,10 +483,11 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
             into |> push(new CirStmt(s = "default", loc = at))
         } else {
             var v = 0l
-            if (n.b >= 0 || !c_fold_node(r, p, n.a, v)) {
+            if (n.b >= 0) {
                 c_refuse(r, p, n.tok, "this case label")
                 return false
             }
+            return false if (!c_case_value(r, p, n.a, n.tok, v))
             if (key_exists(r.cases, v)) {
                 c_reject(r, p, n.tok, "a duplicate case value")
                 return false
@@ -744,7 +753,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         for (pt, pname in typed, names) {
             let local = local_name(r, pname)
             cd.params |> push(CirParam(name = local, t = c_types_use(r, pt)))
-            c_ir_bind(r, c_symbol(p.unit, pname), CId(t = pt, old_style = -1, name = local))
+            c_ir_bind(r, c_symbol(p.unit, pname), CId(t = pt, old_style = -1, name = local, automatic = true))
         }
     } else {
         ok = parameters(r, p, f, cd.params, true)
@@ -753,7 +762,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         while (ok && param >= 0) {
             let psym = c_declarator_name(p.ast, p.ast.nodes[param].b)
             if (psym >= 0) {
-                c_ir_bind(r, psym, CId(t = c_param_type(r, p, param), old_style = -1, name = cd.params[at].name))
+                c_ir_bind(r, psym, CId(t = c_param_type(r, p, param), old_style = -1, name = cd.params[at].name, automatic = true))
             }
             at++
             param = p.ast.nodes[param].next
