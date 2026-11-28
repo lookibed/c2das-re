@@ -131,7 +131,9 @@ and the keywords of the SDK's `include/clang/Basic/` - each asked of clang under
 dumper flags (`compare/pp/ARCHITECTURE.md#features`). A predefined-macro entry cannot carry them:
 a warning group and a scoped attribute are no identifier, so `parse_define` reads no such line,
 and the table has its own reader, `parse_features`. `read_features` loads a table; the caller
-puts it in `pp.eval.features` after starting a unit, as it chose the dialect's macros.
+puts it in `pp.eval.features` after starting a unit, as it chose the dialect's macros. Dumper A takes
+its answers from clang itself, so the tables are regenerated with the same pinned clang, which the
+regenerate-and-diff test of `compare/tests/test_pp_oracle.das` enforces.
 
 ## 44. Known differences from clang
 
