@@ -37,6 +37,7 @@ struct CIr {
     id_undo : array<tuple<sym : int; had : bool; was : CId>>
     id_marks : array<int>
     ret : int
+    cases : table<int64; bool>  //!< the case values of the innermost switch read so far
 }
 
 //! Bind identifier `sym` to `id` in the innermost scope.

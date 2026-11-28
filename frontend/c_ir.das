@@ -327,6 +327,12 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
                 c_refuse(r.b, p, n.tok, "this case label")
                 return false
             }
+            if (key_exists(r.cases, v)) {
+                c_reject(r.b, p, n.tok, "a duplicate case value")
+                delete_expr(value)
+                return false
+            }
+            r.cases[v] = true
             into |> push(new CirStmt(s = "case", v = v, is_char = value.e == "int_lit" && value.is_char, loc = at))
             delete_expr(value)
         }
@@ -419,7 +425,9 @@ def private branch(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.s = "switch"
         var c = c_expr(r, p, n.a)
         st.cond = c == null ? null : used(r, c_promote(r, c))
+        var outer <- r.cases
         ok = st.cond != null && one(r, p, n.b, fn, st.body_s)
+        r.cases <- outer
     } else {
         st.s = "for"
         c_types_scope_open(r.b)

@@ -266,6 +266,8 @@ def test_invalid_c(t : T?) {
     t |> equal(ir_of("void g(int x) \{ return x; \}"), "error: t.c:1:17: a value returned from a void function is invalid C, which clang rejects")
     t |> equal(ir_of("int f(void) \{ return; \}"), "error: t.c:1:15: a return with no value from a function that returns one is invalid C, which clang rejects")
     t |> equal(ir_of("void f(void); void g(void) \{ return f(); \}"), "return call<void>(FunctionToPointerDecay<func*>(f); )")
+    t |> equal(ir_of("void g(int x) \{ switch (x) \{ case 1: case 1: ; \} \}"), "error: t.c:1:38: a duplicate case value is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(int x) \{ switch (x) \{ case 1: switch (x) \{ case 1: ; \} \} \}"), "switch LValueToRValue<int>(x) - ; case 1 ; switch LValueToRValue<int>(x) - ; case 1 ; null - -")
     t |> equal(ir_of("void f(long *); void g(void) \{ unsigned long b; f(&b); \}"), "b:unsigned long=- ; expr call<void>(FunctionToPointerDecay<func*>(f); BitCast<long*>(addr<unsigned long*>(b)))")
     t |> equal(ir_of("unsigned **pp; int **q = pp;"), "error: t.c:1:26: a value of this type in a slot of that type is invalid C, which clang rejects")
     t |> equal(ir_of("char *c; int *q = c;"), "error: t.c:1:19: a value of this type in a slot of that type is invalid C, which clang rejects")
