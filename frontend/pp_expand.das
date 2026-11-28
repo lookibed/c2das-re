@@ -76,10 +76,8 @@ class PpExpander : PpExpansion {
     carry_bol : bool                    //!< an empty expansion's place, given to the next token
     carry_space : bool
     condition : bool                    //!< expanding an `#if` line: `defined`'s operand stays
-    defined_state : int                 //!< 1 after `defined`, 2 after `defined (`; 3 after `__has_include`, 4 after its `(`, 5 in its `< ... >`
+    defined_state : int                 //!< 1 after `defined`, 2 after `defined (`; 3 after `__has_include`, 4 after its `(`, 5 in its `< ... >`; 6 after a query whose operand stays, 7 in its `( ... )`
     pre_expanding : int                 //!< the arguments being macro-expanded (C11 6.10.3.1): a `_Pragma` read then is done at the rescan
-    sym_has_include : int
-    sym_has_include_next : int
     counter : int
     epoch : int64                       //!< the seconds since 1970 `__DATE__`, `__TIME__` and `__TIMESTAMP__` show, in UTC
     scratch : PpLexer                   //!< re-lexes a pasted spelling and a `_Pragma` operand
@@ -106,6 +104,7 @@ class PpExpander : PpExpansion {
     def override macro_changed(var pp : Preprocessor; name : PpToken; undef : bool) : void {
         builtin_changed(self, pp, name, undef)
     }
+    def override is_builtin(pp : Preprocessor; sym : int) : bool => key_exists(builtin_of, sym)
 }
 
 def private diag(var pp : Preprocessor; severity : PpSeverity; t : PpOutToken; what : string) {
@@ -305,13 +304,25 @@ def private defined_operand(var ex : PpExpander; pp : Preprocessor; t : PpOutTok
         ex.defined_state = kind == int(PpTok.GREATER) ? 0 : 5
         return true
     }
+    if (ex.defined_state == 6) {
+        ex.defined_state = kind == int(PpTok.LPAREN) ? 7 : 0
+        return kind == int(PpTok.LPAREN)
+    }
+    if (ex.defined_state == 7) {
+        ex.defined_state = kind == int(PpTok.RPAREN) ? 0 : 7
+        return true
+    }
     return false if (kind != int(PpTok.IDENTIFIER))
     if (t.tok.sym == pp.sym_defined) {
         ex.defined_state = 1
         return true
     }
-    if (t.tok.sym == ex.sym_has_include || t.tok.sym == ex.sym_has_include_next) {
+    if (t.tok.sym == pp.sym_has_include || t.tok.sym == pp.sym_has_include_next || t.tok.sym == pp.sym_has_embed) {
         ex.defined_state = 3
+        return true
+    }
+    if (key_exists(pp.unexpanded_query, t.tok.sym)) {
+        ex.defined_state = 6
         return true
     }
     return false
@@ -498,7 +509,7 @@ def private drop_placemarkers(var toks : array<PpOutToken>) {
 def private param_of(pp : Preprocessor; m : int; h : PpHeld) : int {
     return -1 if (h.kind != int(PpTok.IDENTIFIER) || !pp.macros[m].function_like)
     let params & = unsafe(pp.macros[m].params)
-    for (i in range(length(params))) {  // nolint:PERF018 - the index is the answer
+    for (i in range(length(params))) {
         return i if (params[i] == h.sym)
     }
     return -1
@@ -1120,14 +1131,6 @@ def private expand_held_line(var ex : PpExpander; var pp : Preprocessor; conditi
 
 // Starting
 
-//! clang's builtin names the `#if` evaluator answers (`Preprocessor::RegisterBuiltinMacros`): PP.3
-//! hands them out as names, and a `#define` or `#undef` of one is clang's warning
-let private EVALUATED_BUILTINS <- ["__has_feature", "__has_extension", "__has_builtin", "__has_constexpr_builtin", "__has_attribute",
-                                   "__has_c_attribute", "__has_declspec_attribute", "__has_cpp_attribute", "__has_include",
-                                   "__has_include_next", "__has_embed", "__has_warning", "__is_identifier", "__is_target_arch",
-                                   "__is_target_vendor", "__is_target_os", "__is_target_environment", "__is_target_variant_os",
-                                   "__is_target_variant_environment", "__building_module"]
-
 //! Start preprocessing `main` as `pp_start` does, with macro expansion: `pp_next_token` hands out
 //! the expanded tokens, and the macros of `#include`, `#line` and `#if` lines are expanded.
 //! `epoch` is the time `__DATE__`, `__TIME__` and `__TIMESTAMP__` show, seconds since 1970 in
@@ -1146,11 +1149,9 @@ def pp_expand_start(var pp : Preprocessor; var provider : PpFileProvider?; main 
     for (entry in names) {
         ex.builtin_of |> insert(intern_name(pp.lx.flex.syms, entry._0), entry._1)
     }
-    for (name in EVALUATED_BUILTINS) {
+    for (name in PP_QUERIES) {
         ex.builtin_of |> insert(intern_name(pp.lx.flex.syms, name), PpBuiltin.evaluated)
     }
-    ex.sym_has_include = intern_name(pp.lx.flex.syms, "__has_include")
-    ex.sym_has_include_next = intern_name(pp.lx.flex.syms, "__has_include_next")
     pp.expansion = ex
     return ok
 }

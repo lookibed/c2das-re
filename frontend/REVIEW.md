@@ -72,3 +72,16 @@ reused buffers, spellings - a builtin's value and a `_Pragma` operand among them
 and the call record grows geometrically; `tests/test_pp_expand.das`'s allocation tests are never
 loosened.** A string or an array made per token grows the das heap
 with the size of the expansion, which a macro library makes millions of tokens long.
+
+**A diff to `pp_eval.das` keeps every value 64 bits and a signedness, folded by C11 6.10.1p4's
+rule - an unsigned operand makes the operation unsigned - and computes on the `uint64` bits, never
+on a narrower type or a signed das operation that can overflow; it adds a case pinned against
+clang to `tests/test_pp_eval.das` for each rule it changes, and runs `das compare/pp/run.das --
+--pp4 --corpus pp4 --corpus pp3 --corpus frontend` with its class counts stated.** The sign of a
+converted operand is the trap every hand-written evaluator falls into (`L'\0' - 1 > 0`), and a das
+`int64` overflow or `INT64_MIN / -1` is undefined behaviour in the evaluator itself.
+
+**`predefined/*_features.defs` is generated from the pinned clang, never edited by hand: a change
+to it is the output of `das compare/pp/run.das -- --features` (`ARCHITECTURE_EVAL.md#pp-eval-features`).**
+A hand-written answer is a guess about clang that no oracle can see, since the query's answer
+changes which group a unit reads.

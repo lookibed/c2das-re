@@ -198,7 +198,7 @@ def test_line_markers(t : T?) {
         t |> equal(lexed("# 3 u8\"w.h\"\nx"), "error: t.c:1:5: invalid filename for line marker directive")
         t |> equal(lexed("# 9999999999 \"a.c\""), "error: t.c:1:3: line marker directive requires a positive integer argument")
         t |> equal(lexed("x\n# 4 \"a.c\" 2\ny"), "error: t.c:2:11: invalid line marker flag '2': cannot pop empty include stack")
-        t |> equal(lexed("#line x"), "error: t.c:1:2: #line of macro-expanded tokens needs PP.3: x")
+        t |> equal(lexed("#line x"), "error: t.c:1:7: #line directive requires a positive integer argument")
         t |> equal(lexed("#include \"other.h\"\nx"), "error: t.c:1:10: 'other.h' file not found; searched: .")
     }
     t |> run("a warning is no error") @(t : T?) {
