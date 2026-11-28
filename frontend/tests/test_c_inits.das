@@ -118,12 +118,14 @@ def test_record_values(t : T?) {
                "g:struct P=- ; a:struct Q=\{0:LValueToRValue<struct P>(g), 1:1\} ; b:struct Q=\{0:LValueToRValue<struct P>(g), 1:2\} ; return 0")
 }
 
-[test(description = "designators: a nested path opens each subobject, the items after it go on from the designated position at its depth, a later item for a position replaces the earlier one, a GNU range fills each index, a member an anonymous member makes visible goes through it")]
+[test(description = "designators: a nested path opens each subobject, the items after it go on from the designated position at its depth, a later item for a position replaces the earlier one, a GNU range fills each index (opening each element's braces), a second designator goes into the list the first opened, a member an anonymous member makes visible goes through it")]
 def test_designators(t : T?) {
     t |> equal(inits_of("struct P \{ int x, y, z; \}; struct Q \{ struct P a; int b; \}; struct Q a = \{.a.y = 4, 5\}; struct Q b = \{.a.z = 4, 5\}; struct P c = \{1, 2, .x = 3\}; struct Q d[2] = \{[1].a.x = 1, 2, 3, 4\};"),
                "a:struct Q=\{0:\{1:4, 2:5\}\} ; b:struct Q=\{0:\{2:4\}, 1:5\} ; c:struct P=\{0:3, 1:2\} ; d:struct Q[2]=\{1:\{0:\{0:1, 1:2, 2:3\}, 1:4\}\}")
     t |> equal(inits_of("int a[6] = \{[1] = 1, 2, [4] = 4, 5\}; int b[5] = \{[0 ... 2] = 9\}; int c[4] = \{[3] = 1, [1] = 2\}; int d[2][2] = \{[1] = \{1\}, [0][1] = 2\}; int e[2][2] = \{[1][0] = 3, 4\};"),
                "a:int[6]=\{1:1, 2:2, 4:4, 5:5\} ; b:int[5]=\{0:9, 1:9, 2:9\} ; c:int[4]=\{1:2, 3:1\} ; d:int[2][2]=\{0:\{1:2\}, 1:\{0:1\}\} ; e:int[2][2]=\{1:\{0:3, 1:4\}\}")
+    t |> equal(inits_of(RECORDS + "struct Q a = \{.a.x = 1, .a.y = 2\}; union U b = \{.p.y = 1\}; struct P c[3] = \{[0 ... 1] = 5\};"),
+               "a:struct Q=\{0:\{0:1, 1:2\}\} ; b:union U=\{2:\{1:1\}\} ; c:struct P[3]=\{0:\{0:5\}, 1:\{0:5\}\}")
     t |> equal(inits_of("struct A \{ int k; struct \{ int u, v; \}; union \{ int w; float q; \}; \}; struct A a = \{1, 2, 3, 4\}; struct A b = \{.v = 7, .w = 8\};"),
                "a:struct A=\{0:1, 1:\{0:2, 1:3\}, 2:\{0:4\}\} ; b:struct A=\{1:\{1:7\}, 2:\{0:8\}\}")
 }
@@ -156,6 +158,8 @@ def test_refusals(t : T?) {
     t |> equal(inits_of("int n; int a[2] = \{[n] = 1\};"), "error: t.c:1:20: an array index other than an integer constant expression is not typed yet")
     t |> equal(inits_of("int n; int a[4] = \{[0 ... n] = 1\};"), "error: t.c:1:20: an array index other than an integer constant expression is not typed yet")
     t |> equal(inits_of("int a[2][2] = \{[0 ... 1][0] = 1\};"), "error: t.c:1:16: a range designator followed by another designator is not typed yet")
+    t |> equal(inits_of("struct S; struct S s = \{1\};"), "error: t.c:1:24: an initializer of an incomplete record is not typed yet")
+    t |> equal(inits_of("int n; int *p = (int[])\{[n] = 1\};"), "error: t.c:1:25: an array index other than an integer constant expression is not typed yet")
     t |> equal(inits_of("int f(void) \{ return (int)\{1, 2\}; \}"), "error: t.c:1:22: a scalar compound literal of other than one value is not typed yet")
     t |> equal(inits_of("int n = \{1, 2\};"), "error: t.c:1:9: a braced scalar initializer of other than one value is not typed yet")
 }
