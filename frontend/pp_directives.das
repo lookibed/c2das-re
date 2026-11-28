@@ -93,6 +93,7 @@ struct PpDiagnostic {
     pname : int     //!< the presumed file name, an index of `Preprocessor.names`
     pline : uint
     what : string
+    undecided : bool    //!< raised in a group an undecided conditional chose, or at a macro name of a condition PP.2 alone reads
 }
 
 //! A token kept past its lexer: its spelling is `len` bytes at `at` of the owner's text pool.
@@ -120,6 +121,7 @@ struct PpMacro {
     file : int
     line : int
     col : int
+    undecided : bool    //!< defined in a group an undecided conditional chose
 }
 
 //! Why an `#include` read no file.
@@ -255,11 +257,14 @@ class PpExpansion {
 }
 
 //! An open conditional: `active` while its current group is read, `taken` once a group was (or
-//! the conditional sits in a skipped group, so none will be).
+//! the conditional sits in a skipped group, so none will be), `undecided` once a line of it, with
+//! no expansion set, read a macro otherwise than clang (`line_undecided`), so the group read may not
+//! be clang's.
 struct PpCond {
     active : bool
     taken : bool
     seen_else : bool
+    undecided : bool
     file : int
     line : int
     col : int
@@ -371,11 +376,21 @@ struct Preprocessor {
     buffer_data : array<uint8?>         //!< per buffer id, the first byte of a file's working buffer, valid for the unit's life
     closed : array<array<uint8>>        //!< the working buffers of the closed files, kept so their spellings outlive them
     name_scratch : array<uint8>         //!< a `#line` name unescaped, zero-ended, looked up in place
-    unexpanded : array<int>             //!< with no expansion set: the tokens handed out before each `#if`, `#elif` or `#line` line that names a macro, which only PP.3 reads as clang does
+    unexpanded : array<int>             //!< with no expansion set: the tokens handed out before each undecided conditional line and each `#line` line that names a macro, which only PP.3 reads as clang does
+    sym_has_include : int
+    sym_has_include_next : int
+    sym_has_embed : int
+    unexpanded_query : table<int; bool> //!< the queries whose operand clang does not expand (`PP_UNEXPANDED_QUERIES`)
+    expanded_builtin : table<int; bool> //!< the builtin names the expansion replaces (`PP_EXPANDED_BUILTINS`)
     eval : PpEval                       //!< the `#if` evaluator: its line, target, feature table (the caller's to set) and last diagnostics
 }
 
 def private intern_text(var pp : Preprocessor; text : string) : int => intern_name(pp.lx.flex.syms, text)
+
+//! clang's builtin names the expansion replaces by a value (`Preprocessor::RegisterBuiltinMacros`),
+//! which PP.2 alone hands out as names.
+let PP_EXPANDED_BUILTINS <- ["__FILE__", "__LINE__", "__COUNTER__", "__DATE__", "__TIME__", "__TIMESTAMP__", "__INCLUDE_LEVEL__",
+                             "__BASE_FILE__", "__FILE_NAME__", "_Pragma"]
 
 def private name_id(var pp : Preprocessor; name : string) : int {
     let known = pp.name_of?[name] ?? -1
@@ -406,6 +421,15 @@ def private intern_directives(var pp : Preprocessor) {
     pp.sym_show = intern_text(pp, "show")
     pp.sym_push_macro = intern_text(pp, "push_macro")
     pp.sym_pop_macro = intern_text(pp, "pop_macro")
+    pp.sym_has_include = intern_text(pp, "__has_include")
+    pp.sym_has_include_next = intern_text(pp, "__has_include_next")
+    pp.sym_has_embed = intern_text(pp, "__has_embed")
+    for (name in PP_UNEXPANDED_QUERIES) {
+        pp.unexpanded_query |> insert(intern_text(pp, name), true)
+    }
+    for (name in PP_EXPANDED_BUILTINS) {
+        pp.expanded_builtin |> insert(intern_text(pp, name), true)
+    }
 }
 
 //! `path` with its `.` components and doubled `/` removed; a `..` stays, since only the file
@@ -429,14 +453,25 @@ def private register_file(var pp : Preprocessor; path, identity : string) : int 
 
 def private presumed_line(pp : Preprocessor; line : int) : uint => uint(line) + pp.state.line_delta
 
+//! Whether an open conditional is undecided: the group read, and every token, diagnostic and
+//! definition in it, may not be clang's.
+def pp_in_undecided_group(pp : Preprocessor) : bool {
+    for (c in pp.conds) {
+        return true if (c.undecided)
+    }
+    return false
+}
+
 def private diagnose_at(var pp : Preprocessor; severity : PpSeverity; at : PpToken; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
-                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
+                                  undecided = pp_in_undecided_group(pp)))
 }
 
 def private diagnose_held(var pp : Preprocessor; severity : PpSeverity; at : PpHeld; what : string) {
     pp.diags |> push(PpDiagnostic(severity = severity, file = at.file, offset = at.offset, line = at.line, col = at.col,
-                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what))
+                                  pname = pp.state.pname, pline = presumed_line(pp, at.line), what = what,
+                                  undecided = pp_in_undecided_group(pp)))
 }
 
 def private diagnose(var pp : Preprocessor; severity : PpSeverity; what : string) {
@@ -675,10 +710,10 @@ def pp_macro_body_text(pp : Preprocessor; m : PpMacro) : string {
 
 // Conditionals
 
-def private push_cond(var pp : Preprocessor; value : int; at : PpToken) {
+def private push_cond(var pp : Preprocessor; value : int; at : PpToken; undecided : bool) {
     let outer = !skipping(pp)
-    pp.conds |> push(PpCond(active = outer && value == 1, taken = !outer || value == 1, file = at.file,
-                            line = at.line, col = at.col))
+    pp.conds |> push(PpCond(active = outer && value == 1, taken = !outer || value == 1, undecided = undecided,
+                            file = at.file, line = at.line, col = at.col))
 }
 
 //! the guard pattern of `#if`'s line as written, before its macros expand: `!defined X` or
@@ -696,25 +731,69 @@ def private if_guard_sym(pp : Preprocessor) : int {
     return -1
 }
 
-//! whether the condition in `pp.line` names a macro outside `defined`'s operand: with no expansion
-//! set it reads as 0, where clang reads the macro's value
-def private line_names_macro(pp : Preprocessor) : bool {
-    var operand = 0
-    for (h in pp.line) {
-        if (operand == 1 && h.kind == int(PpTok.LPAREN)) {
-            operand = 2
-            continue
-        }
-        let is_operand = operand > 0 && h.kind == int(PpTok.IDENTIFIER)
-        operand = 0
-        continue if (is_operand)
+// whether macro `sym` is defined and its definition was made in an undecided group
+def private macro_undecided(pp : Preprocessor; sym : int) : bool {
+    let m = pp.macro_of?[sym] ?? -1
+    return m >= 0 && pp.macros[m].undecided
+}
+
+// the index in `pp.line` past the first token of kind `close` from `i`; the line's length when none
+def private line_past(pp : Preprocessor; i, close : int) : int {
+    var k = i
+    while (k < length(pp.line) && pp.line[k].kind != close) {
+        k++
+    }
+    return k < length(pp.line) ? k + 1 : k
+}
+
+//! with no expansion set, whether the condition in `pp.line` reads a macro otherwise than clang:
+//! it names an object-like macro, or a function-like one before `(`, or a builtin name the
+//! expansion replaces (`PP_EXPANDED_BUILTINS`), outside `defined`'s operand,
+//! the operand of a query clang reads unexpanded and `__has_include`'s `< ... >`; or `defined` asks
+//! for a macro defined in an undecided group
+def private line_undecided(pp : Preprocessor) : bool {
+    let n = length(pp.line)
+    var i = 0
+    while (i < n) {
+        let h = pp.line[i]
+        i++
+        continue if (h.kind != int(PpTok.IDENTIFIER))
+        let paren = i < n && pp.line[i].kind == int(PpTok.LPAREN)
         if (h.sym == pp.sym_defined) {
-            operand = 1
-        } elif (h.kind == int(PpTok.IDENTIFIER) && pp_defined(pp, h.sym)) {
+            i += paren ? 1 : 0
+            if (i < n && pp.line[i].kind == int(PpTok.IDENTIFIER)) {
+                return true if (macro_undecided(pp, pp.line[i].sym))
+                i++
+            }
+        } elif (paren && key_exists(pp.unexpanded_query, h.sym)) {
+            i = line_past(pp, i, int(PpTok.RPAREN))
+        } elif (paren && (h.sym == pp.sym_has_include || h.sym == pp.sym_has_include_next || h.sym == pp.sym_has_embed)
+                && i + 1 < n && pp.line[i + 1].kind == int(PpTok.LESS)) {
+            i = line_past(pp, i + 1, int(PpTok.GREATER))
+        } elif (pp_defined(pp, h.sym)) {
+            return true if (paren || !pp.macros[pp.macro_of?[h.sym] ?? -1].function_like)
+        } elif (key_exists(pp.expanded_builtin, h.sym)) {
             return true
         }
     }
     return false
+}
+
+//! whether a conditional line is undecided (`undecided`: what `line_undecided` or the name it asks
+//! for answered, with no expansion set); an undecided line records the tokens handed out before it
+def private mark_undecided(var pp : Preprocessor; undecided : bool) : bool {
+    if (undecided && pp.expansion == null) {
+        pp.unexpanded |> push(pp.emitted)
+        return true
+    }
+    return false
+}
+
+// whether token `k` of `pp.line`, or the token before it, names a macro
+def private near_macro(pp : Preprocessor; k : int) : bool {
+    let h = pp.line[k]
+    let before = k > 0 ? pp.line[k - 1] : h
+    return (h.kind == int(PpTok.IDENTIFIER) && pp_defined(pp, h.sym)) || (before.kind == int(PpTok.IDENTIFIER) && pp_defined(pp, before.sym))
 }
 
 //! Whether `sym` is defined: a macro, or a builtin name of the expansion (`__FILE__`, the `__has_*`
@@ -765,12 +844,9 @@ def private include_answer(var pp : Preprocessor; first, last : int; next, embed
 
 //! The `#if`/`#elif` condition of `pp.line` through the evaluator (`pp_eval.das`): 1 or 0, and -1
 //! when an error fails it, so its group is skipped as clang skips it. Its diagnostics go to
-//! `pp.diags` at their tokens.
+//! `pp.diags` at their tokens, those of an `undecided` line at or just past a macro name marked so.
 [arch(at="ARCHITECTURE_PP.md#pp-if-hook")]
-def private eval_condition(var pp : Preprocessor; at : PpToken) : int {
-    if (pp.expansion == null && line_names_macro(pp)) {
-        pp.unexpanded |> push(pp.emitted)
-    }
+def private eval_condition(var pp : Preprocessor; at : PpToken; undecided : bool) : int {
     pp.eval.toks |> clear()
     pp.eval.toks |> reserve(length(pp.line))
     for (h in pp.line) {
@@ -791,6 +867,7 @@ def private eval_condition(var pp : Preprocessor; at : PpToken) : int {
         let severity = d.error ? PpSeverity.error : PpSeverity.warning
         if (d.token >= 0) {
             diagnose_held(pp, severity, pp.line[d.token], d.what)
+            pp.diags[length(pp.diags) - 1].undecided ||= undecided && near_macro(pp, d.token)
         } else {
             diagnose_at(pp, severity, !empty(pp.line) ? pp.last_tok : at, d.what)
         }
@@ -836,7 +913,8 @@ def private do_ifdef(var pp : Preprocessor; at : PpToken; negate : bool) {
     if (sym >= 0) {
         extra_tokens(pp, name)
     }
-    push_cond(pp, sym >= 0 && pp_is_defined(pp, sym) != negate ? 1 : 0, at)
+    let undecided = mark_undecided(pp, sym >= 0 && macro_undecided(pp, sym))
+    push_cond(pp, sym >= 0 && pp_is_defined(pp, sym) != negate ? 1 : 0, at, undecided)
     if (negate) {
         guard_opened(pp, sym)
     }
@@ -854,8 +932,8 @@ def private do_if(var pp : Preprocessor; at : PpToken) {
     read_line(pp, false)
     let guard = if_guard_sym(pp)
     expand_condition(pp)
-    let value = eval_condition(pp, at)
-    push_cond(pp, value, at)
+    let undecided = mark_undecided(pp, line_undecided(pp))
+    push_cond(pp, eval_condition(pp, at, undecided), at, undecided)
     guard_opened(pp, guard)
 }
 
@@ -893,13 +971,15 @@ def private do_elif(var pp : Preprocessor; at : PpToken; d : PpDirective) {
     if (d == PpDirective.hash_elif) {
         read_line(pp, false)
         expand_condition(pp)
-        let answer = eval_condition(pp, at)
-        value = answer == 1
+        let undecided = mark_undecided(pp, line_undecided(pp))
+        value = eval_condition(pp, at, undecided) == 1
+        pp.conds[top].undecided ||= undecided
     } else {
         let sym = read_macro_name(pp, at, name)
         if (sym >= 0) {
             extra_tokens(pp, name)
         }
+        pp.conds[top].undecided ||= mark_undecided(pp, sym >= 0 && macro_undecided(pp, sym))
         value = sym >= 0 && pp_is_defined(pp, sym) == (d == PpDirective.hash_elifdef)
     }
     pp.conds[top].active = value
@@ -1039,7 +1119,7 @@ def private do_define(var pp : Preprocessor; at : PpToken) {
     }
     let name_at = pp.lx.tok
     var m = PpMacro(name = pp.lx.tok.sym, file = pp.lx.tok.file, line = pp.lx.tok.line, col = pp.lx.tok.col,
-                    first = length(pp.macro_body))
+                    first = length(pp.macro_body), undecided = pp_in_undecided_group(pp))
     var more = next_on_line(pp)
     if (more && pp.lx.tok.kind == int(PpTok.LPAREN) && !pp.lx.tok.has_space) {
         m.function_like = true
@@ -1319,7 +1399,8 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
         diagnose_at(pp, PpSeverity.error, at, "#line directive requires a positive integer argument")
         return
     }
-    if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && pp.expansion == null && pp_defined(pp, pp.lx.tok.sym)) {
+    let by_macro = pp.lx.tok.kind == int(PpTok.IDENTIFIER) && pp.expansion == null && pp_defined(pp, pp.lx.tok.sym)
+    if (by_macro) {
         pp.unexpanded |> push(pp.emitted)
     }
     if (pp.lx.tok.kind == int(PpTok.IDENTIFIER) && pp.expansion != null) {
@@ -1331,6 +1412,7 @@ def private do_line(var pp : Preprocessor; at : PpToken; marker : bool) {
     let number = current_number(pp)
     if (pp.lx.tok.kind != int(PpTok.PP_NUMBER) || number < 0l) {
         diagnose(pp, PpSeverity.error, line_number_error(what, pp.lx.tok.kind, number))
+        pp.diags[length(pp.diags) - 1].undecided ||= by_macro
         skip_rest(pp)
         return
     }
@@ -1596,7 +1678,7 @@ def private directive(var pp : Preprocessor) {
     let d = pp.lx.tok.kind == int(PpTok.IDENTIFIER) ? pp.directive_of?[pp.lx.tok.sym] ?? PpDirective.unknown : PpDirective.unknown
     if (skipped) {
         if (d == PpDirective.hash_if || d == PpDirective.ifdef || d == PpDirective.ifndef) {
-            push_cond(pp, 0, at)
+            push_cond(pp, 0, at, false)
             skip_rest(pp)
         } elif (d == PpDirective.hash_elif || d == PpDirective.hash_elifdef || d == PpDirective.hash_elifndef) {
             do_elif(pp, at, d)

@@ -160,9 +160,15 @@ hands the line to the evaluator of `ARCHITECTURE_EVAL.md` (`pp.eval`) and answer
 name built as `#include` builds it, `line_header_name`), `__has_embed` by reading the file found.
 Every condition is decided: an error the evaluator reports skips the group, as clang skips it, and
 stands in `pp.diags` at its token. With no expansion set (`pp_start` alone) a macro in the line is
-a name worth 0, the queries are answered, and no builtin name is defined; each `#if`, `#elif` or
-`#line` line that names a macro outside `defined`'s operand records the tokens handed out before
-it (`pp.unexpanded`), the place past which PP.2 alone may read another group than clang. The dialect's char and
+a name worth 0, the queries are answered, and no builtin name is defined. A conditional line that
+so reads a macro otherwise than clang (`line_undecided`: an object-like macro, or a function-like
+one before `(`, outside `defined`'s operand, the operand of a query clang reads unexpanded and
+`__has_include`'s `< ... >`; or `defined`, `#ifdef` and their kin asking for a macro defined in an
+undecided group) makes its conditional undecided (`PpCond.undecided`): the group it chooses may
+not be clang's, so every diagnostic raised and every macro defined while an undecided conditional
+is open is marked so, and so is an evaluator diagnostic of that line at a macro name or just past
+one. Each such line, and each `#line` line that names a macro, records the tokens handed out
+before it (`pp.unexpanded`). The dialect's char and
 `wchar_t` facts come from the predefined entries (`pp_eval_target`); the feature table is the
 caller's to load into `pp.eval.features` (`read_features`), else every feature query answers 0. An
 `#elif` whose conditional already took a group evaluates nothing, and a conditional opened in a

@@ -104,7 +104,7 @@ and `__has_include_next`, which clang lexes as a header name (`#define linux 1` 
 `<linux/version.h>`), and `__has_embed`'s. The parenthesized operand of the queries clang reads
 unexpanded - `__has_feature`, `__has_extension`, `__has_builtin`, `__has_constexpr_builtin`,
 `__has_warning`, `__is_identifier`, `__is_target_*`, `__building_module` - is left as written too
-(`UNEXPANDED_QUERIES`); any other operand, `__has_include`'s macro name and the attribute queries'
+(`PP_UNEXPANDED_QUERIES`); any other operand, `__has_include`'s macro name and the attribute queries'
 among them, is expanded, as clang expands it. An argument of a call in the line is pre-expanded
 as anywhere else, with no operand left: `F(defined X)` of a defined `X` gives clang's `defined 1`.
 The expanded line goes to the evaluator hook (`ARCHITECTURE_PP.md` section 11). A `_Pragma` in

@@ -78,10 +78,6 @@ class PpExpander : PpExpansion {
     condition : bool                    //!< expanding an `#if` line: `defined`'s operand stays
     defined_state : int                 //!< 1 after `defined`, 2 after `defined (`; 3 after `__has_include`, 4 after its `(`, 5 in its `< ... >`; 6 after a query whose operand stays, 7 in its `( ... )`
     pre_expanding : int                 //!< the arguments being macro-expanded (C11 6.10.3.1): a `_Pragma` read then is done at the rescan
-    sym_has_include : int
-    sym_has_include_next : int
-    sym_has_embed : int
-    unexpanded_query : table<int; bool>     //!< the queries whose operand clang does not expand: `__has_feature`, `__has_builtin`, ...
     counter : int
     epoch : int64                       //!< the seconds since 1970 `__DATE__`, `__TIME__` and `__TIMESTAMP__` show, in UTC
     scratch : PpLexer                   //!< re-lexes a pasted spelling and a `_Pragma` operand
@@ -321,11 +317,11 @@ def private defined_operand(var ex : PpExpander; pp : Preprocessor; t : PpOutTok
         ex.defined_state = 1
         return true
     }
-    if (t.tok.sym == ex.sym_has_include || t.tok.sym == ex.sym_has_include_next || t.tok.sym == ex.sym_has_embed) {
+    if (t.tok.sym == pp.sym_has_include || t.tok.sym == pp.sym_has_include_next || t.tok.sym == pp.sym_has_embed) {
         ex.defined_state = 3
         return true
     }
-    if (key_exists(ex.unexpanded_query, t.tok.sym)) {
+    if (key_exists(pp.unexpanded_query, t.tok.sym)) {
         ex.defined_state = 6
         return true
     }
@@ -1135,20 +1131,6 @@ def private expand_held_line(var ex : PpExpander; var pp : Preprocessor; conditi
 
 // Starting
 
-//! clang's builtin names the `#if` evaluator answers (`Preprocessor::RegisterBuiltinMacros`): PP.3
-//! hands them out as names, and a `#define` or `#undef` of one is clang's warning
-let private EVALUATED_BUILTINS <- ["__has_feature", "__has_extension", "__has_builtin", "__has_constexpr_builtin", "__has_attribute",
-                                   "__has_c_attribute", "__has_declspec_attribute", "__has_include",
-                                   "__has_include_next", "__has_embed", "__has_warning", "__is_identifier", "__is_target_arch",
-                                   "__is_target_vendor", "__is_target_os", "__is_target_environment", "__is_target_variant_os",
-                                   "__is_target_variant_environment", "__building_module"]
-
-//! the queries whose operand clang reads unexpanded (`EvaluateFeatureLikeBuiltinMacro` without
-//! `ExpandArgs`): only the attribute queries and `__has_include` expand theirs
-let private UNEXPANDED_QUERIES <- ["__has_feature", "__has_extension", "__has_builtin", "__has_constexpr_builtin", "__has_warning",
-                                   "__is_identifier", "__is_target_arch", "__is_target_vendor", "__is_target_os", "__is_target_environment",
-                                   "__is_target_variant_os", "__is_target_variant_environment", "__building_module"]
-
 //! Start preprocessing `main` as `pp_start` does, with macro expansion: `pp_next_token` hands out
 //! the expanded tokens, and the macros of `#include`, `#line` and `#if` lines are expanded.
 //! `epoch` is the time `__DATE__`, `__TIME__` and `__TIMESTAMP__` show, seconds since 1970 in
@@ -1167,14 +1149,8 @@ def pp_expand_start(var pp : Preprocessor; var provider : PpFileProvider?; main 
     for (entry in names) {
         ex.builtin_of |> insert(intern_name(pp.lx.flex.syms, entry._0), entry._1)
     }
-    for (name in EVALUATED_BUILTINS) {
+    for (name in PP_QUERIES) {
         ex.builtin_of |> insert(intern_name(pp.lx.flex.syms, name), PpBuiltin.evaluated)
-    }
-    ex.sym_has_include = intern_name(pp.lx.flex.syms, "__has_include")
-    ex.sym_has_include_next = intern_name(pp.lx.flex.syms, "__has_include_next")
-    ex.sym_has_embed = intern_name(pp.lx.flex.syms, "__has_embed")
-    for (name in UNEXPANDED_QUERIES) {
-        ex.unexpanded_query |> insert(intern_name(pp.lx.flex.syms, name), true)
     }
     pp.expansion = ex
     return ok

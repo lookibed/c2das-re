@@ -259,24 +259,25 @@ def private clang_side(spellings : string) : array<OracleToken> =>
     <- [for (s in split(spellings, " ")); OracleToken(kind = int(PpTok.IDENTIFIER), spelling = s); where !empty(s)]
 
 // PP.2-side tokens of `spellings`: a token ending in `!` names a macro PP.2 defined, one ending in
-// `&` stands in a function-like macro's call
+// `&` stands in a function-like macro's call, one ending in `?` in a group an undecided conditional chose
 def private pp_side(spellings : string) : array<Pp2Token> {
     var toks : array<Pp2Token>
     for (s in split(spellings, " ")) {
         continue if (empty(s))
-        let marked = ends_with(s, "!") || ends_with(s, "&")
+        let marked = ends_with(s, "!") || ends_with(s, "&") || ends_with(s, "?")
         toks |> push(Pp2Token(tok = OracleToken(kind = int(PpTok.IDENTIFIER), spelling = marked ? slice(s, 0, length(s) - 1) : s),
-                              macro = ends_with(s, "!"), in_call = ends_with(s, "&")))
+                              macro = ends_with(s, "!"), in_call = ends_with(s, "&"), undecided = ends_with(s, "?")))
     }
     return <- toks
 }
 
 // the differences of the two sides, classed: `<class> c<at>+<count> p<at>+<count>` each
-def private classed(clang_spellings, pp_spellings : string; pp3_at : array<int>) : string {
+def private classed(clang_spellings, pp_spellings : string; pp3_at : array<int>; undecided_at : array<int> = array<int>()) : string {
     let clang <- clang_side(clang_spellings)
     let ours <- pp_side(pp_spellings)
     var r = Pp2Result()
     r.pp3_at := pp3_at
+    r.undecided_at := undecided_at
     var gave_up = false
     r.differences <- pp2_differences(clang, ours, 100, gave_up)
     let parts <- [for (d in r.differences); "{pp2_difference_class(r, d, clang, ours)} c{d.clang_at}+{d.clang_count} p{d.pp_at}+{d.pp_count}"]
@@ -318,6 +319,15 @@ def test_pp2_difference_class(t : T?) {
     t |> equal(classed("s a + b ;", "s F! (& a& ,& b& )& ;", none), "needs_pp3 c1+0 p1+2 | needs_pp3 c2+1 p4+1 | needs_pp3 c4+0 p6+1")
     t |> equal(classed("s 2 * f ;", "s f! (& 2& )& ;", none), "needs_pp3 c1+2 p1+0 | needs_pp3 c4+0 p2+3")
     t |> equal(classed("s a + b ; x", "s F! (& a& ,& b& )& ; y", none), "needs_pp3 c1+0 p1+2 | needs_pp3 c2+1 p4+1 | needs_pp3 c4+0 p6+1 | differs c5+1 p8+1")
+}
+
+[test(description = "an undecided conditional explains only the groups it chose: a difference in them, or one spanning its line's place, needs PP.3, and a difference past its #endif still differs")]
+def test_pp2_undecided_groups(t : T?) {
+    let none <- array<int>()
+    t |> equal(classed("a x b", "a y? b", none), "needs_pp3 c1+1 p1+1")
+    t |> equal(classed("a x b", "a b", none, [1]), "needs_pp3 c1+1 p1+0")
+    t |> equal(classed("a x b w", "a y? b z", none, [1]), "needs_pp3 c1+1 p1+1 | differs c3+1 p3+1")
+    t |> equal(classed("a x b w", "a b z", none, [1]), "needs_pp3 c1+1 p1+0 | differs c3+1 p2+1")
 }
 
 // a result whose differences are of `classes`
@@ -383,7 +393,7 @@ def test_pp2_tokens_bookkeeping(t : T?) {
     t |> equal(join(rm.errors, " | "), "cannot read compare/pp/fixtures/pp2/no_such_unit.c")
 }
 
-[test(description = "in PP.2's stream alone an #if or #line naming a macro is left to PP.3: a difference ending past it, and an error met past it, wait for PP.3, so the unit needs PP.3, not differs", timeout = 1200)]
+[test(description = "in PP.2's stream alone an #if naming a macro is undecided: a difference in the group it chose, and an error met there, wait for PP.3, so the unit needs PP.3; an error past its #endif, an evaluator's among them, stays the preprocessor's own", timeout = 1200)]
 def test_pp2_macro_condition_needs_pp3(t : T?) {
     var error : string
     let flags <- preprocess_flags(error)
@@ -395,13 +405,19 @@ def test_pp2_macro_condition_needs_pp3(t : T?) {
     let unit = unit_file("macro_if.c", "int z;\n#define N 2\n#if defined N && N > 1\nint a;\n#else\nint b;\n#error PP.2 alone takes this group\n#endif\n")
     let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5)
     t |> equal(r.error, "")
-    t |> equal(r.pp3_from, 3)
+    t |> equal(join([for (p in r.undecided_at); "{p}"], " "), "3")
     t |> equal(join(r.errors, " | "), "")
     t |> equal(r.cls, Pp2Class.needs_pp3, "{r.shown}")
     let defined_only = unit_file("defined_only.c", "#define N 2\n#if defined N || defined(N)\nint a;\n#endif\n")
     let rd <- compare_unit_pp2(defined_only, work, flags, setup.entries, setup.search, 5)
-    t |> equal(rd.pp3_from, -1)
+    t |> equal(length(rd.undecided_at), 0)
     t |> equal(rd.cls, Pp2Class.clean, "{rd.shown}")
+    let after = unit_file("after_endif.c", "#define N 2\n#if N > 1\nint a;\n#else\n#error explained\n#endif\n#if 1 +\n#endif\n#bogus\n")
+    var ra = Pp2Result(unit = after)
+    let after_toks <- pp2_tokens(after, setup.entries, setup.search, ra)
+    t |> equal(length(after_toks), 0)
+    t |> equal(join(ra.errors, " | "), "7:7 expected value in expression | 9:2 invalid preprocessing directive")
+    t |> equal(pp2_class(ra), Pp2Class.differs)
 }
 
 [test(description = "a corpus that is unknown or whose folder is missing, a suite not fetched among them, is an error, never an empty corpus")]

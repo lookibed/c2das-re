@@ -296,6 +296,17 @@ def test_unexpanded_lines(t : T?) {
     t |> equal(join([for (p in pp.unexpanded); "{p}"], " "), "2 2 3")
 }
 
+[test(description = "with no expansion set, a conditional is undecided when its line reads a macro otherwise than clang - never for a function-like name without (, a query operand clang reads unexpanded or __has_include's <...> -; its group marks its diagnostics and definitions, defined or #ifdef of such a definition is undecided too, a builtin name the expansion replaces makes it undecided, an evaluator error stays decided unless it stands at a macro name, and #line's error on a macro is marked")]
+def test_undecided_conditionals(t : T?) {
+    var pp <- started([("main.c", "#define F(x) x\n#define N 1\n#if F || __has_builtin(N) || __has_include(<N.h>)\n#endif\na\n#if !N\n#define D 1\n#error in\n#endif\n#ifdef D\nb\n#endif\n#if defined(D)\n#endif\n#if F(1)\n#endif\n#if 1 +\n#endif\n#define L 7\n#line L\n#if __LINE__ > 0\n#endif\n")])
+    t |> equal(stream(pp), "a b")
+    t |> equal(join([for (p in pp.unexpanded); "{p}"], " "), "1 1 2 2 2 2")
+    t |> equal(join([for (d in pp.diags); "{d.line}:{d.undecided ? "undecided" : "decided"}"], " "), "8:undecided 15:undecided 17:decided 20:undecided")
+    t |> success(pp.macros[pp_macro_index(pp, "D")].undecided)
+    t |> success(!pp.macros[pp_macro_index(pp, "N")].undecided)
+    t |> success(empty(pp.conds))
+}
+
 [test(description = "#ifdef sees the predefined-macro table of the linux dialect, defined before the first line")]
 def test_predefined(t : T?) {
     var error : string

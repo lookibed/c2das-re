@@ -497,16 +497,23 @@ def private escape_value(e : int) : int {
 
 // Queries
 
-// which builtin query a name spells; "" for none. `__has_cpp_attribute` is C++'s alone: clang
-// under C has no such builtin, so it reads as a name
-let private QUERIES <- ["__has_feature", "__has_extension", "__has_builtin", "__has_constexpr_builtin", "__has_attribute",
+//! clang's builtin queries the evaluator answers (`Preprocessor::RegisterBuiltinMacros`).
+//! `__has_cpp_attribute` is C++'s alone: clang under C has no such builtin, so it reads as a name.
+let PP_QUERIES <- ["__has_feature", "__has_extension", "__has_builtin", "__has_constexpr_builtin", "__has_attribute",
                         "__has_c_attribute", "__has_declspec_attribute", "__has_warning", "__has_include", "__has_include_next",
                         "__has_embed", "__is_identifier", "__is_target_arch", "__is_target_vendor", "__is_target_os",
                         "__is_target_environment", "__is_target_variant_os", "__is_target_variant_environment", "__building_module"]
 
+//! the queries whose operand clang reads unexpanded (`EvaluateFeatureLikeBuiltinMacro` without
+//! `ExpandArgs`): only the attribute queries and `__has_include` expand theirs
+let PP_UNEXPANDED_QUERIES <- ["__has_feature", "__has_extension", "__has_builtin", "__has_constexpr_builtin", "__has_warning",
+                              "__is_identifier", "__is_target_arch", "__is_target_vendor", "__is_target_os", "__is_target_environment",
+                              "__is_target_variant_os", "__is_target_variant_environment", "__building_module"]
+
+// which builtin query a name spells; "" for none
 def private query_of(ev : PpEval; i : int) : string {
     return "" if (ev.toks[i].len < 10 || byte_at(ev, i, 0) != '_' || byte_at(ev, i, 1) != '_')
-    for (q in QUERIES) {
+    for (q in PP_QUERIES) {
         return q if (spelled_is(ev, i, q))
     }
     return ""
