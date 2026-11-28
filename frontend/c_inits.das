@@ -19,6 +19,7 @@ struct Frame {
     t : int
     next : int
     filled : bool
+    flexible : bool     // the top of a static object's initializer, where a flexible array member takes a value
 }
 
 def private unq(r : CIr; t : int) : int => r.unqualified[t]
@@ -93,28 +94,62 @@ def private put(var fr : Frame; pos : int; var v : CirExpr?) {
     fr.x.init_items |> push(CirInitItem(pos = pos, v = v))
 }
 
+// whether slot type `st` of the top frame, when it is a flexible array member, takes a value: only
+// at the top of a static object's initializer, as clang's GNU extension takes it; false with the
+// error set elsewhere (clang rejects an automatic object's and a nested record's)
+[arch(at="ARCHITECTURE_INITS.md#c-inits-flexible")]
+def private flexible_allowed(var r : CIr; p : CParser; stack : array<Frame>; st, tok : int) : bool {
+    let u = unq(r, st)
+    if (r.pool[u].k == "array" && r.pool[u].count < 0 && (length(stack) != 1 || !stack[0].flexible)) {
+        c_refuse(r, p, tok, "an initializer of a flexible array member")
+        return false
+    }
+    return true
+}
+
+// the string literal node expression node `n` is under its parentheses, -1 for none
+def private string_of(p : CParser; n : int) : int {
+    var at = n
+    while (p.ast.nodes[at].kind == CNode.PAREN) {
+        at = p.ast.nodes[at].a
+    }
+    return p.ast.nodes[at].kind == CNode.STRING ? at : -1
+}
+
 // the frame of the subobject at position `pos` of the top frame, its list made there or the one an
 // earlier item made; false with the error set when an earlier item gave it a value that is no list
 // (clang's designated update of such a value)
 def private open_subobject(var r : CIr; var p : CParser; var stack : array<Frame>; pos, tok : int) : bool {
     var top = stack[length(stack) - 1]
     let st = slot_type(r, top, pos)
+    if (r.pool[unq(r, st)].k == "array" && r.pool[unq(r, st)].count < 0) {
+        // reached by a designator alone: elided braces at a flexible member are refused before
+        c_reject(r, p, tok, "a designator into a flexible array member's elements")
+        return false
+    }
     for (old in top.x.init_items) {
         if (old.pos == pos) {
             if (old.v.e != "init_list") {
                 c_refuse(r, p, tok, "a designator into a subobject an earlier initializer gave a whole value")
                 return false
             }
-            stack |> push(Frame(x = old.v, t = unq(r, st), next = r.pool[unq(r, st)].k == "array" ? 0 : field_at_or_after(r, unq(r, st), 0)))
+            // a union reopened holds the member an earlier item filled
+            let u = unq(r, st)
+            stack |> push(Frame(x = old.v, t = u, next = r.pool[u].k == "array" ? 0 : field_at_or_after(r, u, 0), filled = r.pool[u].k == "union" && !empty(old.v.init_items)))
             return true
         }
     }
     var fr : Frame
     return false if (!frame_of(r, p, st, tok, fr))
-    top.x.init_items |> push(CirInitItem(pos = pos, v = fr.x))
     if (r.pool[top.t].k == "union") {
+        // the member opened replaces the one an earlier item filled
+        for (item in top.x.init_items) {
+            delete_expr(item.v)
+        }
+        top.x.init_items |> clear()
         top.filled = true
     }
+    top.x.init_items |> push(CirInitItem(pos = pos, v = fr.x))
     stack[length(stack) - 1] = top
     stack |> push(fr)
     return true
@@ -195,7 +230,9 @@ def private place(var r : CIr; var p : CParser; var stack : array<Frame>; n : in
     let st = slot_type(r, top, pos)
     let node = p.ast.nodes[n]
     var v : CirExpr?
-    if (node.kind == CNode.INIT_LIST || (node.kind == CNode.STRING && is_char_array(r, st)) || !is_aggregate(r, st)) {
+    let is_string = string_of(p, n) >= 0
+    if (node.kind == CNode.INIT_LIST || (is_string && is_char_array(r, st)) || !is_aggregate(r, st)) {
+        return false if (!flexible_allowed(r, p, stack, st, tok))
         if (typed != null) {
             v = c_assigned(r, p, typed, st, node.tok)
         } else {
@@ -203,7 +240,7 @@ def private place(var r : CIr; var p : CParser; var stack : array<Frame>; n : in
         }
         return false if (v == null)
     } else {
-        if (is_record(r, st) && node.kind != CNode.STRING) {
+        if (is_record(r, st) && !is_string) {
             if (typed == null) {
                 typed = c_expr(r, p, n)
                 return false if (typed == null)
@@ -242,6 +279,60 @@ def private place(var r : CIr; var p : CParser; var stack : array<Frame>; n : in
     return true
 }
 
+// a GNU range's elements whose value opened elided braces: list `x`'s positions `first` to
+// `last - 1` take a copy of position `last`'s subobject once the frames from `depth` on close
+struct Shared {
+    x : CirExpr?
+    first : int
+    last : int
+    depth : int
+}
+
+// a deep copy of expression `x`
+def private clone_expr(var x : CirExpr?) : CirExpr? {
+    return null if (x == null)
+    var y = new CirExpr()
+    *y := *x
+    y.a = clone_expr(x.a)
+    y.b = clone_expr(x.b)
+    y.c = clone_expr(x.c)
+    y.fn = clone_expr(x.fn)
+    y.base = clone_expr(x.base)
+    y.i = clone_expr(x.i)
+    y.list = clone_expr(x.list)
+    y.init = clone_expr(x.init)
+    for (arg in y.args) {
+        arg = clone_expr(arg)
+    }
+    for (item in y.init_items) {
+        item.v = clone_expr(item.v)
+    }
+    return y
+}
+
+// the ranges of `ranges` whose frames closed, the stack now `depth` deep, copied to every element:
+// the range's elements share one subobject, so the items after the range fill each (clang's
+// semantic form)
+[arch(at="ARCHITECTURE_INITS.md#c-inits-designators")]
+def private close_shared(var ranges : array<Shared>; depth : int) {
+    while (!empty(ranges) && ranges[length(ranges) - 1].depth >= depth) {
+        var sh = ranges[length(ranges) - 1]
+        ranges |> pop()
+        var source : CirExpr?
+        for (item in sh.x.init_items) {
+            if (item.pos == sh.last) {
+                source = item.v
+            }
+        }
+        if (source != null) {
+            var fr = Frame(x = sh.x)
+            for (k in range(sh.first, sh.last)) {
+                put(fr, k, clone_expr(source))
+            }
+        }
+    }
+}
+
 // every list under `x`, `x` included, in the order of its positions
 def private sort_positions(var x : CirExpr?) {
     return if (x == null || x.e != "init_list")
@@ -257,8 +348,12 @@ def private sort_positions(var x : CirExpr?) {
 [arch(at="ARCHITECTURE_INITS.md#c-inits-designators")]
 def private aggregate_list(var r : CIr; var p : CParser; n, t : int) : CirExpr? {
     var stack : array<Frame>
+    var ranges : array<Shared>
     var root : Frame
     return null if (!frame_of(r, p, t, p.ast.nodes[n].tok, root))
+    // a list nested in this one is no static object's top
+    root.flexible = r.init_static
+    r.init_static = false
     stack |> push(root)
     var item = p.ast.nodes[n].a
     while (item >= 0) {
@@ -266,6 +361,7 @@ def private aggregate_list(var r : CIr; var p : CParser; n, t : int) : CirExpr? 
         var ok = true
         if (it.a >= 0) {
             stack |> resize(1)
+            close_shared(ranges, 1)
             var pos = -1
             var last = -1
             ok = designate(r, p, stack, it.a, it.tok, pos, last)
@@ -278,6 +374,9 @@ def private aggregate_list(var r : CIr; var p : CParser; n, t : int) : CirExpr? 
                         stack[depth - 1].next = k
                         ok = ok && place(r, p, stack, it.b, null, it.tok)
                     }
+                    if (ok && length(stack) > depth) {
+                        ranges |> push(Shared(x = stack[depth - 1].x, first = pos, last = last, depth = depth))
+                    }
                 } else {
                     ok = place(r, p, stack, it.b, null, it.tok)
                 }
@@ -287,18 +386,45 @@ def private aggregate_list(var r : CIr; var p : CParser; n, t : int) : CirExpr? 
                 stack |> pop()
                 stack[length(stack) - 1].next = after(r, stack[length(stack) - 1], stack[length(stack) - 1].next)
             }
+            close_shared(ranges, length(stack))
             if (!exhausted(r, stack[length(stack) - 1])) {
                 ok = place(r, p, stack, it.b, null, it.tok)
             }
         }
         if (!ok) {
+            r.init_static = root.flexible
             delete_expr(root.x)
             return null
         }
         item = it.next
     }
+    r.init_static = root.flexible
+    close_shared(ranges, 0)
     sort_positions(root.x)
+    size_flexible(r, root.x)
     return root.x
+}
+
+// the flexible array member's value of record list `x` typed as clang types it: an array of the
+// count its list fills, or of its string's bytes
+[arch(at="ARCHITECTURE_INITS.md#c-inits-flexible")]
+def private size_flexible(var r : CIr; var x : CirExpr?) {
+    let u = unq(r, x.t)
+    return if (r.pool[u].k != "struct")
+    for (item in x.init_items) {
+        let ft = unq(r, r.pool[u].fields[item.pos].t)
+        if (r.pool[ft].k == "array" && r.pool[ft].count < 0) {
+            var count = 0
+            if (item.v.e == "str_lit") {
+                count = length(item.v.bytes)
+            } else {
+                for (kid in item.v.init_items) {
+                    count = max(count, kid.pos + 1)
+                }
+            }
+            item.v.t = c_array(r, r.pool[ft].elem, count)
+        }
+    }
 }
 
 //! The initializer node `init` of an object of pool type `t`, converted as C11 6.7.9 says and
@@ -308,10 +434,12 @@ def private aggregate_list(var r : CIr; var p : CParser; n, t : int) : CirExpr? 
 [arch(at="ARCHITECTURE_INITS.md#c-inits-lists")]
 def c_initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? {
     let n = p.ast.nodes[init]
-    if (n.kind == CNode.STRING && is_char_array(r, t)) {
-        var s = c_string_literal(r, p, n.a, n.b)
+    let lit = string_of(p, init)
+    if (lit >= 0 && is_char_array(r, t)) {
+        var s = c_string_literal(r, p, p.ast.nodes[lit].a, p.ast.nodes[lit].b)
         if (s != null) {
             s.t = t
+            s.paren = lit != init
         }
         return s
     } elif (n.kind != CNode.INIT_LIST) {
@@ -326,10 +454,28 @@ def c_initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? {
         }
         return c_initializer(r, p, p.ast.nodes[first].b, t)
     }
-    if (is_char_array(r, t) && first >= 0 && p.ast.nodes[first].next < 0 && p.ast.nodes[first].a < 0 && p.ast.nodes[p.ast.nodes[first].b].kind == CNode.STRING) {
-        return c_initializer(r, p, p.ast.nodes[first].b, t)
+    if (is_char_array(r, t) && first >= 0 && p.ast.nodes[first].a < 0 && string_of(p, p.ast.nodes[first].b) >= 0) {
+        return braced_string(r, p, first, t)
     }
     return aggregate_list(r, p, init, t)
+}
+
+// a character array's braced list whose first item `first` is its string: the string typed as the
+// array; the excess items after it are typed, as clang checks them, and dropped, as clang drops them
+[arch(at="ARCHITECTURE_INITS.md#c-inits-lists")]
+def private braced_string(var r : CIr; var p : CParser; first, t : int) : CirExpr? {
+    var extra = p.ast.nodes[first].next
+    while (extra >= 0) {
+        if (p.ast.nodes[extra].a >= 0) {
+            c_refuse(r, p, p.ast.nodes[extra].tok, "a designator after a character array's string")
+            return null
+        }
+        var x = c_expr(r, p, p.ast.nodes[extra].b)
+        return null if (x == null)
+        delete_expr(x)
+        extra = p.ast.nodes[extra].next
+    }
+    return c_initializer(r, p, p.ast.nodes[first].b, t)
 }
 
 //! The count an unsized array of pool element type `elem` takes from initializer list `init`: one
@@ -351,6 +497,15 @@ def c_init_count(var r : CIr; var p : CParser; init, elem : int) : int {
 //! lone braced string at file scope stays a list over the string.
 [arch(at="ARCHITECTURE_INITS.md#c-inits-compound")]
 def c_compound_literal(var r : CIr; var p : CParser; n : int) : CirExpr? {
+    let was_static = r.init_static
+    r.init_static = false
+    var x = compound_literal(r, p, n)
+    r.init_static = was_static
+    return x
+}
+
+// `c_compound_literal`'s work, where no flexible array member takes a value
+def private compound_literal(var r : CIr; var p : CParser; n : int) : CirExpr? {
     let node = p.ast.nodes[n]
     var t = c_type_name_type(r, p, node.a)
     return null if (t < 0)

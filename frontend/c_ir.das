@@ -443,7 +443,9 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         let linked = object_name(r, name, global, is_static, is_extern)
         c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked))
         let init = p.ast.nodes[id].b
+        r.init_static = global || is_static
         var value = init >= 0 ? used(r, p, c_initializer(r, p, init, t)) : null
+        r.init_static = false
         return false if (init >= 0 && value == null)
         var dims <- table_dims(r, p, d, t)
         var g = new CirDecl(k = "global", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), init = value, loc = at)
