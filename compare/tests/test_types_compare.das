@@ -122,7 +122,7 @@ def test_declaration_difference(t : T?) {
     let none : table<string; bool>
     t |> equal(declaration_difference(agree, order, theirs, expression_only, none), "Dumper A long/64s, interned by a declaration the rebuilt walk does not reach")
     let theirs2 <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "long/64s", "int/32s"]
-    var both <- {"long/64s" => true, "int/32s" => true}
+    let both <- {"long/64s" => true, "int/32s" => true}
     let extras_swapped <- ["short/16s", "typedef(T=short/16s)", "void", "func(void;)", "int/32s", "long/64s"]
     t |> equal(declaration_difference(extras_swapped, order, theirs2, none, both), "with the entries no rebuilt declaration names placed as Dumper A interned them, entry 4: builder int/32s, Dumper A long/64s")
     let theirs3 <- ["short/16s", "long/64s", "typedef(T=short/16s)", "void", "func(void;)"]
