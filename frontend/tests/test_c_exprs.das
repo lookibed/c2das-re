@@ -492,3 +492,9 @@ def test_declared_qualifiers(t : T?) {
     t |> equal(ir_of("void f(int a[volatile 2]) \{ a; \}"), "expr LValueToRValue<int*>(a~)")
     t |> equal(ir_of("int * volatile p; void g(void) \{ p; \}"), "expr LValueToRValue<int*>(p~)")
 }
+
+[test(description = "a GNU binary literal is read in base 2 and typed as a hexadecimal or octal one is, past `int` into `unsigned int`; its suffixes as any literal's")]
+def test_binary_literals(t : T?) {
+    t |> equal(ir_of("int x = 0b11; int y = 0B101; unsigned long z = 0b1ul; long long w = 0b11LL;"), "x=3<int> ; y=5<int> ; z=1<unsigned long> ; w=3<long long>")
+    t |> equal(ir_of("void g(void) \{ 0b10000000000000000000000000000000; 0b0; \}"), "expr 2147483648<unsigned int> ; expr 0<int>")
+}
