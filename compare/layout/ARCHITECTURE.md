@@ -18,7 +18,9 @@ so it lives outside `frontend/`, whose code does neither (`frontend/ARCHITECTURE
   fixtures), `--corpus c-testsuite`, `--corpus gcc-torture`, `--corpus lua`, `--corpus doom`,
   repeatable, `--root <folder>`, the folder holding the fetch trees (`suites/`, `lua/`, `doom/`;
   default the working directory), and `--dialect linux` (the default) or `--dialect msvc`, whose
-  triple, predefined-macro table and own headers every unit is then read under. An unknown corpus,
+  triple, predefined-macro table and own headers every unit is then read under, and `--flag <clang
+  flag>`, repeatable, read after the dialect's (a `--target` there lays a unit out for another
+  triple than the layout's, which the tests use to make records differ). An unknown corpus,
   or one whose folder is missing, is an error and exit 1, never an empty set. It prints each
   differing record with its differences, each unit clang rejects, each undescribed record with its
   reason, a line per corpus with what it did not compare, and exits 0 when no record differs.

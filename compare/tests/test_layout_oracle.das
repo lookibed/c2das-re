@@ -212,3 +212,77 @@ def test_header_redescribed(t : T?) {
     t |> equal("{totals.records} {totals.agreed} {totals.redescribed}", "2 2 1")
 }
 
+
+[test(description = "a field or a record named `implicit` is not clang's `implicit` flag, which stands before an anonymous member's type or a record's kind")]
+def test_implicit_names(t : T?) {
+    let named <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:26> col:8 struct K definition\n  `-FieldDecl 0x2 <col:12, col:16> col:16 implicit 'int'\n")
+    t |> equal(join([for (m in named[0].members); "<{m.name}>"], ""), "<implicit>")
+    let anonymous <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:40> col:8 struct N definition\n  |-RecordDecl 0x2 <col:12, col:30> col:12 union definition\n  | `-FieldDecl 0x3 <col:20, col:24> col:24 y 'int'\n  `-FieldDecl 0x4 <col:12> col:12 implicit 'union N::(anonymous at a.c:1:12)'\n")
+    t |> equal(join([for (m in anonymous[0].members); "<{m.name}>"], ""), "<>")
+    let record <- dump_records("`-RecordDecl 0x1 <a.c:1:1, col:26> col:8 struct implicit definition\n  `-FieldDecl 0x2 <col:21, col:25> col:25 a 'int'\n")
+    t |> equal(length(record), 1)
+}
+
+// Dumper A's clang flags for `dialect`
+def private flags_of(dialect : string) : array<string> {
+    var error : string
+    return <- dumper_frontend_flags(target_by_name(dialect), error)
+}
+
+// unit `text` written as `name` under a fresh folder and compared under `dialect` with `flags`:
+// the totals line, then each printed line
+def private compared(name, text, dialect : string; flags : array<string>) : string {
+    let unit = path_join(test_temp_dir(), name)
+    fwrite(unit, text)
+    var seen : table<string; string>
+    var totals = LayoutTotals()
+    compare_layout_unit(unit, dialect, flags, seen, totals)
+    let lines <- [for (line in totals.lines); slice(line, find(line, name))]
+    return join([describe_layout_totals(name, totals)], "") + (empty(lines) ? "" : " | " + join(lines, " | "))
+}
+
+[test(description = "the arms no fixture reaches: a differing record counted and printed, records named `implicit`, a nested anonymous member, 128-bit and ext-vector members refused, msvc requirements through arrays and typedefs, a unit libclang cannot open", timeout = 1200)]
+def test_unit_outcomes(t : T?) {
+    t |> run("msvc's numbers against the linux layout: one record differs, printed with each difference") @(t : T?) {
+        t |> equal(compared("mismatch.c", "struct MS \{ char a : 3; int b : 5; \};\n", "linux", flags_of("msvc")),
+                   "mismatch.c: 1 units (0 clang failures), 1 records (0 compared again under another description): 0 agree, 1 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records | mismatch.c:1:8: `struct MS`: size clang 8 ours 4; b at bit clang 32 ours 3")
+    }
+    t |> run("linux: `implicit` names, a nested anonymous member agree; __int128 and ext_vector_type refused") @(t : T?) {
+        t |> equal(compared("lin.c", "struct K \{ int implicit; \};\nstruct implicit \{ int a; \};\nstruct N \{ int a; union \{ struct \{ int y; \}; \}; \};\nstruct Wide128 \{ char c; __int128 w; \};\ntypedef float f4 __attribute__((ext_vector_type(4)));\nstruct Ext \{ f4 v; \};\n", "linux", flags_of("linux")),
+                   "lin.c: 1 units (0 clang failures), 7 records (0 compared again under another description): 5 agree, 0 differ, 2 refused, 0 undescribed [1 member `v` has a vector type, which the C-IR has no type for; 1 member `w` has a 128-bit integer type, which the C-IR has no type for]; not compared: 0 units clang rejects, 0 undescribed records")
+    }
+    t |> run("msvc under pack(1): a requirement through an array of a typedef, a typedef of a typedef and an array of a required record") @(t : T?) {
+        t |> equal(compared("ms.c", "typedef long long ll_a8 __attribute__((aligned(8)));\ntypedef int int_a8 __attribute__((aligned(8)));\ntypedef int_a8 wrap8;\nstruct __declspec(align(16)) Declspec \{ int a; \};\n#pragma pack(1)\nstruct ArrayOfTypedef \{ char c; ll_a8 x[2]; \};\nstruct Wrap \{ char c; wrap8 x; \};\nstruct ArrayOfRequired \{ char c; struct Declspec d[2]; \};\n#pragma pack()\n", "msvc", flags_of("msvc")),
+                   "ms.c: 1 units (0 clang failures), 4 records (0 compared again under another description): 4 agree, 0 differ, 0 refused, 0 undescribed []; not compared: 0 units clang rejects, 0 undescribed records")
+    }
+    t |> run("a unit libclang gives no translation unit for is a clang failure") @(t : T?) {
+        let missing = path_join(test_temp_dir(), "no_such_unit.c")
+        var seen : table<string; string>
+        var totals = LayoutTotals()
+        compare_layout_unit(missing, "linux", flags_of("linux"), seen, totals)
+        t |> equal(totals.clang_failures, 1)
+        t |> equal(join(totals.lines, "|"), "{missing}: clang: libclang gave no translation unit")
+    }
+}
+
+// `compare/layout/run.das` with `args` as a child process, `env` before it; its exit code, the output in `out`
+def private run_das(env : array<string>; args : array<string>; var out : string&) : int {
+    var argv <- ["env"]
+    argv |> push_from(env, [get_das_root() + "/bin/daslang", "-load_module", get_full_file_name("dasCRuntime"), "-load_module", get_full_file_name("c_runtime")])
+    if (stat("fetch/dasFlex").is_dir) {
+        argv |> push_from(["-load_module", get_full_file_name("fetch/dasFlex")])
+    }
+    argv |> push_from(["compare/layout/run.das", "--"], args)
+    return run_and_capture(argv, out, 600.0)
+}
+
+[test(description = "the run's exit code: 0 over the rule fixtures, 1 when a record differs (another --target than the layout's), 1 with CPATH set; run.das as a child prints the totals", timeout = 1200)]
+def test_run_exit(t : T?) {
+    t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"])), 0)
+    t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"], flag <- ["--target=x86_64-pc-windows-msvc"])), 1)
+    var out : string
+    t |> equal(run_das(array<string>(), ["--corpus", "rules"], out), 0, out)
+    t |> success(out |> contains("linux rules: 3 units (0 clang failures), 72 records"), out)
+    t |> equal(run_das(["CPATH=/tmp"], ["--corpus", "rules"], out), 1, out)
+    t |> success(out |> contains("the environment variable CPATH is set"), out)
+}

@@ -235,7 +235,7 @@ def private ms_place(rec : CLayoutRecord; m : CLayoutMember; var b : MsBuilder) 
     if (width == 0l && !b.in_run) {
         return rec.is_union ? 0l : b.size * 8l
     }
-    if (width != 0l && !rec.is_union && b.in_run && b.unit_size == unit && width <= b.remaining_bits) {
+    if (width != 0l && b.in_run && b.unit_size == unit && width <= b.remaining_bits) {
         let at = b.size * 8l - b.remaining_bits
         b.remaining_bits -= width
         return at

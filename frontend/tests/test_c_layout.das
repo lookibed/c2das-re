@@ -449,3 +449,47 @@ def test_into_cir(t : T?) {
         t |> equal(into_cir(tu, record([plain("a", 300000000l, 1)])), "record type 3 is 300000000 bytes, past the C-IR's bit offsets")
     }
 }
+
+[test(description = "the arms no fixture reaches: the limit's alignment padding, a flexible member's size never read, a refusal leaves no offset, a full-width bitfield, a plain member ends the bitfield unit, `aligned` raises a packed record's bitfield under a pack")]
+def test_linux_edges(t : T?) {
+    let limit = 1l << 60l
+    t |> run("P6: an unnamed bitfield aligned past the limit is refused, though it adds no alignment") @(t : T?) {
+        // struct P6 { char b[(1ULL<<60) - (1<<20)]; int : 3 __attribute__((aligned(1<<28))); }; (clang: too large)
+        t |> equal(laid(record([plain("b", limit - (1l << 20l), 1), aligned(bits("", 4l, 3), 1 << 28)])), "the record reaches 2^60 bytes, past clang's limit")
+    }
+    t |> run("FlexibleChar: the flexible member's size is not read, 2^61 or unknown") @(t : T?) {
+        // struct FlexibleChar { int n; char s[]; };
+        var huge = flexible("s", 1)
+        huge.size = 1l << 61l
+        t |> equal(laid(record([plain("n", 4l, 4), huge])), "size 4 align 4 at 0 32")
+        var unknown = flexible("s", 1)
+        unknown.size = -1l
+        t |> equal(laid(record([plain("n", 4l, 4), unknown])), "size 4 align 4 at 0 32")
+    }
+    t |> run("P1: a refusal sets no number") @(t : T?) {
+        // struct P1 { char a[1ULL<<59]; char b[1ULL<<59]; }; (clang: too large)
+        let layout <- c_record_layout(record([plain("a", 1l << 59l, 1), plain("b", 1l << 59l, 1)]))
+        t |> success(layout.failed)
+        t |> equal(length(layout.offsets), 0)
+    }
+    t |> run("FullWidth, BitPlainBit, PackPackedAlignedBits") @(t : T?) {
+        // struct FullWidth { int x : 32; };
+        t |> equal(laid(record([bits("x", 4l, 32)])), "size 4 align 4 at 0")
+        // struct BitPlainBit { char a : 3; char b; char c : 2; };
+        t |> equal(laid(record([bits("a", 1l, 3), plain("b", 1l, 1), bits("c", 1l, 2)])), "size 3 align 1 at 0 8 16")
+        // #pragma pack(4) struct __attribute__((packed)) PackPackedAlignedBits { char c; char x : 3 __attribute__((aligned(4))); };
+        t |> equal(laid(with_pack(with_packed(record([plain("c", 1l, 1), aligned(bits("x", 1l, 3), 4)])), 4)), "size 8 align 4 at 0 32")
+    }
+}
+
+[test(description = "msvc arms no fixture reaches: a flexible member's unit is 0 bytes, a zero-width bitfield first in a union or after a run of its own size, an empty record that requires 8")]
+def test_msvc_edges(t : T?) {
+    // struct FlexMs { int n; char s[]; };
+    t |> equal(laid(msvc(record([plain("n", 4l, 4), flexible("s", 1)]))), "size 4 align 4 at 0 32")
+    // union UnionZeroFirst { char a; int : 0; };
+    t |> equal(laid(msvc(union_of([plain("a", 1l, 1), bits("", 4l, 0)]))), "size 1 align 1 at 0 0")
+    // struct SameSizeZero { int a : 3; int : 0; char d; };
+    t |> equal(laid(msvc(record([bits("a", 4l, 3), bits("", 4l, 0), plain("d", 1l, 1)]))), "size 8 align 4 at 0 32 32")
+    // struct __declspec(align(8)) EmptyA8 {};
+    t |> equal(laid(msvc(with_aligned(record(array<CLayoutMember>()), 8))), "size 8 align 8 at ")
+}

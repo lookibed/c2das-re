@@ -96,8 +96,10 @@ def private dump_node(line : string; var depth : int&) : string {
 }
 
 // a field's name in its text dump line: the words between its location and its quoted type are
-// clang's flags (`implicit`, then `used` or `referenced`) and the name; an implicit field, the
-// anonymous member, and an unnamed bitfield, which nothing can reference, have none
+// clang's flags (`implicit`, then `used` or `referenced`) and the name, the last of them; an
+// implicit field, the anonymous member, and an unnamed bitfield, which nothing can reference, have
+// none. A lone `implicit` is the flag only before an anonymous record's type (clang's anonymous
+// member), else a field of that name (`int implicit;`)
 def private dump_field_name(line : string) : string {
     let quote = find(line, " '")
     let head <- split(quote < 0 ? line : slice(line, 0, quote), " ")
@@ -107,10 +109,11 @@ def private dump_field_name(line : string) : string {
         tail |> push(head[at])
         at--
     }
-    if (empty(tail) || tail[length(tail) - 1] == "implicit") {
+    if (empty(tail)) {
         return ""
     }
-    return tail[0]
+    let flag = tail[length(tail) - 1] == "implicit" && (length(tail) > 1 || find(line, "(anonymous at ") >= 0)
+    return flag ? "" : tail[0]
 }
 
 // one open node of the walk: a record, a field or an `aligned` attribute waiting for its value
@@ -148,7 +151,7 @@ def dump_records(dump : string) : array<DumpRecord> {
         }
         let top = empty(open) ? OpenNode(depth = -1, rec = -1, member = -1) : open[length(open) - 1]
         if (kind == "RecordDecl") {
-            if (line |> ends_with(" definition") && find(line, " implicit ") < 0) {
+            if (line |> ends_with(" definition") && find(line, " implicit struct ") < 0 && find(line, " implicit union ") < 0) {
                 var inscope words <- split(line, " ")
                 let n = length(words)
                 let is_union = words[n - 2] == "union" || (n >= 3 && words[n - 3] == "union")
@@ -244,8 +247,6 @@ def private typedef_aligned(t : CXType) : bool {
     while (true) {
         if (at.kind == CXTypeKind.ConstantArray || at.kind == CXTypeKind.IncompleteArray) {
             at = clang_getArrayElementType(at)
-        } elif (at.kind == CXTypeKind.Elaborated) {
-            at = clang_Type_getNamedType(at)
         } elif (at.kind == CXTypeKind.Typedef) {
             var decl = clang_getTypeDeclaration(at)
             var found = false
@@ -302,10 +303,11 @@ def private member_of_field(var fc : CXCursor) : LaidMember {
     // the type below its top-level sugar alone, as clang's getUnqualifiedDesugaredType: a typedef of
     // an array is the array, whose element keeps its own typedef
     var top = declared
-    while (top.kind == CXTypeKind.Elaborated || top.kind == CXTypeKind.Typedef) {
-        top = top.kind == CXTypeKind.Elaborated ? clang_Type_getNamedType(top) : clang_getTypedefDeclUnderlyingType(clang_getTypeDeclaration(top))
+    while (top.kind == CXTypeKind.Typedef) {
+        top = clang_getTypedefDeclUnderlyingType(clang_getTypeDeclaration(top))
     }
-    m.desugared_align = m.is_flexible ? m.align : int(clang_Type_getAlignOf(top))
+    // an incomplete array's alignment is its element's, as the flexible member's own
+    m.desugared_align = int(clang_Type_getAlignOf(top))
     return m
 }
 
@@ -357,8 +359,8 @@ def clang_records(unit : string; flags : array<string>; var error : string&) : a
     }
     for (i in urange(clang_getNumDiagnostics(tu))) {
         var diag = clang_getDiagnostic(tu, i)
-        let severity = clang_getDiagnosticSeverity(diag)
-        if (empty(error) && (severity == CXDiagnosticSeverity.Error || severity == CXDiagnosticSeverity.Fatal)) {
+        // Dumper A's flags carry `-w`: every diagnostic left is an error
+        if (empty(error)) {
             error = string(clang_formatDiagnostic(diag, clang_defaultDiagnosticDisplayOptions()))
         }
         clang_disposeDiagnostic(diag)
@@ -510,8 +512,8 @@ def private lay_out(i : int; ours : array<LaidRecord>; theirs : array<DumpRecord
     outcomes[i].layout <- c_record_layout(desc)
     if (outcomes[i].layout.failed) {
         let err = outcomes[i].layout.err
-        let colon = find(err, ": ")
-        outcomes[i].why = colon < 0 ? err : slice(err, colon + 2)
+        // every refusal text starts with the record's place, `name:line:col: `
+        outcomes[i].why = slice(err, find(err, ": ") + 2)
         outcomes[i].refused = true
         return
     }
@@ -653,6 +655,8 @@ struct LayoutArgs {
     root : string = "."
     //! the dialect: linux or msvc
     dialect : string = "linux"
+    //! a clang flag every unit is read under after the dialect's (repeatable)
+    flag : array<string>
 }
 
 //! Every corpus of `args` compared, its difference lines and totals printed; 0 when no record
@@ -677,7 +681,7 @@ def run_layout_oracle(args : LayoutArgs) : int {
             return 1
         }
         var inscope all_flags <- clone_to_move(flags)
-        all_flags |> push_from(corpus.extra)
+        all_flags |> push_from(corpus.extra, args.flag)
         var inscope seen : table<string; string>
         var totals : LayoutTotals
         for (unit in corpus.units) {
