@@ -220,6 +220,7 @@ def test_table_order(t : T?) {
 def test_refusals(t : T?) {
     t |> equal(ir_of("void g(void) \{ y; \}"), "error: t.c:1:16: the identifier 'y', which names no variable or function the builder knows, is not typed yet")
     t |> equal(ir_of("void g(void) \{ __builtin_expect; \}"), "error: t.c:1:16: the builtin '__builtin_expect' other than as a callee is not typed yet")
+    t |> equal(ir_of("long __builtin_expect(long, long); void g(void) \{ __builtin_expect; \}"), "error: t.c:1:51: the builtin '__builtin_expect' other than as a callee is not typed yet")
     t |> equal(ir_of("void g(int x) \{ x ?: 1; \}"), "error: t.c:1:17: GNU's ?: with no middle operand is not typed yet")
     t |> equal(ir_of("void g(int *p) \{ p * 2; \}"), "error: t.c:1:18: this operator on operands of these types is invalid C, which clang rejects")
     t |> equal(ir_of("void g(int x) \{ *x; \}"), "error: t.c:1:17: a dereference of a value that is no pointer is not typed yet")

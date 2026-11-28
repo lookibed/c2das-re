@@ -1021,7 +1021,8 @@ def private assignment(var r : CIr; var p : CParser; k : int; var a, b : CirExpr
 def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : bool = false) : CirExpr? {
     let name = pp_symbol_text(p.unit.lx, sym)
     for (fn in BUILTIN_FUNCTIONS) {
-        if (fn.name == name && !key_exists(r.ids, sym)) {
+        // a declaration of the name leaves it clang's builtin
+        if (fn.name == name && !(r.ids?[sym] ?? CId(t = -1, old_style = -1)).builtin) {
             var inscope params <- [for (x in fn.params); c_builtin(r.b, x)]
             let proto = c_function(r.b, c_builtin(r.b, fn.ret), params, false)
             r.ids[sym] = CId(t = proto, is_function = true, proto = true, old_style = -1, builtin = true)
