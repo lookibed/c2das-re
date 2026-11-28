@@ -3,6 +3,7 @@ options stack = 262144
 require dastest/testing_boost public
 require strings
 require daslib/strings_boost
+require daslib/fio
 require ../types/types_compare.das
 require ../../converter/cir.das
 
@@ -87,6 +88,73 @@ def test_cir_difference(t : T?) {
     delete_tu(b)
 }
 
+// the C-IR difference of two units returning `read_short()` after `change` has edited them
+def private changed(change : block<(var a, b : CirTu) : void>) : string {
+    var a <- unit_returning(read_short())
+    var b <- unit_returning(read_short())
+    invoke(change, a, b)
+    let d = cir_difference(a, b)
+    delete_tu(a)
+    delete_tu(b)
+    return d
+}
+
+[test(description = "the C-IR comparison reports each field it compares: an expression's value, bytes, operator, character mark, vol, trait value and type, argument and item counts, an item's position and value, an argument and each operand; a statement's type, value, mark, label, body count, expressions and statements; a declaration's kind, name, linkage, origin, parameters and initializer")]
+def test_cir_fields(t : T?) {
+    let e = "decl 0 (main).body.0.e"
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.v = "7"; }, "{e}.v: builder , Dumper A 7")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.bytes |> push(uint8(65)); }, "{e}.bytes: builder [], Dumper A [ 0x41]")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.op = "neg"; }, "{e}.op: builder , Dumper A neg")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.is_char = true; }, "{e}.char: builder false, Dumper A true")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.vol = true; }, "{e}.vol: builder false, Dumper A true")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.trait_v = 8ul; }, "{e}.trait_v: builder 0x0, Dumper A 0x8")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.of_t = 1; }, "{e}.of_t: builder int/32s, Dumper A short/16s")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.args |> push(read_short()); }, "{e}.args: builder 0, Dumper A 1")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.init_items |> push(CirInitItem(pos = 0, v = read_short())); }, "{e}.items: builder 0, Dumper A 1")
+    t |> equal(changed() $(var a, b) {
+        a.decls[0].body.body[0].e.init_items |> push(CirInitItem(pos = 0, v = read_short()))
+        b.decls[0].body.body[0].e.init_items |> push(CirInitItem(pos = 1, v = read_short()))
+    }, "{e}.item0.pos: builder 0, Dumper A 1")
+    t |> equal(changed() $(var a, b) {
+        a.decls[0].body.body[0].e.init_items |> push(CirInitItem(pos = 0, v = read_short()))
+        b.decls[0].body.body[0].e.init_items |> push(CirInitItem(pos = 0, v = new CirExpr(e = "int_lit", t = 0, v = "1")))
+    }, "{e}.item0.e: builder cast, Dumper A int_lit")
+    t |> equal(changed() $(var a, b) {
+        a.decls[0].body.body[0].e.args |> push(read_short())
+        b.decls[0].body.body[0].e.args |> push(new CirExpr(e = "int_lit", t = 0, v = "1"))
+    }, "{e}.arg0.e: builder cast, Dumper A int_lit")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.b = read_short(); }, "{e}.b: builder none, Dumper A cast")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.c = read_short(); }, "{e}.c: builder none, Dumper A cast")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.fn = read_short(); }, "{e}.fn: builder none, Dumper A cast")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.base = read_short(); }, "{e}.base: builder none, Dumper A cast")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.i = read_short(); }, "{e}.i: builder none, Dumper A cast")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].e.init = read_short(); }, "{e}.init: builder none, Dumper A cast")
+    let s = "decl 0 (main).body.0"
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].t = 1; }, "{s}.t: builder int/32s, Dumper A short/16s")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].v = 5l; }, "{s}.v: builder 0, Dumper A 5")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].is_char = true; }, "{s}.char: builder false, Dumper A true")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].label_name = "l"; }, "{s}.label: builder , Dumper A l")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].body |> push(new CirStmt(s = "null")); }, "{s}.body: builder 0, Dumper A 1")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].init = read_short(); }, "{s}.init: builder none, Dumper A cast")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].cond = read_short(); }, "{s}.cond: builder none, Dumper A cast")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].inc = read_short(); }, "{s}.inc: builder none, Dumper A cast")
+    t |> equal(changed() $(var a, b) {
+        a.decls[0].body.body[0].body |> push(new CirStmt(s = "null"))
+        b.decls[0].body.body[0].body |> push(new CirStmt(s = "break"))
+    }, "{s}.0.s: builder null, Dumper A break")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].init_s = new CirStmt(s = "null"); }, "{s}.init_s: builder none, Dumper A null")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].then_s = new CirStmt(s = "null"); }, "{s}.then: builder none, Dumper A null")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].else_s = new CirStmt(s = "null"); }, "{s}.else: builder none, Dumper A null")
+    t |> equal(changed() $(var _a, b) { b.decls[0].body.body[0].body_s = new CirStmt(s = "null"); }, "{s}.body_s: builder none, Dumper A null")
+    t |> equal(changed() $(var _a, b) { b.decls[0].k = "global"; }, "decl 0 (main).k: builder func, Dumper A global")
+    t |> equal(changed() $(var _a, b) { b.decls[0].c_name = "x"; }, "decl 0 (x).c_name: builder main, Dumper A x")
+    t |> equal(changed() $(var _a, b) { b.decls[0].is_static = true; }, "decl 0 (main).static: builder false, Dumper A true")
+    t |> equal(changed() $(var _a, b) { b.decls[0].is_extern = true; }, "decl 0 (main).extern: builder false, Dumper A true")
+    t |> equal(changed() $(var _a, b) { b.decls[0].from_func = "f"; }, "decl 0 (main).from_func: builder , Dumper A f")
+    t |> equal(changed() $(var _a, b) { b.decls[0].params |> push(CirParam(t = 0)); }, "decl 0 (main).params: builder , Dumper A :int/32s")
+    t |> equal(changed() $(var _a, b) { b.decls[0].init = read_short(); }, "decl 0 (main).init: builder none, Dumper A cast")
+}
+
 [test(description = "the census comparison: equal censuses, then the first keys whose counts differ, both counts each")]
 def test_census_difference(t : T?) {
     var a <- unit_returning(read_short())
@@ -94,6 +162,14 @@ def test_census_difference(t : T?) {
     t |> equal(census_difference(a, b), "")
     b.decls[0].body.body[0].e.cast_kind = "NoOp"
     t |> success(starts_with(census_difference(a, b), "chain\tIntegralCast > LValueToRValue builder 1, Dumper A 0 | chain\tNoOp > LValueToRValue builder 0, Dumper A 1"), census_difference(a, b))
+    // four casts of other kinds: more keys differ than the three shown
+    var chain = new CirExpr(e = "ref", t = 1, name = "s")
+    for (kind in fixed_array("LValueToRValue", "BitCast", "FloatingCast", "PointerToBoolean", "NoOp")) {
+        chain = new CirExpr(e = "cast", t = 0, cast_kind = kind, a = chain)
+    }
+    delete_expr(b.decls[0].body.body[0].e)
+    b.decls[0].body.body[0].e = chain
+    t |> equal(length(split(census_difference(a, b), " | ")), 3, census_difference(a, b))
     delete_tu(a)
     delete_tu(b)
 }
@@ -125,7 +201,8 @@ def test_count(t : T?) {
     t |> equal(count_types(n, TypesResult(unit = "e.c", dialect = "linux", whole = true, cir = true, census = true, bytes = true, core = true)), "")
     t |> equal(count_types(n, TypesResult(unit = "f.c", dialect = "linux", whole = true, cir = true, bytes = true, difference = "census z")), "f.c [linux]: differs: census z")
     t |> equal(count_types(n, TypesResult(unit = "g.c", dialect = "linux", census = true, core = true, difference = "table entry 0: z")), "g.c [linux, core]: differs: table entry 0: z")
-    t |> equal(describe_types_totals("all", n), "all: 7 units, 1 Dumper A failed, 2 refused, 3 whole table, 3 C-IR, 3 census, 3 bytes agree, 2 differ; byte-identical: aggregates 1/2, scalar-only 2/4, core (no array) 1/2")
+    t |> equal(count_types(n, TypesResult(unit = "h.c", dialect = "linux", whole = true, census = true, difference = "C-IR x")), "h.c [linux]: differs: C-IR x")
+    t |> equal(describe_types_totals("all", n), "all: 8 units, 1 Dumper A failed, 2 refused, 4 whole table, 3 C-IR, 4 census, 3 bytes agree, 3 differ; byte-identical: aggregates 1/2, scalar-only 2/5, core (no array) 1/2")
 }
 
 // the fixture `name` compared under `dialect` as `whole/cir/census/bytes/aggregate`, the builder's error
@@ -137,13 +214,61 @@ def private compared(name, dialect : string) : string {
     return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate's initializer and a constant array size refused", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate's initializer and a constant array size refused; declarations in branches, a loop body and an old-style parameter list, a type only an expression names and an own header's typedef agree; a unit clang types otherwise differs in all four", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
             t |> equal(compared("conversions.c", dialect), "true/true/true/true/false")
-            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:8:22: a braced scalar initializer of other than one value is not typed yet")
+            t |> equal(compared("redeclared.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("walk_bodies.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("expr_only.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("header.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("decl_order.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("expr_first.c", dialect), "true/true/true/true/false")
+            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:8:22: an initializer list of a struct or union is not typed yet")
+            let size = dialect == "linux" ? "unsigned long" : "unsigned long long"
+            t |> equal(compared("differs.c", dialect), "false/false/false/false/false table entry 0: builder int/32s, Dumper A {size}/64u; C-IR decl 1 (main).body.t: builder int/32s, Dumper A {size}/64u; census anomaly\tIntegralCast implicit directly over a call's result builder 0, Dumper A 1 | chain\tIntegralCast builder 0, Dumper A 1 | clause\t6.3.1.3p3 integer to signed, implementation-defined builder 0, Dumper A 1; bytes line 16: ours \"w\": 32, | theirs \"w\": 64,")
             t |> equal(compared("refused.c", dialect), "false/false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")
         }
     }
 }
+
+[test(description = "has_aggregate takes a union and an enum")]
+def test_aggregate_kinds(t : T?) {
+    t |> success(has_aggregate([CirType(k = "union", name = "U")]))
+    t |> success(has_aggregate([CirType(k = "enum", name = "E")]))
+}
+
+[test(description = "the builder's C-IR refuses a unit the parser refuses and one it cannot read, naming the step", timeout = 600)]
+def test_builder_refusals(t : T?) {
+    let dir = path_join(test_temp_dir(), "edges")
+    mkdir_rec(dir)
+    let generic = path_join(dir, "generic.c")
+    fwrite(generic, "int x = _Generic(1, int: 2, default: 3);\n")
+    var error : string
+    var tu : CirTu
+    builder_tu(generic, target_lp64_linux(), tu, error)
+    t |> success(starts_with(error, "parser: "), error)
+    delete_tu(tu)
+    error = ""
+    var missing : CirTu
+    builder_tu(path_join(dir, "missing.c"), target_lp64_linux(), missing, error)
+    t |> success(starts_with(error, "parser: cannot read "), error)
+    delete_tu(missing)
+}
+
+[test(description = "run_types: a unit that agrees passes, a refused one fails, no unit fails; the c-testsuite folder missing is an error; run.das as a child prints the totals", timeout = 600)]
+def test_run_types(t : T?) {
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], units <- ["{FIXTURES}/conversions.c"])), 0)
+    t |> equal(run_types(TypesArgs(dialect <- ["linux"], units <- ["{FIXTURES}/refused.c"])), 1)
+    t |> equal(run_types(TypesArgs()), 1)
+    var error : string
+    let units <- c_testsuite_units(test_temp_dir(), error)
+    t |> success(ends_with(error, "is missing (fetch it with suites/c_testsuite/fetch.sh)") && empty(units), error)
+    let argv <- [get_das_root() + "/bin/daslang", "-load_module", "dasCRuntime", "-load_module", "c_runtime", "-load_module", "fetch/dasFlex", "compare/types/run.das", "--",
+                 "--dialect", "linux", "{FIXTURES}/conversions.c"]
+    var out : string
+    t |> equal(run_and_capture(argv, out, 600.0), 0)
+    t |> success(find(out, "total: 1 units, 0 Dumper A failed, 0 refused, 1 whole table, 1 C-IR, 1 census, 1 bytes agree, 0 differ; byte-identical: aggregates 0/0, scalar-only 1/1, core (no array) 0/0") >= 0, out)
+}
+

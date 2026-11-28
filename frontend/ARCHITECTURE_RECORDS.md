@@ -6,7 +6,7 @@ describes `c_records.das`, which builds a unit's struct, union and enum types, a
 (`converter/ARCHITECTURE_DUMPER.md` section 3, `docs/c-ir-spec.md` section 3). The layout of a
 record is `ARCHITECTURE_LAYOUT.md`'s.
 
-## 41. Tags and definitions {#c-records-definitions}
+## 61. Tags and definitions {#c-records-definitions}
 
 A struct, union or enum specifier with a body defines a type of its own identity (its pool entry's
 `count`, which the C-IR writes for no record or enum): the tag names it in the scope the
@@ -45,7 +45,7 @@ no name is spelled `enum (unnamed at <file>:<line>:<col>)`, the place of its key
 spells it. A definition in an own header is built where the header stands; one the builder refuses
 there is refused where the unit names the tag.
 
-## 42. The table order and the anchors {#c-records-order}
+## 62. The table order and the anchors {#c-records-order}
 
 A record's table entry is interned before its fields' types, so a pointer to it among them
 resolves; then each field's type in order, then the layout with its `packed` verdict
@@ -57,7 +57,7 @@ block's definition is anchored where the block stands, before its function's dec
 header's record or enum is anchored where the unit first interns it, at the declaration or
 statement being read; one never defined is anchored nowhere.
 
-## 43. Members {#c-records-members}
+## 63. Members {#c-records-members}
 
 A member declaration's specifiers give its type, each member declarator its declarator's type,
 its name and its bit width (an integer constant expression from 0 to 64 over an integer or enum
@@ -68,7 +68,7 @@ bit width, its own `packed` and `aligned`, and under msvc the layout requirement
 holds (through arrays); the layout refuses what it does not lay out, a member of incomplete type
 among them.
 
-## 44. Layout attributes {#c-records-attributes}
+## 64. Layout attributes {#c-records-attributes}
 
 `packed` and `aligned(N)` (`__packed__`, `__aligned__`) on a record (after its keyword or its body)
 and on a member (in its specifiers or after its declarator) reach the layout; `aligned` alone is
@@ -76,7 +76,7 @@ and on a member (in its specifiers or after its declarator) reach the layout; `a
 an attribute that changes a type. `ms_struct` on a record is the layout's refusal. A `#pragma pack`
 does not reach the builder: the C token reader refuses the directive.
 
-## 45. Enums {#c-records-enums}
+## 65. Enums {#c-records-enums}
 
 An enumerator's value is its integer constant expression's, the one before plus one where none is
 written (0 for the first), and it is bound as it is read, so a later value folds an earlier one:
@@ -91,7 +91,7 @@ reference to one is an `enum_ref` of its enum and name. An enum's value promotes
 integer by an `IntegralCast`, and converts as an integer of that type. A pointer to an enum and
 one to its integer type are compatible: in a conditional they make the integer's pointer.
 
-## 46. Member access {#c-records-access}
+## 66. Member access {#c-records-access}
 
 `.` and `->` name a field of a complete struct or union: its own, or one an anonymous member makes
 visible, each anonymous member on the way a `member` node of its own, `arrow` on the first access
@@ -104,7 +104,7 @@ assignment to one computes in that promoted type. As clang's `getSourceBitField`
 assignment to a bit-field (`=` or compound), a comma whose right operand is one and a prefix `++`
 or `--` of one promote as the bit-field does.
 
-## 47. Dims {#c-records-dims}
+## 67. Dims {#c-records-dims}
 
 A declarator's `dims` (a global's, a local's, a field's) holds, per array level of its type from
 the outermost, the sizes the source spells taken in order, the enumerator a size names alone when

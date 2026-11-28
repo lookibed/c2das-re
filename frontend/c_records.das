@@ -29,7 +29,7 @@ def private tag_kind(p : CParser; n : int) : string {
 def private tag_tok(var p : CParser; n : int) : int {
     let node = p.ast.nodes[n]
     return node.tok if (node.a < 0)
-    let tag = pp_symbol_text(p.unit.lx, node.a)
+    let tag = c_symbol_text(p.unit, node.a)
     var t = node.tok + 1
     while (t < length(p.unit.toks) - 1 && c_spelling(p.unit, t) != tag) {
         t++
@@ -140,7 +140,7 @@ def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
         if (size.kind == CNode.IDENT) {
             let id = b.ids?[size.a] ?? CId()
             if (id.enum_t >= 0 && id.enum_v == int64(b.pool[level].count)) {
-                dim = CirDim(enum_t = id.enum_t, item = pp_symbol_text(p.unit.lx, size.a))
+                dim = CirDim(enum_t = id.enum_t, item = c_symbol_text(p.unit, size.a))
                 named = true
             }
         }
@@ -235,7 +235,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
             width = int(v)
         }
         let sym = node.a >= 0 ? c_declarator_name(p.ast, node.a) : -1
-        let name = sym >= 0 ? pp_symbol_text(p.unit.lx, sym) : ""
+        let name = sym >= 0 ? c_symbol_text(p.unit, sym) : ""
         var dims <- node.a >= 0 ? c_dims(b, p, node.a, t) : array<CirDim>()
         add_member(b, p, t, name, width, node.tok, own_packed, own_aligned, dims, fields, rec)
         x = node.next
@@ -249,7 +249,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
 def private build_record(var b : CTypes; var p : CParser; n, pt : int) : bool {
     b.tag_built[n] = pt
     let node = p.ast.nodes[n]
-    if (node.a >= 0 && pp_symbol_text(p.unit.lx, node.a) == "__jmp_buf_tag") {
+    if (node.a >= 0 && c_symbol_text(p.unit, node.a) == "__jmp_buf_tag") {
         c_refuse(b, p, node.tok, "glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`,")
         return false
     }
@@ -334,7 +334,7 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
             v = as_int(v)
         }
         let held = msvc ? as_int(v) : v
-        let name = pp_symbol_text(p.unit.lx, en.a)
+        let name = c_symbol_text(p.unit, en.a)
         items |> push(CirEnumItem(name = name, v = held))
         let own_t = v >= -2147483648l && v <= 2147483647l ? int_t : en.b >= 0 ? init_t : v <= 4294967295l && prev_t == int_t ? c_builtin(b, "unsigned int") : prev_t
         c_ir_bind(b, en.a, CId(t = own_t, old_style = -1, enum_t = pt, enum_v = v, name = name))
@@ -388,7 +388,7 @@ def private define_tag(var b : CTypes; var p : CParser; n : int) : int {
             return -1
         }
     } else {
-        if (kind == "enum" && node.a >= 0 && key_exists(b.defined_tags, "enum {pp_symbol_text(p.unit.lx, node.a)}")) {
+        if (kind == "enum" && node.a >= 0 && key_exists(b.defined_tags, "enum {c_symbol_text(p.unit, node.a)}")) {
             c_refuse(b, p, node.tok, "an enum tag defined again in another scope")
             return -1
         }
@@ -401,7 +401,7 @@ def private define_tag(var b : CTypes; var p : CParser; n : int) : int {
         }
     }
     if (node.a >= 0) {
-        b.defined_tags["{kind} {pp_symbol_text(p.unit.lx, node.a)}"] = true
+        b.defined_tags["{kind} {c_symbol_text(p.unit, node.a)}"] = true
     }
     let ok = kind == "enum" ? build_enum(b, p, n, pt) : build_record(b, p, n, pt)
     if (!ok) {
@@ -426,7 +426,7 @@ def private typedef_hint(var p : CParser; decl : int) : string {
         while (d >= 0 && p.ast.nodes[d].kind == CNode.D_PAREN) {
             d = p.ast.nodes[d].a
         }
-        return pp_symbol_text(p.unit.lx, p.ast.nodes[d].a) if (d >= 0 && p.ast.nodes[d].kind == CNode.D_NAME)
+        return c_symbol_text(p.unit, p.ast.nodes[d].a) if (d >= 0 && p.ast.nodes[d].kind == CNode.D_NAME)
         id = p.ast.nodes[id].next
     }
     return ""
@@ -446,7 +446,7 @@ def private gather_names(var b : CTypes; var p : CParser; n : int; var naming : 
     let library = in_library_file(b, p, node.tok)
     if ((node.kind == CNode.SPEC_RECORD || node.kind == CNode.SPEC_ENUM) && node.b == 1) {
         if (node.a >= 0) {
-            b.tag_names_of[n] = pp_symbol_text(p.unit.lx, node.a)
+            b.tag_names_of[n] = c_symbol_text(p.unit, node.a)
             if (!library) {
                 naming.taken |> insert(b.tag_names_of[n])
                 if (node.kind == CNode.SPEC_RECORD) {
@@ -473,14 +473,14 @@ def private gather_names(var b : CTypes; var p : CParser; n : int; var naming : 
         while (id >= 0) {
             let sym = c_declarator_name(p.ast, p.ast.nodes[id].a)
             if (sym >= 0 && (typedef_decl || !library)) {
-                naming.taken |> insert(pp_symbol_text(p.unit.lx, sym))
+                naming.taken |> insert(c_symbol_text(p.unit, sym))
             }
             id = p.ast.nodes[id].next
         }
         if (node.kind == CNode.FUNC_DEF && !library && node.b >= 0) {
             let sym = c_declarator_name(p.ast, p.ast.nodes[node.b].a)
             if (sym >= 0) {
-                naming.taken |> insert(pp_symbol_text(p.unit.lx, sym))
+                naming.taken |> insert(c_symbol_text(p.unit, sym))
             }
         }
     }
@@ -548,7 +548,7 @@ def c_tag_type(var b : CTypes; var p : CParser; n : int) : int {
     }
     let why = b.untyped_tags?[node.a] ?? ""
     if (!empty(why)) {
-        c_refuse(b, p, node.tok, "the tag '{pp_symbol_text(p.unit.lx, node.a)}'", ": {why}")
+        c_refuse(b, p, node.tok, "the tag '{c_symbol_text(p.unit, node.a)}'", ": {why}")
         return -1
     }
     let known = b.tags?[node.a] ?? -1
@@ -569,7 +569,7 @@ def c_tag_type(var b : CTypes; var p : CParser; n : int) : int {
         c_types_bind_tag(b, node.a, built)
         return built
     }
-    let pt = new_tag(b, kind, defined >= 0 ? b.tag_names_of?[defined] ?? "" : pp_symbol_text(p.unit.lx, node.a))
+    let pt = new_tag(b, kind, defined >= 0 ? b.tag_names_of?[defined] ?? "" : c_symbol_text(p.unit, node.a))
     if (kind == "enum") {
         b.pool[pt].spell = "enum {b.pool[pt].name}"
     }
@@ -690,7 +690,7 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; library : bo
                     let tok = tag_tok(p, at)
                     let place = p.unit.toks[tok]
                     let name = b.pool[pt].name
-                    b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = CirLoc(file = c_file_name(p.unit, place.file), line = place.line, col = place.col)))
+                    b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = CirLoc(file = c_file_name(p.unit, place.read_file), line = place.read_line, col = place.col)))
                 }
             }
         }
