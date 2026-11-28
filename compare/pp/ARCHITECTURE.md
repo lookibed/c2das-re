@@ -22,9 +22,9 @@ the plan's PP.6 grows from it.
   (`OracleUnit`, `oracle_units`, `list_units`, `ORACLE_EPOCH`); and `write_features`, the
   regeneration of section 6.
 - `pp_macros.das` - the expansion record's oracle of section 7: a unit through Dumper A and the
-  record (`compare_unit_pp5`), the text normalization (`pp5_normalized`), a set's run and line
-  (`run_set_pp5`, `describe_pp5_totals`), the `fixtures` corpus (`pp5_corpus_units`) and the
-  command line's run (`run_pp5`).
+  record (`compare_unit_pp5`), the text normalizations (`pp5_normalized`, `pp5_macro_text_agrees`),
+  a set's run and line (`run_set_pp5`, `describe_pp5_totals`), the `fixtures` corpus
+  (`pp5_corpus_units`) and the command line's run and exit code (`run_pp5`, `pp5_exit_code`).
 - `pp_features.das` - the feature-query tables of `frontend/predefined/` generated from the pinned
   clang (section 6): the operands read from clang's headers (`feature_candidates`), each asked of
   clang (`generate_features`), under the dialect's dumper flags (`dialect_flags`). The clang it runs
@@ -63,6 +63,8 @@ the plan's PP.6 grows from it.
   produces, which is none (`guard_macro.c`, `guard_macro.h` the header it includes twice).
 - `fixtures/pp5/lua.txt` - a corpus list of Lua's units under the defines of `lua/lua.c2das`, for
   `--pp5`: the program where Dumper A marks the most expansions.
+- `fixtures/pp5/copies.c` - a unit for `--pp5` whose calls end in an argument copy and are
+  followed by source tokens and by another call, where a copy left on the next token shows.
 - `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
   (section 3).
 - The tests are `compare/tests/test_pp_oracle.das`.
@@ -214,18 +216,30 @@ outermost call's name (`MacroIndex.site_places`), its macro's name, file and lin
 argument's text; each call of the record by the same, through `outer`, `PpMacro` and
 `pp_call_arg_text`. A site with no call of that key is a disagreement. The texts are compared after
 `pp5_normalized`, which takes out only what the two spell differently - Dumper A slices the file,
-splices and comments included, while the record joins the tokens of an argument that is no stretch
-of a file: splices dropped, each comment and run of blanks one blank, none at either end. Several
-sites can be one call: an argument the body uses twice holds one expansion of a call it writes
-(`SQ(SQ(x))`), which Dumper A marks at each node. Each argument copy Dumper A marks on a matched site
-(`macro_args`) must be a copy the record holds: some token handed out whose chain holds that call
-and parameter (`pp_each_copy`). Each entry of Dumper A's `macros` must be the record's definition at
-that file and line with the same parameters, text (`pp_macro_text`) and uses (`pp_macro_uses`); a
-use Dumper A gives as -1 and the record counts is no disagreement, the record knowing what
-Dumper A does not follow (a system header's macro, `MAX`), and is listed apart.
+splices (`\` and LF, or `\` and CR LF) and comments included, while the record joins the tokens of
+an argument that is no stretch of a file: splices dropped, each comment and run of blanks one blank,
+none at either end. Several sites can be one call: an argument the body uses twice holds one
+expansion of a call it writes (`SQ(SQ(x))`), which Dumper A marks at each node.
+
+Each argument copy Dumper A marks on a matched site (`macro_args`) must be a copy the record holds:
+some token handed out whose chain holds that call and parameter (`pp_each_copy`). The other way,
+for each argument of a matched call the record holds a copy of, a token of a file whose chain
+names that argument must lie inside the argument's byte span when the argument is one stretch of
+that file - a copy outside it (a stray copy) is a disagreement - and an argument Dumper A marks no
+copy of is listed as one only the record copies: Dumper A marks a copy only on a whole node, so
+such an argument is no disagreement, and is never counted as an agreement either.
+
+Each entry of Dumper A's `macros` must be the record's definition at that file and line with the
+same parameters, text (`pp_macro_text`) and uses (`pp_macro_uses`). The C-IR's text puts a blank
+only between tokens the source separated, and a line splice is no separator, where Dumper A writes
+a blank at each splice; `pp5_macro_text_agrees` takes Dumper A's text as the record's when the only
+difference is such blanks, at most one per splice of the definition's lines. A use Dumper A gives
+as -1 and the record counts is no disagreement, the record knowing what Dumper A does not follow (a
+system header's macro, `MAX`), and is listed apart.
 
 The record may mark more than Dumper A: the line counts the record's calls of the program's
 markable macros - defined in and called from the files under the unit's folder, outside directive
-lines - and how many of them some site of Dumper A is. A unit disagrees when a site, a copy or a
-macro disagrees; the run exits 1 when one unit disagrees or one is in error.
-
+lines - and how many of them have the key of some site of Dumper A, and lists the others (`--show`
+of them per unit). A unit disagrees when a site, a copy or a macro disagrees; the run exits 1 when
+one unit disagrees or one is in error, and when no unit was compared - every one refused by Dumper
+A or in error - since such a run has checked nothing (`pp5_exit_code`).

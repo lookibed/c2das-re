@@ -16,7 +16,8 @@ require pp_oracle
 //! function-like expansions come from libclang's preprocessing record and matching, and through
 //! the frontend's preprocessor, whose record knows every expansion; every site Dumper A marks must
 //! be a call of the record with the same outermost place, macro and argument texts, every argument
-//! copy it marks a copy the record holds, and every macro of its table the record's macro.
+//! copy it marks a copy the record holds, and every macro of its table the record's macro; the
+//! calls and copies only the record has are listed.
 
 //! One unit's comparison.
 struct Pp5Result {
@@ -27,6 +28,8 @@ struct Pp5Result {
     matched : int               //!< of them, a call of the record
     copies : int                //!< Dumper A's argument copies on matched sites
     copies_matched : int        //!< of them, a copy the record holds
+    copies_stray : int          //!< the record's copies of a matched site's argument on a token of the file outside that argument
+    copies_record_only : int    //!< arguments of matched sites the record holds a copy of and Dumper A marks none of
     candidates : int            //!< the record's calls of the program's markable macros, outside directive lines
     marked : int                //!< of them, a call some site of Dumper A is
     macros : int                //!< Dumper A's macros table
@@ -34,6 +37,8 @@ struct Pp5Result {
     uses_known : int            //!< parameters Dumper A gives -1 and the record a count
     shown : array<string>       //!< each disagreement
     known : array<string>       //!< each count only the record gives
+    record_calls : array<string>    //!< each candidate call no site of Dumper A is
+    record_copies : array<string>   //!< each argument copy only the record holds
 }
 
 //! The totals of a set of units.
@@ -46,6 +51,8 @@ struct Pp5Totals {
     matched : int
     copies : int
     copies_matched : int
+    copies_stray : int
+    copies_record_only : int
     candidates : int
     marked : int
     macros : int
@@ -62,6 +69,8 @@ def operator +=(var a : Pp5Totals; b : Pp5Totals) {
     a.matched += b.matched
     a.copies += b.copies
     a.copies_matched += b.copies_matched
+    a.copies_stray += b.copies_stray
+    a.copies_record_only += b.copies_record_only
     a.candidates += b.candidates
     a.marked += b.marked
     a.macros += b.macros
@@ -69,8 +78,9 @@ def operator +=(var a : Pp5Totals; b : Pp5Totals) {
     a.uses_known += b.uses_known
 }
 
-//! Whether a unit agrees: every site, copy and macro of Dumper A is the record's.
-def pp5_agrees(r : Pp5Result) : bool => r.matched == r.sites && r.copies_matched == r.copies && r.macros_equal == r.macros
+//! Whether a unit agrees: every site, copy and macro of Dumper A is the record's, and no copy of the
+//! record lies outside the argument it names.
+def pp5_agrees(r : Pp5Result) : bool => r.matched == r.sites && r.copies_matched == r.copies && r.copies_stray == 0 && r.macros_equal == r.macros
 
 //! An argument's or a call's text with the spelling differences of the two sides taken out: line
 //! splices dropped, each comment and each run of blanks one blank, none at either end. Dumper A
@@ -87,6 +97,10 @@ def pp5_normalized(text : string) : string {
                 let c = int(b[i])
                 if (c == '\\' && i + 1 < n && b[i + 1] == '\n'u8) {
                     i += 2
+                    continue
+                }
+                if (c == '\\' && i + 2 < n && b[i + 1] == '\r'u8 && b[i + 2] == '\n'u8) {
+                    i += 3
                     continue
                 }
                 if (c == '/' && i + 1 < n && b[i + 1] == '*'u8) {
@@ -113,6 +127,66 @@ def pp5_normalized(text : string) : string {
             }
         }
     }
+}
+
+//! Whether the record's `#define` text `ours` is Dumper A's `theirs` but for the line splices of the
+//! definition, `splices` of them: the C-IR's rule puts a blank only between tokens the source
+//! separated, and a splice is no separator, where Dumper A writes a blank at each; so `theirs` may
+//! hold up to `splices` blanks `ours` has not, and nothing else differs.
+[arch(at="ARCHITECTURE.md#pp5")]
+def pp5_macro_text_agrees(ours, theirs : string; splices : int) : bool {
+    return true if (ours == theirs)
+    var extra = 0
+    var agrees = false
+    peek_data(ours) $(a) {
+        peek_data(theirs) $(b) {
+            var i = 0
+            var j = 0
+            while (j < length(b)) {
+                if (i < length(a) && a[i] == b[j]) {
+                    i++
+                } elif (b[j] == ' 'u8 && extra < splices) {
+                    extra++
+                } else {
+                    return
+                }
+                j++
+            }
+            agrees = i == length(a)
+        }
+    }
+    return agrees
+}
+
+// the line splices of the `#define` that starts on line `line` of file `file`: the lines from it on
+// that end in a backslash
+def private splices_of(file : string; line : int) : int {
+    let text = fread(file)
+    var count = 0
+    peek_data(text) $(b) {
+        var at_line = 1
+        var i = 0
+        while (i < length(b) && at_line < line) {
+            if (b[i] == '\n'u8) {
+                at_line++
+            }
+            i++
+        }
+        while (i < length(b)) {
+            var end = i
+            while (end < length(b) && b[end] != '\n'u8) {
+                end++
+            }
+            var last = end
+            if (last > i && b[last - 1] == '\r'u8) {
+                last--
+            }
+            break if (last <= i || b[last - 1] != '\\'u8)
+            count++
+            i = end + 1
+        }
+    }
+    return count
 }
 
 // a site's key: the outermost call's file and name offset, the macro's name, file and line, and its
@@ -172,12 +246,16 @@ def private unit_inputs(flags : array<string>; var defines, dirs : array<string>
 }
 
 // the record's side of a unit: the preprocessor run to the end, the argument copies its tokens
-// hold (call * 4096 + parameter), each file's canonical path, the first call of each site key, and
-// whether each call is a candidate - a markable macro of the program called from the program
+// hold (call * 4096 + parameter) and, per copy, the first token of the source outside the
+// argument's span, each file's canonical path, each call's site key and the first call of each
+// key, and whether each call is a candidate - a markable macro of the program called from the
+// program
 struct private RecordSide {
     pp : Preprocessor
     copied : table<int64>
+    stray : table<int64; string>
     paths : array<string>
+    keys : array<string>
     call_at : table<string; int>
     candidate : array<bool>
 }
@@ -196,7 +274,15 @@ def private read_record(var side : RecordSide; unit : string; entries, search, d
     }
     while (pp_next_token(side.pp)) {
         pp_each_copy(side.pp, side.pp.tok.copy) $(call, k) {
-            side.copied |> insert(int64(call) * 4096l + int64(k))
+            let key = int64(call) * 4096l + int64(k)
+            side.copied |> insert(key)
+            if (side.pp.tok.spelled == PpSpelled.source && !key_exists(side.stray, key)) {
+                let arg & = unsafe(side.pp.expansion.call_args[side.pp.expansion.calls[call].first_arg + k])
+                let tok & = unsafe(side.pp.tok.tok)
+                if (arg.from >= 0 && arg.file == tok.file && (tok.offset < arg.from || tok.offset >= arg.to)) {
+                    side.stray[key] = "'{pp_token_spelling(side.pp)}' at {tok.line}:{tok.col}"
+                }
+            }
         }
     }
     side.paths |> reserve(length(side.pp.files))
@@ -205,6 +291,7 @@ def private read_record(var side : RecordSide; unit : string; entries, search, d
     }
     let program = canonical(dir_name(unit)) + "/"
     side.candidate |> reserve(length(side.pp.expansion.calls))
+    side.keys |> reserve(length(side.pp.expansion.calls))
     for (c, i in side.pp.expansion.calls, count()) {
         let top & = unsafe(side.pp.expansion.calls[c.outer].name)
         let mac & = unsafe(side.pp.macros[c.macro])
@@ -215,6 +302,7 @@ def private read_record(var side : RecordSide; unit : string; entries, search, d
         if (!key_exists(side.call_at, key)) {
             side.call_at[key] = i
         }
+        side.keys |> push(key)
         let candidate = !c.in_line && pp_macro_markable(side.pp, c.macro) && starts_with(def_file, program) && starts_with(at_file, program)
         side.candidate |> push(candidate)
         result.candidates += candidate ? 1 : 0
@@ -228,10 +316,11 @@ def private arg_string(var pp : Preprocessor; call, k : int) : string {
     return string(bytes)
 }
 
-// each site of Dumper A matched to a call of the record by its key; the call of each site matched
-def private match_sites(d : Dumper; uses : array<CirMacroUse>; side : RecordSide; var result : Pp5Result) : table<int; int> {
+// each site of Dumper A matched to a call of the record by its key, and each candidate call whose key
+// no site has listed; the call of each site matched
+def private match_sites(d : Dumper; uses : array<CirMacroUse>; var side : RecordSide; var result : Pp5Result) : table<int; int> {
     var site_call : table<int; int>
-    var marked : table<int>
+    var marked : table<string>
     for (u in uses) {
         result.sites++
         let m & = unsafe(d.tu.macros[u.m])
@@ -244,24 +333,58 @@ def private match_sites(d : Dumper; uses : array<CirMacroUse>; side : RecordSide
         }
         result.matched++
         site_call[u.site] = call
-        if (side.candidate[call]) {
-            marked |> insert(call)
-        }
+        marked |> insert(key)
     }
-    result.marked = length(marked)
+    for (c, i in side.pp.expansion.calls, count()) {
+        continue if (!side.candidate[i])
+        if (key_exists(marked, side.keys[i])) {
+            result.marked++
+            continue
+        }
+        let mac & = unsafe(side.pp.macros[c.macro])
+        var inscope args <- [for (k in range(c.arg_count)); arg_string(side.pp, i, k)]
+        result.record_calls |> push("call {i} {pp_name(side.pp, mac.name)}({join(args, ", ")}) at {base_name(path_of(side, c.name.file))}:{c.name.line}:{c.name.col}")
+    }
     return <- site_call
 }
 
-// each argument copy Dumper A marks on a matched site held against the record's copies
-def private match_copies(copies : array<CirMacroArg>; site_call : table<int; int>; side : RecordSide; var result : Pp5Result) {
+// each argument copy Dumper A marks on a matched site held against the record's copies; then each
+// argument of a matched call the record holds a copy of: one outside its argument disagrees, one
+// Dumper A marks no copy of is listed
+def private match_copies(copies : array<CirMacroArg>; site_call : table<int; int>; var side : RecordSide; var result : Pp5Result) {
+    var theirs : table<int64>
     for (a in copies) {
         let call = site_call?[a.site] ?? -1
         continue if (call < 0)
         result.copies++
-        if (key_exists(side.copied, int64(call) * 4096l + int64(a.k))) {
+        let key = int64(call) * 4096l + int64(a.k)
+        theirs |> insert(key)
+        if (key_exists(side.copied, key)) {
             result.copies_matched++
         } else {
             result.shown |> push("copy of argument {a.k} of site {a.site}: the record has no token copied from call {call}'s argument")
+        }
+    }
+    var calls : table<int>
+    for (call in values(site_call)) {
+        calls |> insert(call)
+    }
+    var inscope order <- [for (call in keys(calls)); call]
+    sort(order)
+    for (call in order) {
+        let name = pp_name(side.pp, side.pp.macros[side.pp.expansion.calls[call].macro].name)
+        for (k in range(side.pp.expansion.calls[call].arg_count)) {
+            let key = int64(call) * 4096l + int64(k)
+            continue if (!key_exists(side.copied, key))
+            let stray = side.stray?[key] ?? ""
+            if (!empty(stray)) {
+                result.copies_stray++
+                result.shown |> push("copy of argument {k} of call {call} {name}: the record marks {stray}, outside the argument")
+            }
+            if (!key_exists(theirs, key)) {
+                result.copies_record_only++
+                result.record_copies |> push("argument {k} of call {call} {name}")
+            }
         }
     }
 }
@@ -285,7 +408,7 @@ def private macro_disagreement(var pp : Preprocessor; found : int; m : CirMacro;
     var why = ""
     if (join(params, ",") != join(m.params, ",")) {
         why = "params {join(params, ",")} / {join(m.params, ",")}"
-    } elif (string(text) != m.text) {
+    } elif (string(text) != m.text && !pp5_macro_text_agrees(string(text), m.text, splices_of(m.file, m.line))) {
         why = "text '{string(text)}' / '{m.text}'"
     }
     for (k in range(length(m.uses))) {
@@ -373,6 +496,8 @@ def run_set_pp5(name : string; units : array<OracleUnit>; entries, search : arra
         t.matched += r.matched
         t.copies += r.copies
         t.copies_matched += r.copies_matched
+        t.copies_stray += r.copies_stray
+        t.copies_record_only += r.copies_record_only
         t.candidates += r.candidates
         t.marked += r.marked
         t.macros += r.macros
@@ -381,9 +506,15 @@ def run_set_pp5(name : string; units : array<OracleUnit>; entries, search : arra
         for (i in range(min(show, length(r.known)))) {
             print("{u.path}: the record knows {r.known[i]}\n")
         }
+        for (i in range(min(show, length(r.record_calls)))) {
+            print("{u.path}: only the record marks {r.record_calls[i]}\n")
+        }
+        for (i in range(min(show, length(r.record_copies)))) {
+            print("{u.path}: only the record copies {r.record_copies[i]}\n")
+        }
         continue if (pp5_agrees(r))
         t.differing++
-        print("{u.path}: sites {r.matched}/{r.sites}, copies {r.copies_matched}/{r.copies}, macros {r.macros_equal}/{r.macros}\n")
+        print("{u.path}: sites {r.matched}/{r.sites}, copies {r.copies_matched}/{r.copies} ({r.copies_stray} stray), macros {r.macros_equal}/{r.macros}\n")
         for (i in range(min(show, length(r.shown)))) {
             print("    {r.shown[i]}\n")
         }
@@ -393,11 +524,12 @@ def run_set_pp5(name : string; units : array<OracleUnit>; entries, search : arra
 }
 
 //! A set's line: the units, those Dumper A refuses and those in error, the sites, copies and macros
-//! the record agrees with, and how many more calls the record could mark.
+//! the record agrees with, the copies outside their argument, and how many more calls and copies
+//! the record could mark.
 def describe_pp5_totals(name : string; t : Pp5Totals) : string {
     return ("{name} (pp5): {t.units} units, {t.refused} refused by Dumper A, {t.errors} errors, {t.differing} differ; sites {t.matched}/{t.sites}, "
-        + "copies {t.copies_matched}/{t.copies}, macros {t.macros_equal}/{t.macros} ({t.uses_known} uses only the record knows); "
-        + "record calls of program macros {t.candidates}, {t.marked} of them marked by Dumper A")
+        + "copies {t.copies_matched}/{t.copies} ({t.copies_stray} stray), macros {t.macros_equal}/{t.macros} ({t.uses_known} uses only the record knows); "
+        + "record calls of program macros {t.candidates}, {t.marked} of them marked by Dumper A; {t.copies_record_only} copied arguments only the record marks")
 }
 
 //! The corpora the expansion record is compared on besides the oracle's: `fixtures`, the converter's
@@ -417,7 +549,12 @@ def pp5_corpus_units(root, corpus : string; var error : string&) : array<string>
     return <- units
 }
 
-//! `--pp5` over the corpora and lists of `args`; 0 when every unit agrees and none is in error.
+//! The exit code of a run: 0 when every unit agrees, none is in error and one at least is compared -
+//! a run whose units Dumper A all refuses has checked nothing.
+def pp5_exit_code(t : Pp5Totals) : int => t.differing == 0 && t.errors == 0 && t.units > t.refused + t.errors ? 0 : 1
+
+//! `--pp5` over the corpora and lists of `args`; 0 when every unit agrees, none is in error and one
+//! at least is compared.
 [arch(at="ARCHITECTURE.md#pp5")]
 def run_pp5(args : OracleArgs) : int {
     var error : string
@@ -447,5 +584,8 @@ def run_pp5(args : OracleArgs) : int {
         total += run_set_pp5("units", oracle_units(args.units), setup.entries, setup.search, args.show)
     }
     print("{describe_pp5_totals("total", total)}\n")
-    return total.differing == 0 && total.errors == 0 ? 0 : 1
+    if (total.units == total.refused + total.errors) {
+        print("total (pp5): nothing compared\n")
+    }
+    return pp5_exit_code(total)
 }

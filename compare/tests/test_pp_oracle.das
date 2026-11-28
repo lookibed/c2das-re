@@ -909,6 +909,26 @@ def test_pp5_normalized(t : T?) {
     t |> equal(pp5_normalized("  a\\\n+  b/* c */(x)\n\t"), "a+ b (x)")
     t |> equal(pp5_normalized("a/**/b"), "a b")
     t |> equal(pp5_normalized("ab"), "ab")
+    t |> equal(pp5_normalized("a\\\r\n+b"), "a+b")
+}
+
+[test(description = "the record oracle's macro text: the record's #define agrees with Dumper A's when the only difference is a blank Dumper A writes at a line splice, at most one per splice; any other difference disagrees")]
+def test_pp5_macro_text_agrees(t : T?) {
+    t |> success(pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a+x", 0))
+    t |> success(pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a +x", 1))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a +x", 0))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a + x", 1))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a +x", "#define G(x) a+x", 1))
+    t |> success(!pp5_macro_text_agrees("#define G(x) a+x", "#define G(x) a+y", 1))
+}
+
+[test(description = "the record oracle fails a run that compared nothing - every unit refused by Dumper A or in error - as it fails one with a disagreement or an error")]
+def test_pp5_exit_code(t : T?) {
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, refused = 1)), 0)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, refused = 2)), 1)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, refused = 1, errors = 1)), 1)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 0)), 1)
+    t |> equal(pp5_exit_code(Pp5Totals(units = 2, differing = 1)), 1)
 }
 
 [test(description = "Dumper A's macro fixture through the record oracle: every site Dumper A marks is a call of the record at the same outermost place with the same macro and argument texts, every argument copy a copy the record holds, every macros entry the record's - and the record marks more calls", timeout = 1200)]
@@ -922,7 +942,13 @@ def test_pp5_fixture(t : T?) {
     t |> equal("sites {r.matched}/{r.sites} copies {r.copies_matched}/{r.copies} macros {r.macros_equal}/{r.macros}", "sites 50/50 copies 85/85 macros 26/26")
     t |> success(pp5_agrees(r))
     t |> success(r.candidates > r.marked && r.marked > 0, "{r.marked} of {r.candidates}")
+    t |> equal(length(r.record_calls), r.candidates - r.marked)
+    t |> equal(r.copies_stray, 0)
+    t |> equal(length(r.record_copies), r.copies_record_only)
     t |> equal(join(r.known, "; "), "BIGGER uses[0] = 2, Dumper A -1; BIGGER uses[1] = 2, Dumper A -1")
+    let copies <- compare_unit_pp5(OracleUnit(path = "compare/pp/fixtures/pp5/copies.c"), setup.entries, setup.search)
+    t |> equal("{copies.error}{copies.refused}{join(copies.shown, "; ")}", "")
+    t |> equal("sites {copies.matched}/{copies.sites} copies {copies.copies_matched}/{copies.copies} stray {copies.copies_stray}", "sites 3/3 copies 4/4 stray 0")
     let flagged <- compare_unit_pp5(OracleUnit(path = "converter/tests/fixtures/p9_fn_macros.c", flags <- ["-std=c99"]), setup.entries, setup.search)
     t |> equal(flagged.error, "unsupported unit flag -std=c99")
 }

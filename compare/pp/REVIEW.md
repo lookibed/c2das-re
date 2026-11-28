@@ -23,9 +23,11 @@ edits them is `frontend/REVIEW.md`'s duty). The tables' test in `compare/tests/t
 fails on a table the pinned clang does not answer.
 
 **A diff to the record's oracle (`pp_macros.das`) normalizes only what Dumper A and the record
-spell differently (`pp5_normalized`: splices, comments, blanks), and counts a disagreement for
-every site, copy or `macros` entry of Dumper A the record does not hold - never drops one from the
-count, and lists apart, never forgives, a use only the record knows.** Dumper A's marks are the
+spell differently (`pp5_normalized`: splices, comments, blanks; `pp5_macro_text_agrees`: the blank
+Dumper A writes at a `#define`'s line splice), and counts a disagreement for every site, copy or
+`macros` entry of Dumper A the record does not hold and for every copy of the record outside the
+argument it names - never drops one from the count - and lists apart, never forgives, a use, a
+call or a copy only the record knows.** Dumper A's marks are the
 only outside check of the record; an oracle that forgives a mismatch passes a wrong record into
 the C-IR.
 
