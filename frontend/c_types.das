@@ -849,8 +849,7 @@ def c_types_scope_close(var b : CTypes) {
 //! in view, every block's and prototype's bindings set aside and put back after: a record whose one
 //! file-scope definition a use in a block reached is built in the scope of its definition.
 def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
-    var typedefs_now : table<int; int>
-    var tags_now : table<int; int>
+    var typedefs_now, tags_now : table<int; int>
     var ids_now : table<int; CId>
     var ids_had : table<int; bool>
     if (!empty(b.marks)) {

@@ -485,15 +485,17 @@ def private gather_names(var b : CTypes; var p : CParser; n : int; var naming : 
         }
     }
     let form = NODE_FORMS[int(node.kind)]._1
-    for (k, child in range(1, 5), fixed_array(node.a, node.b, node.c, node.d)) {
-        let role = character_at(form, k)
-        if (role == 'n') {
-            gather_names(b, p, child, naming)
-        } elif (role == 'l' || role == 'a') {
-            var at = child
-            while (at >= 0) {
-                gather_names(b, p, at, naming)
-                at = p.ast.nodes[at].next
+    peek_data(form) $(roles) {
+        for (k, child in range(1, 5), fixed_array(node.a, node.b, node.c, node.d)) {
+            let role = int(roles[k])
+            if (role == 'n') {
+                gather_names(b, p, child, naming)
+            } elif (role == 'l' || role == 'a') {
+                var at = child
+                while (at >= 0) {
+                    gather_names(b, p, at, naming)
+                    at = p.ast.nodes[at].next
+                }
             }
         }
     }
