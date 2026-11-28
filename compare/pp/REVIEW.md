@@ -21,3 +21,11 @@ preprocessor's own defect, wherever it stands, and a class that took it would hi
 the feature tables with `das compare/pp/run.das -- --features` in the same change** (that no hand
 edits them is `frontend/REVIEW.md`'s duty). The tables' test in `compare/tests/test_pp_oracle.das`
 fails on a table the pinned clang does not answer.
+
+**A diff to the record's oracle (`pp_macros.das`) normalizes only what Dumper A and the record
+spell differently (`pp5_normalized`: splices, comments, blanks), and counts a disagreement for
+every site, copy or `macros` entry of Dumper A the record does not hold - never drops one from the
+count, and lists apart, never forgives, a use only the record knows.** Dumper A's marks are the
+only outside check of the record; an oracle that forgives a mismatch passes a wrong record into
+the C-IR.
+

@@ -21,6 +21,10 @@ the plan's PP.6 grows from it.
   `pp2_class`, `run_set_pp2`, `run_pp2`), which with `expand` is the expansion oracle of section 5
   (`OracleUnit`, `oracle_units`, `list_units`, `ORACLE_EPOCH`); and `write_features`, the
   regeneration of section 6.
+- `pp_macros.das` - the expansion record's oracle of section 7: a unit through Dumper A and the
+  record (`compare_unit_pp5`), the text normalization (`pp5_normalized`), a set's run and line
+  (`run_set_pp5`, `describe_pp5_totals`), the `fixtures` corpus (`pp5_corpus_units`) and the
+  command line's run (`run_pp5`).
 - `pp_features.das` - the feature-query tables of `frontend/predefined/` generated from the pinned
   clang (section 6): the operands read from clang's headers (`feature_candidates`), each asked of
   clang (`generate_features`), under the dialect's dumper flags (`dialect_flags`). The clang it runs
@@ -32,6 +36,7 @@ the plan's PP.6 grows from it.
   `execute` folder's own units), `--corpus pp2` and `--corpus pp3` (the directive and expansion
   fixtures), `--list <file>` (a corpus list, section 5), units named after the flags, `--raw`,
   `--pp2` (section 4), `--pp3` and `--pp4` (section 5), `--corpus pp4`, `--features` (section 6),
+  `--pp5` (section 7) with `--corpus fixtures` (the converter's test units),
   `--show N`, `--work <folder>` (default `compare/work/pp`, under
   the gitignored `compare/work/`). An unknown corpus, or one whose folder is missing - a suite not
   fetched - or a corpus list that is missing, is an error and exit 1, never an empty set. It prints each unit that differs with its
@@ -56,6 +61,8 @@ the plan's PP.6 grows from it.
   short-circuiting, `#elif` chains and nesting, `__COUNTER__` in a condition, `__has_include` by
   name and by macro, each feature query, `defined` of builtin names; and an include guard a macro
   produces, which is none (`guard_macro.c`, `guard_macro.h` the header it includes twice).
+- `fixtures/pp5/lua.txt` - a corpus list of Lua's units under the defines of `lua/lua.c2das`, for
+  `--pp5`: the program where Dumper A marks the most expansions.
 - `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
   (section 3).
 - The tests are `compare/tests/test_pp_oracle.das`.
@@ -191,3 +198,34 @@ the query's default; an answer clang prints as `202003L` is stored as `202003`. 
 fails or answers a line short is an error and nothing is written. A test of
 `compare/tests/test_pp_oracle.das` regenerates both tables and fails when a committed one differs,
 so a hand edit or a clang bump shows up.
+
+## 7. The expansion record's oracle {#pp5}
+
+`--pp5` holds the frontend's expansion record (`frontend/ARCHITECTURE_EXPAND.md#pp-record`) against
+Dumper A's marks of function-like expansions (`converter/ARCHITECTURE_DUMPER_MACROS.md#fn-macros`),
+the one other source of those facts: Dumper A finds them by matching spellings against libclang's
+preprocessing record, the record knows them from the expansion. A unit is dumped by Dumper A
+(`dump_tu`) and read by the expander under the same `linux` table, own headers and the unit's own
+`-D` and `-I` flags (any other flag is an error of the unit); a unit Dumper A refuses is counted
+apart.
+
+Each site Dumper A marks (`fn_macro`) is keyed by the canonical file and byte offset of its
+outermost call's name (`MacroIndex.site_places`), its macro's name, file and line, and each
+argument's text; each call of the record by the same, through `outer`, `PpMacro` and
+`pp_call_arg_text`. A site with no call of that key is a disagreement. The texts are compared after
+`pp5_normalized`, which takes out only what the two spell differently - Dumper A slices the file,
+splices and comments included, while the record joins the tokens of an argument that is no stretch
+of a file: splices dropped, each comment and run of blanks one blank, none at either end. Several
+sites can be one call: an argument the body uses twice holds one expansion of a call it writes
+(`SQ(SQ(x))`), which Dumper A marks at each node. Each argument copy Dumper A marks on a matched site
+(`macro_args`) must be a copy the record holds: some token handed out whose chain holds that call
+and parameter (`pp_each_copy`). Each entry of Dumper A's `macros` must be the record's definition at
+that file and line with the same parameters, text (`pp_macro_text`) and uses (`pp_macro_uses`); a
+use Dumper A gives as -1 and the record counts is no disagreement, the record knowing what
+Dumper A does not follow (a system header's macro, `MAX`), and is listed apart.
+
+The record may mark more than Dumper A: the line counts the record's calls of the program's
+markable macros - defined in and called from the files under the unit's folder, outside directive
+lines - and how many of them some site of Dumper A is. A unit disagrees when a site, a copy or a
+macro disagrees; the run exits 1 when one unit disagrees or one is in error.
+

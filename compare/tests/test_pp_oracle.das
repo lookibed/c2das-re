@@ -6,6 +6,7 @@ require daslib/fio
 require daslib/strings_boost
 require ../pp/pp_oracle.das
 require ../pp/pp_features.das
+require ../pp/pp_macros.das
 require ../../frontend/c_defines.das
 require ../../frontend/pp_lexer.das
 require ../../frontend/pp_directives.das
@@ -901,4 +902,27 @@ def test_lexer_diag_live_inside_a_conditional(t : T?) {
     pp2_tokens(unit, setup.entries, setup.search, r)
     t |> equal(join(r.errors, " | "), "4:7 invalid UTF-8: byte 255 | 7:7 invalid UTF-8: byte 255")
     t |> equal(pp2_class(r), Pp2Class.differs)
+}
+
+[test(description = "the record oracle's text normalization takes out only spellings: line splices, comments and runs of blanks become one blank, none at either end; tokens stay apart or joined as written")]
+def test_pp5_normalized(t : T?) {
+    t |> equal(pp5_normalized("  a\\\n+  b/* c */(x)\n\t"), "a+ b (x)")
+    t |> equal(pp5_normalized("a/**/b"), "a b")
+    t |> equal(pp5_normalized("ab"), "ab")
+}
+
+[test(description = "Dumper A's macro fixture through the record oracle: every site Dumper A marks is a call of the record at the same outermost place with the same macro and argument texts, every argument copy a copy the record holds, every macros entry the record's - and the record marks more calls", timeout = 1200)]
+def test_pp5_fixture(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let r <- compare_unit_pp5(OracleUnit(path = "converter/tests/fixtures/p9_fn_macros.c"), setup.entries, setup.search)
+    t |> equal("{r.error}{r.refused}", "")
+    t |> equal(join(r.shown, "\n"), "")
+    t |> equal("sites {r.matched}/{r.sites} copies {r.copies_matched}/{r.copies} macros {r.macros_equal}/{r.macros}", "sites 50/50 copies 85/85 macros 26/26")
+    t |> success(pp5_agrees(r))
+    t |> success(r.candidates > r.marked && r.marked > 0, "{r.marked} of {r.candidates}")
+    t |> equal(join(r.known, "; "), "BIGGER uses[0] = 2, Dumper A -1; BIGGER uses[1] = 2, Dumper A -1")
+    let flagged <- compare_unit_pp5(OracleUnit(path = "converter/tests/fixtures/p9_fn_macros.c", flags <- ["-std=c99"]), setup.entries, setup.search)
+    t |> equal(flagged.error, "unsupported unit flag -std=c99")
 }
