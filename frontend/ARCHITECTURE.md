@@ -5,13 +5,13 @@ holds the part of the converter that reads C with no clang behind it. Today that
 header set under `include/`, the only libc Dumper A's clang reads (`-nostdinc` and this folder,
 `converter/ARCHITECTURE_DUMPER.md` section 3), the macro definitions of section 3, which the
 sidecar reader and Dumper A read, the first stages of Dumper C's preprocessor - the pp-token
-lexer of section 4 and the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
-`#include`, the macro table, the ledgers) - and the first part of Dumper C's parser, which reads the
-C tokens of a preprocessed unit, its expressions, type names, declarations, records, enums,
-statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and
-`ARCHITECTURE_STATEMENTS.md`, section 23), and the type table built from the parser's tree
-(`ARCHITECTURE_TYPES.md`, sections 24 to 28 and 60). No converter pass calls the preprocessor, the
-parser or the type table yet.
+lexer of section 4, the directive layer of `ARCHITECTURE_PP.md` (sections 5 to 13: directives,
+`#include`, the macro table, the ledgers) and the macro expansion of `ARCHITECTURE_EXPAND.md`
+(sections 29 to 36) - and the first part of Dumper C's parser, which reads the C tokens of a
+preprocessed unit, its expressions, type names, declarations, records, enums, statements and
+function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22, and `ARCHITECTURE_STATEMENTS.md`,
+section 23), and the type table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24
+to 28 and 60). No converter pass calls the preprocessor, the parser or the type table yet.
 
 ## 1. File charters
 
@@ -26,9 +26,15 @@ parser or the type table yet.
 - `pp_directives.das` - the directive layer over the lexer (`ARCHITECTURE_PP.md`): the file
   providers, the `#include` stack and search, include guards, `#line`, the conditionals, the macro
   table, the pragma and pack ledgers, and the hook PP.4's `#if` evaluator fills. It expands no
-  macro.
+  macro; it holds the interface the expansion fills (`PpExpansion`) and the call record's types.
+- `pp_expand.das` - the macro expansion over the directive layer (`ARCHITECTURE_EXPAND.md`): the
+  context stack, calls and their arguments, substitution with `#` and `##`, the builtin names and
+  `_Pragma`, the expansion of directive lines, the call record.
 - `tests/test_pp_directives.das` - every directive over in-memory files, the predefined-macro table,
   and the own headers read through `fio`. The comparison with clang is `compare/pp/`'s `--pp2`.
+- `tests/test_pp_expand.das` - every expansion rule over in-memory files: the C11 6.10.3 examples,
+  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the call
+  record. The comparison with clang is `compare/pp/`'s `--pp3`.
 - `c_tokens.das` - the C tokens of a preprocessed unit over the pp-lexer: keywords by symbol,
   pp-numbers classified, line markers read (`ARCHITECTURE_PARSER.md` section 14).
 - `c_ast.das` - the tree in one node array and its one-line dump (section 15). No parsing.
@@ -166,7 +172,8 @@ end, and `pp_next_header_name` reads one token with a header name allowed, for t
 as they come. A token is its kind (`PpTok`), the file id, its byte offset and length in the file as
 read, its line and byte column (both from 1), `has_space`, `at_bol` and, for an identifier, its
 symbol. Its bytes are read on request: `pp_spelling` builds the string, `pp_spelling_is` compares
-in place.
+in place, and `pp_token_range` gives their offset and length in the working buffer (below) whose
+first byte is `pp_buffer_data`, for a reader that keeps a token as a byte range.
 
 The scanner is dasFlex's: `[flex(flags = true)]` builds the automaton when the module compiles and
 gives the two flags; dasFlex is fetched at its `VERSIONS.md` pin into `fetch/dasFlex/` and loaded

@@ -50,3 +50,19 @@ error; one that adds a recursion a run of tokens can repeat makes it open a nest
 two levels re-measures that section's bytes per level and keeps `tests/test_c_parse_expr.das`'s
 costliest form at the bound.** Malformed input must end, and deep input must end in a refusal, not
 a stack overflow.
+
+**A diff to `pp_expand.das` keeps rescanning on the context model (`ARCHITECTURE_EXPAND.md`
+section 30): a macro is disabled by the context of its replacement and a name read then is
+painted - never a set of macros carried on each token (a Prosser hide set).** Per-token hide
+sets differ from clang and gcc on deferred recursion and grow without bound on Boost.PP.
+
+**A diff to `pp_expand.das` runs the expansion oracle (`das compare/pp/run.das -- --pp3 --corpus
+pp3`, and the corpus lists it touches) and states its class counts, and adds a case to
+`tests/test_pp_expand.das` for each expansion rule it changes.** The fixtures hold clang's
+answer; the unit tests hold the diagnostics and the call record no token stream shows.
+
+**A diff to `pp_expand.das` never allocates per token read or pasted, nor per call: tokens go in
+reused buffers, spellings - a builtin's value and a `_Pragma` operand among them - in the pools,
+and the call record grows geometrically; `tests/test_pp_expand.das`'s allocation tests are never
+loosened.** A string or an array made per token grows the das heap
+with the size of the expansion, which a macro library makes millions of tokens long.
