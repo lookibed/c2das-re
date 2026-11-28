@@ -5,7 +5,7 @@ require strings
 require daslib/strings_boost
 require math
 require daslib/cmp
-require ../pp_expand.das
+require ../pp_record.das
 
 //! `frontend/pp_expand.das`: macro expansion over in-memory files - object-like and function-like
 //! calls, `#` and `##`, the GNU variadics, rescanning with clang's context model, the builtins,
@@ -546,19 +546,51 @@ def test_builtins_and_pastes_allocate_no_string(t : T?) {
 
 [test(description = "in an #if line the < ... > of __has_include and __has_include_next is left as written, as defined's operand is; other operands, __has_attribute's among them, are expanded as clang does")]
 def test_has_include_operand(t : T?) {
-    let pp4 = "E 3:2 #if expression needs the PP.4 evaluator: "
     let defs = "#define linux 1\n#define HDR <stddef.h>\n"
-    t |> equal(expanded("{defs}#if __has_include(<linux/version.h>) && linux\n#endif\n").diags, "{pp4}__has_include(<linux/version.h>) && 1")
-    t |> equal(expanded("{defs}#if __has_include_next( <linux/x.h> )\n#endif\n").diags, "{pp4}__has_include_next( <linux/x.h> )")
-    t |> equal(expanded("{defs}#if __has_include(HDR) + __has_attribute(linux)\n#endif\n").diags, "{pp4}__has_include(<stddef.h>) + __has_attribute(1)")
-    t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "{pp4}__has_include 1")
+    t |> equal(expanded("{defs}#if __has_include(<linux/version.h>) && linux\nyes\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_include_next( <linux/x.h> )\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_include(HDR) + __has_attribute(linux)\n#endif\n").diags, "E 1:15 builtin feature check macro requires a parenthesized identifier")
+    t |> equal(expanded("{defs}#if __has_include linux\n#endif\n").diags, "E 3:5 missing '(' after '__has_include'")
+}
+
+[test(description = "the < ... > of __has_include is a header name as written: a macro named like a path part is expanded next to it but not inside it, so the header is still found")]
+def test_has_include_angled_operand_unexpanded(t : T?) {
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#define linux 1\n#if __has_include(<linux/x.h>) && linux\nyes\n#endif\n")
+    mem->add("inc/linux/x.h", "")
+    var pp : Preprocessor
+    pp_expand_start(pp, mem, "main.c", array<string>(), array<string>("inc"), 1000000000l)
+    t |> equal(stream(pp), "yes")
+    t |> equal(diagnostics(pp), "")
+}
+
+[test(description = "the operand of __has_feature, __has_builtin, __has_warning and __is_target_os stays as written, as clang reads it unexpanded")]
+def test_query_operand_unexpanded(t : T?) {
+    let defs = "#define linux 1\n#define c_atomic nope\n#define W \"-Wunused\"\n"
+    t |> equal(expanded("{defs}#if __is_target_os(linux)\nos\n#endif\n#if __has_feature(c_atomic)\nfeature\n#endif\n").diags, "")
+    t |> equal(expanded("{defs}#if __has_warning(W)\n#endif\n").diags, "E 4:19 expected string literal in '__has_warning'")
+    t |> equal(expanded("#define B __builtin_expect\n#if __has_builtin(B) || __has_builtin B\n#endif\n").diags, "E 2:25 missing '(' after '__has_builtin'")
+}
+
+[test(description = "an include guard is the #if !defined X a file writes: one a macro produces is no guard, so a second #include reads the file again as clang does")]
+def test_guard_from_macro(t : T?) {
+    let header = "#if NOT_DEFINED\n#ifdef VAR\nVAR++;\n#endif\n#endif\n"
+    let main = "#define NOT_DEFINED ! defined (guard)\n#include \"g.h\"\n#define guard\n#undef NOT_DEFINED\n#define NOT_DEFINED 1\n#define VAR five\n#include \"g.h\"\n"
+    t |> equal(expanded(main, [("g.h", header)]).out, "five ++ ;")
+}
+
+[test(description = "a #line whose number and name come from macros, a function-like one among them, is expanded first as clang does; the name's escapes are read once")]
+def test_line_operands_from_macros(t : T?) {
+    let r = expanded("#define LN(n) n\n#define NAME \"d\\\\x.c\"\n#line LN(7) NAME\n__LINE__ __FILE__\n")
+    t |> equal(r.out, "7 \"d\\\\x.c\"")
+    t |> equal(r.diags, "")
 }
 
 [test(description = "an argument in an #if line is pre-expanded before defined reads it, as clang does: F(defined X) of a defined X hands the evaluator defined 1, clang's error there")]
 def test_defined_in_argument(t : T?) {
     let r = expanded("#define X 1\n#define F(x) x\n#if F(defined X)\nyes\n#endif\nend\n")
     t |> equal(r.out, "end")
-    t |> equal(r.diags, "E 3:2 #if expression needs the PP.4 evaluator: defined 1")
+    t |> equal(r.diags, "E 1:11 macro name must be an identifier")
     t |> equal(expanded("#define F(x) x\n#if F(defined X)\nyes\n#else\nno\n#endif\n").out, "no")
 }
 
@@ -593,3 +625,416 @@ def test_builtin_undef(t : T?) {
     t |> equal(d.diags, "W 1:9 redefining builtin macro | W 5:9 redefining builtin macro | W 6:8 undefining builtin macro")
 }
 
+
+// every diagnostic, `<line>:<col> raised <file>:<offset>:<line>:<col> <what>`, a `|` between them
+def private raised(pp : Preprocessor) : string {
+    let parts <- [for (d in pp.diags); "{d.line}:{d.col} raised {d.raised.file}:{d.raised.offset}:{d.raised.line}:{d.raised.col} {d.what}"]
+    return join(parts, " | ")
+}
+
+[test(description = "an unterminated call is placed at its name and raised where the reader gave up: past the last byte of the unit, through a line splice, or at the token after the directive line that ends it; a diagnostic the reader meets at once is raised at the token read, the call's )")]
+def test_unterminated_call_raised_at_end(t : T?) {
+    var at_end <- started([("main.c", "#define f(x) x\na f(1,\n 2")])
+    stream(at_end)
+    t |> equal(raised(at_end), "2:3 raised 0:24:3:3 unterminated function-like macro invocation")
+    var spliced <- started([("main.c", "#define f(x) x\nf(1\\\n2\n")])
+    stream(spliced)
+    t |> equal(raised(spliced), "2:1 raised 0:22:4:1 unterminated function-like macro invocation")
+    var splice_line <- started([("main.c", "#define f(x) x\nf(1\\\n2")])
+    stream(splice_line)
+    t |> equal(raised(splice_line), "2:1 raised 0:21:3:2 unterminated function-like macro invocation")
+    var in_line <- started([("main.c", "#define f(x) x\n#line f(\n7)\nz\n")])
+    stream(in_line)
+    t |> equal(raised(in_line), ("2:7 raised 0:24:3:1 unterminated function-like macro invocation | " +
+                                 "2:2 raised 0:24:3:1 #line directive requires a positive integer argument"))
+    var at_once <- started([("main.c", "#define z() Z\nz(1) after\n")])
+    stream(at_once)
+    t |> equal(raised(at_once), "2:1 raised 0:17:2:4 too many arguments provided to function-like macro invocation")
+}
+
+[test(description = "a poisoned name pasted is clang's error, and an argument's poisoned name is too; a macro defined before the poison expands to the name with none, _Pragma poisons as #pragma does, and poisoning a builtin name warns")]
+def test_poison_through_expansion(t : T?) {
+    let r = expanded("#define CAT(a,b) a##b\n#define BEFORE foo + 1\n#define F(x) x\n#pragma GCC poison foo __LINE__\nBEFORE CAT(fo,o) F(foo)\n_Pragma(\"GCC poison q\") q\n")
+    t |> equal(r.out, "foo + 1 foo foo | q")
+    t |> equal(r.diags, ("W 4:24 poisoning existing macro | E 5:12 attempt to use a poisoned identifier | " +
+                         "E 5:20 attempt to use a poisoned identifier | E 6:25 attempt to use a poisoned identifier"))
+}
+
+[test(description = "a call records the physical line and column of the ) that closes it, past a line break; a call closed by a ) of a replacement takes the end of the call that handed it out; an object-like macro's end is its name")]
+def test_call_end_column(t : T?) {
+    var pp <- started([("main.c", "#define g(a) [a]\n#define f(x, y) g(x) y\n#define N 1\nf(ab,\n  cd e  ) N\n")])
+    t |> equal(stream(pp), "[ ab ] cd e 1")
+    let ends <- [for (c in pp.expansion.calls); "{pp_name(pp, pp.macros[c.macro].name)} {c.end_line}:{c.end_col}/{int64(c.end_pline)}"]
+    t |> equal(join(ends, " "), "f 5:9/5 g 5:9/5 N 5:11/5")
+}
+
+[test(description = "a _Pragma operand naming a poisoned identifier is clang's error at the _Pragma, as a #pragma line's is at the name")]
+def test_poison_in_pragma_operand(t : T?) {
+    let r = expanded("#pragma GCC poison foo\n_Pragma(\"weird foo\")\nfoo\n")
+    t |> equal(r.diags, "E 2:1 attempt to use a poisoned identifier | E 3:1 attempt to use a poisoned identifier")
+}
+
+[test(description = "a diagnostic placed at a held token is raised where the reader stood: past a #pragma GCC warning line at the next line's first token, and past the last byte at the end of the unit")]
+def test_held_diagnostic_raised(t : T?) {
+    var next <- started([("main.c", "#pragma GCC warning \"w\"\nz\n")])
+    stream(next)
+    t |> equal(raised(next), "1:13 raised 0:24:2:1 w")
+    var last <- started([("main.c", "#pragma GCC warning \"w\"")])
+    stream(last)
+    t |> equal(raised(last), "1:13 raised 0:23:1:24 w")
+}
+
+// every token handed out for `files`, `spelling@line:col` of its expansion place (the spelling place
+// for a token of the source)
+def private expansion_places(files : array<tuple<string; string>>) : string {
+    var pp <- started(files)
+    var toks : array<string>
+    while (pp_next_token(pp)) {
+        let at = pp_expansion_place(pp, pp.tok)
+        toks |> push("{pp_token_spelling(pp)}@{at.line}:{at.col}")
+    }
+    return join(toks, " ")
+}
+
+// the text of argument `k` of call `call` as written, through `pp_call_arg_text`
+def private arg_text(var pp : Preprocessor; call, k : int) : string {
+    var bytes : array<uint8>
+    pp_call_arg_text(pp, call, k, bytes)
+    return string(bytes)
+}
+
+// each call of `pp`: its macro's name, `parent`/`arg_of`.`arg_k`/`outer`, and its arguments' texts
+def private call_tree(var pp : Preprocessor) : string {
+    var lines : array<string>
+    for (c, i in pp.expansion.calls, count()) {
+        var inscope args <- [for (k in range(c.arg_count)); arg_text(pp, i, k)]
+        lines |> push("{pp_name(pp, pp.macros[c.macro].name)} {c.parent}/{c.arg_of}.{c.arg_k}/{c.outer}{c.in_line ? " line" : ""} ({join(args, "|")})")
+    }
+    return join(lines, "; ")
+}
+
+[test(description = "the expansion place of a token is the place of the outermost call's name, through the calls a name came from and the arguments it was read in; a token of the source has its own; a call of a directive line is marked")]
+def test_expansion_place(t : T?) {
+    let text = "#define G(y) <y>\n#define F(x) [x]\n#define H(z) F(z) G(z)\n#define OBJ F\na\n  F(G(b)) H(c)\nOBJ(d)\n#if F(1)\n#endif\n"
+    t |> equal(expansion_places([("main.c", text)]), "a@5:1 [@6:3 <@6:3 b@6:3 >@6:3 ]@6:3 [@6:11 c@6:11 ]@6:11 <@6:11 c@6:11 >@6:11 [@7:1 d@7:1 ]@7:1")
+    var pp <- started([("main.c", text)])
+    stream(pp)
+    t |> equal(call_tree(pp), "F -1/-1.-1/0 (G(b)); G -1/0.0/0 (b); H -1/-1.-1/2 (c); F 2/-1.-1/2 (z); G 2/-1.-1/2 (z); OBJ -1/-1.-1/5 (); F 5/-1.-1/5 (d); F -1/-1.-1/7 line (1)")
+    let spelled = pp_spelling_place(PpOutToken(tok = PpToken(file = 2, offset = 7, line = 3, col = 4)))
+    t |> equal("{spelled.file} {spelled.offset} {spelled.line}:{spelled.col}", "2 7 3:4")
+}
+
+[test(description = "an argument's text as written: one stretch of a file as the file spells it, splices removed; written in a #define, its body tokens; split by a directive or not one stretch, its tokens as read, a blank where one had space; empty and elided ones give nothing")]
+def test_argument_text(t : T?) {
+    var pp <- started([("main.c", "#define F(x, y) x y\n#define V(a, ...) a\n#define B(p) F(p ,  q  + 1)\n#define OPEN F(1\nF(  aa  +\n  b\\\nb , ) B(z) V(w) OPEN, 2)\nF(c\n#define N\nd, e)\n")])
+    stream(pp)
+    t |> equal(call_tree(pp), "F -1/-1.-1/0 (aa  +\n  bb|); B -1/-1.-1/1 (z); F 1/-1.-1/1 (p|q + 1); V -1/-1.-1/3 (w|); OPEN -1/-1.-1/4 (); F 4/-1.-1/4 (1|2); F -1/-1.-1/6 (c d|e)")
+    let kinds <- [for (a in pp.expansion.call_args); "{a.text}"]
+    t |> equal(join(kinds, " "), "source empty source body body source empty pooled source pooled source")
+    let body = pp_call_arg_view(pp, 2, 1)
+    t |> equal("{body.data == null} {body.len}", "true 0")
+    let source = pp_call_arg_view(pp, 0, 0)
+    t |> equal(source.len, length("aa  +\n  bb"))
+    let pooled = pp_call_arg_view(pp, 6, 0)
+    t |> equal("{pooled.data == null} {pooled.len} {arg_text(pp, 6, 0)}", "true 0 c d")
+}
+
+[test(description = "a call nested in another call's argument is one stretch of a file only when the enclosing argument is: a directive inside the enclosing argument makes both arguments pooled, so the two spell the same tokens alike")]
+def test_argument_text_nested_directive(t : T?) {
+    var pp <- started([("main.c", "#define A(x) x\n#define B(y) <y>\nA(B(1\n#ifdef Z\n+2\n#endif\n+3))\nA(B(4 + 5))\n")])
+    stream(pp)
+    t |> equal(call_tree(pp), "A -1/-1.-1/0 (B(1 +3)); B -1/0.0/0 (1 +3); A -1/-1.-1/2 (B(4 + 5)); B -1/2.0/2 (4 + 5)")
+    let kinds <- [for (a in pp.expansion.call_args); "{a.text}"]
+    t |> equal(join(kinds, " "), "pooled pooled source source")
+}
+
+// each token handed out, `spelling` then `:call.k` for each argument copy it is in, innermost first
+def private copy_chains(text : string) : string {
+    var pp <- started([("main.c", text)])
+    var toks : array<string>
+    while (pp_next_token(pp)) {
+        var chain = pp_token_spelling(pp)
+        pp_each_copy(pp, pp.tok.copy) $(call, k) {
+            chain += ":{call}.{k}"
+        }
+        toks |> push(chain)
+    }
+    return join(toks, " ")
+}
+
+[test(description = "a token knows each argument it is a copy of: #define A(x) B(x) makes a token of A(t) a copy of B's argument, then A's; a body token and a pasted or stringified one are none, an operand of ## kept whole is one")]
+def test_argument_copies(t : T?) {
+    t |> equal(copy_chains("#define B(y) [y y]\n#define A(x) B(x) x\nA(t u)\n"), "[ t:1.0:0.0 u:1.0:0.0 t:1.0:0.0 u:1.0:0.0 ] t:0.0 u:0.0")
+    t |> equal(copy_chains("#define P(a, b) a ## b #a b ## 1 a\nP(x, y)\n"), "xy \"x\" y1 x:0.0")
+    t |> equal(copy_chains("#define Q(a, b) a ## b\nQ(x z, w)\n"), "x:0.0 zw")
+    t |> equal(copy_chains("#define I(x) x\n#define T(x) I(x) + x\nT(1)\n"), "1:1.0:0.0 + 1:0.0")
+    t |> equal(copy_chains("#define A(x) x\n#define B(y) y\nA(B(1))\n"), "1:0.0:1.0")
+    var pp <- started([("main.c", "#define B(y) [y y]\n#define A(x) B(x) x\nA(t)\n")])
+    var copied : array<string>
+    while (pp_next_token(pp)) {
+        copied |> push("{pp_is_copy_of(pp, pp.tok.copy, 0, 0)}{pp_is_copy_of(pp, pp.tok.copy, 1, 0)}")
+    }
+    t |> equal(join(copied, " "), "falsefalse truetrue truetrue falsefalse truefalse")
+}
+
+[test(description = "a token of the source carries no argument copy, whatever token was handed out before it: after W(a), b and c are in no copy, and E's arguments read after W(1) are copies of E alone")]
+def test_source_token_after_a_copy(t : T?) {
+    t |> equal(copy_chains("#define W(x) x\nW(a) b c\n"), "a:0.0 b c")
+    t |> equal(copy_chains("#define W(x) x\n#define E(f, y) [f y]\nW(1)\nE(2, 3)\n"), "1:0.0 [ 2:1.0 3:1.1 ]")
+    t |> equal(copy_chains("#define W(x) x\n#define O W(7)\nO 8\n"), "7:1.0 8")
+}
+
+// the one-line text of each macro of `text`, a `|` between them
+def private macro_texts(text : string) : string {
+    var pp <- started([("main.c", text)])
+    stream(pp)
+    var lines : array<string>
+    for (m in range(length(pp.macros))) {
+        continue if (pp.macros[m].file == 1)
+        var inscope bytes : array<uint8>
+        pp_macro_text(pp, m, bytes)
+        lines |> push(string(bytes))
+    }
+    return join(lines, " | ")
+}
+
+[test(description = "a macro's #define on one line: continuations joined, a comment or a run of blanks one blank where it separated tokens, literals kept, the parameter list as spelled")]
+def test_macro_text(t : T?) {
+    t |> equal(macro_texts("#define SQ(x) ((x) * (x))\n#  define  F(a,b ,c)\\\n  a/*c*/+b  // end\n#define S \"a  /* b */\" '\\''\n#define E()\n#define O\n"),
+               "#define SQ(x) ((x) * (x)) | #define F(a,b ,c) a +b | #define S \"a  /* b */\" '\\'' | #define E() | #define O")
+    t |> equal(macro_texts("#define G(x) a\\\n+x\n#define H(x) a \\\n+x\n"), "#define G(x) a+x | #define H(x) a +x")
+}
+
+// `NAME=uses,...` of each function-like macro of `text`, and `!` after a name the C-IR never marks
+def private macro_uses(text : string) : string {
+    var pp <- started([("main.c", text)])
+    stream(pp)
+    var lines : array<string>
+    for (m in range(length(pp.macros))) {
+        continue if (!pp.macros[m].function_like)
+        var inscope uses <- [for (k in range(length(pp.macros[m].params))); "{pp_macro_uses(pp, m, k)}"]
+        lines |> push("{pp_name(pp, pp.macros[m].name)}{pp_macro_markable(pp, m) ? "" : "!"}={join(uses, ",")}")
+    }
+    return join(lines, " ")
+}
+
+[test(description = "a macro's uses of each argument: its parameter's uses in the body through the macros the body calls; -1 for a variadic macro, a parameter under # or ## or called, a callee whose use is unknown or whose name has two definitions; a macro of itself is a name")]
+def test_macro_uses(t : T?) {
+    let defs = "#define SQ(x) ((x) * (x))\n#define FIRST(a, b) a\n#define TAG(c) (c)->tag\n#define IS(c) (TAG(c) == 3)\n#define FOURTH(x) SQ(SQ(x))\n#define TWO(c) IS(c) || IS(c)\n#define DROP(x) FIRST(1, x)\n"
+    t |> equal(macro_uses(defs), "SQ=2 FIRST=1,0 TAG=1 IS=1 FOURTH=4 TWO=2 DROP=0")
+    t |> equal(macro_uses("#define APPLY(f, x) f(x) + x\n#define S(x) #x x\n#define C(x) a ## x x\n#define V(x, ...) x __VA_ARGS__\n#define R(x) R(x) x\n#define U(x) V(x, 1)\n"),
+               "APPLY=-1,-1 S!=-1 C!=-1 V!=-1,-1 R=2 U=-1")
+    t |> equal(macro_uses("#define G(x) x\n#define H(x) G(x)\n#undef G\n#define G(x) x x\n"), "G=1 H=-1 G=2")
+    t |> equal(macro_uses("#define G(x) x\n#define H(x) G(x)\n#undef G\n#define G(x) x\n"), "G=1 H=1 G=1")
+    t |> equal(macro_uses("#define A(x) B(x)\n#define B(x) A(x) x\n"), "A=-1 B=-1")
+}
+
+[test(description = "a parameter inside parentheses a callee's replacement can turn into a call is not counted: a callee ending in a macro's name or a ')' - an object-like alias of a function-like macro, or a parameter whose argument is such a name or a parameter - gives -1; a callee ending in anything else, a plain function's name among them, leaves the parentheses plain")]
+def test_macro_uses_through_a_returned_name(t : T?) {
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define F TWICE\n#define M(x) F(x)\n"), "TWICE=2 M=-1")
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define K(a) TWICE\n#define M(x) K(0)(x)\n"), "TWICE=2 K=0 M=-1")
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define L(a) K(a)\n#define K(a) TWICE\n#define M(x) L(0)(x)\n"), "TWICE=2 L=0 K=0 M=-1")
+    t |> equal(macro_uses("#define G(a) a+1\n#define Z 0\n#define M(x) G(0)(x) + Z\n#define N(x) Z + (x)\n"), "G=1 M=1 N=1")
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define ID(op) op\n#define FL(x) (ID(floor)(x))\n#define TW(x) ID(TWICE)(x)\n#define P(x, f) ID(f)(x)\n"),
+               "TWICE=2 ID=1 FL=1 TW=-1 P=-1,1")
+}
+
+// `NAME=uses,...` of the macros `names` of `text`, asked in that order
+def private uses_in_order(text : string; names : array<string>) : string {
+    var pp <- started([("main.c", text)])
+    stream(pp)
+    var lines : array<string>
+    for (name in names) {
+        for (m in range(length(pp.macros))) {
+            continue if (pp_name(pp, pp.macros[m].name) != name)
+            var inscope uses <- [for (k in range(length(pp.macros[m].params))); "{pp_macro_uses(pp, m, k)}"]
+            lines |> push("{name}={join(uses, ",")}")
+        }
+    }
+    return join(lines, " ")
+}
+
+[test(description = "a cycle of macros gives -1 for every parameter of every macro on it, whichever is asked first; a macro calling into the cycle without passing it the parameter keeps its count")]
+def test_macro_uses_cycle_any_order(t : T?) {
+    let text = "#define A(x) B(x, 1)\n#define B(p, q) p + A(q)\n#define C(z) z + B(0, 1)\n"
+    t |> equal(uses_in_order(text, ["A", "B", "C"]), "A=-1 B=-1,-1 C=1")
+    t |> equal(uses_in_order(text, ["B", "A", "C"]), "B=-1,-1 A=-1 C=1")
+    t |> equal(uses_in_order(text, ["C", "B", "A"]), "C=1 B=-1,-1 A=-1")
+}
+
+[test(description = "a count asked mid-unit is the count of the definitions made so far, and a #define after it drops it: asked again after the unit, it reads every definition")]
+def test_macro_uses_mid_unit(t : T?) {
+    var pp <- started([("main.c", "#define G(x) x\n#define H(x) G(x)\n#define J(x) K(x)\nfirst\n#undef G\n#define G(x) x x\n#define K(x) x x x\nlast\n")])
+    t |> success(pp_next_token(pp))
+    let h = pp_macro_index(pp, "H")
+    let j = pp_macro_index(pp, "J")
+    t |> equal("{pp_macro_uses(pp, h, 0)} {pp_macro_uses(pp, j, 0)}", "1 1")
+    stream(pp)
+    t |> equal("{pp_macro_uses(pp, h, 0)} {pp_macro_uses(pp, j, 0)}", "-1 3")
+}
+
+[test(description = "the record's readers allocate nothing: a token's expansion place and copies, an argument's text into a buffer with room; a unit of many calls whose arguments are copied grows the record geometrically, under a ceiling measured with slack that linear growth breaks")]
+def test_record_readers_allocate_nothing(t : T?) {
+    let text = "#define B(y) [y y]\n#define A(x, z) B(x) z\n#define S(p) A(p, q)\nfirst\n" + repeat("A(a  b, c) S(d) ", 1000)
+    var pp <- started([("main.c", text)])
+    t |> success(pp_next_token(pp))
+    let heap = int(heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    let record_blocks = int(heap_allocation_count()) - heap
+    t |> equal(count, 12000)
+    t |> success(record_blocks <= 96, "{record_blocks} heap blocks over {length(pp.expansion.calls)} calls")
+    var buffer : array<uint8>
+    buffer |> reserve(64)
+    let strings = int(string_heap_allocation_count())
+    let before = int(heap_allocation_count())
+    var lines = 0
+    var copies = 0
+    for (c in range(length(pp.expansion.calls))) {
+        let place = pp_expansion_place(pp, c, pp.expansion.calls[c].name)
+        lines += place.line
+        for (k in range(pp.expansion.calls[c].arg_count)) {
+            buffer |> clear()
+            pp_call_arg_text(pp, c, k, buffer)
+            copies += length(buffer)
+        }
+    }
+    for (e in range(length(pp.expansion.copies))) {
+        pp_each_copy(pp, e) $(call, k) {
+            copies += call + k
+        }
+    }
+    t |> equal(lines, 5 * 5000)
+    t |> success(copies > 0)
+    t |> equal("{int(string_heap_allocation_count()) - strings} strings, {int(heap_allocation_count()) - before} heap blocks", "0 strings, 0 heap blocks")
+}
+
+[test(description = "a call after a directive line's call is no call of a directive line: in_line ends with the line")]
+def test_in_line_ends_with_the_line(t : T?) {
+    var pp <- started([("main.c", "#define F(x) [x]\n#if F(1)\n#endif\nF(2)\n")])
+    stream(pp)
+    t |> equal(call_tree(pp), "F -1/-1.-1/0 line (1); F -1/-1.-1/1 (2)")
+}
+
+[test(description = "a call nested in a later argument of a call is pooled when that argument is, whatever the earlier arguments are")]
+def test_argument_text_nested_in_a_later_argument(t : T?) {
+    var pp <- started([("main.c", "#define A(x, y) x y\n#define B(z) <z>\nA(B(0), B(1\n#ifdef Z\n#endif\n+2))\n")])
+    stream(pp)
+    let kinds <- [for (a in pp.expansion.call_args); "{a.text}"]
+    t |> equal(call_tree(pp), "A -1/-1.-1/0 (B(0)|B(1 +2)); B -1/0.0/0 (0); B -1/0.1/0 (1 +2)")
+    t |> equal(join(kinds, " "), "source pooled source pooled")
+}
+
+[test(description = "a pooled argument's text has no blank before its first token, though that token had space")]
+def test_pooled_argument_no_leading_blank(t : T?) {
+    var pp <- started([("main.c", "#define F(x) x\nF(  c\n#define N\nd)\n")])
+    stream(pp)
+    t |> equal("{pp.expansion.call_args[0].text} '{arg_text(pp, 0, 0)}'", "pooled 'c d'")
+}
+
+[test(description = "a call written in a #define is a body text when it elides the variadic argument or passes the variadic part with commas")]
+def test_body_argument_of_a_variadic_call(t : T?) {
+    var pp <- started([("main.c", "#define V(a, ...) a\n#define W(q) V(q)\n#define U(q) V(q, 2, 3)\nW(1) U(4)\n")])
+    stream(pp)
+    let kinds <- [for (a in pp.expansion.call_args); "{a.text}"]
+    t |> equal(call_tree(pp), "W -1/-1.-1/0 (1); V 0/-1.-1/0 (q|); U -1/-1.-1/2 (4); V 2/-1.-1/2 (q|2, 3)")
+    t |> equal(join(kinds, " "), "source body empty source body body")
+}
+
+[test(description = "a substitution makes one copy entry per run of tokens that were in one copy before - a new entry where the run changes, none per token and none for a placemarker")]
+def test_copy_entries_per_run(t : T?) {
+    t |> equal(copy_chains("#define A(x) x\n#define B(y) y\nA(B(1) 2)\n"), "1:0.0:1.0 2:0.0")
+    var pp <- started([("main.c", "#define B(y) [y y]\n#define A(x) B(x) x\nA(t u)\n")])
+    stream(pp)
+    t |> equal(length(pp.expansion.copies), 5)
+    var pm <- started([("main.c", "#define P(a, b) [a ## b] b\nP(, y z)\n")])
+    stream(pm)
+    t |> equal(length(pm.expansion.copies), 3)
+}
+
+[test(description = "pooled arguments grow the record geometrically and read back with no allocation: a unit of many calls whose arguments a directive splits")]
+def test_pooled_arguments_allocate_nothing(t : T?) {
+    let text = "#define F(x) [x]\nfirst\n" + repeat("F(a\n#define N\nb) ", 1000)
+    var pp <- started([("main.c", text)])
+    t |> success(pp_next_token(pp))
+    let heap = int(heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    let record_blocks = int(heap_allocation_count()) - heap
+    t |> equal(count, 4000)
+    t |> success(record_blocks <= 96, "{record_blocks} heap blocks over {length(pp.expansion.calls)} calls")
+    var buffer : array<uint8>
+    buffer |> reserve(64)
+    let strings = int(string_heap_allocation_count())
+    let before = int(heap_allocation_count())
+    var total = 0
+    for (c in range(length(pp.expansion.calls))) {
+        buffer |> clear()
+        pp_call_arg_text(pp, c, 0, buffer)
+        total += length(buffer)
+    }
+    t |> equal(total, 3 * 1000)
+    t |> equal("{int(string_heap_allocation_count()) - strings} strings, {int(heap_allocation_count()) - before} heap blocks", "0 strings, 0 heap blocks")
+}
+
+[test(description = "a macro's one-line text keeps an escaped quote inside a literal: the literal runs past it, its blanks kept")]
+def test_macro_text_escaped_quote(t : T?) {
+    t |> equal(macro_texts("#define Q \"a\\\"  b\"  x\n"), "#define Q \"a\\\"  b\" x")
+}
+
+[test(description = "an object-like macro is never one the C-IR marks")]
+def test_object_like_not_markable(t : T?) {
+    var pp <- started([("main.c", "#define O 1\n#define F(x) x\n")])
+    stream(pp)
+    t |> success(!pp_macro_markable(pp, pp_macro_index(pp, "O")))
+    t |> success(pp_macro_markable(pp, pp_macro_index(pp, "F")))
+}
+
+[test(description = "a macro that calls into a cycle passing one parameter keeps the count of the parameter it does not pass: only the macros on the cycle lose every count")]
+def test_macro_uses_below_a_cycle(t : T?) {
+    let text = "#define A(x) B(x, 1)\n#define B(p, q) p + A(q)\n#define D(z, w) B(z, 0) + w\n"
+    t |> equal(uses_in_order(text, ["D", "A", "B"]), "D=-1,1 A=-1 B=-1,-1")
+}
+
+[test(description = "a parameter on the left of ## is -1, as on its right")]
+def test_macro_uses_left_of_paste(t : T?) {
+    t |> equal(macro_uses("#define L(x) x ## a x\n"), "L!=-1")
+}
+
+[test(description = "the use counts through callee shapes clang -E settles: a plain object-like name before parentheses, an unclosed body call, an unknown count in a callee's argument, a callee of two definitions, an empty callee, a variadic or empty tail argument, an argument ending in ), a callee ending in a plain name")]
+def test_macro_uses_callee_shapes(t : T?) {
+    // clang -E: Z(x) -> 0(t1), one use
+    t |> equal(macro_uses("#define Z 0\n#define M(x) Z(x)\n"), "M=1")
+    // clang -E: G(x continues outside the body: unknown
+    t |> equal(macro_uses("#define G(a) a a\n#define M(x) G(x\n"), "G=2 M=-1")
+    // clang -E: SQ(f(x)) -> f and x twice; the call of f makes both unknown
+    t |> equal(macro_uses("#define SQ(x) ((x) * (x))\n#define M(f, x) SQ(f(x))\n"), "SQ=2 M=-1,-1")
+    // a callee of two definitions followed by parentheses that hold the parameter
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define G(a) a\n#undef G\n#define G(a) TWICE\n#define M(x) G(0)(x)\n"), "TWICE=2 G=1 G=0 M=-1")
+    // clang -E: E()(x) -> (t8), one use
+    t |> equal(macro_uses("#define E()\n#define M(x) E()(x)\n"), "E= M=1")
+    // clang -E: VID(0, TWICE)(x) -> 0, t4+t4
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define VID(...) __VA_ARGS__\n#define M(x) VID(0, TWICE)(x)\n"), "TWICE=2 VID!=-1 M=-1")
+    // clang -E: ID(GET())(x) -> t5+t5
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define ID(op) op\n#define GET() TWICE\n#define M(x) ID(GET())(x)\n"), "TWICE=2 ID=1 GET= M=-1")
+    // clang -E: K(0, )(x) -> t6+t6
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define K(a, b) TWICE b\n#define M(x) K(0, )(x)\n"), "TWICE=2 K=0,1 M=-1")
+    // clang -E: C(0)(x) -> 0 + floor(t7), one use
+    t |> equal(macro_uses("#define C(a) a + floor\n#define M(x) C(0)(x)\n"), "C=1 M=1")
+    // K(0)(x continues outside the body and K returns TWICE: unknown
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define K(a) TWICE\n#define M(x) K(0)(x\n"), "TWICE=2 K=0 M=-1")
+}
+
+[test(description = "a _Pragma written in a macro's replacement is placed at the expansion location, the outermost call's name, as the pinned clang places it: its diagnostic and its ledger entry; one written in a call's argument stays at its own place, as clang's diagnostic shows it")]
+def test_pragma_from_a_body_placed_at_the_call(t : T?) {
+    let text = ("#define W(x) x _Pragma(\"GCC warning \\\"x\\\"\")\n#define O(y) W(y)\nint a;\n\n  int b = O(1);\n"
+        + "#define P(z) _Pragma(\"listing\") z\n  P(2)\n#define T(v) v\nint c = T(1\n+ _Pragma(\"GCC warning \\\"a\\\"\") 2);\n")
+    var pp <- started([("main.c", text)])
+    stream(pp)
+    t |> equal(diagnostics(pp), "W 5:11 x | W 10:3 a")
+    t |> equal(join([for (p in pp.pragmas); "{p.line}:{p.col} {p.text}"], " / "), "7:3 listing")
+}

@@ -165,7 +165,6 @@ def private bitfield_width(r : CIr; v : CirExpr?) : int {
     return -1 if (m.e != "member")
     let base_t = m.arrow ? r.pool[unq(r, m.base.t)].to : m.base.t
     let rec = unq(r, base_t)
-    return -1 if (m.field >= length(r.pool[rec].fields))
     return r.pool[rec].fields[m.field].is_bitfield ? r.pool[rec].fields[m.field].bit_w : -1
 }
 
@@ -660,12 +659,13 @@ def private int_literal(var r : CIr; var p : CParser; tok : int) : CirExpr? {
     }
     let digits = slice(spelled, 0, end)
     let hex = starts_with(digits, "0x")
-    let base = hex ? 16ul : starts_with(digits, "0") && length(digits) > 1 ? 8ul : 10ul
+    let binary = starts_with(digits, "0b")
+    let base = hex ? 16ul : binary ? 2ul : starts_with(digits, "0") && length(digits) > 1 ? 8ul : 10ul
     var value = 0ul
     var ok = true
-    for (ch in hex ? slice(digits, 2) : digits) {
+    for (ch in hex || binary ? slice(digits, 2) : digits) {
         let d = is_number(ch) ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : 99
-        ok &&= uint64(d) < base && value <= (0xFFFFFFFFFFFFFFFFul - uint64(d)) / base
+        ok &&= value <= (0xFFFFFFFFFFFFFFFFul - uint64(d)) / base
         value = value * base + uint64(d)
     }
     let decimal = base == 10ul
@@ -892,10 +892,25 @@ def private float_literal(var r : CIr; p : CParser; tok : int) : CirExpr? {
 //! The size in bytes Dumper A gives pool type `t` (`c_type_size`); -1 for one it has none for.
 def c_size_of(r : CIr; t : int) : int64 => c_type_size(r, t)
 
+// whether pool type `t`, through its arrays, is a record the look-ahead built before its
+// definition, which token `tok` stands before: incomplete there, as clang reads it
+def private defined_later(r : CIr; t, tok : int) : bool {
+    var u = unq(r, t)
+    while (r.pool[u].k == "array") {
+        u = unq(r, r.pool[u].elem)
+    }
+    return (r.complete_from?[u] ?? -1) > tok
+}
+
 // a `sizeof` node of pool type `of_t` at token `tok`, its operand expression (or null) kept in
-// `a` until `c_exprs_use` has interned its types
+// `a` until `c_exprs_use` has interned its types; the size of a record defined only after `tok`
+// is invalid C
 def private sizeof_node(var r : CIr; var p : CParser; of_t : int; var operand : CirExpr?; tok : int) : CirExpr? {
     return null if (!c_tag_complete(r, p))
+    if (defined_later(r, of_t, tok)) {
+        c_reject(r, p, tok, "sizeof of a struct or union defined only after it")
+        return null
+    }
     let size = c_size_of(r, of_t)
     if (size < 0l) {
         c_refuse(r, p, tok, "sizeof of a type without a size")
@@ -1156,7 +1171,7 @@ def c_member_path(r : CIr; rec : int; name : string) : array<int> {
     }
     for (f, idx in r.pool[rec].fields, count()) {
         let u = unq(r, f.t)
-        if (empty(f.name) && !f.is_bitfield && (r.pool[u].k == "struct" || r.pool[u].k == "union")) {
+        if (empty(f.name) && (r.pool[u].k == "struct" || r.pool[u].k == "union")) {
             var inscope inner <- c_member_path(r, u, name)
             if (!empty(inner)) {
                 path |> push(idx)
@@ -1185,6 +1200,10 @@ def private member_access(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
     if (rec < 0 || (r.pool[rec].k != "struct" && r.pool[rec].k != "union") || !key_exists(r.layouts, rec)) {
         delete_expr(base)
         c_refuse(r, p, node.tok, "a member access of other than a complete struct or union")
+        return null
+    } elif (defined_later(r, rec, node.tok)) {
+        delete_expr(base)
+        c_reject(r, p, node.tok, "a member access of a struct or union defined only after it")
         return null
     }
     let name = c_symbol_text(p.unit, node.b)
@@ -1252,6 +1271,22 @@ def private type_name_expr(var r : CIr; var p : CParser; node : CNodeRec; n : in
     return invoke(r.compound_literal, r, p, n)
 }
 
+// call node `node` (at `n`): `__builtin_constant_p` its constant form, else its callee, a name read
+// as a callee, then the call
+def private call_expr(var r : CIr; var p : CParser; node : CNodeRec; n : int) : CirExpr? {
+    let callee = p.ast.nodes[node.a]
+    if (callee.kind == CNode.IDENT && c_symbol_text(p.unit, callee.a) == CONSTANT_P && !key_exists(r.ids, callee.a)) {
+        return invoke(r.constant_expr, r, p, n)
+    }
+    var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
+    // a parenthesized name calls what the name binds, as clang reads `(f)(1)`
+    var named = node.a
+    while (p.ast.nodes[named].kind == CNode.PAREN) {
+        named = p.ast.nodes[named].a
+    }
+    return fn == null ? null : call(r, p, fn, node.b, node.tok, p.ast.nodes[named].kind == CNode.IDENT ? p.ast.nodes[named].a : -1)
+}
+
 //! The C-IR expression of parser expression node `n`, typed by pool types, with no conversion at
 //! its top; null with the error set at the first construct not typed yet.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-nodes")]
@@ -1279,12 +1314,7 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.UNARY || kind == CNode.POSTFIX || kind == CNode.BINARY || kind == CNode.ASSIGN || kind == CNode.COND) {
         return operator_expr(r, p, node)
     } elif (kind == CNode.CALL) {
-        let callee = p.ast.nodes[node.a]
-        if (callee.kind == CNode.IDENT && c_symbol_text(p.unit, callee.a) == CONSTANT_P && !key_exists(r.ids, callee.a)) {
-            return invoke(r.constant_expr, r, p, n)
-        }
-        var fn = callee.kind == CNode.IDENT ? reference(r, p, callee.a, callee.tok, true) : c_expr(r, p, node.a)
-        return fn == null ? null : call(r, p, fn, node.b, node.tok, callee.kind == CNode.IDENT ? callee.a : -1)
+        return call_expr(r, p, node, n)
     } elif (kind == CNode.INDEX) {
         return subscript(r, p, node)
     } elif (kind == CNode.MEMBER) {

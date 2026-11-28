@@ -6,7 +6,7 @@ C-IR builder beside the integer folder `c_fold` (`ARCHITECTURE_EXPRS.md` section
 where clang's JSON holds none (`converter/dumper_a.das`'s `register_trait_value`,
 `register_constant_p`, `register_offsetof`), so each rule here states what clang's evaluator
 gives. Where the builder cannot be certain of clang's answer it refuses; it never guesses a
-value.
+value. `tests/test_c_consts.das` holds each form and refusal.
 
 ## 73. The forms {#c-consts-forms}
 

@@ -30,8 +30,9 @@ def private tag_tok(var p : CParser; n : int) : int {
     let node = p.ast.nodes[n]
     return node.tok if (node.a < 0)
     let tag = c_symbol_text(p.unit, node.a)
+    // the tag follows its keyword, attributes perhaps between
     var t = node.tok + 1
-    while (t < length(p.unit.toks) - 1 && c_spelling(p.unit, t) != tag) {
+    while (c_spelling(p.unit, t) != tag) {
         t++
     }
     return t
@@ -132,7 +133,7 @@ def c_dims(b : CTypes; var p : CParser; d, t : int) : array<CirDim> {
     }
     var dims : array<CirDim>
     var named = false
-    var level = t < 0 ? -1 : b.unqualified[t]
+    var level = b.unqualified[t]
     for (i in range(length(sizes))) {
         break if (level < 0 || b.pool[level].k != "array")
         let size = p.ast.nodes[sizes[length(sizes) - 1 - i]]
@@ -173,15 +174,91 @@ def private required_align(b : CTypes; t : int) : int {
     return req
 }
 
+// whether pool type `t` is linux's x87 `long double` or an array of them, whose `long double` is
+// 16 bytes aligned to 16 in a record, where the C-IR's type and `sizeof` have 8
+def private is_x87(b : CTypes; t : int) : bool {
+    var u = b.unqualified[t]
+    while (b.pool[u].k == "array") {
+        u = b.unqualified[b.pool[u].elem]
+    }
+    return !is_msvc(b.tu.target) && b.pool[u].k == "float" && b.pool[u].spell == "long double"
+}
+
+// the bytes clang lays a member of pool type `t` out in: an x87 `long double`'s 16
+def private member_size(b : CTypes; t : int) : int64 {
+    let size = c_type_size(b, t)
+    return is_x87(b, t) && size > 0l ? size * 2l : size
+}
+
+// the alignment clang gives a member of pool type `t` below any `aligned` typedef: an x87 `long
+// double`'s 16
+def private member_align(b : CTypes; t : int) : int => is_x87(b, t) ? 16 : max(c_type_align(b, t), 1)
+
+//! The `aligned` value a typedef declaration's specifier list `specs` and its init-declarator's
+//! attribute list `attrs` give it, 0 for none; -1 with the error set for one the builder refuses.
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]
+def c_typedef_aligned(var b : CTypes; var p : CParser; specs, attrs : int) : int {
+    var packed = false
+    var aligned = 0
+    return -1 if (!c_layout_attributes(b, p, specs, packed, aligned) || !c_layout_attributes(b, p, attrs, packed, aligned))
+    return aligned
+}
+
+//! What an `aligned` typedef makes of pool type `t`, declared over specifier list `specs` of pool
+//! type `base`, with the `aligned` value `own` of a typedef declaring it (0 for none): `x` the
+//! alignment clang gives `t` (0 when no `aligned` typedef names it through arrays and typedefs:
+//! the outermost one's value, which can lower the type's), `y` the alignment of `t` below its own
+//! typedef names, by which msvc lays out a member of it.
+[arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]
+def c_typedef_alignment(var b : CTypes; var p : CParser; specs, base, t, own : int) : int2 {
+    var named = int2(0, 0)
+    var at = specs
+    while (at >= 0) {
+        if (p.ast.nodes[at].kind == CNode.SPEC_TYPEDEF_NAME) {
+            named = typedef_name_alignment(b, p, p.ast.nodes[at].a)
+        }
+        at = p.ast.nodes[at].next
+    }
+    let ub = b.unqualified[base]
+    var elem = b.unqualified[t]
+    while (elem != ub && b.pool[elem].k == "array") {
+        elem = b.unqualified[b.pool[elem].elem]
+    }
+    // the base's `aligned` typedef reaches `t` when only arrays lie between them
+    let reaches = elem == ub && named.x > 0
+    let under = !reaches ? member_align(b, t) : b.unqualified[t] == ub ? named.y : named.x
+    return int2(own > 0 ? own : reaches ? named.x : 0, under)
+}
+
+// `c_typedef_alignment`'s answer for typedef name `sym`: its binding's, or for one a use reaches
+// before its declaration binds it, its declaration's
+def private typedef_name_alignment(var b : CTypes; var p : CParser; sym : int) : int2 {
+    return b.typedef_aligns?[sym] ?? int2(0, 0) if (key_exists(b.typedefs, sym))
+    let ahead = b.typedef_defs?[sym] ?? int2(-1, -1)
+    return int2(0, 0) if (ahead.x < 0)
+    let specs = p.ast.nodes[ahead.x].a
+    var id = p.ast.nodes[ahead.x].b
+    while (id >= 0 && p.ast.nodes[id].a != ahead.y) {
+        id = p.ast.nodes[id].next
+    }
+    let own = c_typedef_aligned(b, p, specs, id >= 0 ? p.ast.nodes[id].d : -1)
+    let base = own >= 0 ? c_specifier_type(b, p, specs) : -1
+    let t = base >= 0 ? c_declarator_type(b, p, base, ahead.y, false) : -1
+    return t < 0 ? int2(0, 0) : c_typedef_alignment(b, p, specs, base, t, own)
+}
+
 // the field and the layout member of one member of type `t`, named `name` ("" for an unnamed
 // bitfield and an anonymous member), of bit width `width` (-1 for no bitfield), declared at
-// token `tok` with the attributes `packed` and `aligned`
+// token `tok` with the attributes `packed` and `aligned`, what an `aligned` typedef makes of `t`
+// `aligns` (`c_typedef_alignment`): linux lays the member out by its alignment, msvc by the type's
+// below the typedefs and keeps it as a requirement
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-members")]
-def private add_member(var b : CTypes; var p : CParser; t : int; name : string; width, tok : int; packed : bool; aligned : int; var dims : array<CirDim>; var fields : array<CirField>; var rec : CLayoutRecord) {
+def private add_member(var b : CTypes; var p : CParser; t : int; name : string; width, tok : int; packed : bool; aligned : int; aligns : int2; var dims : array<CirDim>; var fields : array<CirField>; var rec : CLayoutRecord) {
     c_tag_complete(b, p)
     let u = b.unqualified[t]
     let flexible = width < 0 && b.pool[u].k == "array" && b.pool[u].count < 0
-    var m = CLayoutMember(name = name, size = flexible ? 0l : c_type_size(b, t), align = max(c_type_align(b, t), 1), is_bitfield = width >= 0, width = max(width, 0), is_flexible = flexible, packed = packed, aligned = aligned, required_align = required_align(b, t), at = c_where(p.unit, tok))
+    let align = aligns.x <= 0 ? member_align(b, t) : is_msvc(b.tu.target) ? aligns.y : aligns.x
+    var m = CLayoutMember(name = name, size = member_size(b, t), align = align, is_bitfield = width >= 0, width = max(width, 0), is_flexible = flexible, packed = packed, aligned = aligned, required_align = max(required_align(b, t), aligns.x), at = c_where(p.unit, tok))
     rec.members |> push(m)
     var f = CirField(name = name, t = t, is_bitfield = width >= 0, bit_w = max(width, 0))
     f.dims <- dims
@@ -210,7 +287,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
             return false
         }
         var none : array<CirDim>
-        add_member(b, p, base, "", -1, md.tok, packed, aligned, none, fields, rec)
+        add_member(b, p, base, "", -1, md.tok, packed, aligned, int2(0, 0), none, fields, rec)
         return true
     }
     var x = md.b
@@ -228,7 +305,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
             if (k != "int" && k != "enum") {
                 c_refuse(b, p, node.tok, "a bit-field of other than an integer type")
                 return false
-            } elif (b.fold == null || !invoke(b.fold, b, p, node.b, v) || v < 0l || v > 64l) {
+            } elif (!invoke(b.fold, b, p, node.b, v) || v < 0l || v > 64l) {
                 c_refuse(b, p, p.ast.nodes[node.b].tok, "a bit-field width other than an integer constant from 0 to 64")
                 return false
             }
@@ -237,7 +314,7 @@ def private member_declaration(var b : CTypes; var p : CParser; m : int; var fie
         let sym = node.a >= 0 ? c_declarator_name(p.ast, node.a) : -1
         let name = sym >= 0 ? c_symbol_text(p.unit, sym) : ""
         var dims <- node.a >= 0 ? c_dims(b, p, node.a, t) : array<CirDim>()
-        add_member(b, p, t, name, width, node.tok, own_packed, own_aligned, dims, fields, rec)
+        add_member(b, p, t, name, width, node.tok, own_packed, own_aligned, c_typedef_alignment(b, p, md.a, base, t, 0), dims, fields, rec)
         x = node.next
     }
     return true
@@ -260,7 +337,7 @@ def private build_record(var b : CTypes; var p : CParser; n, pt : int) : bool {
     return false if (!c_layout_attributes(b, p, node.d, rec.packed, rec.aligned))
     rec.ms_struct = has_word(p, node.d, "ms_struct") || has_word(p, node.d, "__ms_struct__")
     var fields : array<CirField>
-    b.defining++
+    // every caller has raised `defining`: a member's own definition is built where it stands
     var m = node.c
     var ok = true
     while (ok && m >= 0) {
@@ -269,13 +346,10 @@ def private build_record(var b : CTypes; var p : CParser; n, pt : int) : bool {
         }
         m = p.ast.nodes[m].next
     }
-    b.defining--
     return false if (!ok || !empty(b.err))
     var layout = c_record_layout(rec)
     if (layout.failed) {
-        if (empty(b.err)) {
-            b.err = layout.err
-        }
+        b.err = layout.err
         return false
     }
     b.pool[pt].fields <- fields
@@ -324,7 +398,7 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
         let en = p.ast.nodes[e]
         var v = next
         var init_t = prev_t
-        if (en.b >= 0 && (b.fold_type == null || !invoke(b.fold_type, b, p, en.b, v, init_t))) {
+        if (en.b >= 0 && !invoke(b.fold_type, b, p, en.b, v, init_t)) {
             c_refuse(b, p, p.ast.nodes[en.b].tok, "an enumerator value other than an integer constant expression")
             return false
         }
@@ -336,7 +410,7 @@ def private build_enum(var b : CTypes; var p : CParser; n, pt : int) : bool {
         let held = msvc ? as_int(v) : v
         let name = c_symbol_text(p.unit, en.a)
         items |> push(CirEnumItem(name = name, v = held))
-        let own_t = v >= -2147483648l && v <= 2147483647l ? int_t : en.b >= 0 ? init_t : v <= 4294967295l && prev_t == int_t ? c_builtin(b, "unsigned int") : prev_t
+        let own_t = v >= -2147483648l && v <= 2147483647l ? int_t : en.b >= 0 ? init_t : prev_t == int_t ? c_builtin(b, "unsigned int") : prev_t
         c_ir_bind(b, en.a, CId(t = own_t, old_style = -1, enum_t = pt, enum_v = v, name = name))
         prev_t = own_t
         lowest = min(lowest, held)
@@ -366,7 +440,6 @@ def private bind_enumerators(var b : CTypes; p : CParser; n, pt : int) {
     let t = c_builtin(b, wide && !b.pool[pt].is_signed ? "unsigned int" : "int")
     var e = p.ast.nodes[n].c
     for (item in b.pool[pt].items) {
-        break if (e < 0)
         c_ir_bind(b, p.ast.nodes[e].a, CId(t = t, old_style = -1, enum_t = pt, enum_v = item.v, name = item.name))
         e = p.ast.nodes[e].next
     }
@@ -385,8 +458,11 @@ def private define_tag(var b : CTypes; var p : CParser; n : int) : int {
         pt = b.tags?[node.a] ?? -1
         if (b.pool[pt].k != kind || kind == "enum" || key_exists(b.layouts, pt) || b.used[pt] >= 0) {
             c_refuse(b, p, node.tok, "{kind_name(p, n)} tag defined again")
-            return -1
+        } else {
+            // only a block reaches here: a file-scope definition is the look-ahead's
+            c_refuse(b, p, node.tok, "{kind_name(p, n)} declared in its block before its definition there, a new incomplete type Dumper A does not lower,")
         }
+        return -1
     } else {
         if (kind == "enum" && node.a >= 0 && key_exists(b.defined_tags, "enum {c_symbol_text(p.unit, node.a)}")) {
             c_refuse(b, p, node.tok, "an enum tag defined again in another scope")
@@ -563,6 +639,9 @@ def c_tag_type(var b : CTypes; var p : CParser; n : int) : int {
     if (kind == "enum" && (defined < 0 || p.ast.nodes[defined].kind != CNode.SPEC_ENUM)) {
         c_refuse(b, p, node.tok, "an enum used before its definition")
         return -1
+    } elif (defined >= 0 && tag_kind(p, defined) != kind) {
+        c_reject(b, p, node.tok, "{kind_name(p, n)} tag whose definition is of another kind")
+        return -1
     }
     let built = defined >= 0 ? b.tag_built?[defined] ?? -1 : -1
     if (built >= 0) {
@@ -592,13 +671,13 @@ def c_tag_complete(var b : CTypes; var p : CParser) : bool {
         var ok = false
         // the definition stands at file scope: its members read the file scope's names
         c_in_file_scope(b) $(var fb) {
-            // the definition stands where a declaration does, not in the type name of the use
-            let in_type_name = fb.in_type_name
+            // the definition stands where a declaration does, not in the type name of the use, whose
+            // specifiers were read before any array size could complete it
             fb.in_type_name = 0
             fb.defining++
             ok = p.ast.nodes[next.x].kind == CNode.SPEC_ENUM ? build_enum(fb, p, next.x, next.y) : build_record(fb, p, next.x, next.y)
+            fb.complete_from[next.y] = p.ast.nodes[next.x].tok
             fb.defining--
-            fb.in_type_name = in_type_name
         }
         return false if (!ok)
     }
@@ -613,7 +692,7 @@ def private look_ahead(var b : CTypes; var p : CParser; specs : int) {
         let n = p.ast.nodes[at]
         if ((n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) && n.b == 1) {
             if (n.a >= 0) {
-                b.tag_defs[n.a] = key_exists(b.tag_defs, n.a) ? -1 : at
+                b.tag_defs[n.a] = at
             }
             var m = n.kind == CNode.SPEC_RECORD ? n.c : -1
             while (m >= 0) {
@@ -685,13 +764,11 @@ def c_tag_definitions(var b : CTypes; var p : CParser; specs : int; library : bo
                 }
                 let idx = c_types_use(b, pt)
                 return false if (!empty(b.err))
-                if (!key_exists(b.anchored, pt)) {
-                    b.anchored[pt] = true
-                    let tok = tag_tok(p, at)
-                    let place = p.unit.toks[tok]
-                    let name = b.pool[pt].name
-                    b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = CirLoc(file = c_file_name(p.unit, place.read_file), line = place.read_line, col = place.col)))
-                }
+                b.anchored[pt] = true
+                let tok = tag_tok(p, at)
+                let place = p.unit.toks[tok]
+                let name = b.pool[pt].name
+                b.tu.decls |> push(new CirDecl(k = n.kind == CNode.SPEC_ENUM ? "enumdef" : "record", name = name, c_name = name, t = idx, loc = CirLoc(file = c_file_name(p.unit, place.read_file), line = place.read_line, col = place.col)))
             }
         }
         at = n.next

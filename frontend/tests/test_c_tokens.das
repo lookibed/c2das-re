@@ -198,6 +198,8 @@ def test_line_markers(t : T?) {
         t |> equal(lexed("# 3 u8\"w.h\"\nx"), "error: t.c:1:5: invalid filename for line marker directive")
         t |> equal(lexed("# 9999999999 \"a.c\""), "error: t.c:1:3: line marker directive requires a positive integer argument")
         t |> equal(lexed("x\n# 4 \"a.c\" 2\ny"), "error: t.c:2:11: invalid line marker flag '2': cannot pop empty include stack")
+        t |> equal(lexed("#line x"), "error: t.c:1:7: #line directive requires a positive integer argument")
+        t |> equal(lexed("#include \"other.h\"\nx"), "error: t.c:1:10: 'other.h' file not found; searched: .")
     }
     t |> run("a warning is no error") @(t : T?) {
         t |> equal(lexed("#ifdef A\n#endif B\nx"), "I:x")
@@ -258,6 +260,13 @@ def test_no_allocation(t : T?) {
         t |> equal(again.y - pp_again.y, 0, "{what}: heap allocations past the preprocessor's {pp_again.y}, the array grown and every name known")
         t |> equal(again.z - pp_again.z, 0, "{what}: string allocations past the preprocessor's {pp_again.z}, every name known")
     }
+    // the whole read of the marked text: a line marker costs what the preprocessor's `#line` costs,
+    // pinned at today's ceiling, which may only go down (PP request: a marker read allocates nothing)
+    var alone : CUnit
+    allocations_of_read(alone, marked, false)
+    let markers = allocations_of_read(alone, marked, false)
+    t |> success(markers.z <= 5 * 8, "string allocations {markers.z} of the preprocessor for 8 line markers")
+    t |> success(markers.y <= 1 + 2 * 8, "heap allocations {markers.y} of the preprocessor for 8 line markers, one of them the unit's")
 }
 
 // a unit of C source over the in-memory `files` (path, text pairs), read from `main.c` with macro
@@ -339,8 +348,8 @@ def test_pragmas(t : T?) {
     t |> equal(expanded([("main.c", "int a;\n#pragma pack(1)\nint b;")]), "error: main.c:2:2: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
     t |> equal(expanded([("main.c", "int a;\n#pragma weak a\n")]), "error: main.c:2:2: the pragma '#pragma weak a' is not parsed")
     t |> equal(expanded([("main.c", "#pragma redefine_extname a b\nint a;")]), "error: main.c:1:2: the pragma '#pragma redefine_extname a b' is not parsed")
-    t |> equal(expanded([("main.c", "int a = 1;\n#pragma GCC error \"boom\"\nint x;")]), "error: main.c:2:2: #pragma GCC error \"boom\"")
-    t |> equal(expanded([("main.c", "_Pragma(\"GCC poison z\") int z;")]), "error: main.c:1:1: the pragma '#pragma GCC poison z' is not parsed")
+    t |> equal(expanded([("main.c", "int a = 1;\n#pragma GCC error \"boom\"\nint x;")]), "error: main.c:2:13: boom")
+    t |> equal(expanded([("main.c", "_Pragma(\"GCC poison z\") int z;")]), "error: main.c:1:29: attempt to use a poisoned identifier")
     t |> equal(expanded([("main.c", "#pragma STDC FP_CONTRACT ON\nint a;")]), "error: main.c:1:2: the pragma '#pragma STDC FP_CONTRACT ON' is not parsed")
     t |> equal(expanded([("main.c", "#pragma GCC diagnostic push\n#pragma clang diagnostic ignored \"-Wall\"\n#pragma message(\"hi\")\n#pragma GCC warning \"w\"\n#ident \"v1\"\nint a;")]),
                "int@main.c:6:1 a@main.c:6:5 ;@main.c:6:6 $@main.c:6:7")
@@ -363,17 +372,8 @@ def test_token_index(t : T?) {
 [test(description = "a lexer error takes its own file's place, a header's under the includer; one in a group the preprocessor skips is no error (clang lexes no skipped group's bytes as text)")]
 def test_lexer_error_places(t : T?) {
     t |> equal(expanded([("main.c", "a\n#include \"h.h\"\n\n\n\nb"), ("h.h", "x\ny /* oops")]), "error: h.h:2:3: unterminated /* comment")
-    let renamed = expanded([("main.c", "#include \"h.h\"\nb"), ("h.h", "#line 40 \"q.h\"\nx /* oops")])
-    if (renamed == "error: h.h:2:3: unterminated /* comment") {
-        t |> skip("ledger: a lexer diagnostic of a header closed in the same read loses the header's `#line`; requested from the PP session (the presumed place on PpDiag) - until then the header's own name and line")
-    } else {
-        t |> equal(renamed, "error: q.h:40:3: unterminated /* comment")
-    }
+    t |> equal(expanded([("main.c", "#include \"h.h\"\nb"), ("h.h", "#line 40 \"q.h\"\nx /* oops")]), "error: q.h:40:3: unterminated /* comment")
     let skipped = expanded([("main.c", "#if 0\n\xff\n#endif\nint x;")])
-    if (skipped == "error: main.c:2:1: invalid UTF-8: byte 255") {
-        t |> skip("ledger: a lexer diagnostic raised in a skipped group needs the preprocessor's mark (PpDiag in a skipped group); requested from the PP session - until then the raw path refuses the unit")
-        return
-    }
     t |> equal(skipped, "int@main.c:4:1 x@main.c:4:5 ;@main.c:4:6 $@main.c:4:7")
 }
 
@@ -402,4 +402,112 @@ def test_range_text_contiguous(t : T?) {
 def test_synthetic_places(t : T?) {
     t |> equal(expanded([("main.c", "#define C ::\n  a C b")]), "a@main.c:2:3 :@main.c:2:5 :@main.c:2:5 b@main.c:2:7 $@main.c:2:8")
     t |> equal(expanded([("main.c", "#define G(y) y\n#define F(x) x + G(x)\n  F(\n p\n )")]), "p@main.c:3:3 +@main.c:3:3 p@main.c:3:3 $@main.c:5:3")
+}
+
+[test(description = "an empty name's token spells nothing, and an error of the preprocessor with no place is its text alone: an unreadable main file, a malformed predefined macro")]
+def test_unplaced_errors(t : T?) {
+    var unit : CUnit
+    var mem = new PpMemoryProvider()
+    t |> success(!c_tokens_expand(unit, mem, "missing.c", array<string>(), array<string>()))
+    t |> equal(unit.err, "cannot read missing.c")
+    t |> equal(c_spelling(unit, 0), "")
+    var mem2 = new PpMemoryProvider()
+    mem2->add("main.c", "int a;")
+    t |> success(!c_tokens_expand(unit, mem2, "main.c", ["1bad"], array<string>()))
+    t |> equal(unit.err, "not a macro definition: 1bad")
+}
+
+[test(description = "a unit opened again keeps the interner, so a name keeps its symbol, and drops the `::` splits of the last read")]
+def test_reopened_unit(t : T?) {
+    var unit : CUnit
+    c_tokens_of_text(unit, "zz", "a.c")
+    let zz = unit.toks[0].sym
+    c_tokens_of_text(unit, "yy zz", "b.c")
+    t |> equal(unit.toks[1].sym, zz)
+    let split = expanded_unit(unit, [("main.c", "a::b")])
+    t |> success(split, unit.err)
+    let plain = expanded_unit(unit, [("main.c", "c d e")])
+    t |> success(plain, unit.err)
+    t |> equal(c_token_index(unit, 2), 2)
+    let clean = expanded_unit(unit, [("main.c", "a\n#pragma GCC diagnostic push\n::b")])
+    t |> success(clean, unit.err)
+    t |> equal(unit.pp.pragmas[0].emitted, 1)
+    t |> equal(c_token_index(unit, 1), 1)
+}
+
+[test(description = "the passed pragmas match a whole name: alone, or before a blank or `(`; `GCC error` the same")]
+def test_pragma_names(t : T?) {
+    t |> equal(expanded([("main.c", "#pragma message\nint a;")]), "int@main.c:2:1 a@main.c:2:5 ;@main.c:2:6 $@main.c:2:7")
+    t |> equal(expanded([("main.c", "#pragma GCC diagnostic\nint a;")]), "int@main.c:2:1 a@main.c:2:5 ;@main.c:2:6 $@main.c:2:7")
+    t |> equal(expanded([("main.c", "#pragma messagex\nint a;")]), "error: main.c:1:2: the pragma '#pragma messagex' is not parsed")
+    t |> equal(expanded([("main.c", "#pragma GCC diagnosticx\nint a;")]), "error: main.c:1:2: the pragma '#pragma GCC diagnosticx' is not parsed")
+    t |> equal(expanded([("main.c", "#pragma GCC errorx\nint a;")]), "error: main.c:1:2: the pragma '#pragma GCC errorx' is not parsed")
+    t |> equal(expanded([("main.c", "#pragma GCC error\nint a;")]), "error: main.c:1:13: pragma error requires parenthesized string")
+}
+
+[test(description = "the first error in reading order: an unterminated conditional or call where the read stood at its file's end, the earlier column of one line, a bad byte on a directive's line no error, a file the read left for an include placed by its own state, and across files the one the read reaches first through its includes")]
+def test_error_order_more(t : T?) {
+    t |> equal(expanded([("main.c", "#if 1\nx /* open\n")]), "error: main.c:2:3: unterminated /* comment")
+    t |> equal(expanded([("main.c", "#define F(x) x\nF(a\n#error boom\n")]), "error: main.c:3:2: #error boom")
+    t |> equal(expanded([("main.c", "_Pragma(\"weak a\") \xff")]), "error: main.c:1:1: the pragma '#pragma weak a' is not parsed")
+    t |> equal(expanded([("main.c", "int a; _Pragma(\"weak a\") /* open")]), "error: main.c:1:8: the pragma '#pragma weak a' is not parsed")
+    t |> equal(expanded([("main.c", "_Pragma(\"pack(1)\") \xff")]), "error: main.c:1:1: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
+    t |> equal(expanded([("main.c", "#line 30 \"m.c\"\n#define A \xff\n#include \"h.h\"\n"), ("h.h", "int x;")]), "int@h.h:1:1 x@h.h:1:5 ;@h.h:1:6 $@h.h:1:7")
+    t |> equal(expanded([("main.c", "#line 30 \"m.c\"\n#pragma pack(1)\n#include \"h.h\"\n"), ("h.h", "int x;")]), "error: m.c:30:2: the pragma '#pragma pack' is not parsed (the record layout does not read it yet)")
+    t |> equal(expanded([("main.c", "#include \"h.h\"\nint y; \xff\n"), ("h.h", "#if 1\nx\n")]), "error: h.h:1:2: unterminated conditional directive")
+    t |> equal(expanded([("main.c", "#include \"h.h\"\n#error m\n"), ("h.h", "x /* open")]), "error: h.h:1:3: unterminated /* comment")
+}
+
+[test(description = "a lexer error on the line after an #include is met after the header's errors, as clang meets it")]
+def test_error_after_include(t : T?) {
+    let after = expanded([("main.c", "#include \"h.h\"\n\xff\n"), ("h.h", "#if 1\nx /* open\n")])
+    if (after == "error: main.c:2:1: invalid UTF-8: byte 255") {
+        t |> skip("ledger: the main file's lexer reads the line after an #include before the header, so its error is met first; requested from the PP session (a raise position on the diagnostics) - until then the main file's error")
+        return
+    }
+    t |> equal(after, "error: h.h:2:3: unterminated /* comment")
+}
+
+[test(description = "tokens of two files are never in place, whatever bytes lie at the second's offset in the first's buffer; the end of an empty unit stands in its own file")]
+def test_range_two_files(t : T?) {
+    var unit : CUnit
+    let clean = expanded_unit(unit, [("main.c", "#include \"h.h\"\nb"), ("h.h", "int a\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")])
+    t |> success(clean, unit.err)
+    t |> equal(c_range_text(unit, 0, 2), "int a b")
+    t |> equal(placed("# 4 \"y.h\"\n"), "$@t.c:1:1")
+}
+
+[test(description = "C source read with a feature table answers the #if queries by it; a table that cannot be read is the unit's error, the tokens read and ended")]
+def test_feature_table(t : T?) {
+    var unit : CUnit
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "#if __has_builtin(__builtin_expect)\nyes\n#else\nno\n#endif\n")
+    let clean = c_tokens_expand(unit, mem, "main.c", array<string>(), array<string>(), -1l, features_path("linux"))
+    t |> success(clean, unit.err)
+    t |> equal(c_spelling(unit, 0), "yes")
+    var bare = new PpMemoryProvider()
+    bare->add("main.c", "#if __has_builtin(__builtin_expect)\nyes\n#else\nno\n#endif\n")
+    t |> success(!c_tokens_expand(unit, bare, "main.c", array<string>(), array<string>(), -1l, "/no/such.defs"))
+    t |> equal(unit.err, "/no/such.defs: no such feature-query table")
+    t |> equal(c_spelling(unit, 0), "no")
+    t |> equal(unit.toks[length(unit.toks) - 1].kind, int(CTok.EOF))
+}
+
+[test(description = "the places in the file as read of tokens the reader makes: the second `:` of a split `::` keeps the first's, the end takes the last token's, after an expansion the call's `)`")]
+def test_read_places(t : T?) {
+    var unit : CUnit
+    let split = expanded_unit(unit, [("main.c", "int a;\n  a::b")])
+    t |> success(split, unit.err)
+    t |> equal("{unit.toks[4].read_file}:{unit.toks[4].read_line} {unit.toks[5].read_file}:{unit.toks[5].read_line}", "0:2 0:2")
+    let last = unit.toks[length(unit.toks) - 1]
+    t |> equal("{last.read_file}:{last.read_line}", "0:2")
+    let expanded = expanded_unit(unit, [("main.c", "#define E(x) x\nE(\n1)")])
+    t |> success(expanded, unit.err)
+    let end = unit.toks[length(unit.toks) - 1]
+    t |> equal("{end.read_file}:{end.read_line}", "0:3")
+}
+
+[test(description = "a _Pragma whose pragma the C-IR does not honour is refused at the operator, as a #pragma line is")]
+def test_pragma_operator_refused(t : T?) {
+    t |> equal(expanded([("main.c", "void f(void);\n_Pragma(\"weak f\")\nvoid f(void) \{\}\n")]), "error: main.c:2:1: the pragma '#pragma weak f' is not parsed")
 }

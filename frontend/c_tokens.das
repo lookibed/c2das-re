@@ -6,6 +6,7 @@ module c_tokens public
 require strings
 require math
 require daslib/strings_boost
+require daslib/algorithm
 require pp_directives public
 require pp_expand
 
@@ -215,11 +216,12 @@ def c_spelling(unit : CUnit; t : int) : string {
 }
 
 // whether token `t` follows token `t - 1` in one file's bytes with nothing but blanks between them:
-// both read from the file, no expansion's, and no directive, skipped group or comment in between
+// no expansion's (a token no expansion made is spelled in its file, after the one before it), of
+// the same buffer, and no directive, skipped group or comment in between
 def private follows(unit : CUnit; data : uint8 const?; t : int) : bool {
     let tok = unit.toks[t]
     let prev = unit.toks[t - 1]
-    return false if (tok.spelled != PpSpelled.source || tok.expanded || tok.buffer != prev.buffer || tok.at < prev.at + prev.len)
+    return false if (tok.expanded || tok.buffer != prev.buffer)
     for (i in range(prev.at + prev.len, tok.at)) {
         let b = int(unsafe(data[i]))
         return false if (b != ' ' && b != '\t' && b != '\n' && b != '\r' && b != '\v' && b != '\f')
@@ -234,7 +236,7 @@ def private follows(unit : CUnit; data : uint8 const?; t : int) : bool {
 def c_range_text(unit : CUnit; first, last : int) : string {
     let head = unit.toks[first]
     let data = head.spelled == PpSpelled.source ? pp_buffer_data(unit.pp, head.buffer) : null
-    var in_place = head.spelled == PpSpelled.source && !head.expanded
+    var in_place = head.spelled == PpSpelled.source
     for (t in range(first + 1, last + 1)) {
         in_place = in_place && follows(unit, data, t)
     }
@@ -411,7 +413,7 @@ class private TextProvider : PpFileProvider {
     bytes : array<uint8>
     def override exists(path : string) : bool => path == self.path
     def override read(path : string; var bytes : array<uint8>) : bool {
-        return false if (path != self.path)
+        // the preprocessor reads only a path `exists` admits
         delete bytes
         bytes <- self.bytes
         return true
@@ -457,7 +459,8 @@ def c_tokens_open(var unit : CUnit; var bytes : array<uint8>; name : string) {
 }
 
 //! Open the unit over the C source `main` read through `provider`, preprocessed with macro
-//! expansion as `pp_expand_start` does it.
+//! expansion as `pp_expand_start` does it; the unit owns `provider` from then on, and the next open
+//! deletes it.
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
 def c_tokens_expand_open(var unit : CUnit; var provider : PpFileProvider?; main : string; predefines : array<string>;
                          search : array<string>; epoch : int64 = -1l) {
@@ -524,13 +527,11 @@ def private kept(var unit : CUnit; kind : int) : CToken {
     return tok
 }
 
-//! The pragmas the C-IR may pass by, as the text after `pragma` starts: a diagnostic's, a message's
-//! and a warning's, which change no C-IR; `#ident` too. Any other pragma the preprocessor records is
-//! refused, `pack` until the record layout reads `pp.packs`.
-let PASSED_PRAGMAS <- fixed_array("GCC diagnostic", "clang diagnostic", "message", "GCC warning")
-
-//! the two diagnostics the preprocessor places at a construct's start but meets at its file's end
-let private MET_AT_END <- fixed_array("unterminated function-like macro invocation", "unterminated conditional directive")
+//! The pragmas the C-IR may pass by, as the text after `pragma` starts: a diagnostic's and a
+//! message's, which change no C-IR; `#ident` too. Any other pragma the preprocessor records is
+//! refused, `pack` until the record layout reads `pp.packs`; `GCC error`, `GCC warning` and
+//! `GCC poison` the preprocessor does itself and records none.
+let PASSED_PRAGMAS <- fixed_array("GCC diagnostic", "clang diagnostic", "message")
 
 //! how far the read took each record the preprocessor fills
 struct private ReadMarks {
@@ -540,12 +541,11 @@ struct private ReadMarks {
     packs : int
 }
 
-//! an error the read met: where it met it in the file as read, and its text
+//! an error the read met: where the read stood when it met it in the file as read, and its text
 struct private Met {
     file : int
     line : int
     col : int
-    at_end : bool       //!< placed at its construct, met at its file's end
     text : string
 }
 
@@ -568,12 +568,50 @@ def private met_at(unit : CUnit; file, line, col : int; what : string) : Met {
     return Met(file = file, line = line, col = col, text = "{unit.pp.names[at.name]}:{at.line}:{col}: {what}")
 }
 
-// `m` in `best` when the read met it first: of one file, the earlier place, a construct met at the
-// file's end after every place; of two files, the one recorded first
-def private earliest(var best : Met; m : Met) {
-    if (empty(best.text)) {
-        best = m
-    } elif (m.file == best.file && (m.at_end != best.at_end ? best.at_end : m.line < best.line || (m.line == best.line && m.col < best.col))) {
+// whether place `a` of a file comes before place `b` of the same file: the earlier line and column
+def private before(a, b : Met) : bool => a.line < b.line || (a.line == b.line && a.col < b.col)
+
+// the places that lead the read to error `m`: from the file read first, each `#include` that entered
+// the next file on the way (its last entry), then `m` itself
+def private reading_path(unit : CUnit; m : Met) : array<Met> {
+    var path : array<Met>
+    path |> push(m)
+    var file = m.file
+    var found = true
+    while (found) {
+        found = false
+        for (k in range(length(unit.pp.inclusions))) {
+            let inc & = unsafe(unit.pp.inclusions[length(unit.pp.inclusions) - 1 - k])
+            if (inc.file == file && inc.skip == PpIncludeSkip.none && inc.from != file) {
+                path |> push(Met(file = inc.from, line = inc.line, col = inc.col))
+                file = inc.from
+                found = true
+                break
+            }
+        }
+    }
+    reverse(path)
+    return <- path
+}
+
+// whether the read met error `m` before error `best`: of one file, the earlier place; of two, the
+// one the read reaches first through the files it includes; of two it cannot order, the one
+// recorded first
+def private met_first(unit : CUnit; m, best : Met) : bool {
+    return before(m, best) if (m.file == best.file)
+    return false if (m.file < 0 || best.file < 0)
+    let a <- reading_path(unit, m)
+    let b <- reading_path(unit, best)
+    return false if (a[0].file != b[0].file)
+    for (x, y in a, b) {
+        return before(x, y) if (x.file != y.file || x.line != y.line || x.col != y.col)
+    }
+    return length(a) < length(b)
+}
+
+// `m` in `best` when the read met it first
+def private earliest(unit : CUnit; var best : Met; m : Met) {
+    if (empty(best.text) || met_first(unit, m, best)) {
         best = m
     }
 }
@@ -584,40 +622,48 @@ def private pragma_refusal(pr : PpPragma) : string {
     for (passed in PASSED_PRAGMAS) {
         return "" if (pr.text == passed || starts_with(pr.text, "{passed} ") || starts_with(pr.text, "{passed}("))
     }
-    return starts_with(pr.text, "GCC error") ? "#pragma {pr.text}" : "the pragma '#pragma {pr.text}' is not parsed"
+    return "the pragma '#pragma {pr.text}' is not parsed"
 }
 
 //! the first error the read met past `marks`, into `unit.err`: the preprocessor's (a warning is
-//! none), the lexer's, a pragma's the C-IR does not pass by
+//! none) where the read stood when it raised it, the lexer's of a token consumed (`done`: every
+//! one, the read over) that clang diagnoses - none in a skipped group or of a directive's line -,
+//! a pragma's the C-IR does not pass by
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
-def private diagnosed(var unit : CUnit; var marks : ReadMarks&) : bool {
+def private diagnosed(var unit : CUnit; var marks : ReadMarks&; done : bool) : bool {
     var best : Met
     for (k in range(marks.diags, length(unit.pp.diags))) {
         let d & = unsafe(unit.pp.diags[k])
         continue if (d.severity == PpSeverity.warning)
         if (d.line == 0) {
-            earliest(best, Met(file = -1, text = d.what))
+            earliest(unit, best, Met(file = -1, text = d.what))
         } else {
-            earliest(best, Met(file = d.file, line = d.line, col = d.col, at_end = has_value(MET_AT_END, d.what),
-                               text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
+            earliest(unit, best, Met(file = d.raised.file, line = d.raised.line, col = d.raised.col,
+                                     text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
         }
     }
-    for (k in range(marks.lexer, length(unit.pp.lx.diags))) {
+    let consumed = done ? length(unit.pp.lx.diags) : unit.pp.lexer_diags_seen
+    for (k in range(marks.lexer, consumed)) {
         let d & = unsafe(unit.pp.lx.diags[k])
-        earliest(best, met_at(unit, d.file, d.line, d.col, d.what))
+        continue if (d.skipped || d.directive)
+        if (d.pline != 0u) {
+            earliest(unit, best, Met(file = d.file, line = d.line, col = d.col, text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
+        } else {
+            earliest(unit, best, met_at(unit, d.file, d.line, d.col, d.what))
+        }
     }
     for (k in range(marks.pragmas, length(unit.pp.pragmas))) {
         let pr & = unsafe(unit.pp.pragmas[k])
         let why = pragma_refusal(pr)
         if (!empty(why)) {
-            earliest(best, Met(file = pr.file, line = pr.line, col = pr.col, text = "{unit.pp.names[pr.pname]}:{int(pr.pline)}:{pr.col}: {why}"))
+            earliest(unit, best, Met(file = pr.file, line = pr.line, col = pr.col, text = "{unit.pp.names[pr.pname]}:{int(pr.pline)}:{pr.col}: {why}"))
         }
     }
     for (k in range(marks.packs, length(unit.pp.packs))) {
         let pk & = unsafe(unit.pp.packs[k])
-        earliest(best, met_at(unit, pk.file, pk.line, pk.col, "the pragma '#pragma pack' is not parsed (the record layout does not read it yet)"))
+        earliest(unit, best, met_at(unit, pk.file, pk.line, pk.col, "the pragma '#pragma pack' is not parsed (the record layout does not read it yet)"))
     }
-    marks = ReadMarks(diags = length(unit.pp.diags), lexer = length(unit.pp.lx.diags), pragmas = length(unit.pp.pragmas), packs = length(unit.pp.packs))
+    marks = ReadMarks(diags = length(unit.pp.diags), lexer = max(marks.lexer, consumed), pragmas = length(unit.pp.pragmas), packs = length(unit.pp.packs))
     unit.err = best.text
     return !empty(unit.err)
 }
@@ -641,7 +687,7 @@ def c_tokens_read(var unit : CUnit) : bool {
     var marks : ReadMarks
     while (true) {
         let more = pp_next_token(unit.pp)
-        break if (diagnosed(unit, marks) || !more)
+        break if (diagnosed(unit, marks, !more) || !more)
         let pk = unit.pp.tok.tok.kind
         let kind = c_kind_of(unit)
         if (pk == int(PpTok.COLONCOLON)) {
@@ -695,9 +741,28 @@ def c_tokens_of_text(var unit : CUnit; text : string; name : string) : bool {
     return c_tokens_read(unit)
 }
 
-//! `c_tokens_expand_open` and `c_tokens_read`.
+//! the feature tables read so far, by path: each read once, every unit given a copy
+var private feature_tables : table<string; PpFeatures>
+
+//! `c_tokens_expand_open` and `c_tokens_read`, the `#if` feature queries answered by the table
+//! `features_path` (`read_features`, read once a path; "" for none, every query 0); a table that
+//! cannot be read is the unit's error.
 def c_tokens_expand(var unit : CUnit; var provider : PpFileProvider?; main : string; predefines : array<string>;
-                    search : array<string>; epoch : int64 = -1l) : bool {
+                    search : array<string>; epoch : int64 = -1l; features_path : string = "") : bool {
     c_tokens_expand_open(unit, provider, main, predefines, search, epoch)
-    return c_tokens_read(unit)
+    var error : string
+    if (!empty(features_path) && !key_exists(feature_tables, features_path)) {
+        var read <- read_features(features_path, error)
+        if (empty(error)) {
+            feature_tables |> emplace(features_path, read)
+        }
+    }
+    if (!empty(features_path) && empty(error)) {
+        unit.pp.eval.features := feature_tables[features_path]
+    }
+    let clean = c_tokens_read(unit)
+    if (!empty(error)) {
+        unit.err = error
+    }
+    return clean && empty(error)
 }

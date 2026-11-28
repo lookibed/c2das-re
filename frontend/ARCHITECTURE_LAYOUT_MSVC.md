@@ -6,9 +6,9 @@ record layout builder: the rules below, each held by `tests/test_c_layout.das` o
 `compare/layout/fixtures/rules.c` or `compare/layout/fixtures/msvc/rules_msvc.c` with clang 22's
 numbers, and compared with clang over the corpora by `compare/layout/` under `--dialect msvc`. The
 sizes of the LLP64 data model (`long` 4 bytes, `long double` 8 bytes aligned to 8) are facts of the
-types, which the caller passes; the interface and the refusals are section 50's.
+types, which the caller passes; the interface and the refusals are section 79's.
 
-## 54. Members and the required alignment {#c-layout-msvc-members}
+## 83. Members and the required alignment {#c-layout-msvc-members}
 
 A member's alignment starts at its type's, is capped by `#pragma pack(n)`, drops to 1 under
 `packed`, and is then raised to what the member requires. `packed` on the record acts as
@@ -21,14 +21,14 @@ to 16 is placed at 16 in a record under `#pragma pack(1)`, and so is any record 
 The type's alignment the caller passes is that of the type below its typedefs: msvc lays a member
 of type `int_a1` (`typedef int int_a1 __attribute__((aligned(1)))`) out as an `int` at 4 and keeps
 the typedef's 1 as a requirement (`required_align`), while an array of `int_a1` has the element's
-alignment, 1. Under `linux` the alignment is the typedef's (section 51), and `required_align` is
+alignment, 1. Under `linux` the alignment is the typedef's (section 80), and `required_align` is
 not read.
 
 A plain member sits at its alignment past the end of the last member, and a union's at 0. The
 record's alignment is the largest of its plain members' and its bitfields' alignments (a union's
 bitfields excepted) and its required alignment.
 
-## 55. Bitfields {#c-layout-msvc-bitfields}
+## 84. Bitfields {#c-layout-msvc-bitfields}
 
 A bitfield of nonzero width goes into the unit of the bitfield before it when that bitfield has
 nonzero width, their declared types have one size, and its bits fit in what the unit has left;
@@ -40,7 +40,7 @@ end to its type's alignment and raises the record's alignment; after anything el
 nothing. In a union every bitfield is at 0 and the union is at least its type's size, and a
 bitfield's alignment does not count for the union's.
 
-## 56. The record's size {#c-layout-msvc-record}
+## 85. The record's size {#c-layout-msvc-record}
 
 The size is the end of the last member rounded up to the members' alignment, then rounded to the
 record's alignment capped by the pack, but never below its required alignment:

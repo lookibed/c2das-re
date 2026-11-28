@@ -380,3 +380,12 @@ def test_review_gate(t : T?) {
     }
     rmdir_rec(root)
 }
+
+[test(description = "the runner's run takes --dumper on: an unknown one and Dumper C with --audit-skips refused with exit 2, Dumper C converting each program it runs", timeout = 600)]
+def test_runner_dumper(t : T?) {
+    let spec = make_suite(path_join(test_temp_dir(), "dumper"), 60.0)
+    t |> equal(run_suite_with(spec, Args(dumper = "z"), @@torture_verdict), 2)
+    t |> equal(run_suite_with(spec, Args(dumper = "c", audit_skips = true), @@torture_verdict), 2)
+    run_suite_with(spec, Args(dumper = "c", filter = "plain"), @@torture_verdict)
+    t |> success(stat(path_join(spec.work_dir, "plain/plain.dumper_c.cir.json")).is_reg)
+}

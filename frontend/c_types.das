@@ -43,7 +43,8 @@ struct CTypes {
     unqualified : array<int>        //!< per pool type, the pool type without its own qualifiers
     typedefs : table<int; int>      //!< a typedef name's symbol to the pool type it names
     untyped : table<int; string>    //!< a library typedef name the builder does not type, and why
-    undo : array<tuple<sym : int; was : int>>   //!< the bindings a block's end restores
+    typedef_aligns : table<int; int2>   //!< a typedef name whose type an `aligned` typedef names to `c_typedef_alignment`'s answer for it
+    undo : array<tuple<sym : int; was : int; was_aligns : int2>>   //!< the bindings a block's end restores
     marks : array<int>
     declared : table<int; bool>     //!< the function names declared so far
     library_dir : string            //!< the own libc headers' folder, whose declarations add no type
@@ -55,6 +56,9 @@ struct CTypes {
     cases : table<int64; bool>      //!< the case values of the innermost switch read so far
     tu_prefix : string              //!< the unit's file stem as an identifier, a file static's prefix
     linkage_names : table<string; string>   //!< a name with internal linkage to its C-IR name
+    external_names : table<string>          //!< a name declared with external linkage
+    program_dir : string                    //!< the program root, `/` last; "" for none: every file but the own headers'
+    in_program_of : table<int; bool>        //!< per file name of the unit, whether its declarations are the program's
     file_scope_names : table<string>        //!< every name declared at file scope or by a block-scope `extern` or prototype
     hoisted_names : table<string>           //!< the names of the statics hoisted so far
     fn_all_locals : table<string>           //!< the parameter and variable names of the function being read, renames included
@@ -83,6 +87,7 @@ struct CTypes {
     tag_defs : table<int; int>              //!< a tag's symbol to its one file-scope definition, built at the tag's first use
     tag_built : table<int; int>             //!< a record or enum specifier with a body to the pool type it defines
     tag_pending : array<int2>               //!< (definition, pool record) a use reached before the definition, not built yet
+    complete_from : table<int; int>         //!< a record or enum built before its definition, to its definition's token: complete only past it
     layouts : table<int; CRecordLayout>     //!< a complete pool record to its layout
     library_tags : table<int; bool>         //!< the pool records and enums an own header defines, anchored where the unit first uses them
     anchored : table<int; bool>             //!< the pool records and enums a `record` or `enumdef` anchor names
@@ -108,6 +113,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.quals |> clear()
     b.unqualified |> clear()
     b.typedefs |> clear()
+    b.typedef_aligns |> clear()
     b.untyped |> clear()
     b.undo |> clear()
     b.marks |> clear()
@@ -122,6 +128,7 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.tag_defs |> clear()
     b.tag_built |> clear()
     b.tag_pending |> clear()
+    b.complete_from |> clear()
     b.layouts |> clear()
     b.library_tags |> clear()
     b.anchored |> clear()
@@ -376,8 +383,6 @@ def c_type_align(b : CTypes; t : int) : int {
     let k = b.pool[u].k
     if (k == "array") {
         return c_type_align(b, b.pool[u].elem)
-    } elif (k == "void") {
-        return -1
     }
     var align = int(c_type_size(b, u))
     if (k == "struct" || k == "union") {
@@ -496,7 +501,7 @@ def private named_type(var b : CTypes; var p : CParser; at : int) : int {
     if (n.kind == CNode.SPEC_TYPEOF_TYPE) {
         return c_type_name_type(b, p, n.a)
     } elif (n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) {
-        let tagged = b.tag_type != null ? invoke(b.tag_type, b, p, at) : -1
+        let tagged = invoke(b.tag_type, b, p, at)
         if (tagged < 0) {
             refuse(b, p, n.tok, n.kind == CNode.SPEC_ENUM ? "an enum type" : "a {c_kind_name(n.op)} type")
         }
@@ -504,7 +509,7 @@ def private named_type(var b : CTypes; var p : CParser; at : int) : int {
     }
     var named = b.typedefs?[n.a] ?? -1
     let ahead = b.typedef_defs?[n.a] ?? int2(-1, -1)
-    if (named < 0 && b.defining > 0 && ahead.x >= 0 && !key_exists(b.untyped, n.a)) {
+    if (named < 0 && ahead.x >= 0 && !key_exists(b.untyped, n.a)) {
         named = c_declarator_type(b, p, c_specifier_type(b, p, p.ast.nodes[ahead.x].a), ahead.y, false)
         return named if (named >= 0 || !empty(b.err))
     }
@@ -596,7 +601,7 @@ def private is_end(p : CParser; d : int) : bool {
 [arch(at="ARCHITECTURE_TYPES.md#c-types-declarators")]
 def private constant_value(var b : CTypes; var p : CParser; n : int; what : string) : int {
     var v = 0l
-    let folded = b.fold != null && invoke(b.fold, b, p, n, v)
+    let folded = invoke(b.fold, b, p, n, v)
     if (!folded) {
         refuse(b, p, p.ast.nodes[n].tok, "an {what} other than an integer constant expression")
         return -2
@@ -782,10 +787,21 @@ def c_type_name_type(var b : CTypes; var p : CParser; t : int) : int {
     return typed
 }
 
-//! Bind typedef name `sym` to pool type `t` in the innermost scope.
-def c_types_bind(var b : CTypes; sym, t : int) {
-    b.undo |> push((sym = sym, was = b.typedefs?[sym] ?? -1))
+//! Bind typedef name `sym` to pool type `t` in the innermost scope, with what an `aligned` typedef
+//! makes of `t` (`c_typedef_alignment`; `x` 0 for none).
+def c_types_bind(var b : CTypes; sym, t : int; aligns : int2 = int2(0, 0)) {
+    b.undo |> push((sym = sym, was = b.typedefs?[sym] ?? -1, was_aligns = b.typedef_aligns?[sym] ?? int2(0, 0)))
     b.typedefs[sym] = t
+    set_aligns(b, sym, aligns)
+}
+
+// typedef name `sym`'s `c_typedef_alignment` answer set to `aligns`, none when its `x` is 0
+def private set_aligns(var b : CTypes; sym : int; aligns : int2) {
+    if (aligns.x > 0) {
+        b.typedef_aligns[sym] = aligns
+    } else {
+        b.typedef_aligns |> erase(sym)
+    }
 }
 
 //! Open a scope of typedef names.
@@ -821,6 +837,7 @@ def c_types_scope_close(var b : CTypes) {
         } else {
             b.typedefs[entry.sym] = entry.was
         }
+        set_aligns(b, entry.sym, entry.was_aligns)
         at--
     }
     b.undo |> resize(mark)
@@ -844,6 +861,7 @@ def c_types_scope_close(var b : CTypes) {
 //! file-scope definition a use in a block reached is built in the scope of its definition.
 def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
     var typedefs_now, tags_now : table<int; int>
+    var aligns_now : table<int; int2>
     var ids_now : table<int; CId>
     var ids_had : table<int; bool>
     if (!empty(b.marks)) {
@@ -852,12 +870,14 @@ def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
             let entry = b.undo[at]
             if (!key_exists(typedefs_now, entry.sym)) {
                 typedefs_now[entry.sym] = b.typedefs?[entry.sym] ?? -1
+                aligns_now[entry.sym] = b.typedef_aligns?[entry.sym] ?? int2(0, 0)
             }
             if (entry.was < 0) {
                 b.typedefs |> erase(entry.sym)
             } else {
                 b.typedefs[entry.sym] = entry.was
             }
+            set_aligns(b, entry.sym, entry.was_aligns)
             at--
         }
     }
@@ -899,6 +919,7 @@ def c_in_file_scope(var b : CTypes; blk : block<(var b : CTypes) : void>) {
         } else {
             b.typedefs[sym] = t
         }
+        set_aligns(b, sym, aligns_now?[sym] ?? int2(0, 0))
     }
     for (sym, t in keys(tags_now), values(tags_now)) {
         if (t < 0) {

@@ -104,6 +104,8 @@ struct MacroIndex {
     arg_marks : table<uint64; array<CirMacroArg>>
     macros : array<CirMacro>
     sites : int
+    // per site id: the canonical file and the offset of its outermost call's name
+    site_places : array<tuple<file : string; at : int>>
     // per outermost expansion: its call's tokens and file, the contexts, the nodes each macro took
     site_toks : array<MTok>
     site_file : string
@@ -990,6 +992,7 @@ def private take_site(var ix : MacroIndex; var canon : table<string; string>; js
     }
     let site = ix.sites
     ix.sites++
+    ix.site_places |> push((file = ix.site_file, at = ix.site_toks[0].at))
     let key = node_key(js)
     if (!key_exists(ix.fn_marks, key)) {
         ix.fn_marks[key] <- array<CirMacroUse>()

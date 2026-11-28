@@ -87,8 +87,8 @@ def c_parser_open_text(var p : CParser; text, name : string; msvc : bool = false
 //! Open the parser as `c_parser_open_text` does, over the C source `main` read through `provider`
 //! and preprocessed with macro expansion (`c_tokens_expand`).
 def c_parser_open_source(var p : CParser; var provider : PpFileProvider?; main : string; predefines, search : array<string>;
-                         msvc : bool = false; epoch : int64 = -1l) : bool =>
-    parser_reset(p, c_tokens_expand(p.unit, provider, main, predefines, search, epoch), msvc)
+                         msvc : bool = false; epoch : int64 = -1l; features_path : string = "") : bool =>
+    parser_reset(p, c_tokens_expand(p.unit, provider, main, predefines, search, epoch, features_path), msvc)
 
 //! the parser reset over the tokens just read, `clean` when they hold no error
 def private parser_reset(var p : CParser; clean, msvc : bool) : bool {

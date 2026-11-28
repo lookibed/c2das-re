@@ -140,7 +140,6 @@ def test_refusals(t : T?) {
     t |> equal(types_of("int (__attribute__((mode(DI))) p);"), "error: t.c:1:21: the attribute 'mode', which changes a type, is not typed yet")
     t |> equal(types_of("void f(int x __attribute__((mode(DI))));"), "error: t.c:1:29: the attribute 'mode', which changes a type, is not typed yet")
     t |> equal(types_of("void f(int n) \{ int a[n]; \}"), "error: t.c:1:23: an array size other than an integer constant expression is not typed yet")
-    t |> equal(types_of("int a[0b11];"), "error: t.c:1:7: the integer literal '0b11', which no type of its list holds, is not typed yet")
     t |> equal(types_of("int a[4294967296];"), "error: t.c:1:7: an array size below 0 or past 2^31 - 1 is not typed yet")
     t |> equal(types_of("int a[1 - 2];"), "error: t.c:1:7: an array size below 0 or past 2^31 - 1 is not typed yet")
     t |> equal(types_of("void f(int n, int (*a)[*]);"), "error: t.c:1:19: a variable-length array is not typed yet")
@@ -249,4 +248,9 @@ def test_branch_scopes(t : T?) {
                "int:32:true:int func:0::false")
     t |> equal(types_of("_Atomic struct S *p;"), "error: t.c:1:1: an _Atomic type is not typed yet")
     t |> equal(types_of("_Alignas(int) int x;"), "error: t.c:1:1: an _Alignas alignment is not typed yet")
+}
+
+[test(description = "a GNU binary literal sizes an array as its base-2 value")]
+def test_binary_size(t : T?) {
+    t |> equal(types_of("int a[0b11];"), "int:32:true:int array:0:3")
 }

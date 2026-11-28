@@ -41,6 +41,11 @@ and never expands a macro outside the hooks PP.3 and PP.4 fill (`ARCHITECTURE_PP
 and 11).** A pragma lost there never reaches the C-IR's ledger, and an expansion here would be a
 second expander beside PP.3's.
 
+**A diff to `pp_directives.das` that reads a token from the lexer passes it through `consumed` -
+`fetch` and `next_on_line` do - when the directive layer takes it (`ARCHITECTURE_PP.md#pp-diags`).**
+A token taken past it leaves its lexer diagnostics unmarked, so a bad byte in `#if 0` refuses a
+valid unit, and a poisoned name in it unreported.
+
 **A diff to `c_tokens.das` or `c_parser.das` never makes a token or a node allocate on its own -
 the allocation tests of `tests/test_c_tokens.das` and `tests/test_c_parse_expr.das` are never
 loosened.**
@@ -72,3 +77,31 @@ reused buffers, spellings - a builtin's value and a `_Pragma` operand among them
 and the call record grows geometrically; `tests/test_pp_expand.das`'s allocation tests are never
 loosened.** A string or an array made per token grows the das heap
 with the size of the expansion, which a macro library makes millions of tokens long.
+
+**A diff to `pp_eval.das` keeps every value 64 bits and a signedness, folded by C11 6.10.1p4's
+rule - an unsigned operand makes the operation unsigned - and computes on the `uint64` bits, never
+on a narrower type or a signed das operation that can overflow; it adds a case pinned against
+clang to `tests/test_pp_eval.das` for each rule it changes, and runs `das compare/pp/run.das --
+--pp4 --corpus pp4 --corpus pp3 --corpus frontend` with its class counts stated.** The sign of a
+converted operand is the trap every hand-written evaluator falls into (`L'\0' - 1 > 0`), and a das
+`int64` overflow or `INT64_MIN / -1` is undefined behaviour in the evaluator itself.
+
+**`predefined/*_features.defs` is generated from the pinned clang, never edited by hand: a change
+to it is the output of `das compare/pp/run.das -- --features` (`ARCHITECTURE_EVAL.md#pp-eval-features`).**
+A hand-written answer is a guess about clang that no oracle can see, since the query's answer
+changes which group a unit reads.
+
+**A diff to `pp_record.das` or to the record in `pp_expand.das` keeps every reader allocation-free
+for a token, a call and an argument - a text goes into the caller's buffer, a place or a copy is
+read in place, and a view in place is given only of bytes that live for the whole unit - and never
+loosens `tests/test_pp_expand.das`'s `test_record_readers_allocate_nothing`; the diff's author
+runs the record's oracle (`das compare/pp/run.das -- --pp5 --corpus fixtures --list
+compare/pp/fixtures/pp5/lua.txt`) and states the counts in the pull request.** Dumper C reads
+the record once per token of a unit while the unit is still read, so a view into a pool that grows
+dangles; and Dumper A's marks are the only outside check of what the record says.
+
+**A macro fact Dumper C writes into the C-IR - a site, an argument's text, a copy, a `macros`
+entry - is read from the expansion record (`ARCHITECTURE_EXPAND.md#pp-record`), never derived
+again by matching spellings or re-reading a `#define`.** A second derivation would be a second
+answer to the question the record already answers exactly, the way Dumper A has to match.
+

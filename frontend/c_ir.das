@@ -5,6 +5,8 @@ module c_ir public
 
 require strings
 require daslib/strings_boost
+require daslib/cmp
+require daslib/fio
 require math
 require c_exprs public
 require c_records public
@@ -19,9 +21,13 @@ require c_consts public
 let C_IR_PRODUCER = "c2das-dumper-c 0.1"
 
 //! Open the builder over the dialect `target` with an empty unit; `library_dir` is the own libc
-//! headers' folder (`c_types_open`).
-def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
+//! headers' folder (`c_types_open`), `program_dir` the program root ("": every other file is the
+//! program's), each with `/` last.
+def c_ir_open(var r : CIr; target : CirTarget; library_dir : string; program_dir : string = "") {
     c_types_open(r, target, library_dir)
+    r.program_dir = program_dir
+    r.in_program_of |> clear()
+    r.external_names |> clear()
     r.tu.decls |> clear()
     r.ids |> clear()
     r.id_undo |> clear()
@@ -99,7 +105,7 @@ def private parameters(var r : CIr; var p : CParser; f : int; var into : array<C
     var param = p.ast.nodes[f].b
     while (param >= 0) {
         let pt = c_param_type(r, p, param)
-        return false if (pt < 0 || !c_tag_complete(r, p))
+        return false if (pt < 0)
         let t = c_types_use(r, pt)
         let pname = name_of(p, p.ast.nodes[param].b)
         into |> push(CirParam(name = defines ? local_name(r, pname) : pname, t = t))
@@ -175,12 +181,24 @@ def private local_name(var r : CIr; c_name : string) : string {
     return name
 }
 
-// the C-IR name of a file-scope declaration of `c_name`: `<stem>__<name>` with internal linkage,
-// which a later declaration without `static` keeps (C11 6.2.2p4), else its own
+// the C-IR name of a declaration of `c_name` with linkage at token `tok`: `<stem>__<name>` with
+// internal linkage, which a later declaration without `static` keeps (C11 6.2.2p4), else its own;
+// "" with the error set where clang rejects the linkage (6.2.2p7): a `static` declaration after one
+// with external linkage, or a `plain_object` (a file-scope object with no storage class) after a
+// `static` one
 [arch(at="ARCHITECTURE_NAMES.md#c-names-statics")]
-def private linkage_name(var r : CIr; c_name : string; is_static : bool) : string {
+def private linkage_name(var r : CIr; p : CParser; c_name : string; is_static, plain_object : bool; tok : int) : string {
+    if (is_static && key_exists(r.external_names, c_name)) {
+        c_reject(r, p, tok, "a static declaration of '{c_name}' after a non-static one")
+        return ""
+    } elif (plain_object && key_exists(r.linkage_names, c_name)) {
+        c_reject(r, p, tok, "a non-static declaration of '{c_name}' after a static one")
+        return ""
+    }
     if (is_static) {
         r.linkage_names[c_name] = "{r.tu_prefix}__{c_name}"
+    } elif (!key_exists(r.linkage_names, c_name)) {
+        r.external_names |> insert(c_name)
     }
     return r.linkage_names?[c_name] ?? c_name
 }
@@ -201,10 +219,7 @@ def private collect_names(var p : CParser; s : int; var locals, externs : table<
                 externs |> insert(name)
                 var param = p.ast.nodes[f].op == 2 ? -1 : p.ast.nodes[f].b
                 while (param >= 0) {
-                    let pname = name_of(p, p.ast.nodes[param].b)
-                    if (!empty(pname)) {
-                        locals |> insert(pname)
-                    }
+                    locals |> insert(name_of(p, p.ast.nodes[param].b))
                     param = p.ast.nodes[param].next
                 }
             } else {
@@ -268,10 +283,15 @@ def private collect_file_scope_names(var r : CIr; var p : CParser; u : int) {
 // type, then its parameters, and its declaration, unless a block declaration of a name declared
 // before, which adds nothing
 def private function_declaration(var r : CIr; var p : CParser; sym, spelled, f : int; local, is_static : bool; at : CirLoc; tok : int) : bool {
+    if (local && is_static) {
+        c_reject(r, p, tok, "a function declared in a block with static storage")
+        return false
+    }
     let t = c_linked(r, p, spelled, sym, f, tok)
     return false if (t < 0)
     let name = c_symbol_text(p.unit, sym)
-    let linked = linkage_name(r, name, is_static && !local)
+    let linked = linkage_name(r, p, name, is_static, false, tok)
+    return false if (empty(linked))
     var fid = function_id(r, p, sym, t, f)
     fid.name = linked
     c_ir_bind(r, sym, fid)
@@ -322,9 +342,10 @@ def private static_assertion(var r : CIr; var p : CParser; n : CNodeRec) : bool 
 }
 
 // typedef declaration `sym` (`name`) of pool type `t` at `at`: the name bound in its scope, so a
-// record its type reached first sees it, then its type, its entry by the name and its declaration
-def private typedef_declaration(var r : CIr; var p : CParser; sym : int; name : string; t : int; at : CirLoc) : bool {
-    c_types_bind(r, sym, t)
+// record its type reached first sees it, with what an `aligned` typedef makes of `t` (`aligns`), then
+// its type, its entry by the name and its declaration
+def private typedef_declaration(var r : CIr; var p : CParser; sym : int; name : string; t : int; aligns : int2; at : CirLoc) : bool {
+    c_types_bind(r, sym, t, aligns)
     return false if (!c_tag_complete(r, p))
     var td = CirType(k = "typedef", name = name, to = c_types_use(r, t))
     let entry = c_types_intern_typedef(r, td)
@@ -358,6 +379,7 @@ def private variable(var r : CIr; var g : CirDecl?; sym : int; global, is_static
         into |> push(new CirStmt(s = "null", loc = at))
     } elif (is_extern) {
         if (!key_exists(r.declared, sym)) {
+            // an undeclared name has no internal linkage: linkage_names holds declared names alone
             g.is_extern = true
             r.tu.decls |> push(g)
         } else {
@@ -383,11 +405,12 @@ def private declaration_tags(var r : CIr; var p : CParser; decl : int) : bool {
     return c_tag_definitions(r, p, n.a, false)
 }
 
-// the C-IR name of object `name` declared `global`ly or in a block: a file-scope or `extern` one's
-// linkage name, a hoisted static's `<fn>_<name>` (recorded as hoisted), a local's own
-def private object_name(var r : CIr; name : string; global, is_static, is_extern : bool) : string {
+// the C-IR name of object `name` declared `global`ly or in a block at token `tok`: a file-scope or
+// `extern` one's linkage name ("" with the error set where clang rejects it), a hoisted static's
+// `<fn>_<name>` (recorded as hoisted), a local's own
+def private object_name(var r : CIr; p : CParser; name : string; global, is_static, is_extern : bool; tok : int) : string {
     if (global || (is_extern && !is_static)) {
-        return linkage_name(r, name, global && is_static)
+        return linkage_name(r, p, name, global && is_static, global && !is_static && !is_extern, tok)
     } elif (!is_static) {
         return local_name(r, name)
     }
@@ -431,7 +454,9 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         return false if (t < 0)
         r.anchor_at = at
         if (typedef_decl) {
-            return false if (!typedef_declaration(r, p, sym, name, t, at))
+            // an `aligned` the builder refuses has set the unit's error, which ends it
+            let own = c_typedef_aligned(r, p, n.a, p.ast.nodes[id].d)
+            return false if (!typedef_declaration(r, p, sym, name, t, c_typedef_alignment(r, p, n.a, base, t, own), at))
             continue
         }
         return false if (!c_tag_complete(r, p))
@@ -443,7 +468,8 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         return false if (t < 0)
         let ti = c_types_use(r, t)
         let global = empty(fn)
-        let linked = object_name(r, name, global, is_static, is_extern)
+        let linked = object_name(r, p, name, global, is_static, is_extern, p.ast.nodes[id].tok)
+        return false if (empty(linked))
         c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked, automatic = !global && !is_static && !is_extern))
         let init = p.ast.nodes[id].b
         r.init_static = global || is_static
@@ -673,7 +699,7 @@ def private declaration_of(p : CParser; old, d : int) : int {
 }
 
 // the names definition `name` of function declarator `f`, body `body` and old-style parameter
-// names `old_names` keeps while it is read (`ARCHITECTURE_NAMES.md` section 47)
+// names `old_names` keeps while it is read (`ARCHITECTURE_NAMES.md` section 87)
 [arch(at="ARCHITECTURE_NAMES.md#c-names-locals")]
 def private function_names(var r : CIr; var p : CParser; name : string; f, body : int; old_names : array<string>) {
     r.fn_name = name
@@ -682,7 +708,8 @@ def private function_names(var r : CIr; var p : CParser; name : string; f, body 
     for (pname in old_names) {
         r.fn_all_locals |> insert(pname)
     }
-    var param = p.ast.nodes[f].op == 2 || c_is_void_list(r, p, p.ast.nodes[f].b) ? -1 : p.ast.nodes[f].b
+    // a `(void)` list's one parameter names "", which no name spells
+    var param = p.ast.nodes[f].op == 2 ? -1 : p.ast.nodes[f].b
     while (param >= 0) {
         r.fn_all_locals |> insert(name_of(p, p.ast.nodes[param].b))
         param = p.ast.nodes[param].next
@@ -733,8 +760,8 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     return false if (!c_tag_complete(r, p))
     let t = spelled < 0 ? spelled : c_linked(r, p, spelled, sym, f, p.ast.nodes[n.b].tok)
     let ti = c_types_use(r, t)
-    return false if (ti < 0)
-    let linked = linkage_name(r, name, has_storage(p, n.a, CTok.STATIC))
+    let linked = ti < 0 ? "" : linkage_name(r, p, name, has_storage(p, n.a, CTok.STATIC), false, name_tok(p, d, n.tok))
+    return false if (empty(linked))
     var cd = new CirDecl(k = "func", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), loc = loc_of(p, name_tok(p, d, n.tok)))
     r.declared[sym] = true
     if (old_style) {
@@ -751,7 +778,6 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     var ok = true
     if (old_style) {
         cd.params |> reserve(length(typed))
-        return false if (!c_tag_complete(r, p))
         for (pt, pname in typed, names) {
             let local = local_name(r, pname)
             cd.params |> push(CirParam(name = local, t = c_types_use(r, pt)))
@@ -759,7 +785,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
         }
     } else {
         ok = parameters(r, p, f, cd.params, true)
-        var param = c_is_void_list(r, p, p.ast.nodes[f].b) ? -1 : p.ast.nodes[f].b
+        var param = p.ast.nodes[f].b
         var at = 0
         while (ok && param >= 0) {
             let psym = c_declarator_name(p.ast, p.ast.nodes[param].b)
@@ -770,7 +796,7 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
             param = p.ast.nodes[param].next
         }
     }
-    r.ret = r.unqualified[r.pool[t].ret]
+    r.ret = r.pool[t].ret
     var body : array<CirStmt?>
     ok = ok && statement(r, p, n.d, name, body)
     c_types_scope_close(r)
@@ -784,11 +810,27 @@ def private definition(var r : CIr; var p : CParser; def_node : int) : bool {
     return ok
 }
 
-// whether external declaration `decl` stands in a file under the own libc headers' folder
-def private in_library(r : CIr; p : CParser; decl : int) : bool {
-    return false if (empty(r.library_dir))
-    let file = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].file)
-    return starts_with(file, r.library_dir)
+// whether external declaration `decl` stands in a file that is no file of the program, whose
+// declarations are a library's: under the own libc headers' folder, or outside the program root,
+// as Dumper A leaves them out
+[arch(at="ARCHITECTURE_TYPES.md#c-types-library")]
+def private in_library(var r : CIr; p : CParser; decl : int) : bool {
+    let file = p.unit.toks[p.ast.nodes[decl].tok].read_file
+    if (!key_exists(r.in_program_of, file)) {
+        let name = c_file_name(p.unit, file)
+        let full = empty(r.program_dir) ? name : get_full_file_name(name)
+        r.in_program_of[file] = (empty(r.library_dir) || !starts_with(name, r.library_dir)) && (empty(r.program_dir) || starts_with(full, r.program_dir))
+    }
+    return !(r.in_program_of?[file] ?? true)
+}
+
+// the error, at external declaration `decl`, of a C file outside the program root, whose
+// definitions would stay external, as Dumper A gives it; false when there is none
+def private outside_c_file(var r : CIr; p : CParser; decl : int) : bool {
+    let name = c_file_name(p.unit, p.unit.toks[p.ast.nodes[decl].tok].read_file)
+    return false if (empty(r.program_dir) || !ends_with(name, ".c"))
+    r.err = "{c_where(p.unit, p.ast.nodes[decl].tok)}: {name} is a C file outside the program root {r.program_dir}: its definitions would stay external; the sidecar's `program_root` widens the root"
+    return true
 }
 
 // the tags specifier list `specs` defines, whose definition the builder refused, each to the
@@ -799,7 +841,6 @@ def private library_tags_untyped(var r : CIr; p : CParser; specs : int) {
         let n = p.ast.nodes[at]
         if ((n.kind == CNode.SPEC_RECORD || n.kind == CNode.SPEC_ENUM) && n.b == 1 && n.a >= 0 && !key_exists(r.tag_built, at)) {
             r.untyped_tags[n.a] = r.err
-            r.tags |> erase(n.a)
         }
         at = n.next
     }
@@ -822,8 +863,10 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
     while (id >= 0) {
         let d = p.ast.nodes[id].a
         let sym = c_declarator_name(p.ast, d)
-        let t = c_plain_attributes(r, p, p.ast.nodes[id].d) ? c_declarator_type(r, p, c_specifier_type(r, p, n.a), d, false) : -1
-        if (t < 0) {
+        let base = c_plain_attributes(r, p, p.ast.nodes[id].d) ? c_specifier_type(r, p, n.a) : -1
+        let t = base >= 0 ? c_declarator_type(r, p, base, d, false) : -1
+        let own = typedef_decl && t >= 0 ? c_typedef_aligned(r, p, n.a, p.ast.nodes[id].d) : 0
+        if (t < 0 || own < 0) {
             if (typedef_decl) {
                 r.untyped[sym] = r.err
             } else {
@@ -831,7 +874,7 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
             }
             r.err = ""
         } elif (typedef_decl) {
-            c_types_bind(r, sym, t)
+            c_types_bind(r, sym, t, c_typedef_alignment(r, p, n.a, base, t, own))
         } elif (r.pool[t].k == "func") {
             r.declared[sym] = true
             r.library_functions[sym] = int2(decl, is_def ? n.b : id)
@@ -868,6 +911,7 @@ def c_ir_unit(var r : CIr; var p : CParser; u : int) : bool {
     r.unit_items = at
     while (empty(r.err) && at >= 0) {
         if (in_library(r, p, at)) {
+            break if (outside_c_file(r, p, at))
             library_declaration(r, p, at)
         } elif (p.ast.nodes[at].kind == CNode.FUNC_DEF) {
             definition(r, p, at)

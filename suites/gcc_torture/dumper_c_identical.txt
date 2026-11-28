@@ -211,6 +211,12 @@ linux 20040311-1
 linux 20040313-1
 linux 20040319-1
 linux 20040331-1
+linux 20040409-1
+linux 20040409-1w
+linux 20040409-2
+linux 20040409-2w
+linux 20040409-3
+linux 20040409-3w
 linux 20040625-1
 linux 20040629-1
 linux 20040703-1
@@ -1041,6 +1047,7 @@ linux vrp-4
 linux vrp-5
 linux vrp-6
 linux vrp-7
+linux widechar-1
 linux zero-struct-1
 msvc 20000112-1
 msvc 20000113-1
@@ -1254,6 +1261,12 @@ msvc 20040311-1
 msvc 20040313-1
 msvc 20040319-1
 msvc 20040331-1
+msvc 20040409-1
+msvc 20040409-1w
+msvc 20040409-2
+msvc 20040409-2w
+msvc 20040409-3
+msvc 20040409-3w
 msvc 20040625-1
 msvc 20040629-1
 msvc 20040703-1
@@ -2084,4 +2097,5 @@ msvc vrp-4
 msvc vrp-5
 msvc vrp-6
 msvc vrp-7
+msvc widechar-1
 msvc zero-struct-1

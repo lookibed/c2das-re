@@ -4,7 +4,8 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 describes `c_records.das`, which builds a unit's struct, union and enum types, and what
 `c_types.das`, `c_exprs.das` and `c_ir.das` do with them, so that the C-IR equals Dumper A's
 (`converter/ARCHITECTURE_DUMPER.md` section 3, `docs/c-ir-spec.md` section 3). The layout of a
-record is `ARCHITECTURE_LAYOUT.md`'s.
+record is `ARCHITECTURE_LAYOUT.md`'s. `tests/test_c_records.das` holds each construct under both
+dialects and every refusal with its place.
 
 ## 61. Tags and definitions {#c-records-definitions}
 
@@ -20,8 +21,10 @@ included): the use marks it, and it is built once the declaration of the use is 
 definition: the file scope's typedef names, tags and identifiers alone, a block's that holds the use
 set aside (`c_in_file_scope`); such a definition's members may name a typedef the unit declares at
 file scope after the use (each typedef name's one file-scope declaration is found with the
-definitions). A record never
-defined is incomplete: its entry has size and alignment -1 and no field.
+definitions). A record built so is complete only past its definition (`CTypes.complete_from`):
+its size and a member access before it are invalid C, as clang reads them, and a use of a tag
+whose one definition is of another kind is too. A record never defined is incomplete: its entry
+has size and alignment -1 and no field.
 
 An enum named before its one file-scope definition (`typedef enum foo E;` first) takes it the same
 way; any other enum named before its definition is refused. A tag defined again in another scope
@@ -34,8 +37,9 @@ a tag only declared do not count; `struct S` and `union S` are two spellings); a
 again is refused, as Dumper A binds its constants by place. A definition is built where a
 declaration, a member or the walk stands; one in a parameter list or a type name, a member's array
 size among them, is refused, and
-so are a tag defined again in its own scope and a tag of another kind. glibc's `struct
-__jmp_buf_tag`, which Dumper A holds as the opaque `jmp_buf`, is refused, and with it `jmp_buf`. 
+so are a tag defined again in its own scope, a tag of another kind, and a tag declared in a block
+before its definition there (Dumper A refuses a block's lone `struct T;` of a tag the file defines). glibc's `struct
+__jmp_buf_tag`, which Dumper A holds as the opaque `jmp_buf`, is refused, and with it `jmp_buf`.
 A record's initializer is `ARCHITECTURE_INITS.md`'s. A record or enum with no tag that a typedef declares is named, as clang names it for linkage,
 by the typedef's first declarator that is the name alone, in parentheses or not (`typedef struct {
 ... } Q;`, `(Q)`), when the specifiers carry no qualifier (`typedef const struct { ... } CQ;` names
@@ -65,7 +69,14 @@ no tag, and any other declaration that declares no member is refused. An array o
 a flexible member. Each member is described to the layout by its type's size and alignment, its
 bit width, its own `packed` and `aligned`, and under msvc the layout requirement of a record it
 holds (through arrays); the layout refuses what it does not lay out, a member of incomplete type
-among them.
+among them. Under linux a `long double` there is 16 bytes aligned to 16, in an array too, while the
+C-IR's type and `sizeof` keep Dumper A's 8. A typedef's `aligned` (in its specifiers or after its
+declarator, bound with the name in its scope) sets the alignment of the types it names through
+arrays and later typedefs, lowering it too, the outermost such typedef's value winning
+(`c_typedef_alignment`): linux lays the member out by it, msvc by the alignment of the type below
+the member's typedef names, and requires it (`ARCHITECTURE_LAYOUT_MSVC.md`). A pointer to such a
+type is plain. An own header's typedef whose `aligned` the builder refuses is a typedef it does not
+type.
 
 ## 64. Layout attributes {#c-records-attributes}
 

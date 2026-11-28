@@ -260,7 +260,7 @@ def private dumper_c_child(c_path, out_dir : string; target : CirTarget; clang :
         argv |> push_from(["-load_module", path_join(root, folder)])
     }
     let cir_path = path_join(out_dir, "{file_stem(c_path)}.dumper_c.cir.json")
-    argv |> push_from([path_join(root, "converter/dumper_c_main.das"), "--", c_path, is_msvc(target) ? "msvc" : "linux", clang, cir_path])
+    argv |> push_from([path_join(root, "converter/dumper_c_main.das"), "--", c_path, is_msvc(target) ? "msvc" : "linux", clang, cir_path, inputs.program_root])
     var out : string
     if (run_and_capture(argv, out, 300.0) != 0) {
         error = strip(out)
@@ -461,7 +461,7 @@ def convert_program(c_paths : array<string>; out_dir : string; target_name : str
             refused.error = census ? "--edge-census reports the cycles among a program's files; one file has none" : option_error("", "", layout, "")
             return <- refused
         }
-        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers, fn_macros, forms_off)
+        return <- convert(c_paths[0], out_dir, target_name, clang, sidecar_path, param_writes, loops, first_member, switch_dispatch, no_solid_context, checks, past_end, inline_helpers, fn_macros, forms_off, dumper)
     }
     var res : ConvertResult
     res.error = refused_files(c_paths, out_dir)

@@ -98,6 +98,19 @@ struct PpDiag {
     line : int
     col : int
     what : string
+    skipped : bool      //!< met in a group the directive layer skips, which clang scans for directives alone and does not diagnose
+    directive : bool    //!< the bad byte of a token on a directive's line, which clang does not diagnose
+    undecided : bool    //!< met in a group an undecided conditional chose, which may not be clang's
+    pname : int         //!< the presumed file name `#line` gives the place, an index of the directive layer's `names`
+    pline : uint        //!< the presumed line; both the directive layer's to set, 0 under the lexer alone
+}
+
+//! A place in a file: its id, byte offset, line and column, as a token's.
+struct PpPlace {
+    file : int
+    offset : int
+    line : int
+    col : int
 }
 
 //! The lexer over one file at a time: `pp_open` hands it the file's bytes, `pp_next` reads one token
@@ -268,7 +281,7 @@ def private advance(var lx : FlexLexer; stop : int) {
 def private skip_comment(var lx : FlexLexer) {
     let close = find(lx.bytes, "*/", lx.pos)
     if (close < 0) {
-        lx.pos = lx.len
+        advance(lx, lx.len)
         lx.failed = true
         lx.err = "unterminated /* comment"
         return
@@ -520,6 +533,23 @@ def pp_next(var lx : PpLexer) : bool {
         diagnose(lx, "invalid UTF-8: byte {int(lx.flex.bytes[t.start])}")
     }
     return true
+}
+
+//! Where the reader stands: the current token's place, or past the file's last byte once `pp_next`
+//! answered false - the line and column after its last newline, through the splices as a token is.
+[arch(at="ARCHITECTURE.md#pp-phases")]
+def pp_reader_place(lx : PpLexer) : PpPlace {
+    if (lx.tok.kind != int(PpTok.EOF)) {
+        return PpPlace(file = lx.file, offset = lx.tok.offset, line = lx.tok.line, col = lx.tok.col)
+    }
+    let count = length(lx.splices)
+    let pos = lx.flex.pos
+    return PpPlace(file = lx.file, offset = pos, line = lx.flex.line, col = lx.flex.col) if (count == 0)
+    let last = lx.splices[count - 1]
+    let offset = pos + last.orig - last.at
+    let line_start = pos - (lx.flex.col - 1)
+    return PpPlace(file = lx.file, offset = offset, line = lx.flex.line + count,
+                   col = last.at >= line_start ? offset - last.orig + 1 : lx.flex.col)
 }
 
 //! `pp_next` with a header name allowed (C11 6.4.7): `<...>` or `"..."` is one HEADER_NAME token;
