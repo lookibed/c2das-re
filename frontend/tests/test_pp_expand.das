@@ -910,3 +910,121 @@ def test_record_readers_allocate_nothing(t : T?) {
     t |> success(copies > 0)
     t |> equal("{int(string_heap_allocation_count()) - strings} strings, {int(heap_allocation_count()) - before} heap blocks", "0 strings, 0 heap blocks")
 }
+
+[test(description = "a call after a directive line's call is no call of a directive line: in_line ends with the line")]
+def test_in_line_ends_with_the_line(t : T?) {
+    var pp <- started([("main.c", "#define F(x) [x]\n#if F(1)\n#endif\nF(2)\n")])
+    stream(pp)
+    t |> equal(call_tree(pp), "F -1/-1.-1/0 line (1); F -1/-1.-1/1 (2)")
+}
+
+[test(description = "a call nested in a later argument of a call is pooled when that argument is, whatever the earlier arguments are")]
+def test_argument_text_nested_in_a_later_argument(t : T?) {
+    var pp <- started([("main.c", "#define A(x, y) x y\n#define B(z) <z>\nA(B(0), B(1\n#ifdef Z\n#endif\n+2))\n")])
+    stream(pp)
+    let kinds <- [for (a in pp.expansion.call_args); "{a.text}"]
+    t |> equal(call_tree(pp), "A -1/-1.-1/0 (B(0)|B(1 +2)); B -1/0.0/0 (0); B -1/0.1/0 (1 +2)")
+    t |> equal(join(kinds, " "), "source pooled source pooled")
+}
+
+[test(description = "a pooled argument's text has no blank before its first token, though that token had space")]
+def test_pooled_argument_no_leading_blank(t : T?) {
+    var pp <- started([("main.c", "#define F(x) x\nF(  c\n#define N\nd)\n")])
+    stream(pp)
+    t |> equal("{pp.expansion.call_args[0].text} '{arg_text(pp, 0, 0)}'", "pooled 'c d'")
+}
+
+[test(description = "a call written in a #define is a body text when it elides the variadic argument or passes the variadic part with commas")]
+def test_body_argument_of_a_variadic_call(t : T?) {
+    var pp <- started([("main.c", "#define V(a, ...) a\n#define W(q) V(q)\n#define U(q) V(q, 2, 3)\nW(1) U(4)\n")])
+    stream(pp)
+    let kinds <- [for (a in pp.expansion.call_args); "{a.text}"]
+    t |> equal(call_tree(pp), "W -1/-1.-1/0 (1); V 0/-1.-1/0 (q|); U -1/-1.-1/2 (4); V 2/-1.-1/2 (q|2, 3)")
+    t |> equal(join(kinds, " "), "source body empty source body body")
+}
+
+[test(description = "a substitution makes one copy entry per run of tokens that were in one copy before - a new entry where the run changes, none per token and none for a placemarker")]
+def test_copy_entries_per_run(t : T?) {
+    t |> equal(copy_chains("#define A(x) x\n#define B(y) y\nA(B(1) 2)\n"), "1:0.0:1.0 2:0.0")
+    var pp <- started([("main.c", "#define B(y) [y y]\n#define A(x) B(x) x\nA(t u)\n")])
+    stream(pp)
+    t |> equal(length(pp.expansion.copies), 5)
+    var pm <- started([("main.c", "#define P(a, b) [a ## b] b\nP(, y z)\n")])
+    stream(pm)
+    t |> equal(length(pm.expansion.copies), 3)
+}
+
+[test(description = "pooled arguments grow the record geometrically and read back with no allocation: a unit of many calls whose arguments a directive splits")]
+def test_pooled_arguments_allocate_nothing(t : T?) {
+    let text = "#define F(x) [x]\nfirst\n" + repeat("F(a\n#define N\nb) ", 1000)
+    var pp <- started([("main.c", text)])
+    t |> success(pp_next_token(pp))
+    let heap = int(heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    let record_blocks = int(heap_allocation_count()) - heap
+    t |> equal(count, 4000)
+    t |> success(record_blocks <= 96, "{record_blocks} heap blocks over {length(pp.expansion.calls)} calls")
+    var buffer : array<uint8>
+    buffer |> reserve(64)
+    let strings = int(string_heap_allocation_count())
+    let before = int(heap_allocation_count())
+    var total = 0
+    for (c in range(length(pp.expansion.calls))) {
+        buffer |> clear()
+        pp_call_arg_text(pp, c, 0, buffer)
+        total += length(buffer)
+    }
+    t |> equal(total, 3 * 1000)
+    t |> equal("{int(string_heap_allocation_count()) - strings} strings, {int(heap_allocation_count()) - before} heap blocks", "0 strings, 0 heap blocks")
+}
+
+[test(description = "a macro's one-line text keeps an escaped quote inside a literal: the literal runs past it, its blanks kept")]
+def test_macro_text_escaped_quote(t : T?) {
+    t |> equal(macro_texts("#define Q \"a\\\"  b\"  x\n"), "#define Q \"a\\\"  b\" x")
+}
+
+[test(description = "an object-like macro is never one the C-IR marks")]
+def test_object_like_not_markable(t : T?) {
+    var pp <- started([("main.c", "#define O 1\n#define F(x) x\n")])
+    stream(pp)
+    t |> success(!pp_macro_markable(pp, pp_macro_index(pp, "O")))
+    t |> success(pp_macro_markable(pp, pp_macro_index(pp, "F")))
+}
+
+[test(description = "a macro that calls into a cycle passing one parameter keeps the count of the parameter it does not pass: only the macros on the cycle lose every count")]
+def test_macro_uses_below_a_cycle(t : T?) {
+    let text = "#define A(x) B(x, 1)\n#define B(p, q) p + A(q)\n#define D(z, w) B(z, 0) + w\n"
+    t |> equal(uses_in_order(text, ["D", "A", "B"]), "D=-1,1 A=-1 B=-1,-1")
+}
+
+[test(description = "a parameter on the left of ## is -1, as on its right")]
+def test_macro_uses_left_of_paste(t : T?) {
+    t |> equal(macro_uses("#define L(x) x ## a x\n"), "L!=-1")
+}
+
+[test(description = "the use counts through callee shapes clang -E settles: a plain object-like name before parentheses, an unclosed body call, an unknown count in a callee's argument, a callee of two definitions, an empty callee, a variadic or empty tail argument, an argument ending in ), a callee ending in a plain name")]
+def test_macro_uses_callee_shapes(t : T?) {
+    // clang -E: Z(x) -> 0(t1), one use
+    t |> equal(macro_uses("#define Z 0\n#define M(x) Z(x)\n"), "M=1")
+    // clang -E: G(x continues outside the body: unknown
+    t |> equal(macro_uses("#define G(a) a a\n#define M(x) G(x\n"), "G=2 M=-1")
+    // clang -E: SQ(f(x)) -> f and x twice; the call of f makes both unknown
+    t |> equal(macro_uses("#define SQ(x) ((x) * (x))\n#define M(f, x) SQ(f(x))\n"), "SQ=2 M=-1,-1")
+    // a callee of two definitions followed by parentheses that hold the parameter
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define G(a) a\n#undef G\n#define G(a) TWICE\n#define M(x) G(0)(x)\n"), "TWICE=2 G=1 G=0 M=-1")
+    // clang -E: E()(x) -> (t8), one use
+    t |> equal(macro_uses("#define E()\n#define M(x) E()(x)\n"), "E= M=1")
+    // clang -E: VID(0, TWICE)(x) -> 0, t4+t4
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define VID(...) __VA_ARGS__\n#define M(x) VID(0, TWICE)(x)\n"), "TWICE=2 VID!=-1 M=-1")
+    // clang -E: ID(GET())(x) -> t5+t5
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define ID(op) op\n#define GET() TWICE\n#define M(x) ID(GET())(x)\n"), "TWICE=2 ID=1 GET= M=-1")
+    // clang -E: K(0, )(x) -> t6+t6
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define K(a, b) TWICE b\n#define M(x) K(0, )(x)\n"), "TWICE=2 K=0,1 M=-1")
+    // clang -E: C(0)(x) -> 0 + floor(t7), one use
+    t |> equal(macro_uses("#define C(a) a + floor\n#define M(x) C(0)(x)\n"), "C=1 M=1")
+    // K(0)(x continues outside the body and K returns TWICE: unknown
+    t |> equal(macro_uses("#define TWICE(a) a+a\n#define K(a) TWICE\n#define M(x) K(0)(x\n"), "TWICE=2 K=0 M=-1")
+}
