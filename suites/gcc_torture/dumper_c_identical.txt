@@ -100,6 +100,7 @@ linux 20011019-1
 linux 20011024-1
 linux 20011109-1
 linux 20011109-2
+linux 20011113-1
 linux 20011114-1
 linux 20011115-1
 linux 20011126-1
@@ -212,6 +213,7 @@ linux 20040319-1
 linux 20040331-1
 linux 20040625-1
 linux 20040629-1
+linux 20040703-1
 linux 20040704-1
 linux 20040705-1
 linux 20040705-2
@@ -499,6 +501,7 @@ linux 991216-1
 linux 991216-4
 linux 991221-1
 linux 991227-1
+linux 991228-1
 linux alias-1
 linux alias-access-path-1
 linux alias-access-path-2
@@ -524,11 +527,13 @@ linux bitfld-8
 linux bitfld-9
 linux bitfld-signed1-1
 linux bitops-1
+linux bswap-2
 linux call-trap-1
 linux compare-1
 linux compare-2
 linux compare-3
 linux complex-3
+linux const-addr-expr-1
 linux conversion
 linux cvt-1
 linux divcmp-1
@@ -630,6 +635,7 @@ linux pr114396
 linux pr114965
 linux pr15262
 linux pr15262-2
+linux pr15296
 linux pr16790-1
 linux pr17078-1
 linux pr17252
@@ -646,6 +652,9 @@ linux pr20601-1
 linux pr20621-1
 linux pr21331
 linux pr21964-1
+linux pr22098-1
+linux pr22098-2
+linux pr22098-3
 linux pr22348
 linux pr22429
 linux pr22493-1
@@ -668,6 +677,7 @@ linux pr28403
 linux pr28651
 linux pr28778
 linux pr28982a
+linux pr28982b
 linux pr29156
 linux pr29695-1
 linux pr29695-2
@@ -733,6 +743,7 @@ linux pr40747
 linux pr41317
 linux pr41750
 linux pr41917
+linux pr41919
 linux pr42006
 linux pr42142
 linux pr42154
@@ -874,6 +885,7 @@ linux pr66940
 linux pr67037
 linux pr67226
 linux pr67714
+linux pr67781
 linux pr67929_1
 linux pr68143_1
 linux pr68185
@@ -1124,6 +1136,7 @@ msvc 20011019-1
 msvc 20011024-1
 msvc 20011109-1
 msvc 20011109-2
+msvc 20011113-1
 msvc 20011114-1
 msvc 20011115-1
 msvc 20011126-1
@@ -1236,6 +1249,7 @@ msvc 20040319-1
 msvc 20040331-1
 msvc 20040625-1
 msvc 20040629-1
+msvc 20040703-1
 msvc 20040704-1
 msvc 20040705-1
 msvc 20040705-2
@@ -1523,6 +1537,7 @@ msvc 991216-1
 msvc 991216-4
 msvc 991221-1
 msvc 991227-1
+msvc 991228-1
 msvc alias-1
 msvc alias-access-path-1
 msvc alias-access-path-2
@@ -1548,11 +1563,13 @@ msvc bitfld-8
 msvc bitfld-9
 msvc bitfld-signed1-1
 msvc bitops-1
+msvc bswap-2
 msvc call-trap-1
 msvc compare-1
 msvc compare-2
 msvc compare-3
 msvc complex-3
+msvc const-addr-expr-1
 msvc conversion
 msvc cvt-1
 msvc divcmp-1
@@ -1654,6 +1671,7 @@ msvc pr114396
 msvc pr114965
 msvc pr15262
 msvc pr15262-2
+msvc pr15296
 msvc pr16790-1
 msvc pr17078-1
 msvc pr17252
@@ -1670,6 +1688,9 @@ msvc pr20601-1
 msvc pr20621-1
 msvc pr21331
 msvc pr21964-1
+msvc pr22098-1
+msvc pr22098-2
+msvc pr22098-3
 msvc pr22348
 msvc pr22429
 msvc pr22493-1
@@ -1692,6 +1713,7 @@ msvc pr28403
 msvc pr28651
 msvc pr28778
 msvc pr28982a
+msvc pr28982b
 msvc pr29156
 msvc pr29695-1
 msvc pr29695-2
@@ -1757,6 +1779,7 @@ msvc pr40747
 msvc pr41317
 msvc pr41750
 msvc pr41917
+msvc pr41919
 msvc pr42006
 msvc pr42142
 msvc pr42154
@@ -1898,6 +1921,7 @@ msvc pr66940
 msvc pr67037
 msvc pr67226
 msvc pr67714
+msvc pr67781
 msvc pr67929_1
 msvc pr68143_1
 msvc pr68185
