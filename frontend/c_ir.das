@@ -35,11 +35,12 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
     r.fn_name = ""
 }
 
-// the place of token `tok` in the C-IR: where the unit's text puts it, after its line markers
+// the place of token `tok` in the C-IR: where clang's expansion location puts it in the file as
+// read, the outermost macro name's for a token an expansion made
 [arch(at="ARCHITECTURE_NAMES.md#c-ir-places")]
 def private loc_of(var p : CParser; tok : int) : CirLoc {
     let t = p.unit.toks[tok]
-    return CirLoc(file = c_file_name(p.unit, t.file), line = t.line, col = t.col)
+    return CirLoc(file = c_file_name(p.unit, t.read_file), line = t.read_line, col = t.col)
 }
 
 // typed expression `x` interned and handed out; null stays null

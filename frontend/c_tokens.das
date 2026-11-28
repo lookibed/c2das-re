@@ -156,9 +156,10 @@ let KEYWORDS <- fixed_array(
 //! One C token: its kind and symbol, where its spelling lies - `spelled`, `buffer`, `at` and `len`
 //! as the preprocessor's `PpOutToken` has them, but a `scratch` spelling (a pasted or stringified
 //! token, or one spelled by its symbol) is `len` bytes at `at` of the unit's own `pool` - and its
-//! presumed place: `file` an index
-//! of the preprocessor's `names`, `line` and `col`, of the outermost macro name for a token of an
-//! expansion.
+//! presumed place: `file` an index of the preprocessor's `names`, `line` and `col`, of the outermost
+//! macro name for a token of an expansion. `read_file` and `read_line` place it in the file as read,
+//! `#line` and line markers aside, where clang's expansion location puts it; `expanded` marks a
+//! token a macro expansion made.
 struct CToken {
     kind : int
     sym : int       //!< the interned name of an IDENTIFIER or a keyword; -1 for every other kind
@@ -169,6 +170,9 @@ struct CToken {
     file : int      //!< 0 the unit's own name, then each name a file, `#line` or a line marker gives, in order of first sight
     line : int
     col : int
+    read_file : int     //!< an index of the preprocessor's `names`; a preprocessed unit's tokens have only their presumed place
+    read_line : int
+    expanded : bool
 }
 
 //! A unit's C tokens, an EOF token last, and what reading them needs: the preprocessor that hands
@@ -474,22 +478,25 @@ def private c_kind_of(var unit : CUnit) : int {
 }
 
 //! the preprocessor's token as a C token of kind `kind`: placed at its presumed line and file, and
-//! at the column of the outermost macro name when an expansion made it; a `scratch` or `symbol`
+//! at the column of the outermost macro name when an expansion made it, and in the file as read
+//! when the preprocessor expands macros (a preprocessed unit has only its presumed place); a `scratch` or `symbol`
 //! spelling copied into the unit's pool
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
 def private kept(var unit : CUnit; kind : int) : CToken {
     let out & = unsafe(unit.pp.tok)
     var call = out.call
-    var col = out.tok.col
+    var at = out.tok
     if (call >= 0) {
         let calls & = unsafe(unit.pp.expansion.calls)
         while (calls[call].parent >= 0) {
             call = calls[call].parent
         }
-        col = calls[call].name.col
+        at = calls[call].name
     }
+    let as_read = unit.pp.expansion != null
     var tok = CToken(kind = kind, sym = out.tok.sym, spelled = out.spelled, buffer = out.buffer, at = out.at, len = out.len,
-                     file = out.pname, line = int(out.pline), col = col)
+                     file = out.pname, line = int(out.pline), col = at.col, read_file = as_read ? unit.pp.files[at.file].name : out.pname,
+                     read_line = as_read ? at.line : int(out.pline), expanded = out.call >= 0)
     if (out.spelled == PpSpelled.scratch || out.spelled == PpSpelled.symbol) {
         let span = pp_token_span(unit.pp)
         tok.spelled = PpSpelled.scratch
@@ -542,6 +549,7 @@ def c_tokens_read(var unit : CUnit) : bool {
             colon.len = 1
             unit.toks |> push(colon) // nolint:STYLE012 - the colons append to the unit's tokens
             unit.toks |> push(CToken(kind = colon.kind, sym = -1, spelled = colon.spelled, buffer = colon.buffer, at = colon.at + 1, len = 1,
+                                     read_file = colon.read_file, read_line = colon.read_line, expanded = colon.expanded,
                                      file = colon.file, line = colon.line, col = colon.col + 1))
             continue
         } elif (kind == int(CTok.EOF)) {
@@ -552,11 +560,13 @@ def c_tokens_read(var unit : CUnit) : bool {
         }
         unit.toks |> push(kept(unit, kind))
     }
-    var end = CToken(kind = int(CTok.EOF), sym = -1, file = 0, line = 1, col = 1)
+    var end = CToken(kind = int(CTok.EOF), sym = -1, file = 0, line = 1, col = 1, read_line = 1)
     if (!empty(unit.toks)) {
         let last = unit.toks[length(unit.toks) - 1]
         end.file = last.file
         end.line = last.line
+        end.read_file = last.read_file
+        end.read_line = last.read_line
         end.col = last.col + last.len
     }
     unit.toks |> push(end)

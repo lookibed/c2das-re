@@ -14,6 +14,10 @@ require c_types public
 //! as a `cast` node of clang's `castKind` on the node clang puts it on. `c_exprs_use` turns the
 //! pool types into table indices, in the order Dumper A interns them.
 
+//! The binary operators whose parentheses from a macro expansion the C-IR keeps, as Dumper A
+//! keeps them: a shift or a bitwise operator, whose precedence a reader misreads.
+let private PAREN_KEPT_OPS <- {"shl", "shr", "band", "bor", "bxor"}
+
 //! The builtin functions the builder types, each with its prototype's result and parameter
 //! spellings as clang declares it.
 let BUILTIN_FUNCTIONS <- [(name = "__builtin_expect", ret = "long", params = ["long", "long"]), (name = "__builtin_abort", ret = "void", params = array<string>())]
@@ -1105,7 +1109,9 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
     } elif (kind == CNode.PAREN || kind == CNode.EXTENSION) {
         var inner = c_expr(r, p, node.a)
         if (inner != null && kind == CNode.PAREN) {
-            inner.paren = true
+            // as Dumper A marks them: the source's own parentheses all, a macro expansion's only
+            // around a shift or a bitwise operator
+            inner.paren = !p.unit.toks[node.tok].expanded || (inner.e == "bin" && key_exists(PAREN_KEPT_OPS, inner.op))
         }
         return inner
     } elif (kind == CNode.UNARY || kind == CNode.POSTFIX || kind == CNode.BINARY || kind == CNode.ASSIGN || kind == CNode.COND) {
