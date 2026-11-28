@@ -116,7 +116,10 @@ name can hold.
 
 Every expansion is a `PpCall` in `pp.expansion.calls`, in the order the calls are read: the
 macro, the name token's place, the call the name came from (`parent`, -1 for the source), the
-presumed place of the outermost name, the presumed line of its end, and its arguments as
+presumed place of the outermost name, its end - the presumed line, and the physical line and
+column, of the `)` that closes it, or of an object-like macro's name; of the call it came from
+when that token came from a replacement, as a `)` a macro hands out ends the outer call there -
+and its arguments as
 `PpCallArg` spans of `call_args` - the file and byte range from an argument's first token to the
 end of its last, -1 when it is empty or not one stretch of a file. Both arrays grow geometrically,
 so a unit of a million calls makes a few dozen heap blocks for its record. A token carries the index of

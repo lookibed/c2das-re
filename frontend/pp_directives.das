@@ -219,9 +219,10 @@ struct PpOutToken {
 }
 
 //! One macro call: the macro (an index of `Preprocessor.macros`), its name token's place and the
-//! call that token came from (-1: the source), the presumed place of the outermost name and the
-//! presumed line of its end (the `)`, or the name of an object-like macro), and its arguments,
-//! `arg_count` entries of the expansion's `call_args` from `first_arg`.
+//! call that token came from (-1: the source), the presumed place of the outermost name, the
+//! presumed line of its end (the `)`, or the name of an object-like macro) and that token's
+//! physical line and column, and its arguments, `arg_count` entries of the expansion's `call_args`
+//! from `first_arg`.
 struct PpCall {
     macro : int
     name : PpToken
@@ -229,6 +230,8 @@ struct PpCall {
     pline : uint
     pname : int
     end_pline : uint
+    end_line : int
+    end_col : int
     first_arg : int
     arg_count : int
 }

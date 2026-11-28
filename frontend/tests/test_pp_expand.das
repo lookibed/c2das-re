@@ -659,3 +659,11 @@ def test_poison_through_expansion(t : T?) {
     t |> equal(r.diags, ("W 4:24 poisoning existing macro | E 5:12 attempt to use a poisoned identifier | " +
                          "E 5:20 attempt to use a poisoned identifier | E 6:25 attempt to use a poisoned identifier"))
 }
+
+[test(description = "a call records the physical line and column of the ) that closes it, past a line break; a call closed by a ) of a replacement takes the end of the call that handed it out; an object-like macro's end is its name")]
+def test_call_end_column(t : T?) {
+    var pp <- started([("main.c", "#define g(a) [a]\n#define f(x, y) g(x) y\n#define N 1\nf(ab,\n  cd e  ) N\n")])
+    t |> equal(stream(pp), "[ ab ] cd e 1")
+    let ends <- [for (c in pp.expansion.calls); "{pp_name(pp, pp.macros[c.macro].name)} {c.end_line}:{c.end_col}/{int64(c.end_pline)}"]
+    t |> equal(join(ends, " "), "f 5:9/5 g 5:9/5 N 5:11/5")
+}
