@@ -126,8 +126,8 @@ pointer to a compatible type or from or to a pointer to `void`; a pointer to `_B
 `PointerToBoolean`. Every other pair is invalid C clang rejects (section 38): an integer other than
 a null pointer constant to a pointer and a pointer to an integer other than `_Bool` (clang's
 `int-conversion`, an error by default), a pointer to an incompatible type
-(`incompatible-pointer-types`; a pointer to an integer type of one rank but the other sign is no
-such type: clang warns, `pointer-sign`, and `BitCast`s it), a floating value to a pointer, a value
+(`incompatible-pointer-types`; a pointer to an integer type of one rank but the other sign, an
+enum counting as its integer type, is no such type: clang warns, `pointer-sign`, and `BitCast`s it), a floating value to a pointer, a value
 of no scalar type to a scalar. Compatibility is the pool's (`c_composite`): the pointees' own
 qualifiers aside (an array's element's too), qualifiers match at every level, a function type's
 result and parameters included (`int (*)(const int *)` and `int (*)(int *)` are incompatible, an

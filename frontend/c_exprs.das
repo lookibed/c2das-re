@@ -377,6 +377,9 @@ def c_composite(var r : CIr; a, b : int) : int {
     // copies: the pool grows below, which moves its elements
     let x := r.pool[a]
     let y := r.pool[b]
+    // an enum and its integer type are compatible; the composite is the integer (C11 6.7.2.2p4)
+    return b if (enum_of_int(r, a, b))
+    return a if (enum_of_int(r, b, a))
     return -1 if (x.k != y.k)
     if (x.k == "ptr") {
         let to = c_composite(r, x.to, y.to)
@@ -439,8 +442,9 @@ def private nested_qualifiers(var r : CIr; from, to : int) : bool {
 // that differ in qualifiers through pointer levels
 def private pointers_assign(var r : CIr; from, to : int) : bool {
     return true if (points_at_void(r, from) || points_at_void(r, to))
-    let a = unq(r, r.pool[from].to)
-    let b = unq(r, r.pool[to].to)
+    // an enum's pointee counts as its integer type
+    let a = integer_of(r, unq(r, r.pool[from].to))
+    let b = integer_of(r, unq(r, r.pool[to].to))
     return true if (is_int(r, a) && is_int(r, b) && rank(r, a) == rank(r, b))
     return pointee_composite(r, from, to) >= 0 || nested_qualifiers(r, from, to)
 }
@@ -937,6 +941,9 @@ def private call(var r : CIr; var p : CParser; var fn : CirExpr?; n_args, tok, s
     return x
 }
 
+// unqualified pool type `t`, an enum's the integer type it is compatible with
+def private integer_of(var r : CIr; t : int) : int => r.pool[t].k == "enum" ? c_builtin(r, r.pool[t].is_signed ? "int" : "unsigned int") : t
+
 // whether pool type `e` is an enum and `i` the integer type it is compatible with (C11 6.7.2.2p4):
 // a pointer to each is one composite pointer type, the integer's, as clang merges them
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-enums")]
@@ -968,18 +975,8 @@ def private conditional(var r : CIr; p : CParser; var c, a, b : CirExpr?; tok : 
             t = b.t
             a = c_implicit(a, t, "NullToPointer")
         } elif (is_ptr(r, a.t) && is_ptr(r, b.t)) {
-            if (a.t == b.t) {
-                t = a.t
-            } elif (enum_of_int(r, r.pool[a.t].to, r.pool[b.t].to)) {
-                t = b.t
-                a = c_implicit(a, t, "BitCast")
-            } elif (enum_of_int(r, r.pool[b.t].to, r.pool[a.t].to)) {
-                t = a.t
-                b = c_implicit(b, t, "BitCast")
-            } else {
-                t = pointer_arms(r, p, a, b, tok)
-                return null if (t == -2)
-            }
+            t = a.t == b.t ? a.t : pointer_arms(r, p, a, b, tok)
+            return null if (t == -2)
         }
     }
     if (t < 0) {

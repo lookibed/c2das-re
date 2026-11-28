@@ -286,3 +286,10 @@ def test_dims_unsized(t : T?) {
 def test_type_name_definition(t : T?) {
     t |> equal(cir_of("struct S \{ char a[sizeof(struct Z \{ int a; long b; \})]; \}; struct S gs;"), "error: t.c:1:26: a struct defined in this place is not typed yet")
 }
+
+[test(description = "a pointer to an enum assigns to one to its integer type, and under msvc, where the enum is an int, to one to unsigned int with the pointer-sign warning")]
+def test_enum_pointer_assign(t : T?) {
+    t |> equal(cir_of("enum E \{ A \}; unsigned f(unsigned *p); unsigned g(void) \{ enum E e = A; return f(&e); \}"), "enum E 'enum E' unsigned \{A=0\}; int:32:false:unsigned int; ptr:1; func:1:2:false; func:1::false; int:32:true:int; ptr:3; ptr:0 | enumdef 0 1:6 | e:0=IntegralCast<0>(0.A<5>) | call<1>(FunctionToPointerDecay<6>(f))")
+    t |> equal(cir_of("enum E \{ A \}; unsigned f(unsigned *p); unsigned g(void) \{ enum E e = A; return f(&e); \}", true), "enum E 'enum E' \{A=0\}; int:32:false:unsigned int; ptr:1; func:1:2:false; func:1::false; int:32:true:int; ptr:3; ptr:0 | enumdef 0 1:6 | e:0=IntegralCast<0>(0.A<5>) | call<1>(FunctionToPointerDecay<6>(f))")
+}
+

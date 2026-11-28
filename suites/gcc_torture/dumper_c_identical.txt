@@ -72,6 +72,7 @@ linux 20010222-1
 linux 20010224-1
 linux 20010329-1
 linux 20010403-1
+linux 20010409-1
 linux 20010422-1
 linux 20010518-1
 linux 20010520-1
@@ -133,6 +134,7 @@ linux 20021111-1
 linux 20021118-2
 linux 20021118-3
 linux 20021119-1
+linux 20021120-1
 linux 20021120-2
 linux 20021204-1
 linux 20021219-1
@@ -151,6 +153,7 @@ linux 20030316-1
 linux 20030401-1
 linux 20030403-1
 linux 20030404-1
+linux 20030613-1
 linux 20030626-1
 linux 20030626-2
 linux 20030715-1
@@ -178,7 +181,10 @@ linux 20040311-1
 linux 20040313-1
 linux 20040319-1
 linux 20040625-1
+linux 20040629-1
 linux 20040704-1
+linux 20040705-1
+linux 20040705-2
 linux 20040706-1
 linux 20040707-1
 linux 20040805-1
@@ -186,6 +192,7 @@ linux 20040820-1
 linux 20040823-1
 linux 20040831-1
 linux 20040917-1
+linux 20041011-1
 linux 20041112-1
 linux 20041114-1
 linux 20041126-1
@@ -196,11 +203,14 @@ linux 20050104-1
 linux 20050106-1
 linux 20050111-1
 linux 20050124-1
+linux 20050125-1
 linux 20050131-1
+linux 20050215-1
 linux 20050218-1
 linux 20050224-1
 linux 20050410-1
 linux 20050502-1
+linux 20050826-1
 linux 20050826-2
 linux 20051021-1
 linux 20051104-1
@@ -255,6 +265,7 @@ linux 20100827-1
 linux 20101013-1
 linux 20101025-1
 linux 20110418-1
+linux 20111208-1
 linux 20111227-1
 linux 20120111-1
 linux 20120207-1
@@ -404,6 +415,7 @@ linux 990106-2
 linux 990117-1
 linux 990127-1
 linux 990127-2
+linux 990128-1
 linux 990211-1
 linux 990222-1
 linux 990324-1
@@ -445,6 +457,7 @@ linux bf-layout-1
 linux bf-pack-1
 linux bf-sign-2
 linux bitfld-1
+linux bitfld-10
 linux bitfld-2
 linux bitfld-8
 linux bitfld-9
@@ -472,6 +485,7 @@ linux enum-3
 linux extzvsi
 linux float-floor
 linux floatunsisf-1
+linux fprintf-1
 linux func-ptr-1
 linux gofast
 linux ifcvt-onecmpl-abs-1
@@ -512,6 +526,7 @@ linux packed-1
 linux pending-4
 linux postmod-1
 linux pr100453
+linux pr101188
 linux pr101335
 linux pr102134
 linux pr10352-1
@@ -591,11 +606,13 @@ linux pr29798
 linux pr30185
 linux pr31072
 linux pr31136
+linux pr31169
 linux pr31448
 linux pr31448-2
 linux pr31605
 linux pr32500
 linux pr33142
+linux pr33669
 linux pr33779-1
 linux pr33779-2
 linux pr33992
@@ -603,6 +620,7 @@ linux pr34070-1
 linux pr34070-2
 linux pr34099
 linux pr34099-2
+linux pr34176
 linux pr34415
 linux pr34768-1
 linux pr34768-2
@@ -650,6 +668,7 @@ linux pr42269-2
 linux pr42512
 linux pr42544
 linux pr42721
+linux pr42833
 linux pr43236
 linux pr43269
 linux pr43438
@@ -839,6 +858,7 @@ linux pr91137
 linux pr91632
 linux pr92140
 linux pr93402
+linux pr93434
 linux pr93582
 linux pr93744-1
 linux pr93744-2
@@ -967,6 +987,7 @@ msvc 20010222-1
 msvc 20010224-1
 msvc 20010329-1
 msvc 20010403-1
+msvc 20010409-1
 msvc 20010422-1
 msvc 20010518-1
 msvc 20010520-1
@@ -1028,6 +1049,7 @@ msvc 20021111-1
 msvc 20021118-2
 msvc 20021118-3
 msvc 20021119-1
+msvc 20021120-1
 msvc 20021120-2
 msvc 20021204-1
 msvc 20021219-1
@@ -1046,6 +1068,7 @@ msvc 20030316-1
 msvc 20030401-1
 msvc 20030403-1
 msvc 20030404-1
+msvc 20030613-1
 msvc 20030626-1
 msvc 20030626-2
 msvc 20030715-1
@@ -1073,7 +1096,10 @@ msvc 20040311-1
 msvc 20040313-1
 msvc 20040319-1
 msvc 20040625-1
+msvc 20040629-1
 msvc 20040704-1
+msvc 20040705-1
+msvc 20040705-2
 msvc 20040706-1
 msvc 20040707-1
 msvc 20040805-1
@@ -1081,6 +1107,7 @@ msvc 20040820-1
 msvc 20040823-1
 msvc 20040831-1
 msvc 20040917-1
+msvc 20041011-1
 msvc 20041112-1
 msvc 20041114-1
 msvc 20041126-1
@@ -1091,11 +1118,14 @@ msvc 20050104-1
 msvc 20050106-1
 msvc 20050111-1
 msvc 20050124-1
+msvc 20050125-1
 msvc 20050131-1
+msvc 20050215-1
 msvc 20050218-1
 msvc 20050224-1
 msvc 20050410-1
 msvc 20050502-1
+msvc 20050826-1
 msvc 20050826-2
 msvc 20051021-1
 msvc 20051104-1
@@ -1150,6 +1180,7 @@ msvc 20100827-1
 msvc 20101013-1
 msvc 20101025-1
 msvc 20110418-1
+msvc 20111208-1
 msvc 20111227-1
 msvc 20120111-1
 msvc 20120207-1
@@ -1299,6 +1330,7 @@ msvc 990106-2
 msvc 990117-1
 msvc 990127-1
 msvc 990127-2
+msvc 990128-1
 msvc 990211-1
 msvc 990222-1
 msvc 990324-1
@@ -1340,6 +1372,7 @@ msvc bf-layout-1
 msvc bf-pack-1
 msvc bf-sign-2
 msvc bitfld-1
+msvc bitfld-10
 msvc bitfld-2
 msvc bitfld-8
 msvc bitfld-9
@@ -1367,6 +1400,7 @@ msvc enum-3
 msvc extzvsi
 msvc float-floor
 msvc floatunsisf-1
+msvc fprintf-1
 msvc func-ptr-1
 msvc gofast
 msvc ifcvt-onecmpl-abs-1
@@ -1407,6 +1441,7 @@ msvc packed-1
 msvc pending-4
 msvc postmod-1
 msvc pr100453
+msvc pr101188
 msvc pr101335
 msvc pr102134
 msvc pr10352-1
@@ -1486,11 +1521,13 @@ msvc pr29798
 msvc pr30185
 msvc pr31072
 msvc pr31136
+msvc pr31169
 msvc pr31448
 msvc pr31448-2
 msvc pr31605
 msvc pr32500
 msvc pr33142
+msvc pr33669
 msvc pr33779-1
 msvc pr33779-2
 msvc pr33992
@@ -1498,6 +1535,7 @@ msvc pr34070-1
 msvc pr34070-2
 msvc pr34099
 msvc pr34099-2
+msvc pr34176
 msvc pr34415
 msvc pr34768-1
 msvc pr34768-2
@@ -1545,6 +1583,7 @@ msvc pr42269-2
 msvc pr42512
 msvc pr42544
 msvc pr42721
+msvc pr42833
 msvc pr43236
 msvc pr43269
 msvc pr43438
@@ -1734,6 +1773,7 @@ msvc pr91137
 msvc pr91632
 msvc pr92140
 msvc pr93402
+msvc pr93434
 msvc pr93582
 msvc pr93744-1
 msvc pr93744-2

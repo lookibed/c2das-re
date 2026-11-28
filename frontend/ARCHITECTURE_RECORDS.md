@@ -88,8 +88,10 @@ counted on from the one before after the body (the body reads it unwrapped); und
 when no value is negative, else `int`, and an enum no 32-bit type holds is refused. An enumerator is
 an `int`, or under linux the enum's `unsigned int` when one of its values is past INT_MAX. A
 reference to one is an `enum_ref` of its enum and name. An enum's value promotes to its type's
-integer by an `IntegralCast`, and converts as an integer of that type. A pointer to an enum and
-one to its integer type are compatible: in a conditional they make the integer's pointer.
+integer by an `IntegralCast`, and converts as an integer of that type. An enum and its integer
+type are compatible (`c_composite`, their composite the integer): a pointer to either assigns to
+the other, and in a conditional they make the integer's pointer; a pointer to an enum and one to
+the integer of the other sign assign as clang's `pointer-sign` warning has them.
 
 ## 66. Member access {#c-records-access}
 
