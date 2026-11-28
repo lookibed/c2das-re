@@ -291,3 +291,201 @@ def test_spelling_places(t : T?) {
     t |> equal(join([for (k in kept); "{k.spelled}"], " "), "source body symbol scratch")
     t |> equal(join([for (k in kept); k.spelled == PpSpelled.scratch ? "-" : pp_spelling_of(pp, k)], " "), "arg body ab -")
 }
+
+// each token handed out for `main.c` holding `text`, spelled, at its line and column
+def private token_places(text : string) : string {
+    var pp <- started([("main.c", text)])
+    var toks : array<string>
+    while (pp_next_token(pp)) {
+        toks |> push("{pp_token_spelling(pp)}@{pp.tok.tok.line}:{pp.tok.tok.col}")
+    }
+    return join(toks, " ")
+}
+
+[test(description = "an argument is macro-expanded once however often its parameter is used: a __COUNTER__ in it counts once (C11 6.10.3.1, as clang)")]
+def test_argument_expanded_once(t : T?) {
+    t |> equal(expanded("#define TWICE(x) x x\nTWICE(__COUNTER__) __COUNTER__\n").out, "0 0 1")
+}
+
+[test(description = "calls nested in arguments deeper than the invocation slots made at the start grow the slots")]
+def test_deep_argument_nesting(t : T?) {
+    let text = "#define id(x) x\n" + repeat("id(", 24) + "1" + repeat(")", 24)
+    let r = expanded("{text}\n")
+    t |> equal(r.out, "1")
+    t |> equal(r.diags, "")
+}
+
+[test(description = "clang's leading-space rule seen through # of a macro's result: an empty expansion passes its space on, the first token of a replacement takes the name's, an operand of ## the parameter's, an empty argument or __VA_OPT__ passes its space to the next token")]
+def test_spacing_through_stringify(t : T?) {
+    let defs = "#define str(s) #s\n#define xstr(s) str(s)\n"
+    t |> equal(expanded("{defs}#define E\nxstr(x E+y)\n").out, "\"x +y\"")
+    t |> equal(expanded("{defs}#define N x\nxstr(+N)\n").out, "\"+x\"")
+    t |> equal(expanded("{defs}#define G(x) [ x ## y ]\nxstr(G(a))\n").out, "\"[ ay ]\"")
+    t |> equal(expanded("{defs}#define F(x,y) [ x#y]\nxstr(F(,b))\n").out, "\"[ \\\"b\\\"]\"")
+    t |> equal(expanded("{defs}#define V(...) [ __VA_OPT__(a)x]\nxstr(V())\n").out, "\"[ x]\"")
+    t |> equal(expanded("{defs}#define F(x) [ x]\nxstr(F())\n").out, "\"[ ]\"")
+}
+
+[test(description = "a placemarker stands for an empty operand of ##: no paste error comes from the token before it, and the token pasted onto it keeps its own place")]
+def test_placemarker_keeps_place(t : T?) {
+    let r = expanded("#define C2(a,b) [a##b]\nC2(,z)\n")
+    t |> equal(r.out, "[ z ]")
+    t |> equal(r.diags, "")
+    t |> equal(token_places("#define C2(a,b) [a##b]\nC2(,z)\n"), "[@1:17 z@2:5 ]@1:22")
+    t |> equal(token_places("#define P2(a) a ## x\nP2()\n"), "x@1:20")
+}
+
+[test(description = "the GNU comma rule is for the variadic parameter only: , ## before a named parameter pastes, with clang's error")]
+def test_gnu_comma_named_parameter(t : T?) {
+    t |> equal(expanded("#define M(a, ...) [x , ## a]\nM(b,1)\n").diags, "E 1:22 pasting formed ',b', an invalid preprocessing token")
+}
+
+[test(description = "the call record: f() of a macro of no parameter has no argument; a replacement's tokens report the call's presumed file; an argument spelled across a file's end, or backwards in one file, has no span")]
+def test_call_record_edges(t : T?) {
+    var pp <- started([("main.c", "#define z() Z\nz()\n")])
+    t |> equal(stream(pp), "Z")
+    t |> equal(pp.expansion.calls[0].arg_count, 0)
+    var named <- started([("main.c", "#line 5 \"other.c\"\n#define A x\nA\n")])
+    t |> success(pp_next_token(named))
+    t |> equal(named.names[named.tok.pname], "other.c")
+    var crossing <- started([("main.c", "#define f(x) [x]\n#include \"h.h\"\nb)\n"), ("h.h", "f(aaaa\n")])
+    t |> equal(stream(crossing), "[ aaaa b ]")
+    t |> equal(crossing.expansion.call_args[0].from, -1)
+    var reversed <- started([("main.c", "#ifndef ONCE\n#define ONCE\n#define f(x) [x]\n#include \"main.c\"\nb)\n#else\nf(a\n#endif\n")])
+    t |> equal(stream(reversed), "[ a b ]")
+    t |> equal(reversed.expansion.call_args[0].from, -1)
+}
+
+[test(description = "__FILE__ escapes a double quote of the presumed name; with no epoch given, __DATE__ shows the start's time, not 1970")]
+def test_builtin_edges(t : T?) {
+    t |> equal(expanded("#line 7 \"q\\\"t.c\"\n__FILE__\n").out, "\"q\\\"t.c\"")
+    var mem = new PpMemoryProvider()
+    mem->add("main.c", "__DATE__\n")
+    var pp : Preprocessor
+    pp_expand_start(pp, mem, "main.c", array<string>(), array<string>())
+    t |> success(pp_next_token(pp))
+    let date = pp_token_spelling(pp)
+    let year = to_int(slice(date, length(date) - 5, length(date) - 1))
+    t |> success(year >= 2025, date)
+}
+
+[test(description = "_Pragma's operand keeps a backslash before any character but \\ and \"; a missing ( or ) is clang's error")]
+def test_pragma_operator_edges(t : T?) {
+    var pp <- started([("main.c", "_Pragma(\"a\\nb\") z\n")])
+    t |> equal(stream(pp), "z")
+    t |> equal(join([for (p in pp.pragmas); p.text], " / "), "a\\nb")
+    t |> equal(expanded("_Pragma(\"x\" y) z\n").diags, "E 1:1 _Pragma takes a parenthesized string literal")
+    t |> equal(expanded("_Pragma x \"y\") z\n").diags, "E 1:1 _Pragma takes a parenthesized string literal")
+}
+
+[test(description = "in an #if line an argument ending with defined does not swallow the replacement's next token: F(defined) X reads as defined X, as clang reads it")]
+def test_defined_from_argument(t : T?) {
+    t |> equal(expanded("#define X 1\n#define F(x) x\n#if F(defined) X\nyes\n#else\nno\n#endif\n").out, "yes")
+}
+
+[test(description = "a pragma's place in the stream counts the tokens handed out: an expansion's tokens, not the call's")]
+def test_pragma_place_counts_expanded_tokens(t : T?) {
+    var pp <- started([("main.c", "#define F(x) x x x\nF(1)\n#pragma pack(2)\nF(2)\n#pragma foo\n")])
+    t |> equal(stream(pp), "1 1 1 | 2 2 2")
+    t |> equal(pp.packs[0].emitted, 3)
+    t |> equal(pp.pragmas[0].emitted, 6)
+}
+
+[test(description = "an #elif line is expanded as an #if line is")]
+def test_elif_line(t : T?) {
+    t |> equal(expanded("#define ONE 1\n#if 0\n#elif ONE\nel\n#endif\n").out, "el")
+}
+
+[test(description = "a macro-built #include or #line refused or warned as clang does: a prefixed literal is no file name, a < with no > expects one, extra tokens warn, #import keeps its once-only reading; a #line number that is no number or no simple digit sequence, a file name that is no plain string, extra tokens")]
+def test_include_and_line_operand_errors(t : T?) {
+    let files <- [("a.h", "in_a\n")]
+    t |> equal(expanded("#define LH L\"a.h\"\n#include LH\nx\n", files).diags, "E 2:2 expected \"FILENAME\" or <FILENAME>")
+    let open = expanded("#define LT <\n#include LT a.h\nx\n", files)
+    t |> equal(open.out, "x")
+    t |> equal(open.diags, "E 2:2 expected '>'")
+    let extra = expanded("#define H \"a.h\" extra\n#include H\n", files)
+    t |> equal(extra.out, "in_a")
+    t |> equal(extra.diags, "W 2:2 extra tokens at end of #include directive")
+    t |> equal(expanded("#define HDR \"a.h\"\n#import HDR\n#import HDR\n", files).out, "in_a")
+    t |> equal(expanded("#define X 0x10\n#line X\n").diags, "E 2:2 #line directive requires a simple digit sequence")
+    t |> equal(expanded("#define X abc\n#line X\n").diags, "E 2:2 #line directive requires a positive integer argument")
+    t |> equal(expanded("#define X\n#line X\n").diags, "E 2:2 #line directive requires a positive integer argument")
+    t |> equal(expanded("#line \"x\"\n").diags, "E 1:7 #line directive requires a positive integer argument")
+    t |> equal(expanded("#define X 5 n\n#line X\n").diags, "E 2:2 invalid filename for #line directive")
+    let more = expanded("#define X 5 \"a.c\" b\n#line X\n__LINE__ __FILE__\n")
+    t |> equal(more.out, "5 \"a.c\"")
+    t |> equal(more.diags, "W 2:2 extra tokens at end of #line directive")
+}
+
+[test(description = "the spelling pool is emptied between tokens read at the top level: stringified and pasted tokens between source tokens do not grow it with the unit")]
+def test_pool_reused(t : T?) {
+    let text = "#define str(x) #x\n#define cat(a,b) a##b\n" + repeat("str(abc) ; ; cat(+,=) ; ; ", 200)
+    var pp <- started([("main.c", text)])
+    var pool = 0
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+        pool = max(pool, length(pp.expansion.text))
+    }
+    t |> equal(count, 1200)
+    t |> success(pool < 64, "{pool}")
+}
+
+[test(description = "the spelling pool stays flat over back-to-back expansions that stringify and paste")]
+def test_pool_flat_back_to_back(t : T?) {
+    let text = "#define str(x) #x\n#define cat(a,b) a##b\n" + repeat("str(abc) cat(+,=) ", 200)
+    var pp <- started([("main.c", text)])
+    var pool = 0
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+        pool = max(pool, length(pp.expansion.text))
+    }
+    t |> equal(count, 400)
+    t |> success(pool < 64, "{pool}")
+}
+
+[test(description = "a paste forming a name the unit already spelled allocates no string: a run of letters, digits and _ is classed without the lexer")]
+def test_paste_name_allocates_no_string(t : T?) {
+    let text = "#define cat(a,b) a##b\nxy\n" + repeat("cat(x,y) ", 200)
+    var pp <- started([("main.c", text)])
+    t |> success(pp_next_token(pp))
+    let before = int(string_heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    t |> equal(count, 200)
+    t |> equal(int(string_heap_allocation_count()) - before, 0)
+}
+
+[test(description = "the call record grows geometrically: many calls make few heap blocks, not one per call")]
+def test_call_record_allocations(t : T?) {
+    let text = "#define cat(a,b) a##b\nxy\n" + repeat("cat(x,y) ", 2000)
+    var pp <- started([("main.c", text)])
+    t |> success(pp_next_token(pp))
+    let heap = int(heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    let used = int(heap_allocation_count()) - heap
+    t |> equal(count, 2000)
+    t |> success(used <= 64, "{used} heap blocks over {count} calls")
+}
+
+[test(description = "a builtin's value and a paste that is no name are spelled in the pool: no string is made per token")]
+def test_builtins_and_pastes_allocate_no_string(t : T?) {
+    let line = "__LINE__ __COUNTER__ __FILE__ __FILE_NAME__ __DATE__ __TIME__ __TIMESTAMP__ __INCLUDE_LEVEL__ __BASE_FILE__ cat(+,=) cat(L,\"s\") ;\n"
+    let text = "#define cat(a,b) a##b\nfirst\n" + repeat(line, 200)
+    var pp <- started([("main.c", text)])
+    t |> success(pp_next_token(pp))
+    let strings = int(string_heap_allocation_count())
+    var count = 0
+    while (pp_next_token(pp)) {
+        count++
+    }
+    t |> equal(count, 2400)
+    t |> equal(int(string_heap_allocation_count()) - strings, 0)
+}
+

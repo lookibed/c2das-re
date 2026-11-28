@@ -5,7 +5,6 @@ module pp_expand public
 
 require strings
 require daslib/strings_boost
-require daslib/fio
 require pp_directives public
 
 //! A token list the expander rescans: a macro's replacement, a pushed-back token, an argument
@@ -68,7 +67,12 @@ class PpExpander : PpExpansion {
     builtin_of : table<int; PpBuiltin>
 
     def override next_token(var pp : Preprocessor) : bool {
+        while (!empty(self.ctx) && !self.ctx[length(self.ctx) - 1].barrier
+                && self.ctx[length(self.ctx) - 1].pos >= length(self.ctx[length(self.ctx) - 1].toks)) {
+            pop_context(self)
+        }
         if (empty(self.ctx) && self.depth == 0 && !self.has_ahead) {
+
             self.text |> clear()
         }
         var t : PpOutToken
@@ -116,25 +120,15 @@ def private put_spelling(ex : PpExpander; var pp : Preprocessor; t : PpOutToken;
     }
 }
 
-//! a token of kind `kind` spelled `s`, kept in the text pool, at the place of `at`
-def private made_token(var ex : PpExpander; var pp : Preprocessor; kind : int; s : string; at : PpOutToken) : PpOutToken {
-    var t = at
+//! a token of kind `kind` spelled by the text pool from `at` to its end, at the place of `place`
+def private pooled_token(ex : PpExpander; kind, at : int; place : PpOutToken) : PpOutToken {
+    var t = place
     t.tok.kind = kind
     t.tok.sym = -1
     t.painted = false
-    if (kind == int(PpTok.IDENTIFIER)) {
-        t.tok.sym = intern_name(pp.lx.flex.syms, s)
-        t.spelled = PpSpelled.symbol
-        return t
-    }
-    t.at = length(ex.text)
-    peek_data(s) $(chars) {
-        for (c in chars) {
-            ex.text |> push(c)
-        }
-    }
-    t.len = length(s)
     t.spelled = PpSpelled.scratch
+    t.at = at
+    t.len = length(ex.text) - at
     return t
 }
 
@@ -395,7 +389,6 @@ def private record_call(var ex : PpExpander; m, d : int; name, last : PpOutToken
                       end_pline = last.call >= 0 ? ex.calls[last.call].end_pline : last.pline, first_arg = length(ex.call_args))
     if (d >= 0) {
         call.arg_count = length(ex.inv[d].raw_at) - 1
-        ex.call_args |> reserve(length(ex.call_args) + call.arg_count)
         for (i in range(call.arg_count)) {
             let lo = ex.inv[d].raw_at[i]
             let hi = ex.inv[d].raw_at[i + 1]
@@ -407,7 +400,7 @@ def private record_call(var ex : PpExpander; m, d : int; name, last : PpOutToken
                     arg = PpCallArg(file = a.file, from = a.offset, to = b.offset + b.len)
                 }
             }
-            ex.call_args |> push(arg)
+            ex.call_args |> push(arg)  // nolint:PERF006 - an exact reserve per call reallocates the record every call
         }
     }
     ex.calls |> push(call)
@@ -458,7 +451,12 @@ def private drop_placemarkers(var toks : array<PpOutToken>) {
 //! the parameter of `m` that `h` names, -1 when none
 def private param_of(pp : Preprocessor; m : int; h : PpHeld) : int {
     return -1 if (h.kind != int(PpTok.IDENTIFIER) || !pp.macros[m].function_like)
-    return find_index(pp.macros[m].params, h.sym)
+    let params & = unsafe(pp.macros[m].params)
+    for (i in range(length(params))) {  // nolint:PERF018 - the index is the answer
+        return i if (params[i] == h.sym)
+    }
+    return -1
+
 }
 
 //! a body token as a token of the replacement
@@ -565,7 +563,7 @@ def private interned_text(var ex : PpExpander; var pp : Preprocessor; at : int) 
 
 //! the kind of the one pp-token the text pool spells from `at` to its end, -1 when it is none or
 //! more than one: a run of letters, digits and `_` is a name or a number without a lexer; anything
-//! else is lexed
+//! else is lexed from the scratch lexer's own buffer
 [arch(at="ARCHITECTURE_EXPAND.md#pp-paste")]
 def private pasted_kind(var ex : PpExpander; at : int) : int {
     var simple = true
@@ -576,9 +574,14 @@ def private pasted_kind(var ex : PpExpander; at : int) : int {
     if (simple) {
         return int(is_number(int(ex.text[at])) ? PpTok.PP_NUMBER : PpTok.IDENTIFIER)
     }
-    let s = slice(ex.text, at, length(ex.text))
-    pp_open_text(ex.scratch, s, -1)
-    return -1 if (!pp_next(ex.scratch) || ex.scratch.tok.offset != 0 || ex.scratch.tok.len != length(s))
+    var bytes <- ex.scratch.flex.bytes
+    bytes |> clear()
+    bytes |> reserve(length(ex.text) - at + 1)
+    for (i in range(at, length(ex.text))) {
+        bytes |> push(ex.text[i])
+    }
+    pp_open(ex.scratch, bytes, -1)
+    return -1 if (!pp_next(ex.scratch) || ex.scratch.tok.offset != 0 || ex.scratch.tok.len != length(ex.text) - at)
     let kind = ex.scratch.tok.kind
     return -1 if (kind == int(PpTok.OTHER) || pp_next(ex.scratch))
     return kind
@@ -796,52 +799,105 @@ def private civil(epoch : int64) : tuple<y : int; mo : int; d : int; h : int; mi
     return (y = year, mo = month, d = day, h = secs / 3600, mi = secs / 60 % 60, s = secs % 60, wd = wd)
 }
 
-def private two(n : int) : string => n < 10 ? "0{n}" : "{n}"
+//! the decimal digits of `n` appended to the text pool
+def private put_number(var ex : PpExpander; n : int64) {
+    let at = length(ex.text)
+    var v = n
+    while (true) {
+        ex.text |> push(uint8('0' + int(v % 10l)))
+        v /= 10l
+        break if (v == 0l)
+    }
+    var lo = at
+    var hi = length(ex.text) - 1
+    while (lo < hi) {
+        let c = ex.text[lo]
+        ex.text[lo] = ex.text[hi]
+        ex.text[hi] = c
+        lo++
+        hi--
+    }
+}
 
-def private padded(n : int) : string => n < 10 ? " {n}" : "{n}"
+//! `n`, 0 to 99, as two characters appended to the text pool, `pad` before a single digit
+def private put_two(var ex : PpExpander; n : int; pad : uint8) {
+    ex.text |> push(n < 10 ? pad : uint8('0' + n / 10))  // nolint:STYLE012 - appends to the pool
+    ex.text |> push(uint8('0' + n % 10))
+}
+
+//! the bytes of `s` past its last `/` when `last_component`, appended to the text pool with `\` and
+//! `"` escaped when `escaped`
+def private put_text(var ex : PpExpander; s : string; escaped, last_component : bool) {
+    peek_data(s) $(chars) {
+        var from = 0
+        if (last_component) {
+            for (c, i in chars, count()) {
+                if (c == '/'u8) {
+                    from = i + 1
+                }
+            }
+        }
+        for (i in range(from, length(chars))) {
+            let c = chars[i]
+            if (escaped && (c == '\\'u8 || c == '"'u8)) {
+                ex.text |> push('\\'u8)
+            }
+            ex.text |> push(c)
+        }
+    }
+}
 
 //! the token a builtin name `t` stands for (C11 6.10.8, clang's extensions): its place, its value
+//! spelled in the text pool, no string made
 [arch(at="ARCHITECTURE_EXPAND.md#pp-builtins")]
-def private builtin_token(var ex : PpExpander; var pp : Preprocessor; b : PpBuiltin; t : PpOutToken) : PpOutToken {
+def private builtin_token(var ex : PpExpander; pp : Preprocessor; b : PpBuiltin; t : PpOutToken) : PpOutToken {
     let from_source = t.call < 0
     let pname = from_source ? t.pname : ex.calls[t.call].pname
+    let at = length(ex.text)
     if (b == PpBuiltin.line) {
-        return made_token(ex, pp, int(PpTok.PP_NUMBER), "{int64(from_source ? t.pline : ex.calls[t.call].end_pline)}", t)
+        put_number(ex, int64(from_source ? t.pline : ex.calls[t.call].end_pline))
+        return pooled_token(ex, int(PpTok.PP_NUMBER), at, t)
     } elif (b == PpBuiltin.counter) {
+        put_number(ex, int64(ex.counter))
         ex.counter++
-        return made_token(ex, pp, int(PpTok.PP_NUMBER), "{ex.counter - 1}", t)
+        return pooled_token(ex, int(PpTok.PP_NUMBER), at, t)
     } elif (b == PpBuiltin.include_level) {
-        return made_token(ex, pp, int(PpTok.PP_NUMBER), "{length(pp.frames)}", t)
+        put_number(ex, long_length(pp.frames))
+        return pooled_token(ex, int(PpTok.PP_NUMBER), at, t)
     }
-    var value = ""
-    if (b == PpBuiltin.file) {
-        value = pp.names[pname]
-    } elif (b == PpBuiltin.file_name) {
-        value = base_name(pp.names[pname])
+    ex.text |> push('"'u8)
+    if (b == PpBuiltin.file || b == PpBuiltin.file_name) {
+        put_text(ex, pp.names[pname], true, b == PpBuiltin.file_name)
     } elif (b == PpBuiltin.base_file) {
-        value = pp.files[0].path
+        put_text(ex, pp.files[0].path, true, false)
     } else {
         let c = civil(ex.epoch)
-        let clock = "{two(c.h)}:{two(c.mi)}:{two(c.s)}"
+        if (b == PpBuiltin.timestamp) {
+            put_text(ex, WEEKDAYS[c.wd], false, false)
+            ex.text |> push(' 'u8)
+        }
+        if (b != PpBuiltin.time) {
+            put_text(ex, MONTHS[c.mo - 1], false, false)
+            ex.text |> push(' 'u8)
+            put_two(ex, c.d, ' 'u8)
+            ex.text |> push(' 'u8)
+        }
         if (b == PpBuiltin.date) {
-            value = "{MONTHS[c.mo - 1]} {padded(c.d)} {c.y}"
-        } elif (b == PpBuiltin.time) {
-            value = clock
+            put_number(ex, int64(c.y))
         } else {
-            value = "{WEEKDAYS[c.wd]} {MONTHS[c.mo - 1]} {padded(c.d)} {clock} {c.y}"
+            put_two(ex, c.h, '0'u8)
+            ex.text |> push(':'u8)
+            put_two(ex, c.mi, '0'u8)
+            ex.text |> push(':'u8)
+            put_two(ex, c.s, '0'u8)
+        }
+        if (b == PpBuiltin.timestamp) {
+            ex.text |> push(' 'u8)
+            put_number(ex, int64(c.y))
         }
     }
-    let quoted = build_string() $(var out) {
-        out |> write_char('"')
-        for (c in value) {
-            if (c == '\\' || c == '"') {
-                out |> write_char('\\')
-            }
-            out |> write_char(c)
-        }
-        out |> write_char('"')
-    }
-    return made_token(ex, pp, int(PpTok.STRING_LITERAL), quoted, t)
+    ex.text |> push('"'u8)
+    return pooled_token(ex, int(PpTok.STRING_LITERAL), at, t)
 }
 
 //! the text of a `_Pragma` string literal (C11 6.10.9): the prefix and the quotes off, `\"` and

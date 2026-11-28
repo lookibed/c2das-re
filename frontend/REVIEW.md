@@ -61,6 +61,8 @@ pp3`, and the corpus lists it touches) and states its class counts, and adds a c
 `tests/test_pp_expand.das` for each expansion rule it changes.** The fixtures hold clang's
 answer; the unit tests hold the diagnostics and the call record no token stream shows.
 
-**A diff to `pp_expand.das` never allocates per token read or pasted: tokens go in reused
-buffers and spellings in the pools.** A string or an array made per token grows the das heap
+**A diff to `pp_expand.das` never allocates per token read or pasted, nor per call: tokens go in
+reused buffers, spellings - a builtin's value and a `_Pragma` operand among them - in the pools,
+and the call record grows geometrically; `tests/test_pp_expand.das`'s allocation tests are never
+loosened.** A string or an array made per token grows the das heap
 with the size of the expansion, which a macro library makes millions of tokens long.
