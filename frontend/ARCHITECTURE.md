@@ -33,15 +33,19 @@ or the C-IR builder yet.
   macro; it holds the interface the expansion fills (`PpExpansion`) and the call record's types.
 - `pp_expand.das` - the macro expansion over the directive layer (`ARCHITECTURE_EXPAND.md`): the
   context stack, calls and their arguments, substitution with `#` and `##`, the builtin names and
-  `_Pragma`, the expansion of directive lines, the call record.
+  `_Pragma`, the expansion of directive lines, the expansion record's calls, argument texts and copies.
+- `pp_record.das` - the expansion record's readers (`ARCHITECTURE_EXPAND.md#pp-record`): a token's
+  expansion place and argument copies, an argument's text, a macro's one-line text, uses and
+  whether the C-IR marks it. What Dumper C writes the C-IR's macro fields from.
 - `pp_eval.das` - the `#if` evaluator (`ARCHITECTURE_EVAL.md`): intmax_t and uintmax_t arithmetic,
   the constants, `defined` and the queries, the feature-table reader. Below the directive layer: it
   knows no `Preprocessor` and asks the hook for what only that layer knows.
 - `tests/test_pp_directives.das` - every directive over in-memory files, the predefined-macro table,
   and the own headers read through `fio`. The comparison with clang is `compare/pp/`'s `--pp2`.
 - `tests/test_pp_expand.das` - every expansion rule over in-memory files: the C11 6.10.3 examples,
-  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the call
-  record. The comparison with clang is `compare/pp/`'s `--pp3`.
+  the chibicc report's rescanning cases, the GNU variadics, the builtins, directive lines, the
+  expansion record and its readers. The comparison with clang is `compare/pp/`'s `--pp3`; with
+  Dumper A's macro marks, `--pp5`.
 - `tests/test_pp_eval.das` - every operator and conversion, the sign trap, every constant form,
   `defined`, each query, `__has_include` through the include path, the errors, `#elif` and nesting,
   each verdict pinned against clang. The comparison with clang is `compare/pp/`'s `--pp4`.
