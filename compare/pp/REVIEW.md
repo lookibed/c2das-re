@@ -18,6 +18,6 @@ never adds a class that waits for an item already done.** A difference with no m
 preprocessor's own defect, wherever it stands, and a class that took it would hide it.
 
 **A diff that changes the clang flags, the clang pin, or what `pp_features.das` asks regenerates
-the feature tables with `das compare/pp/run.das -- --features` in the same change, and never edits
-`frontend/predefined/*_features.defs` by hand.** The tables' test in
-`compare/tests/test_pp_oracle.das` fails on a table the pinned clang does not answer.
+the feature tables with `das compare/pp/run.das -- --features` in the same change** (that no hand
+edits them is `frontend/REVIEW.md`'s duty). The tables' test in `compare/tests/test_pp_oracle.das`
+fails on a table the pinned clang does not answer.
