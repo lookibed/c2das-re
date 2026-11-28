@@ -921,3 +921,33 @@ def test_pragma_gcc_message(t : T?) {
                                  "E 8:23 pragma error requires parenthesized string | E 9:22 expected string literal in pragma warning | W 11:13 AB"))
     t |> equal(pragma_rows(pp), "10:2@0 clang warning \"kept\"")
 }
+
+[test(description = "a bad byte on the line of a directive that opens a skipped group is read with that line, not the group: clang lexes it (its 'extra tokens at end of #ifdef' warning at 1:13), so the diagnostic is not skipped; the line after is")]
+def test_lexer_diag_on_skip_opening_line(t : T?) {
+    var pp <- started([("main.c", "#ifdef NOPE \xff\n\xff\n#endif\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(lexer_diagnostics(pp), "0:1:13 invalid UTF-8: byte 255 | 0:2:1 invalid UTF-8: byte 255 skipped")
+    t |> equal(diagnostics(pp), "W 1:13 extra tokens at end of #ifdef directive")
+}
+
+[test(description = "a poisoned name as an #include operand is clang's error at it: the header-name read passes its token through consumed")]
+def test_poison_include_operand(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison foo\n#include foo\nx\n")])
+    t |> equal(stream(pp), "x")
+    t |> success(starts_with(diagnostics(pp), "E 2:10 attempt to use a poisoned identifier | "), diagnostics(pp))
+}
+
+[test(description = "#elifdef and #elifndef after an untaken group read their name as an active group's: a poisoned one is clang's error at it")]
+def test_poison_elifdef_evaluated(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC poison foo\n#if 0\n#elifdef foo\n#endif\n#if 0\n#elifndef foo\n#endif\n")])
+    t |> equal(stream(pp), "")
+    t |> equal(diagnostics(pp), "E 3:10 attempt to use a poisoned identifier | E 6:11 attempt to use a poisoned identifier")
+}
+
+[test(description = "#pragma GCC and #pragma clang alone are ledger entries, no poison or message: the two-token guards hold")]
+def test_pragma_gcc_clang_alone(t : T?) {
+    var pp <- started([("main.c", "#pragma GCC\n#pragma clang\nint x;\n")])
+    t |> equal(stream(pp), "int x ;")
+    t |> equal(diagnostics(pp), "")
+    t |> equal(pragma_rows(pp), "1:2@0 GCC | 2:2@0 clang")
+}

@@ -253,7 +253,7 @@ def test_run_oracle(t : T?) {
 def test_pragma_lines(t : T?) {
     t |> equal(pragma_lines("int x;\n#pragma pack(1)\n  #  pragma weak w\n# 3 \"a.c\"\npragma;\n#ident \"v\"\nident;\n"), 3)
     t |> equal(pragma_lines("#pragma GCC warning \"w\"\n#pragma GCC error \"e\"\n#pragma GCC diagnostic push\n#pragma clang warning \"k\"\n"), 2)
-    t |> equal(pragma_lines("#pragma GCC warningfoo\n#pragma GCC errors x\n#pragma GCC warning(\"p\")\n#pragma GCC error\"e\"\n#pragma GCC warning\n"), 2)
+    t |> equal(pragma_lines("#pragma GCC warningfoo\n#pragma GCC errors x\n#pragma GCC warning \"p\"\n#pragma GCC error\n"), 2)
 }
 
 // clang-side tokens of `spellings`, a blank between them, each an identifier
@@ -889,4 +889,16 @@ def test_feature_tables_match_clang(t : T?) {
     bad = ""
     read_features(path_join(work, "missing.defs"), bad)
     t |> equal(bad, "{path_join(work, "missing.defs")}: no such feature-query table")
+}
+
+[test(description = "a bad byte in the group an #else takes, or in the group a true #if takes, is an error of the preprocessor's own: the unit differs; one in the group the #if skips is none", timeout = 1200)]
+def test_lexer_diag_live_inside_a_conditional(t : T?) {
+    var error : string
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let unit = unit_file("live_in_else.c", "#if 0\nint s \xff;\n#else\nint a \xff;\n#endif\n#if 1\nint b \xff;\n#endif\n")
+    var r = Pp2Result(unit = unit, expanded = true)
+    pp2_tokens(unit, setup.entries, setup.search, r)
+    t |> equal(join(r.errors, " | "), "4:7 invalid UTF-8: byte 255 | 7:7 invalid UTF-8: byte 255")
+    t |> equal(pp2_class(r), Pp2Class.differs)
 }

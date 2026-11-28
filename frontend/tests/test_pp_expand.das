@@ -667,3 +667,19 @@ def test_call_end_column(t : T?) {
     let ends <- [for (c in pp.expansion.calls); "{pp_name(pp, pp.macros[c.macro].name)} {c.end_line}:{c.end_col}/{int64(c.end_pline)}"]
     t |> equal(join(ends, " "), "f 5:9/5 g 5:9/5 N 5:11/5")
 }
+
+[test(description = "a _Pragma operand naming a poisoned identifier is clang's error at the _Pragma, as a #pragma line's is at the name")]
+def test_poison_in_pragma_operand(t : T?) {
+    let r = expanded("#pragma GCC poison foo\n_Pragma(\"weird foo\")\nfoo\n")
+    t |> equal(r.diags, "E 2:1 attempt to use a poisoned identifier | E 3:1 attempt to use a poisoned identifier")
+}
+
+[test(description = "a diagnostic placed at a held token is raised where the reader stood: past a #pragma GCC warning line at the next line's first token, and past the last byte at the end of the unit")]
+def test_held_diagnostic_raised(t : T?) {
+    var next <- started([("main.c", "#pragma GCC warning \"w\"\nz\n")])
+    stream(next)
+    t |> equal(raised(next), "1:13 raised 0:24:2:1 w")
+    var last <- started([("main.c", "#pragma GCC warning \"w\"")])
+    stream(last)
+    t |> equal(raised(last), "1:13 raised 0:23:1:24 w")
+}
