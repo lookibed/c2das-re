@@ -470,7 +470,7 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         let global = empty(fn)
         let linked = object_name(r, p, name, global, is_static, is_extern, p.ast.nodes[id].tok)
         return false if (empty(linked))
-        c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked, automatic = !global && !is_static && !is_extern))
+        c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked, automatic = !global && !is_static && !is_extern, thread_local = has_storage(p, n.a, CTok.THREAD_LOCAL)))
         let init = p.ast.nodes[id].b
         r.init_static = global || is_static
         var built = init >= 0 ? c_initializer(r, p, init, t) : null
@@ -515,12 +515,19 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
                 c_refuse(r, p, n.tok, "this case label")
                 return false
             }
+            if (r.switch_t < 0) {
+                c_reject(r, p, n.tok, "a case label outside a switch")
+                return false
+            }
             return false if (!c_case_value(r, p, n.a, n.tok, v))
-            if (key_exists(r.cases, v)) {
+            // clang converts each value to the controlling type before it compares them; the C-IR
+            // keeps the label's own value, as Dumper A writes it
+            let converted = c_converted(r, r.switch_t, v)
+            if (key_exists(r.cases, converted)) {
                 c_reject(r, p, n.tok, "a duplicate case value")
                 return false
             }
-            r.cases[v] = true
+            r.cases[converted] = true
             into |> push(new CirStmt(s = "case", v = v, is_char = is_char_constant(p, n.a), loc = at))
         }
         let sub = n.kind == CNode.LABEL ? n.b : n.kind == CNode.DEFAULT ? n.a : n.c
@@ -615,10 +622,14 @@ def private branch(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
     } elif (n.kind == CNode.SWITCH) {
         st.s = "switch"
         var c = c_expr(r, p, n.a)
-        st.cond = c == null ? null : used(r, p, c_promote(r, c))
+        c = c == null ? null : c_promote(r, c)
+        let outer_t = r.switch_t
+        r.switch_t = c == null ? -1 : c.t
+        st.cond = c == null ? null : used(r, p, c)
         var outer <- r.cases
         ok = st.cond != null && one(r, p, n.b, fn, st.body_s)
         r.cases <- outer
+        r.switch_t = outer_t
     } else {
         st.s = "for"
         c_types_scope_open(r)

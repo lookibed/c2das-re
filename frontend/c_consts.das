@@ -103,7 +103,9 @@ def private offsetof_node(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
 }
 
 // `__builtin_types_compatible_p(T, U)` of node `node`: the `int` literal of clang's answer, the
-// two types compatible once their own qualifiers are dropped; the operands add no table entry
+// two types compatible once their own qualifiers are dropped, an array's element's at every level
+// too (clang's getUnqualifiedArrayType: GCC ignores cv-qualifiers on arrays); the operands add no
+// table entry
 def private types_compatible_node(var r : CIr; var p : CParser; node : CNodeRec) : CirExpr? {
     let a = c_type_name_type(r, p, node.a)
     let b = a < 0 ? -1 : c_type_name_type(r, p, node.b)
@@ -112,8 +114,16 @@ def private types_compatible_node(var r : CIr; var p : CParser; node : CNodeRec)
         c_refuse(r, p, node.tok, "a type trait over a function type with no parameter", " (whether it has a prototype is not in its type)")
         return null
     }
-    let same = c_composite(r, unq(r, a), unq(r, b)) >= 0
+    let same = c_composite(r, array_unqualified(r, a), array_unqualified(r, b)) >= 0
     return new CirExpr(e = "int_lit", t = c_builtin(r, "int"), v = same ? "1" : "0")
+}
+
+// pool type `t` without its own qualifiers, an array's element without its own at every level
+def private array_unqualified(var r : CIr; t : int) : int {
+    let u = unq(r, t)
+    return u if (r.pool[u].k != "array")
+    let count = r.pool[u].count
+    return c_array(r, array_unqualified(r, r.pool[u].elem), count)
 }
 
 // whether pool type `t` holds a function type with no parameter, through pointers, arrays and
@@ -214,7 +224,9 @@ def private alignof_node(var r : CIr; var p : CParser; node : CNodeRec) : CirExp
 
 // the alignment GNU `__alignof__` gives the function an identifier node `n` names: the largest
 // `aligned(N)` its file-scope declarations before `n` spell in their specifiers and attribute
-// lists; -1 when none does or when a declaration spells `aligned` where those lists do not show it
+// lists; -1 when none does, when a declaration spells `aligned` where those lists do not show it,
+// and when the function definition holding `n` spells `aligned` before it, a block's redeclaration
+// clang's answer would take
 def private function_alignment(var r : CIr; var p : CParser; n : int) : int {
     var named = n
     while (p.ast.nodes[named].kind == CNode.PAREN) {
@@ -255,6 +267,12 @@ def private function_alignment(var r : CIr; var p : CParser; n : int) : int {
                 align = max(align, largest)
             }
             return -1 if (found != counted || seen > 1)
+        } elif (item.kind == CNode.FUNC_DEF && (item.next < 0 || p.ast.nodes[item.next].tok > target.tok)) {
+            // a block of the function holding the operand may redeclare it with an `aligned` of its own
+            for (t in range(item.tok, target.tok)) {
+                let word = c_spelling(p.unit, t)
+                return -1 if (word == "aligned" || word == "__aligned__")
+            }
         }
         at = item.next
     }
@@ -485,7 +503,7 @@ def private root_is_mutable(r : CIr; x : CirExpr?) : bool {
 // or a function, a member of one, an element at a constant index
 def private place_state(r : CIr; x : CirExpr?; statics : int) : Fold {
     if (x.e == "ref") {
-        return statics != NO_STATIC && is_automatic(r, x.name) ? Fold.fails : Fold.address
+        return statics != NO_STATIC && (r.no_address_refs?[intptr(x)] ?? false) ? Fold.fails : Fold.address
     } elif (x.e == "str_lit") {
         return Fold.address
     } elif (x.e == "compound_lit") {
@@ -498,19 +516,14 @@ def private place_state(r : CIr; x : CirExpr?; statics : int) : Fold {
         let base = fold_state(r, x.base, statics)
         let i = fold_state(r, x.i, statics)
         return Fold.fails if (base == Fold.fails || i == Fold.fails)
+        var v = 1l
+        // a string literal's element 0 is its first character, which `__builtin_constant_p` takes
+        return Fold.literal if (base == Fold.literal && i == Fold.folds && c_fold(r, x.i, v) && v == 0l)
         return (base == Fold.address || base == Fold.literal) && i == Fold.folds ? Fold.address : Fold.unsure
     } elif (x.e == "un" && x.op == "deref") {
         return fold_state(r, x.a, statics) == Fold.fails ? Fold.fails : Fold.unsure
     }
     return Fold.unsure
-}
-
-// whether C-IR name `name` is a parameter's or an automatic object's in scope
-def private is_automatic(r : CIr; name : string) : bool {
-    for (id in values(r.ids)) {
-        return true if (id.automatic && id.name == name)
-    }
-    return false
 }
 
 //! Whether static object initializer `x` (a list, a string literal, an expression in its slot)

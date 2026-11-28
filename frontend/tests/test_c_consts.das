@@ -230,3 +230,55 @@ def test_static_refusals(t : T?) {
     t |> equal(consts_of("void f(void) \{ static int *p = (int[])\{1\}; \}"),
                "error: t.c:1:32: a static object's initializer whose constancy clang's evaluator decides and the builder cannot is not typed yet")
 }
+
+[test(description = "__builtin_constant_p of a string literal's element 0 is 1, through a cast and a folded index too, as clang's evaluator takes a string literal at offset 0; element 1 is an address, 0")]
+def test_constant_p_first_character(t : T?) {
+    t |> equal(consts_of("int h(void) \{ return __builtin_constant_p(&\"abc\"[0]) + __builtin_constant_p((const char *)&\"abc\"[0]) + __builtin_constant_p(&\"abc\"[2 - 2]); \}"), "return binadd<int>(binadd<int>(1<int>, 1<int>), 1<int>)")
+    t |> equal(consts_of("int h(void) \{ return __builtin_constant_p(&\"abc\"[1]); \}"), "return 0<int>")
+    t |> equal(consts_of("char *p = &\"abc\"[0]; char *q = &\"abc\"[1];"), "p:char*=unaddr<char*>(index<char>(-, -), -) ; q:char*=unaddr<char*>(index<char>(-, -), -)")
+}
+
+[test(description = "__builtin_types_compatible_p drops an array's element qualifiers at every level, as clang does for GCC; a pointer to a qualified array keeps them")]
+def test_types_compatible_arrays(t : T?) {
+    t |> equal(consts_of("int f(void) \{ return __builtin_types_compatible_p(const int[3], int[3]) + __builtin_types_compatible_p(volatile char[2][3], char[2][3]) + __builtin_types_compatible_p(const volatile int[2][2], int[2][2]); \}"), "return binadd<int>(binadd<int>(1<int>, 1<int>), 1<int>)")
+    t |> equal(consts_of("int f(void) \{ return __builtin_types_compatible_p(int (*)[3], const int (*)[3]); \}"), "return 0<int>")
+}
+
+[test(description = "_Alignof and __alignof__ of a record or an array of records holding linux's long double: the layout's 16")]
+def test_alignof_long_double_records(t : T?) {
+    t |> equal(consts_of("struct LD \{ char c; long double x; \}; int a[_Alignof(struct LD)]; typedef struct \{ long double x; \} TLD; TLD arr[2]; int b[__alignof__(arr)];"), "a:int[16]=- ; arr:struct TLD[2]=- ; b:int[16]=-")
+}
+
+[test(description = "GNU __alignof__ of a function is refused in a definition that spells aligned before the operand, where a block's redeclaration can give clang another answer")]
+def test_function_alignment_block(t : T?) {
+    t |> equal(consts_of("int fa(void) __attribute__((aligned(8))); int use(void) \{ int fa(void) __attribute__((aligned(32))); return __alignof__(fa); \}"), "error: t.c:1:109: an alignment of a function other than GNU's of one an `aligned(N)` attribute aligns is not typed yet")
+    t |> equal(consts_of("int fa(void) __attribute__((aligned(8))); int use(void) \{ return __alignof__(fa); \}"), "return IntegralCast<int>(alignof_v<unsigned long>=8:func)")
+}
+
+[test(description = "the address of a thread-local object is no address constant: invalid C in a static object's initializer, file-scope or block-scope, _Thread_local or __thread")]
+def test_thread_local_address(t : T?) {
+    t |> equal(consts_of("_Thread_local int tl; int *ptl = &tl;"), "error: t.c:1:34: a static object's initializer that is no constant is invalid C, which clang rejects")
+    t |> equal(consts_of("__thread int t2; int *p2 = &t2;"), "error: t.c:1:28: a static object's initializer that is no constant is invalid C, which clang rejects")
+    t |> equal(consts_of("void f(void) \{ static _Thread_local int t; static int *p = &t; \}"), "error: t.c:1:60: a static object's initializer that is no constant is invalid C, which clang rejects")
+}
+
+[test(description = "an automatic object is told by the reference's own identifier, not by its C-IR name: a parameter spelled as a file static's C-IR name leaves the static's address a constant")]
+def test_automatic_by_reference(t : T?) {
+    t |> equal(consts_of("static int x; int f(int t__x) \{ static int *p = &x; return *p + t__x; \}"), "t__x:int=- ; f_p:int*=unaddr<int*>(t__x, -) ; return binadd<int>(LValueToRValue<int>(underef<int>(LValueToRValue<int*>(f_p), -)), LValueToRValue<int>(t__x))")
+    t |> equal(consts_of("static int x; int f(int t__x) \{ static int *p = &t__x; return *p; \}"), "error: t.c:1:49: a static object's initializer that is no constant is invalid C, which clang rejects")
+}
+
+[test(description = "typeof of a bit-field is invalid C, through -> too")]
+def test_typeof_bitfield(t : T?) {
+    t |> equal(consts_of("struct BF \{ int f : 3; \} bs; typeof(bs.f) t7;"), "error: t.c:1:37: typeof of a bit-field is invalid C, which clang rejects")
+    t |> equal(consts_of("struct BF \{ int f : 3; \} *bp; typeof(bp->f) t8;"), "error: t.c:1:38: typeof of a bit-field is invalid C, which clang rejects")
+    t |> equal(consts_of("struct BF \{ int f : 3; int g; \} bs; typeof(bs.g) t9;"), "bs:struct BF=- ; t9:int=-")
+}
+
+[test(description = "case values are compared in the switch's promoted type, as clang converts them, while the C-IR keeps the label's value; a nested switch's type ends with it; a case outside a switch is invalid C")]
+def test_case_conversion(t : T?) {
+    t |> equal(consts_of("int f(int c) \{ switch (c) \{ case 0: return 1; case 4294967296L: return 2; \} return 0; \}"), "error: t.c:1:47: a duplicate case value is invalid C, which clang rejects")
+    t |> equal(consts_of("int f(long c) \{ switch (c) \{ case 0: return 1; case 4294967296L: return 2; \} return 0; \}"), "case 0 ; return 1<int> ; case 4294967296 ; return 2<int> ; return 0<int>")
+    t |> equal(consts_of("int f(int c) \{ switch (c) \{ case 0: switch ((long)c) \{ case 4294967296L: ; \} case 4294967296L: ; \} return 0; \}"), "error: t.c:1:78: a duplicate case value is invalid C, which clang rejects")
+    t |> equal(consts_of("void f(int c) \{ switch (c) \{ case 1: ; \} case 2: ; \}"), "error: t.c:1:42: a case label outside a switch is invalid C, which clang rejects")
+}

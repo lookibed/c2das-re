@@ -23,6 +23,7 @@ struct CId {
     enum_t : int = -1   //!< an enumerator: the pool enum type it belongs to; -1 for any other identifier
     enum_v : int64      //!< an enumerator's value
     automatic : bool    //!< a parameter or a block-scope object of automatic storage, whose address is no constant
+    thread_local : bool //!< a `_Thread_local` object, whose address is no constant either
 }
 
 //! The C-IR type table of one unit as Dumper A builds it (`ARCHITECTURE_TYPES.md`): every type a
@@ -53,7 +54,9 @@ struct CTypes {
     id_undo : array<tuple<sym : int; had : bool; was : CId>>
     id_marks : array<int>
     ret : int                       //!< the pool result type of the function being read
-    cases : table<int64; bool>      //!< the case values of the innermost switch read so far
+    cases : table<int64; bool>      //!< the case values of the innermost switch read so far, converted to its type
+    switch_t : int = -1             //!< the promoted pool type of the innermost switch's controlling expression
+    no_address_refs : table<uint64; bool>   //!< per reference node built (by its address), whether it names an automatic or thread-local object
     tu_prefix : string              //!< the unit's file stem as an identifier, a file static's prefix
     linkage_names : table<string; string>   //!< a name with internal linkage to its C-IR name
     external_names : table<string>          //!< a name declared with external linkage
@@ -113,6 +116,8 @@ def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.quals |> clear()
     b.unqualified |> clear()
     b.typedefs |> clear()
+    b.no_address_refs |> clear()
+    b.switch_t = -1
     b.typedef_aligns |> clear()
     b.untyped |> clear()
     b.undo |> clear()

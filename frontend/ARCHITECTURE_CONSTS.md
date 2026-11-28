@@ -20,11 +20,12 @@ value. `tests/test_c_consts.das` holds each form and refusal.
   them; a type other than a complete struct or union, a member the record lacks and a bit-field
   are invalid C.
 - `__builtin_types_compatible_p(T, U)` is the `int` literal of clang's answer: the two types
-  compatible once their own qualifiers are dropped (`c_composite`), an array's element keeping
-  its own. The operands add pool types only, as Dumper A dumps neither. A function type with no
+  compatible once their own qualifiers are dropped (`c_composite`), an array's element's at every
+  level too, as clang drops them for GCC (`getUnqualifiedArrayType`): `const int[3]` and `int[3]`
+  are compatible, while a pointer to a qualified array keeps its element's. The operands add pool types only, as Dumper A dumps neither. A function type with no
   parameter anywhere in either type is refused: the pool keeps `()` and `(void)` as one type.
 - GNU `typeof (e)` is the type of `e` with no conversion and its qualifiers kept
-  (`c_expr_type`, through `CTypes.expr_type`).
+  (`c_expr_type`, through `CTypes.expr_type`); `typeof` of a bit-field is invalid C.
 - `__builtin_constant_p` (section 75); `_Alignof` and `__alignof__` (section 74).
 
 ## 74. Alignments {#c-consts-alignof}
@@ -34,15 +35,17 @@ an operand expression's types interned after the node's as `sizeof_v`'s are. `_A
 type's alignment as Dumper A computes it from the C-IR type (`c_type_align`). GNU `__alignof__`
 is clang's preferred alignment, which is that same value on both dialects but for linux's
 `long double`, x87's type, 16. `_Alignof` of linux's `long double` (or an array of it) is
-refused: clang's 16 is not the 8 Dumper A computes from the C-IR's 64-bit type.
+refused: clang's 16 is not the 8 Dumper A computes from the C-IR's 64-bit type. A record holding
+one has its layout's alignment, 16 (`ARCHITECTURE_RECORDS.md` section 63), which both give.
 
 clang gives an expression that names a declaration the declaration's own alignment, which an
 `aligned` attribute or `_Alignas` raises and a packed record lowers; the pool's types hold
 neither. So a member operand is refused, and when the unit spells `aligned` or `_Alignas`
 anywhere, so is any other expression operand and a type name whose specifiers name a typedef or
 a `typeof`. A function designator under `__alignof__` is the largest `aligned(N)` its file-scope
-declarations before the use spell, refused when none does or when a declaration spells an
-`aligned` its specifier and attribute lists do not show; under `_Alignof` it is refused (Dumper
+declarations before the use spell, refused when none does, when a declaration spells an
+`aligned` its specifier and attribute lists do not show, and when the definition holding the use
+spells `aligned` before it, where a block's redeclaration can raise clang's answer; under `_Alignof` it is refused (Dumper
 A gives a function no alignment). A type without an alignment - `void`, a function, an array of
 unknown size, an incomplete record - is refused.
 
@@ -52,7 +55,7 @@ Dumper A writes clang's answer as an `int` literal and never dumps the argument.
 clang's `-O0` answer is its evaluator's fold of the call: 1 when the argument, converted to a
 value (an array and a function decay), is an integer, floating or pointer value the evaluator
 folds - a null or integer-cast pointer and a pointer to a string literal's first character
-included - and 0 otherwise, an aggregate always. Where the evaluator gives no answer and the
+included, `&"abc"[0]` too - and 0 otherwise, an aggregate always. Where the evaluator gives no answer and the
 argument holds a comma operator or another such call, the answer is the code generator's, which
 Dumper A refuses; the builder refuses any argument holding a comma, another such call, a
 compound literal or a statement expression.
@@ -77,7 +80,9 @@ pointer, and an address constant: the address of an object of static storage or 
 member of one, an element at a constant index, a pointer step from one, a string literal stepped,
 a file-scope compound literal whose items are constants (a block's is automatic), and an address
 as an integer of the pointer's width. A read of a variable, a call, an effect, an integer division
-by zero and the address of a parameter or an automatic object (`CId.automatic`) are invalid C;
+by zero and the address of a parameter, an automatic object (`CId.automatic`) or a thread-local
+one (`CId.thread_local`) are invalid C, each told by the reference's own identifier
+(`CTypes.no_address_refs`), since a parameter can spell a file static's C-IR name;
 what the builder cannot decide - a const object's value, an address narrowed - is refused.
 
 ## 77. A `case` value {#c-consts-case}
@@ -88,4 +93,7 @@ and dumps no unit where it meets anything but literals, enumerators, the unary o
 the arithmetic, shift and bitwise binary operators. `c_case_value` runs that fold beside
 clang's and refuses a label the two fold apart - a narrowing cast (`(signed char)255`), an
 overflow of a narrower type (`1 << 31`), unsigned 64-bit arithmetic, a literal past 63 bits -
-since writing Dumper A's value would be wrong C and clang's is not Dumper A's C-IR.
+since writing Dumper A's value would be wrong C and clang's is not Dumper A's C-IR. Two labels
+are duplicates when their values converted to the switch's promoted controlling type are equal,
+as clang compares them (`case 0` and `case 4294967296L` under an `int`), which is invalid C; the
+C-IR keeps the label's own value, as Dumper A writes it. A `case` outside a switch is invalid C.

@@ -248,6 +248,10 @@ def c_arith(var r : CIr; var a, b : CirExpr?&) : int {
     return common
 }
 
+//! Value `v` converted to integer pool type `t` (C11 6.3.1.3: wrapped to its width, sign-extended
+//! when signed); unchanged for any other type.
+def c_converted(r : CIr; t : int; v : int64) : int64 => held_in(r, t, v)
+
 // the value `v` held in integer pool type `t`: wrapped to its width, sign-extended when signed
 def private held_in(r : CIr; t : int; v : int64) : int64 {
     let w = r.pool[t].w
@@ -360,10 +364,15 @@ def c_fold_node(var r : CIr; var p : CParser; n : int; var v : int64&) : bool {
 }
 
 //! The pool type of parser expression node `n` as GNU `typeof` reads it: no conversion, its
-//! qualifiers kept; -1 with the error set where the expression is not typed.
+//! qualifiers kept; -1 with the error set where the expression is not typed, and for a bit-field,
+//! which clang rejects.
 def c_expr_type(var r : CIr; var p : CParser; n : int) : int {
     var x = c_expr(r, p, n)
-    let t = x != null ? x.t : -1
+    var t = x != null ? x.t : -1
+    if (x != null && bitfield_width(r, x) >= 0) {
+        c_reject(r, p, p.ast.nodes[n].tok, "typeof of a bit-field")
+        t = -1
+    }
     delete_expr(x)
     return t
 }
@@ -1126,6 +1135,9 @@ def private reference(var r : CIr; var p : CParser; sym, tok : int; callee : boo
     }
     var x = new CirExpr(e = "ref", t = id.builtin ? c_builtin_fn_type(r) : id.t, name = empty(id.name) ? name : id.name)
     x.vol = is_volatile(r, id.t)
+    // what the object is, by the node (two objects in scope can share a C-IR name), set for every
+    // node, so one at a freed node's address never reads that node's
+    r.no_address_refs[intptr(x)] = id.automatic || id.thread_local
     return x
 }
 
