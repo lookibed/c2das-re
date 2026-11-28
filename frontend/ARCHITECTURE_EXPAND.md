@@ -160,7 +160,7 @@ unit's output reproducible and the oracle's comparison exact; `__TIMESTAMP__` sh
 not the file's, since the file provider has no file times. clang's other builtin names, the
 `__has_*` family but `__has_cpp_attribute`, which clang under C does not have, `__is_identifier`,
 `__is_target_*` and `__building_module`, are the `#if` evaluator's (`ARCHITECTURE_EVAL.md` section
-42): PP.3 hands them out as names, and `PpExpansion.is_builtin` tells `defined` they are there. A `#define` of a builtin name no macro defines is
+50): PP.3 hands them out as names, and `PpExpansion.is_builtin` tells `defined` they are there. A `#define` of a builtin name no macro defines is
 clang's warning "redefining builtin macro" and the definition takes over; an `#undef` of one is
 "undefining builtin macro" and removes the builtin for the rest of the unit, so `__LINE__` after
 `#undef __LINE__` is a name, as it is after a `#define` and `#undef` of it (the directive layer

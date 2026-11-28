@@ -1,9 +1,11 @@
 # frontend Architecture - the `#if` evaluator
 
 Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across the family
-(`ARCHITECTURE_PP.md` holds sections 5 to 13, `ARCHITECTURE_EXPAND.md` 29 to 37).
+(`ARCHITECTURE.md` holds sections 1 to 4, `ARCHITECTURE_PP.md` 5 to 13, `ARCHITECTURE_PARSER.md`
+14 to 22, `ARCHITECTURE_STATEMENTS.md` 23, `ARCHITECTURE_TYPES.md` 24 to 28,
+`ARCHITECTURE_EXPAND.md` 29 to 37, `ARCHITECTURE_EXPRS.md` 38 to 45).
 
-## 38. The evaluator {#pp-eval}
+## 46. The evaluator {#pp-eval}
 
 `pp_eval.das` evaluates the expression of an `#if` or `#elif` line after PP.3 expanded it
 (`ARCHITECTURE_EXPAND.md` section 33), as clang 22's `PPExpressions.cpp` does under the dumper's
@@ -27,7 +29,7 @@ their group), and an octal or hex escape out of its type's range, which keeps th
 bits. Warnings - overflow, a negative value converted to unsigned, a multi-character constant -
 never change the value.
 
-## 39. The grammar {#pp-eval-grammar}
+## 47. The grammar {#pp-eval-grammar}
 
 An operand is an integer or character constant, a name, `defined`, a query, a unary `+`, `-`,
 `~` or `!` with its operand, or a parenthesized expression; any other token there is "invalid
@@ -45,7 +47,7 @@ The right operand of `&&` after a false left one, of `||` after a true one, and 
 not chosen are dead: they are parsed and typed, but a division by zero in them is no error and an
 overflow no warning, as clang's `ValueLive`.
 
-## 40. Arithmetic and the conversions {#pp-eval-arith}
+## 48. Arithmetic and the conversions {#pp-eval-arith}
 
 Before `* / % + - < > <= >= == != & ^ |` the usual arithmetic conversions run: when either
 operand is unsigned both are, a negative signed operand becoming its 2^64 complement with
@@ -64,7 +66,7 @@ count is one, read as unsigned) gives 0 and warns; otherwise it warns when a set
 value's sign, is shifted out. `>>` takes the count's low 32 bits as clang's `getLimitedValue`
 cast does; 64 or more shifts by 63 and warns; a signed value shifts arithmetically.
 
-## 41. Constants {#pp-eval-literals}
+## 49. Constants {#pp-eval-literals}
 
 An integer constant is a pp-number read as clang's `NumericLiteralParser`: decimal, octal after
 `0`, hex after `0x`, and binary after `0b`, which clang takes under gnu17. A `.` or an exponent
@@ -93,7 +95,7 @@ intmax_t unsigned when `char` is, as clang types it. The four facts come from th
 predefined entries when `pp_start` reads them (`pp_eval_target`: `__CHAR_UNSIGNED__`,
 `__WCHAR_UNSIGNED__`, `__WCHAR_WIDTH__`, `__INT_WIDTH__`).
 
-## 42. Names, `defined` and the queries {#pp-eval-queries}
+## 50. Names, `defined` and the queries {#pp-eval-queries}
 
 A name left after expansion is 0, `true` and `false` among them (C has no such keywords); clang's
 `-Wundef` warning is off under the dumper's flags. `defined X` and `defined ( X )` are 1 for a
@@ -115,13 +117,13 @@ Every other query - `__has_builtin`, `__has_constexpr_builtin`, `__has_feature`,
 `__has_warning`, `__is_identifier`, `__is_target_arch`, `__is_target_vendor`, `__is_target_os`,
 `__is_target_environment` - takes one parenthesized name (`__has_c_attribute` also
 `scope::name`, `__has_warning` a string literal) and answers what the dialect's table says
-(section 43), 0 for a name it does not list and 1 for `__is_identifier`; `__building_module` is
+(section 51), 0 for a name it does not list and 1 for `__is_identifier`; `__building_module` is
 always 0. `__foo__` is read as `foo` in a feature or attribute name, scope included, as clang
 normalizes it. Clang expands the operand of the attribute queries and `__has_include` only; PP.3
 leaves the others' operand as written (`ARCHITECTURE_EXPAND.md` section 33), so
 `__is_target_os(linux)` asks for `linux` though the table defines `linux` as 1.
 
-## 43. The feature tables {#pp-eval-features}
+## 51. The feature tables {#pp-eval-features}
 
 `predefined/<dialect>_features.defs` holds each query's answers under that dialect, as the
 pinned clang gives them: a line `<query> <operand> <value>`, every answer that is not the query's
@@ -135,7 +137,7 @@ puts it in `pp.eval.features` after starting a unit, as it chose the dialect's m
 its answers from clang itself, so the tables are regenerated with the same pinned clang, which the
 regenerate-and-diff test of `compare/tests/test_pp_oracle.das` enforces.
 
-## 44. Known differences from clang
+## 52. Known differences from clang
 
 The queries are evaluated in `#if` and `#elif` lines only: in the text of a unit PP.3 hands
 `__has_builtin(x)` out as tokens, where clang expands it to its answer. `__is_target_variant_os`
