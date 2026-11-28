@@ -11,7 +11,7 @@ builder cannot give clang's answer, is refused at its place.
 A `__builtin_*` name is typed from `BUILTIN_FUNCTIONS` (`c_exprs.das`): a reference is clang's
 `<builtin fn type>`, read only as a callee, and its decay is a pointer to the prototype the pinned
 clang declares (`c_builtin_spelled` reads the spellings: `size_t` and `uint64` follow the dialect,
-a pointee keeps its `const`, a pointer its `restrict`), so each argument converts to its
+a pointee keeps its `const`; a pointer's own `restrict` is dropped, as no slot reads it), so each argument converts to its
 parameter's type and a variadic one's extra arguments take the default argument promotions. The
 builtins clang checks itself (`__builtin_signbit`, the `add`, `sub` and `mul` overflow builtins)
 have the prototype `()`: their arguments are made values and take no other conversion, as clang

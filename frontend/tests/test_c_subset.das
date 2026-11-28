@@ -122,6 +122,40 @@ def test_builtin_forms(t : T?) {
 
 let VA = "typedef __builtin_va_list va_list; "
 
+// every record of the table of unit `text` in table order: its index, name, size and fields
+def private records_of(text : string; msvc : bool = false) : string {
+    var p : CParser
+    c_parser_open_text(p, text, "t.c", msvc)
+    let u = c_unit(p)
+    return "parse error: {p.err}" if (p.failed)
+    var r = new CIr
+    c_ir_open(*r, msvc ? target_llp64_msvc() : target_lp64_linux(), "")
+    var out : array<string>
+    if (c_ir_unit(*r, p, u)) {
+        for (ty, idx in r.tu.types, count()) {
+            if (ty.k == "struct") {
+                let fields = join([for (fl in ty.fields); "{fl.name}:{fl.t}:{spelled(r.tu.types, fl.t)}"], ",")
+                out |> push("{idx} {ty.name} {ty.size}/{ty.align} \{{fields}\}")
+            }
+        }
+    } else {
+        out |> push("error: {r.err}")
+    }
+    let listed = join(out, " ; ")
+    delete_tu(r.tu)
+    unsafe {
+        delete r
+    }
+    return listed
+}
+
+[test(description = "the opaque records enter the table after their field's type, as Dumper A builds them: va_list's unsigned long long[3] under linux and [1] under msvc, jmp_buf's int")]
+def test_opaque_records(t : T?) {
+    t |> equal(records_of(VA + "va_list a;"), "2 va_list 24/8 \{words:1:unsigned long long[3]\}")
+    t |> equal(records_of(VA + "va_list a;", true), "2 va_list 8/8 \{words:1:unsigned long long[1]\}")
+    t |> equal(records_of("struct __jmp_buf_tag \{ long a; \}; typedef struct __jmp_buf_tag jmp_buf[1]; jmp_buf e;"), "1 jmp_buf 4/4 \{val:0:int\}")
+}
+
 [test(description = "va_list under linux: the opaque record of words[3], a variable of it decayed where it is used, a parameter a pointer to it, va_arg the spec's node, the va builtins taking the decayed list and va_start's parameter as written")]
 def test_va_list_linux(t : T?) {
     t |> equal(subset_of(VA + "int f(int n, ...) \{ va_list ap; __builtin_va_start(ap, n); int x = __builtin_va_arg(ap, int); __builtin_va_end(ap); return x; \} int g(va_list q) \{ return __builtin_va_arg(q, int); \}"),
@@ -140,6 +174,7 @@ def test_va_list_msvc(t : T?) {
 [test(description = "glibc's jmp_buf: struct __jmp_buf_tag is the opaque record of one int (4 bytes), a type holding it the record or, spelled with * or (*), a pointer to it, as Dumper A reads the spellings; its definition here adds no anchor")]
 def test_jmp_buf(t : T?) {
     let unit = "struct __jmp_buf_tag \{ long long a[8]; \}; typedef struct __jmp_buf_tag jmp_buf[1]; int _setjmp(jmp_buf); "
+    t |> equal(subset_of(unit + "int h(int (*)(jmp_buf)); jmp_buf e;"), "typedefdecl jmp_buf ; _setjmp:struct jmp_buf(:struct jmp_buf*) ; h:struct jmp_buf*(:struct jmp_buf*) ; e:struct jmp_buf")
     t |> equal(subset_of(unit + "jmp_buf e; int (*fp)(jmp_buf) = _setjmp; int f(void) \{ return _setjmp(e) + sizeof(jmp_buf); \}"),
                "typedefdecl jmp_buf ; _setjmp:struct jmp_buf(:struct jmp_buf*) ; e:struct jmp_buf ; fp:struct jmp_buf*=FunctionToPointerDecay<struct jmp_buf*>(_setjmp) ; f:fn()() ; return IntegralCast<int>(binadd<unsigned long>(IntegralCast<unsigned long>(call<int>(FunctionToPointerDecay<struct jmp_buf*>(_setjmp); ArrayToPointerDecay<struct jmp_buf*>(e))), sizeof_v<unsigned long>(-, -)))")
 }
@@ -169,6 +204,7 @@ def test_case_range(t : T?) {
                "f:fn(int)(x:int) ; case 1 ... 3 ; return 1 ; case 97 ... 99c ; return 2 ; return 0")
     t |> equal(subset_of("int f(unsigned long long x) \{ switch (x) \{ case 1 ... 9999999999999999999ULL: return 1; \} return 0; \}"),
                "f:fn(unsigned long long)(x:unsigned long long) ; case 1 ... -8446744073709551617 ; return 1 ; return 0")
+    t |> equal(subset_of("int f(unsigned x) \{ switch (x) \{ case -1 ... 2: return 1; \} return 0; \}"), "f:fn(unsigned int)(x:unsigned int) ; return 1 ; return 0")
 }
 
 [test(description = "a declaration with no prototype lists the composite type's parameters, unnamed: a library function clang knows takes the library's prototype, a redeclaration an earlier prototype's")]

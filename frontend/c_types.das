@@ -531,18 +531,13 @@ def private library_builtin(var b : CTypes; name : string) : int {
 
 //! The pool type of a builtin prototype's spelling `s`: a spelling `c_builtin` reads, `size_t`,
 //! `uint64` (the dialect's 64-bit `unsigned long` or `unsigned long long`), a leading `const` on
-//! the pointee, a trailing `*` and `restrict`.
+//! the pointee, a trailing `*` and `restrict` (dropped).
 [arch(at="ARCHITECTURE_SUBSET.md#c-subset-builtins")]
 def c_builtin_spelled(var b : CTypes; s : string) : int {
-    var rest = s
-    var quals = 0
-    if (ends_with(rest, " restrict")) {
-        rest = slice(rest, 0, length(rest) - length(" restrict"))
-        quals = C_RESTRICT
-    }
+    // a pointer's own `restrict` reaches no node: a slot converts to its type unqualified
+    let rest = ends_with(s, " restrict") ? slice(s, 0, length(s) - length(" restrict")) : s
     if (ends_with(rest, "*")) {
-        let to = c_builtin_spelled(b, slice(rest, 0, length(rest) - 1))
-        return c_qualified(b, c_pointer(b, to), quals)
+        return c_pointer(b, c_builtin_spelled(b, slice(rest, 0, length(rest) - 1)))
     }
     if (starts_with(rest, "const ")) {
         return c_qualified(b, c_builtin_spelled(b, slice(rest, length("const "))), C_CONST)
