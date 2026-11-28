@@ -489,6 +489,11 @@ def private statement(var r : CIr; var p : CParser; s : int; fn : string; var in
                 c_refuse(r, p, n.tok, "this case label")
                 return false
             }
+            if (key_exists(r.cases, v)) {
+                c_reject(r, p, n.tok, "a duplicate case value")
+                return false
+            }
+            r.cases[v] = true
             into |> push(new CirStmt(s = "case", v = v, is_char = is_char_constant(p, n.a), loc = at))
         }
         let sub = n.kind == CNode.LABEL ? n.b : n.kind == CNode.DEFAULT ? n.a : n.c
@@ -542,10 +547,19 @@ def private simple(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.s = n.kind == CNode.CONTINUE ? "continue" : "break"
     } elif (n.kind == CNode.RETURN) {
         st.s = "return"
+        let void_fn = r.pool[r.ret].k == "void"
         if (n.a >= 0) {
             var e = c_expr(r, p, n.a)
-            st.e = e == null ? null : used(r, r.pool[r.ret].k == "void" ? c_rvalue(r, e) : c_assigned(r, p, e, r.ret, p.ast.nodes[n.a].tok))
+            if (e != null && void_fn && r.pool[r.unqualified[e.t]].k != "void") {
+                c_reject(r, p, n.tok, "a value returned from a void function")
+                delete_expr(e)
+                return false
+            }
+            st.e = e == null ? null : used(r, void_fn ? c_rvalue(r, e) : c_assigned(r, p, e, r.ret, p.ast.nodes[n.a].tok))
             ok = st.e != null
+        } elif (!void_fn) {
+            c_reject(r, p, n.tok, "a return with no value from a function that returns one")
+            ok = false
         }
     } else {
         c_refuse(r, p, n.tok, "this statement")
@@ -575,7 +589,9 @@ def private branch(var r : CIr; var p : CParser; n : CNodeRec; fn : string; var 
         st.s = "switch"
         var c = c_expr(r, p, n.a)
         st.cond = c == null ? null : used(r, c_promote(r, c))
+        var outer <- r.cases
         ok = st.cond != null && one(r, p, n.b, fn, st.body_s)
+        r.cases <- outer
     } else {
         st.s = "for"
         c_types_scope_open(r)
@@ -656,7 +672,7 @@ def private declaration_of(p : CParser; old, d : int) : int {
 }
 
 // the names definition `name` of function declarator `f`, body `body` and old-style parameter
-// names `old_names` keeps while it is read (`ARCHITECTURE_NAMES.md` section 38)
+// names `old_names` keeps while it is read (`ARCHITECTURE_NAMES.md` section 47)
 [arch(at="ARCHITECTURE_NAMES.md#c-names-locals")]
 def private function_names(var r : CIr; var p : CParser; name : string; f, body : int; old_names : array<string>) {
     r.fn_name = name
@@ -780,7 +796,6 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
         let t = c_plain_attributes(r, p, p.ast.nodes[id].d) ? c_declarator_type(r, p, c_specifier_type(r, p, n.a), d, false) : -1
         if (t < 0) {
             if (typedef_decl) {
-                r.typedefs |> erase(sym)
                 r.untyped[sym] = r.err
             } else {
                 r.ids |> erase(sym)
@@ -788,7 +803,6 @@ def private library_declaration(var r : CIr; var p : CParser; decl : int) {
             r.err = ""
         } elif (typedef_decl) {
             c_types_bind(r, sym, t)
-            r.untyped |> erase(sym)
         } elif (r.pool[t].k == "func") {
             r.declared[sym] = true
             r.library_functions[sym] = int2(decl, is_def ? n.b : id)

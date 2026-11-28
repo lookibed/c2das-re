@@ -10,7 +10,7 @@ Dumper C, the clang-free C-IR builder of `frontend/` (`frontend/ARCHITECTURE_TYP
 flags (`dumper_frontend_flags`: the dialect's triple and predefined-macro table, `-funsigned-char`,
 `-nostdinc` and the own headers) into text whose line markers name each token's file and line, the
 parser reads that text, and `c_ir_unit` builds the C-IR, the own headers' folder as the library.
-Every place in the C-IR is the builder's own token's (`frontend/ARCHITECTURE_NAMES.md` section 39):
+Every place in the C-IR is the builder's own token's (`frontend/ARCHITECTURE_NAMES.md` section 48):
 clang gives the text and nothing else. Clang stands in here for Dumper C's own preprocessor until it
 expands macros; nothing under `frontend/` starts clang. A sidecar's `defines`, `include_dirs` and
 `include_files` are refused, since the builder takes none yet; the C-IR's producer is

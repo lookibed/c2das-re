@@ -6,7 +6,7 @@ declarations and statements, which are Dumper A's
 (`converter/dumper_a.das`: `dump_decl`, `local_name`, `free_fn_name`, `hoist_static`,
 `dump_block_extern`), so the C-IR's names match its byte for byte.
 
-## 37. File statics and linkage {#c-names-statics}
+## 46. File statics and linkage {#c-names-statics}
 
 A declaration at file scope is named by its C name, except one with internal linkage: a `static`
 declaration takes `<stem>__<name>` (`linkage_name`), the stem the unit's file name before its first
@@ -16,7 +16,7 @@ The declaration's `static` is set for such a name. A block-scope `extern` declar
 spells the name of the file-scope entity (`<stem>__<name>` for a static one, else the C name). An
 own header's declaration keeps its C name.
 
-## 38. Locals, parameters and hoisted statics {#c-names-locals}
+## 47. Locals, parameters and hoisted statics {#c-names-locals}
 
 Before a definition's body the walk collects the names its parameters and the variables under it
 declare (a block prototype's parameters among them, `fn_all_locals`) and the names its block-scope
@@ -32,7 +32,7 @@ name its declaration took (`CId.name`), bound through the identifier scopes, so 
 global, a block `extern` hiding a local and a block prototype hiding a local each reach their own
 declaration's name, never one found by spelling.
 
-## 39. Places {#c-ir-places}
+## 48. Places {#c-ir-places}
 
 A declaration's place (`loc`) is its name's token, a typedef's, a variable's and a function's
 alike; a statement's is its first token's (a declaration statement's its variable's name, a `case`,

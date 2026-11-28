@@ -23,7 +23,7 @@ The builder states a type once, in its pool (`CTypes.pool`), by the same structu
 indices, typedef names resolved, and uses it (`c_types_use`): the parts not yet in the table first,
 in that order, then the type. A qualified type is a pool entry of its own (`c_qualified`, keyed by
 its qualifier bits and its unqualified entry; an array's qualifiers on its element, C11 6.7.3p9),
-since a conversion depends on qualifiers (`ARCHITECTURE_EXPRS.md` section 33); its use is its
+since a conversion depends on qualifiers (`ARCHITECTURE_EXPRS.md` section 42); its use is its
 unqualified type's table entry, as Dumper A drops every qualifier. A function type's parameters
 are unqualified. Computing a type adds to the pool
 only; the table grows by uses, in the order Dumper A's walk reaches the same declarations:
@@ -32,18 +32,18 @@ only; the table grows by uses, in the order Dumper A's walk reaches the same dec
 - a typedef declaration: its type, then its `typedef` entry, keyed by the name, so a second
   typedef of one name - another block's, of another type - adds its type and shares the entry;
 - a variable declaration: its type, then its initializer's expression types
-  (`ARCHITECTURE_EXPRS.md` section 35);
+  (`ARCHITECTURE_EXPRS.md` section 44);
 - a function declaration: its type, then each parameter's adjusted type, which the function's type
   holds already; a definition then its body;
 - a body: its statements depth-first in source order, each expression where it stands
-  (`ARCHITECTURE_EXPRS.md` section 35), each declaration in it as at file scope -
+  (`ARCHITECTURE_EXPRS.md` section 44), each declaration in it as at file scope -
   `static` and `extern` locals alike - except that a block declaration of a function whose name a
   declaration before it declared (the unit's, or the own headers') adds nothing, as clang links it
   to that declaration;
 - an old-style definition: its type as clang gives it, `R (P...)` with each parameter's type
   promoted (C11 6.5.2.2p6: an integer type narrower than `int` and `_Bool` to `int`, `float` to
   `double`), then each parameter's adjusted type from its declaration in the list, unpromoted, in
-  the identifier list's order (`int` for a name the list does not declare); an attribute on such a
+  the identifier list's order (the parser refuses a name the list does not declare); an attribute on such a
   declaration that changes a type is refused, as anywhere.
 
 A declaration's specifiers name one type, resolved once before its declarators: a typedef name
@@ -59,7 +59,7 @@ pool type it names for its scope: a block's bindings end with the block (`for` o
 The builtin type keywords of a specifier list form a set (a second `long` its own bit), which the
 parser has already checked to combine (`ARCHITECTURE_PARSER.md` section 17). `int` and `signed`
 fold into the set they qualify; each set is one type spelled as clang spells it, every width the
-dialect's (`CirTarget`): `char` (signed as the target says: unsigned under both dialects, as Dumper
+dialect's (`CirTarget`): `char` (unsigned under both dialects, as Dumper
 A passes `-funsigned-char`), `signed char`, `unsigned char`, `short`, `unsigned short`, `int`,
 `unsigned int`, `long`, `unsigned long`, `long long`, `unsigned long long`, `_Bool` (8 bits,
 unsigned), `float`, `double`, `long double` (64 bits under both dialects), `void`. Qualifiers,
@@ -89,7 +89,7 @@ array is then never used, as clang's parameter types are the adjusted ones.
 
 An array's size is an integer constant expression (C11 6.6) from 0 to 2^31 - 1, evaluated by the
 unit's one evaluator: `CTypes.fold`, which the walk sets to `c_exprs.das`'s `c_fold_node`
-(`ARCHITECTURE_EXPRS.md` section 32), so array sizes, index designators and `case` labels fold
+(`ARCHITECTURE_EXPRS.md` section 41), so array sizes, index designators and `case` labels fold
 alike. Any other size - a variable one, which the spec leaves out of scope - is refused, and so is
 `[*]` under a declarator. An array with no size is count -1 unless its initializer sizes it (section
 27) or it is a tentative definition the unit's end completes.
@@ -132,7 +132,8 @@ and Dumper A reads that type. The builder keeps, per name declared at file scope
 it had a prototype, and gives a redeclaration (a definition included):
 
 - of a function with no prototype (`int f();`), after one with a prototype: the earlier type;
-- of a function with a prototype, after one with none: its own type;
+- of a function with a prototype, or an old-style definition (`int f(a) int a; {...}`), after one
+  with none: its own type, as Dumper A takes the definition's;
 - of an array of unknown size, after one with a size: the earlier type; of an array with a size,
   after one of unknown size: its own;
 - of the same type: that type.

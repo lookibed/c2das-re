@@ -3,8 +3,9 @@
 Read `ARCHITECTURE_COMMON.md` (repo root) first - its contract binds this document. The folder
 holds the token oracles of Dumper C's preprocessor: of the pp-token lexer, `frontend/pp_lexer.das`
 (`frontend/ARCHITECTURE.md` section 4), and of the directive layer, `frontend/pp_directives.das`
-(`frontend/ARCHITECTURE_PP.md`): one unit through clang and through the frontend, the two token
-streams compared token by token. It starts clang, so it lives outside `frontend/`, whose
+(`frontend/ARCHITECTURE_PP.md`), and of the macro expansion, `frontend/pp_expand.das`
+(`frontend/ARCHITECTURE_EXPAND.md`): one unit through clang and through the frontend, the two
+token streams compared token by token. It starts clang, so it lives outside `frontend/`, whose
 code starts no process (`frontend/ARCHITECTURE.md` section 2). The full preprocessor oracle of
 the plan's PP.6 grows from it.
 
@@ -16,16 +17,18 @@ the plan's PP.6 grows from it.
   (`reference_failures`, `reference_failure`, section 3), a set's run (`run_set`) and the command
   line's run (`OracleArgs`, `run_oracle`); and the directive oracle of section 4
   (`compare_unit_pp2`, `pp2_tokens`, `pragma_lines`, `pp2_differences`, `pp2_difference_class`,
-  `pp2_class`, `clang_macro_names`, `run_set_pp2`, `run_pp2`). The clang it runs
+  `pp2_class`, `clang_macro_names`, `run_set_pp2`, `run_pp2`), which with `expand` is the
+  expansion oracle of section 5 (`OracleUnit`, `oracle_units`, `list_units`, `ORACLE_EPOCH`). The clang it runs
   and its flags are Dumper A's (`default_clang`, `dumper_frontend_flags`, `DUMPER_FLAGS` of
   `converter/dumper_a.das`): the oracle preprocesses as the converter does.
 - `run.das` - the command line's entry, its arguments parsed into `run_oracle`; from the repository
   root with `das`: `--corpus frontend` (every
   header of `frontend/include/`), `--corpus c-testsuite` (the fetched single-exec suite), `--corpus gcc-torture` (the fetched
-  `execute` folder's own units), `--corpus pp2` (the directive fixtures), units
-  named after the flags, `--raw`, `--pp2` (section 4), `--show N`, `--work <folder>` (default `compare/work/pp`, under
+  `execute` folder's own units), `--corpus pp2` and `--corpus pp3` (the directive and expansion
+  fixtures), `--list <file>` (a corpus list, section 5), units named after the flags, `--raw`,
+  `--pp2` (section 4), `--pp3` (section 5), `--show N`, `--work <folder>` (default `compare/work/pp`, under
   the gitignored `compare/work/`). An unknown corpus, or one whose folder is missing - a suite not
-  fetched - is an error and exit 1, never an empty set. It prints each unit that differs with its
+  fetched - or a corpus list that is missing, is an error and exit 1, never an empty set. It prints each unit that differs with its
   first differences, a line per set and the total; exit 0 when no unit differs.
 - `fixtures/edge_tokens.c` - the edge cases of `frontend/pp_lexer.das` as one unit with no
   directive: pp-numbers, UCNs, prefixes, every punctuator and digraph, `::`, raw strings, OTHER
@@ -35,6 +38,13 @@ the plan's PP.6 grows from it.
   guards in both spellings, a file that is no guard, `#pragma once`, `#line` and a line marker,
   nested conditionals with directives in skipped groups, pragmas and the null directive, `#import`,
   `#ident` and `#sccs`. None uses a macro.
+- `fixtures/pp3/` - the expansion oracle's units: the examples of C11 6.10.3.3 to 6.10.3.5 and
+  6.10.9, rescanning and deferred recursion, the GNU variadics, `#` and `##`, the builtins under
+  `SOURCE_DATE_EPOCH`, macros in `#include`, `#line` and `#if` lines, and `_Pragma` - its operand
+  expanded, in arguments done at the rescan, in an `#if` line - with the names of disabled macros
+  read in arguments, a directive before a call's `(`, `__VA_OPT__` in a macro that is not variadic
+  and a final `\` stringified (`pragma_args.c`); `vers2.h` and `builtins.h` are headers they
+  include.
 - `reference_failures.txt` - the units the reference cannot preprocess, each with its reason
   (section 3).
 - The tests are `compare/tests/test_pp_oracle.das`.
@@ -76,7 +86,10 @@ per unit: the end of its path (`gcc.c-torture/execute/loop-2f.c`), a tab, the re
 (and `run_set_pp2`, both through `reference_failure`) counts a failing unit the list names as a listed reference failure, with that reason, and any
 other failing unit as an unlisted one, with clang's error, so a new failure shows up apart from the
 known ones. A listed unit that preprocesses after all is counted and printed too, so a stale line
-is dropped. None of the three counts is a difference: the exit code follows the differences alone.
+is dropped. None of the three counts is a difference. The lexer's run exits by the differences
+alone; the directive and expansion oracles (sections 4 and 5) fail closed: an unlisted reference
+failure fails their run, a listed one does not, so the units the reference cannot read stay the
+ones the list names and a new failure is never passed over as a reference problem.
 
 ## 4. The directive oracle {#pp2}
 
@@ -88,7 +101,8 @@ own, so a token is compared by its kind, its spelling and `at_bol` only. Clang p
 it keeps, and each `#ident` or `#sccs`, as a `#pragma` or `#ident` line of its output, which its
 token dump takes as a directive, not tokens; PP.2 keeps them in its ledgers, not its stream. So
 the oracle counts those lines of the `-E` output (`pragma_lines`) against PP.2's pragma and pack
-entries.
+entries, and places each: a line's place is the count of clang's tokens on the lines before it
+(`pragma_places`), an entry's the tokens PP.2 handed out before it (`emitted`).
 
 A macro clang expands shifts every later token, so the two streams are aligned, not compared
 position by position: `pp2_differences` takes Myers' shortest edit script by kind, spelling and
@@ -109,9 +123,34 @@ up and the rest of the streams is one difference. Every difference is classed
 
 A unit's class (`pp2_class`) is the latest its differences wait for, raised to needs PP.3 or PP.4
 by a place left to either with no difference; it differs when one difference differs, when PP.2
-has an error of its own - an error naming PP.3 or PP.4, or met while a group PP.4 chooses was
-open, is not its own - or when the pragma counts disagree with nothing left to PP.4 to explain them
-(or to PP.3, when clang has more: `_Pragma` in an expansion). Each unit not clean prints its count
+has an error of its own - an error naming PP.3 or PP.4, or met in a group PP.4 chooses
+(`PpDiagnostic.undecided`), or in PP.3's stream met by a read that handed out a token of a late
+macro (section 5), is not its own - when the pragma counts disagree with nothing left to PP.4 to
+explain them (or to PP.3, when clang has more: `_Pragma` in an expansion), or when the streams
+are equal and a pragma stands at another place than clang's. Each unit not clean prints its count
 of differences of each class, every difference that differs and `--show` of each other class.
-Only a unit that differs fails the run; a unit clang refuses is a reference failure, listed or
-unlisted as section 3 counts it, in this mode too.
+A unit that differs fails the run; a unit clang refuses is a reference failure, listed or
+unlisted as section 3 counts it, and an unlisted one fails the run too.
+
+## 5. The expansion oracle {#pp3}
+
+`--pp3` compares PP.3 over PP.2 with clang the way section 4 does: `clang -E -P` under the flags of
+section 2, the streams aligned by kind, spelling and `at_bol`, the `#pragma` lines against the
+ledgers, each difference classed, the reference list of section 3 applied. PP.3 hands out expanded
+tokens, so no difference needs PP.3 (`Pp2Result.expanded`): a difference waits for PP.4 as section
+4 classes it, or when a token of PP.3's side comes from the expansion of a macro defined in a
+group PP.4 chooses - a macro of its call or of a call its name came from whose `#define` sat
+inside such a group (`PpMacro.undecided`, `late_macro`); a macro defined outside every such group
+is not late, though the read that defined it met one - or it differs. `at_bol` is comparable after expansion: clang's `-E` starts a printed
+line where the token's own line starts one, the first token of a replacement takes the macro
+name's, and the token after a pragma starts a line in both. Both sides run at `ORACLE_EPOCH`:
+clang reads it from `SOURCE_DATE_EPOCH`, PP.3 from `pp_expand_start`, so `__DATE__`, `__TIME__`
+and `__TIMESTAMP__` compare exactly.
+
+A corpus list (`--list`, in either mode) names a unit a line, its path then its own flags:
+`-I<dir>` goes to clang and before PP.2's include path, `-D<entry>` to clang and after the table's
+entries, `-x <lang>` to clang alone; any other flag makes the unit a reference failure. The PP.6
+corpus lists are of this form. Two kinds of unit cannot compare by re-lexing clang's output, and
+are reported, not mapped: a `#` that an empty macro leaves at a line start (clang prints `#
+define X` as text, its token dump reads it as a directive), and a name spelled with a UCN, which
+clang prints in UTF-8.

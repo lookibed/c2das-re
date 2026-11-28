@@ -4,7 +4,7 @@ Companion to `ARCHITECTURE.md` in this folder; section numbers are unique across
 describes `diff.das`, the byte diff of two dumpers' C-IR (the plan's C.6), which the comparison of
 `compare/types/` and the converter's tests run over Dumper A's and Dumper C's texts.
 
-## 40. Normalization and diff {#cir-diff}
+## 49. Normalization and diff {#cir-diff}
 
 Two dumpers' C-IR for one unit must be byte-identical (`docs/c-ir-spec.md`, the differential
 test). `cir_normalized` reads a text with the C-IR reader (`read_cir` of `converter/cir.das`) and
