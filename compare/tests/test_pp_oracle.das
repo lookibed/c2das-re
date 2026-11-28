@@ -7,12 +7,14 @@ require daslib/strings_boost
 require ../pp/pp_oracle.das
 require ../pp/pp_features.das
 require ../pp/pp_macros.das
+require ../pp/pp_token_oracle.das
 require ../../frontend/c_defines.das
 require ../../frontend/pp_lexer.das
 require ../../frontend/pp_directives.das
 require ../../frontend/pp_record.das
 require ../../converter/tiers.das
 require ../../converter/dumper_a.das
+require ../../converter/cir.das
 
 //! `compare/pp/pp_oracle.das`: clang's `-dump-tokens` read, its kinds mapped, two token streams
 //! compared, and the edge-case unit through the pinned clang with no difference.
@@ -1060,4 +1062,187 @@ def test_pp5_stray_copy(t : T?) {
     t |> success(pp_next_token(pp) && pp_token_spelling(pp) == "[")
     pp.tok.copy = copy_of_a
     t |> equal(stray_copies(pp), 0)
+}
+
+[test(description = "gcc's flags of the dumper's clang flags: every flag gcc spells the same kept in order, -std=gnu17 first unless a standard is named, the target and its triple and any other flag dropped")]
+def test_gcc_flags(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    t |> equal(error, "")
+    var dropped : array<string>
+    let gcc <- gcc_flags(flags, dropped)
+    t |> equal(join(dropped, " "), "-target {target_lp64_linux().triple}")
+    t |> equal(gcc[0], "-std=gnu17")
+    t |> equal(length(gcc), length(flags) - 2 + 1)
+    for (f, g in [for (f in flags); f; where f != "-target" && f != target_lp64_linux().triple], range(1, length(gcc))) {
+        t |> equal(gcc[g], f)
+    }
+    var own_dropped : array<string>
+    let own <- gcc_flags(["-std=c11", "-Iinc", "-DN=1", "-x", "c", "-include", "cfg.h", "-fms-extensions", "-isystem", "sys"], own_dropped)
+    t |> equal(join(own, " "), "-std=c11 -Iinc -DN=1 -x c -include cfg.h -isystem sys")
+    t |> equal(join(own_dropped, " "), "-fms-extensions")
+}
+
+[test(description = "the pinned gcc is the version word of VERSIONS.md's gcc: line, none when the line is missing; the real file pins the gcc-14 the second reference runs")]
+def test_pinned_gcc(t : T?) {
+    t |> equal(pinned_gcc("x: 1\ngcc: 14.3.0 (gcc-14 of ...)\n"), "14.3.0")
+    t |> equal(pinned_gcc("gcc-torture: 04696df\n"), "")
+    t |> equal(pinned_gcc(fread(PP6_VERSIONS)), "14.3.0")
+}
+
+[test(description = "a unit's token-oracle class: clean when clean, implementation-defined only when gcc read it and disagrees with clang outside a strict corpus, else it differs; a unit clang refuses is clean only when the preprocessor refuses it too")]
+def test_pp6_class(t : T?) {
+    let disagrees = GccAnswer(disagrees = true)
+    let agrees = GccAnswer()
+    let refused = GccAnswer(error = "gcc -E: error", disagrees = true)
+    t |> equal(pp6_class(Pp2Class.clean, disagrees, false), Pp6Class.clean)
+    t |> equal(pp6_class(Pp2Class.differs, disagrees, false), Pp6Class.implementation_defined)
+    t |> equal(pp6_class(Pp2Class.differs, disagrees, true), Pp6Class.differs)
+    t |> equal(pp6_class(Pp2Class.differs, agrees, false), Pp6Class.differs)
+    t |> equal(pp6_class(Pp2Class.differs, refused, false), Pp6Class.differs)
+    var r = Pp2Result(clang_refused = true)
+    t |> equal(refusal_class(r), Pp2Class.differs)
+    r.errors |> push("1:2 #error stop")
+    t |> equal(refusal_class(r), Pp2Class.clean)
+}
+
+[test(description = "the lists fail closed: a listed disagreement passes with its reason, an unlisted one fails the run; a known difference passes only outside a strict corpus; a listed unit that is clean or refused by both is reported as stale; a difference or an unlisted reference failure fails the run")]
+def test_count_pp6(t : T?) {
+    let lists <- Pp6Lists(impl <- reference_failures("# comment\npp6/impl_ucn.c\tclang [x] | gcc [y]; pp [z]\n"),
+                          known <- reference_failures("cpp/known.c\ta cause\n"))
+    var totals : Pp6Totals
+    t |> equal(count_pp6(lists, "compare/pp/fixtures/pp6/impl_ucn.c", Pp6Class.implementation_defined, false, totals),
+               "compare/pp/fixtures/pp6/impl_ucn.c: implementation-defined (listed): clang [x] | gcc [y]; pp [z]")
+    t |> equal(pp6_exit_code(totals), 0)
+    t |> equal(count_pp6(lists, "other.c", Pp6Class.clean, false, totals), "")
+    t |> equal(count_pp6(lists, "a/pp6/impl_ucn.c", Pp6Class.clean, false, totals),
+               "a/pp6/impl_ucn.c: listed as implementation-defined (clang [x] | gcc [y]; pp [z]), clean: drop its line")
+    t |> equal(count_pp6(lists, "x/cpp/known.c", Pp6Class.refused, false, totals),
+               "x/cpp/known.c: listed as a known difference (a cause), refused: drop its line")
+    t |> equal(count_pp6(lists, "x/cpp/known.c", Pp6Class.differs, false, totals), "x/cpp/known.c: differs (known): a cause")
+    t |> equal("{totals.clean} {totals.refused} {totals.listed} {totals.known} {totals.stale} {pp6_exit_code(totals)}", "2 1 1 1 2 0")
+    t |> equal(count_pp6(lists, "new.c", Pp6Class.implementation_defined, false, totals), "new.c: implementation-defined (unlisted)")
+    t |> equal(pp6_exit_code(totals), 1)
+    var strict : Pp6Totals
+    t |> equal(count_pp6(lists, "x/cpp/known.c", Pp6Class.differs, true, strict), "x/cpp/known.c: differs")
+    t |> equal(pp6_exit_code(strict), 1)
+    var differs : Pp6Totals
+    t |> equal(count_pp6(lists, "pp6/impl_ucn.c", Pp6Class.differs, false, differs), "pp6/impl_ucn.c: differs")
+    t |> equal(pp6_exit_code(differs), 1)
+    var unlisted_ref : Pp6Totals
+    unlisted_ref.oracle.unlisted = 1
+    t |> equal(pp6_exit_code(unlisted_ref), 1)
+}
+
+[test(description = "the preprocessor's answer beside gcc's: its first difference, that it accepts what clang refuses, its first error, or its pragma lines")]
+def test_pp_answer(t : T?) {
+    var r = Pp2Result(clang_pragmas = 0, pp_pragmas = 1)
+    t |> equal(pp_answer(r), "pp: pragma lines 1, clang 0")
+    r.errors |> push("5:7 bad")
+    t |> equal(pp_answer(r), "pp error: 5:7 bad")
+    r.shown |> push("differs at pp #1: clang [a] | pp [b c]")
+    t |> equal(pp_answer(r), "pp [b c]")
+    r.clang_refused = true
+    t |> equal(pp_answer(r), "pp accepts it")
+}
+
+[test(description = "gcc's answer on units the preprocessor reads as clang: on impl_line.c clang and gcc disagree (__LINE__ in a call over two lines), on a plain unit they agree; on a unit clang refuses gcc disagrees only by accepting it", timeout = 1200)]
+def test_gcc_answer(t : T?) {
+    var error : string
+    let flags <- preprocess_flags(error)
+    let setup <- pp2_setup(error)
+    t |> equal(error, "")
+    let work = path_join(test_temp_dir(), "pp6_gcc")
+    mkdir_rec(work)
+    let r <- compare_unit_pp2("compare/pp/fixtures/pp6/impl_line.c", work, flags, setup.entries, setup.search, 5, true)
+    t |> equal(r.cls, Pp2Class.clean, "{r.shown} {r.errors}")
+    let line = gcc_answer(r, work)
+    t |> equal(line.error, "")
+    t |> success(line.disagrees, line.shown)
+    t |> equal(line.shown, "clang [4] | gcc [3]")
+    let plain <- compare_unit_pp2(unit_file("pp6_plain.c", "#define F(x) x\nint F(y) = 1;\n"), work, flags, setup.entries, setup.search, 5, true)
+    let same = gcc_answer(plain, work)
+    t |> equal(same.error, "")
+    t |> success(!same.disagrees, same.shown)
+    let stop <- compare_unit_pp2(unit_file("pp6_stop.c", "#error stop\nint x;\n"), work, flags, setup.entries, setup.search, 5, true)
+    t |> success(stop.clang_refused && !empty(stop.errors), "{stop.error} {stop.errors}")
+    t |> equal(refusal_class(stop), Pp2Class.clean)
+    let both = gcc_answer(stop, work)
+    t |> success(!both.disagrees && both.error == "gcc -E refuses the unit too", both.error)
+}
+
+[test(description = "-std goes to clang alone and -include makes both sides read a wrapper that includes the file first; the unit through the wrapper compares clean", timeout = 1200)]
+def test_forced_include(t : T?) {
+    let own = split_unit_flags(["-std=c11", "-include", "cfg.h", "-Iinc", "-DN=2"])
+    t |> equal(own.error, "")
+    t |> equal("{join(own.clang, " ")}|{join(own.includes, " ")}|{join(own.search, " ")}|{join(own.entries, " ")}", "-std=c11 -Iinc -DN=2|cfg.h|inc|N=2")
+    var error : string
+    let flags <- preprocess_flags(error)
+    let setup <- pp2_setup(error)
+    let inc = path_join(test_temp_dir(), "pp6_inc")
+    mkdir_rec(inc)
+    fwrite(path_join(inc, "cfg.h"), "#define FROM_CFG 42\n")
+    let unit = unit_file("pp6_forced.c", "int x = FROM_CFG + __INCLUDE_LEVEL__;\n")
+    let work = path_join(test_temp_dir(), "pp6_forced")
+    mkdir_rec(work)
+    let r <- compare_unit_pp2(unit, work, flags, setup.entries, setup.search, 5, true, ["-include", "cfg.h", "-I{inc}", "-std=c11"])
+    t |> equal(r.error, "")
+    t |> success(ends_with(r.read, "pp6_forced.c.include.c"), r.read)
+    t |> equal(r.cls, Pp2Class.clean, "{r.shown} {r.errors}")
+    t |> equal(r.clang_tokens, 7)
+}
+
+[test(description = "the corpora and sets: the fast set's names, the full set adding the programs and every committed list in name order, a list corpus not strict, a named one strict, an unknown or missing one an error")]
+def test_pp6_corpora(t : T?) {
+    t |> equal(join(pp6_set(false), " "), "frontend pp2 pp3 pp4 c-testsuite")
+    let full <- pp6_set(true)
+    t |> equal(join([for (i in range(5, 10)); full[i]], " "), "gcc-torture lua doom chibicc projects")
+    t |> success(length(full) > 10 && full[10] == "compare/pp/corpus/gcc_dg_cpp.txt", join(full, " "))
+    var error : string
+    let hs <- pp6_corpus(getcwd(), "compare/pp/corpus/hideset.txt", error)
+    t |> equal(error, "")
+    t |> success(!hs.strict && length(hs.units) == 12 && hs.name == "hideset.txt")
+    let pp4 <- pp6_corpus(getcwd(), "pp4", error)
+    t |> success(pp4.strict && length(pp4.units) == 4)
+    let missing <- pp6_corpus(getcwd(), "compare/pp/corpus/nosuch.txt", error)
+    t |> equal(error, "corpus list compare/pp/corpus/nosuch.txt is missing")
+    error = ""
+    let unknown <- pp6_corpus(getcwd(), "nosuch", error)
+    t |> success(starts_with(error, "unknown corpus 'nosuch'"), error)
+}
+
+[test(description = "run.das --pp6: exit 0 over the fixtures, a clang/gcc disagreement listed or a refusal both sides share; exit 1 on an unlisted disagreement, on any difference in a strict corpus, and on an unknown corpus", timeout = 1200)]
+def test_run_pp6_command_line(t : T?) {
+    let work = path_join(test_temp_dir(), "pp6_cli")
+    var argv <- daslang_cmd(["dasCRuntime", "c_runtime", "fetch/dasFlex"])
+    argv |> push_from(["compare/pp/run.das", "--", "--pp6", "--work", work])
+    var out : string
+    var fixtures := argv
+    fixtures |> push_from(["--corpus", "pp4", "compare/pp/fixtures/pp6/impl_line.c"])
+    let fixtures_rc = run_and_capture(fixtures, out, 600.0)
+    t |> equal(fixtures_rc, 0, out)
+    t |> success(find(out, "total (pp6): 5 clean, 0 refused by both, 0 implementation-defined (listed), 0 implementation-defined (unlisted), 0 known differences, 0 differ") >= 0, out)
+    let list = path_join(test_temp_dir(), "pp6_list.txt")
+    fwrite(list, "compare/pp/fixtures/pp6/impl_ucn.c\n{unit_file("pp6_cli_stop.c", "#error stop\n")}\n")
+    var listed := argv
+    listed |> push_from(["--list", list])
+    let listed_rc = run_and_capture(listed, out, 600.0)
+    t |> equal(listed_rc, 0, out)
+    t |> success(find(out, "0 clean, 1 refused by both, 1 implementation-defined (listed), 0 implementation-defined (unlisted), 0 known differences, 0 differ") >= 0, out)
+    var strict := argv
+    strict |> push("compare/pp/fixtures/pp6/impl_ucn.c")
+    let strict_rc = run_and_capture(strict, out, 600.0)
+    t |> equal(strict_rc, 1, out)
+    t |> success(find(out, "compare/pp/fixtures/pp6/impl_ucn.c: differs") >= 0, out)
+    let unlisted_list = path_join(test_temp_dir(), "pp6_unlisted.txt")
+    fwrite(unlisted_list, "{unit_file("pp6_cli_ucn.c", "int \\u00e8 = 1;\n")}\n")
+    var unlisted := argv
+    unlisted |> push_from(["--list", unlisted_list])
+    let unlisted_rc = run_and_capture(unlisted, out, 600.0)
+    t |> equal(unlisted_rc, 1, out)
+    t |> success(find(out, "implementation-defined (unlisted)") >= 0 && find(out, "list it: ") >= 0, out)
+    var unknown := argv
+    unknown |> push_from(["--corpus", "nosuch"])
+    let unknown_rc = run_and_capture(unknown, out, 600.0)
+    t |> equal(unknown_rc, 1, out)
 }
