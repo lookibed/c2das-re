@@ -882,6 +882,19 @@ def test_lexer_diag_on_line_directive_old_place(t : T?) {
     t |> equal(join(moved, " | "), "z.c:100 2:1")
 }
 
+[test(description = "an unterminated comment opening on a directive's line is the line's, as clang reads it with the line: not skipped though the directive opens a skipped group; one opening on the line after #if 0 is skipped")]
+def test_unterminated_comment_on_directive_line(t : T?) {
+    for (text in ["#if 0 /* open", "#ifdef NOPE /* open", "#if 1\n#else /* open", "#if 1\n#elif 1 /* open", "#if 0\n#else /* open"]) {
+        var pp <- started([("main.c", text)])
+        stream(pp)
+        t |> equal(length(pp.lx.diags), 1, text)
+        t |> success(!pp.lx.diags[0].skipped, "{text}: {lexer_marks(pp)}")
+    }
+    var after <- started([("main.c", "#if 0\n/* open")])
+    stream(after)
+    t |> equal(lexer_marks(after), "2:1 unterminated /* comment skipped")
+}
+
 [test(description = "a lexer diagnostic met in a group an undecided conditional chose is marked undecided, the skipped group too, since clang may read it; one after its #endif is not")]
 def test_lexer_diag_undecided_mark(t : T?) {
     var pp <- started([("main.c", "#define N 1\n#if N\n\xff a\n#endif\n\xff b\n")])

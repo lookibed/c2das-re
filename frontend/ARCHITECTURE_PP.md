@@ -242,9 +242,10 @@ diagnostic met in a group an undecided conditional chose, skipped or read, is ma
 presumed line and file (`pline`, `pname`, as a directive diagnostic and a token carry them): every
 token is consumed while its file is the one read - the end of a file before the file closes, the
 token after an `#include` line before the included file opens - so a diagnostic keeps its file's
-`#line` though the read that met it goes on past the file's end into its includer. A `#line` takes
-effect after its own line (section 10): a diagnostic met on that line, up to its last token's line,
-is placed before the new presumed place applies.
+`#line` though the read that met it goes on past the file's end into its includer. A diagnostic met
+past a directive's last token on its line, an unterminated comment opening there, is marked as the
+line's when the line ends (`mark_line_end_diags`), before the directive opens or closes a group or a
+`#line` moves the presumed place (section 10): clang reads that comment with the line.
 
 A directive or expansion diagnostic (`PpDiagnostic`) is placed where its trouble is and carries
 apart from that where the reader stood when it raised it (`raised`, `pp_reader_place`): the

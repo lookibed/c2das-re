@@ -616,6 +616,18 @@ def private consumed(var pp : Preprocessor) {
     }
 }
 
+//! the lexer diagnostics met past a directive's last token up to its line's end - an unterminated
+//! comment opening there - marked while the line is read, before the directive opens or closes a
+//! group or moves the presumed place; the pending token's own stay for its consumption
+[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+def private mark_line_end_diags(var pp : Preprocessor) {
+    var upto = pp.lexer_diags_seen
+    while (upto < length(pp.lx.diags) && pp.lx.diags[upto].line <= pp.last_tok.line) {
+        upto++
+    }
+    mark_lexer_diags(pp, upto)
+}
+
 //! the current token, one of a directive's line, consumed and kept as the line's last: a bad byte
 //! in it is marked `directive`
 [arch(at="ARCHITECTURE_PP.md#pp-diags")]
@@ -644,11 +656,13 @@ def private fetch(var pp : Preprocessor) : bool {
     return got
 }
 
-//! the next token of the directive's line; false at its end, the token after it then pending
+//! the next token of the directive's line; false at its end, the token after it then pending and
+//! a lexer diagnostic met on the line before it marked as the line's
 def private next_on_line(var pp : Preprocessor) : bool {
     return false if (pp.pending)
     if (!pp_next(pp.lx) || pp.lx.tok.at_bol) {
         pp.pending = true
+        mark_line_end_diags(pp)
         return false
     }
     consumed_on_line(pp)
@@ -1579,15 +1593,8 @@ def private marker_flags(var pp : Preprocessor) : bool {
 def private current_is_number(pp : Preprocessor; digits : string) : bool => pp.lx.tok.kind == int(PpTok.PP_NUMBER) && pp_spelling_is(pp.lx, digits)
 
 //! a `#line` or line marker's presumed line `number` and name, -1 for none, in force from the line
-//! after the directive; a lexer diagnostic met on the directive's line - up to its last token's
-//! line - is placed first, at the place the line had
-[arch(at="ARCHITECTURE_PP.md#pp-diags")]
+//! after the directive
 def private line_applied(var pp : Preprocessor; number : int64; name : int) {
-    var upto = pp.lexer_diags_seen
-    while (upto < length(pp.lx.diags) && pp.lx.diags[upto].line <= pp.last_tok.line) {
-        upto++
-    }
-    mark_lexer_diags(pp, upto)
     pp.state.line_delta = uint(number) - uint(pp.last_tok.line + 1)
     if (name >= 0) {
         pp.state.pname = name
