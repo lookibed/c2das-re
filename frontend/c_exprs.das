@@ -221,14 +221,17 @@ def private held_in(r : CIr; t : int; v : int64) : int64 {
 def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
     return false if (x == null || !is_int(r, x.t))
     if (x.e == "int_lit") {
+        // msvc's wrapped `ll` literal is written `-N`, its value
+        let negative = starts_with(x.v, "-")
         var u = 0ul
-        for (ch in x.v) {
+        for (ch in negative ? slice(x.v, 1) : x.v) {
             u = u * 10ul + uint64(ch - '0')
         }
-        v = held_in(r, x.t, int64(u))
+        v = held_in(r, x.t, negative ? -int64(u) : int64(u))
         return true
     } elif (x.e == "sizeof_v") {
-        v = int64(x.trait_v)
+        // a function type's size is GNU's 1 as clang folds it; the node keeps the width Dumper A writes
+        v = r.pool[x.of_t].k == "func" ? 1l : int64(x.trait_v)
         return true
     } elif (x.e == "cast") {
         return fold_cast(r, x, v)
@@ -249,12 +252,16 @@ def c_fold(r : CIr; x : CirExpr?; var v : int64&) : bool {
 }
 
 // the value of integer cast `x` into `v`: of an integer constant expression, or of a floating
-// constant cast at once to the integer type (C11 6.6p6), truncated toward zero
+// constant cast at once to the integer type (C11 6.6p6), truncated toward zero; to `_Bool` any
+// nonzero floating value is 1 (6.3.1.2p1), never its truncation
 def private fold_cast(r : CIr; x : CirExpr?; var v : int64&) : bool {
     var inner = 0l
-    if (x.a != null && x.a.e == "float_lit") {
+    if (x.a != null && x.a.e == "float_lit" && is_bool(r, x.t)) {
+        v = x.a.v != "0x0p+0" ? 1l : 0l
+        return true
+    } elif (x.a != null && x.a.e == "float_lit") {
         // a floating constant's value the integer type does not hold is no integer constant (C11 6.3.1.4p1)
-        return false if (!c_float_integer(x.a.v, inner) || (!is_bool(r, x.t) && held_in(r, x.t, inner) != inner))
+        return false if (!c_float_integer(x.a.v, inner) || held_in(r, x.t, inner) != inner)
     } elif (x.a == null || !is_int(r, x.a.t) || !c_fold(r, x.a, inner)) {
         return false
     }
@@ -961,7 +968,8 @@ def private pointer_arms(var r : CIr; p : CParser; var a, b : CirExpr?&; tok : i
     return t
 }
 
-// a unary operator `k` over `a` at token `tok` (C11 6.5.3): `-`, `+` and `~` promote, `!` reads,
+// a unary operator `k` over `a` at token `tok` (C11 6.5.3): `-` and `+` promote an arithmetic
+// operand, `~` an integer one, any other operand invalid C; `!` reads,
 // `&` takes the address, `*` reads the pointer, `++` and `--` keep the operand
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-operands")]
 def private unary(var r : CIr; p : CParser; k : int; var a : CirExpr?; post : bool; tok : int) : CirExpr? {
@@ -984,6 +992,10 @@ def private unary(var r : CIr; p : CParser; k : int; var a : CirExpr?; post : bo
         return new CirExpr(e = "un", t = int_t(r), op = "not", a = a)
     }
     a = c_promote(r, a)
+    if (k == '~' ? !is_int(r, a.t) : !is_arith(r, a.t)) {
+        c_reject(r, p, tok, "this operator on an operand of this type")
+        return null
+    }
     return new CirExpr(e = "un", t = a.t, op = k == '-' ? "neg" : k == '+' ? "plus" : "bnot", a = a)
 }
 

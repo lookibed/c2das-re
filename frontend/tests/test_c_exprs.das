@@ -329,6 +329,9 @@ def test_refusals(t : T?) {
     t |> equal(ir_of("long __builtin_expect(long, long); void g(void) \{ __builtin_expect; \}"), "error: t.c:1:51: the builtin '__builtin_expect' other than as a callee is not typed yet")
     t |> equal(ir_of("void g(int x) \{ x ?: 1; \}"), "error: t.c:1:17: GNU's ?: with no middle operand is not typed yet")
     t |> equal(ir_of("void g(int *p) \{ p * 2; \}"), "error: t.c:1:18: this operator on operands of these types is invalid C, which clang rejects")
+    t |> equal(ir_of("int ga[3]; int *p = +ga;"), "error: t.c:1:21: this operator on an operand of this type is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(int *p) \{ -p; \}"), "error: t.c:1:18: this operator on an operand of this type is invalid C, which clang rejects")
+    t |> equal(ir_of("void g(double d) \{ ~d; \}"), "error: t.c:1:20: this operator on an operand of this type is invalid C, which clang rejects")
     t |> equal(ir_of("void g(int x) \{ *x; \}"), "error: t.c:1:17: a dereference of a value that is no pointer is not typed yet")
     t |> equal(ir_of("void g(int x) \{ x(); \}"), "error: t.c:1:17: a call of a value that is no function is not typed yet")
     t |> equal(ir_of("void g(int x) \{ x[1]; \}"), "error: t.c:1:17: a subscript of a value that is no pointer is not typed yet")
@@ -416,6 +419,24 @@ def test_invalid_c(t : T?) {
 def test_float_cast_null(t : T?) {
     t |> equal(ir_of("int *p = (int)0.0; int *q = (int)0.5;"), "p=NullToPointer<int*>(FloatingToIntegral!<int>(0x0p+0<double>)) ; q=NullToPointer<int*>(FloatingToIntegral!<int>(0x1p-1<double>))")
     t |> equal(ir_of("int *n = (int)1.0;"), "error: t.c:1:10: a value of this type in a slot of that type is invalid C, which clang rejects")
+}
+
+[test(description = "a floating constant cast to _Bool is 1 for any nonzero value, never its truncation: (_Bool)0.5 and a value past every integer type are 1, zero and a literal that rounds to zero are 0")]
+def test_float_cast_bool(t : T?) {
+    t |> equal(ir_of("_Static_assert((_Bool)0.5, \"h\"); _Static_assert((_Bool)1e300, \"b\"); int x = 1;"), "x=1<int>")
+    t |> equal(ir_of("_Static_assert((_Bool)0.0, \"z\");"), "error: t.c:1:1: a _Static_assert whose condition is 0 is invalid C, which clang rejects")
+    t |> equal(ir_of("_Static_assert((_Bool)1e-400, \"u\");"), "error: t.c:1:1: a _Static_assert whose condition is 0 is invalid C, which clang rejects")
+}
+
+[test(description = "an msvc `ll` literal past LLONG_MAX, whose text is its wrapped negative value, folds to that value")]
+def test_wrapped_literal_folds(t : T?) {
+    t |> equal(ir_of("_Static_assert(0xFFFFFFFFFFFFFFFFll == -1, \"w\"); _Static_assert(0xc000000080000000LL == -4611686016279904256LL, \"n\"); int x = 1;", true), "x=1<int>")
+}
+
+[test(description = "sizeof of a function type folds to GNU's 1, as clang folds it, while the node keeps the pointer width Dumper A writes")]
+def test_sizeof_function(t : T?) {
+    t |> equal(ir_of("_Static_assert(sizeof(int(void)) == 1, \"f\"); int g(void); _Static_assert(sizeof g == 1, \"g\"); int x = 1;"), "x=1<int>")
+    t |> equal(ir_of("unsigned long s = sizeof(int(void));"), "s=sizeof<unsigned long>=8:func")
 }
 
 [test(description = "a long double literal: under linux through x87's 64-bit value and clang's 21-digit text, under msvc a double")]
