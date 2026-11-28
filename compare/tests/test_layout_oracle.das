@@ -281,8 +281,10 @@ def test_run_exit(t : T?) {
     t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"])), 0)
     t |> equal(run_layout_oracle(LayoutArgs(corpus <- ["rules"], flag <- ["--target=x86_64-pc-windows-msvc"])), 1)
     var out : string
-    t |> equal(run_das(array<string>(), ["--corpus", "rules"], out), 0, out)
+    let plain = run_das(array<string>(), ["--corpus", "rules"], out)
+    t |> equal(plain, 0, out)
     t |> success(out |> contains("linux rules: 3 units (0 clang failures), 72 records"), out)
-    t |> equal(run_das(["CPATH=/tmp"], ["--corpus", "rules"], out), 1, out)
+    let with_cpath = run_das(["CPATH=/tmp"], ["--corpus", "rules"], out)
+    t |> equal(with_cpath, 1, out)
     t |> success(out |> contains("the environment variable CPATH is set"), out)
 }
