@@ -27,7 +27,7 @@ outside `frontend/`, whose code starts no process (`frontend/ARCHITECTURE.md` se
   when every listed unit stays byte-identical, else exit 0 when no unit differs or is
   refused and Dumper A failed on none; 1 otherwise and when no unit is named.
 - `fixtures/` - `conversions.c`, every conversion group of the scalar world (all three comparisons
-  agree); `aggregate.c`, a record whose initializer the builder refuses (A.3); `refused.c`, a scalar-only unit the builder
+  agree); `aggregate.c`, a record whose initializer holds an `offsetof` the builder refuses (A.4); `refused.c`, a scalar-only unit the builder
   refuses (a wide string literal).
 - The tests are `compare/tests/test_types_compare.das`.
 

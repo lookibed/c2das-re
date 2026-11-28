@@ -111,10 +111,11 @@ def c_implicit(var x : CirExpr?; t : int; kind : string) : CirExpr? {
     return cast_node(x, t, kind)
 }
 
-// whether node `x` designates an object: a variable, a string literal, a subscript, a member (of
-// a call's record result too, which clang materializes), a dereference of an object pointer
+// whether node `x` designates an object: a variable, a string literal, a compound literal, a
+// subscript, a member (of a call's record result too, which clang materializes), a dereference of
+// an object pointer
 def private is_lvalue(r : CIr; x : CirExpr?) : bool {
-    if (x.e == "ref" || x.e == "index" || x.e == "str_lit" || x.e == "member") {
+    if (x.e == "ref" || x.e == "index" || x.e == "str_lit" || x.e == "member" || x.e == "compound_lit") {
         return kind_of(r, x.t) != "func"
     }
     return x.e == "un" && x.op == "deref" && kind_of(r, x.t) != "func"
@@ -920,10 +921,10 @@ def private operator_expr(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
     return new CirExpr(e = "comma", t = b.t, a = a, b = b)
 }
 
-// the path of field indices to member `name` of pool record `rec`: its own field, or one an
-// anonymous member makes visible, through that member's record; empty for none
+//! The path of field indices to member `name` of pool record `rec`: its own field, or one an
+//! anonymous member makes visible, through that member's record; empty for none.
 [arch(at="ARCHITECTURE_RECORDS.md#c-records-access")]
-def private member_path(r : CIr; rec : int; name : string) : array<int> {
+def c_member_path(r : CIr; rec : int; name : string) : array<int> {
     var path : array<int>
     for (f, idx in r.pool[rec].fields, count()) {
         if (f.name == name) {
@@ -934,7 +935,7 @@ def private member_path(r : CIr; rec : int; name : string) : array<int> {
     for (f, idx in r.pool[rec].fields, count()) {
         let u = unq(r, f.t)
         if (empty(f.name) && !f.is_bitfield && (r.pool[u].k == "struct" || r.pool[u].k == "union")) {
-            var inscope inner <- member_path(r, u, name)
+            var inscope inner <- c_member_path(r, u, name)
             if (!empty(inner)) {
                 path |> push(idx)
                 path |> push_from(inner)
@@ -965,7 +966,7 @@ def private member_access(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
         return null
     }
     let name = pp_symbol_text(p.unit.lx, node.b)
-    let path <- member_path(r, rec, name)
+    let path <- c_member_path(r, rec, name)
     if (empty(path)) {
         delete_expr(base)
         c_refuse(r, p, node.tok, "a member '{name}' its record does not have, which")
@@ -1015,6 +1016,20 @@ def private explicit_cast(var r : CIr; var p : CParser; node : CNodeRec) : CirEx
     return cast_node(a, unq(r, to), ck, true)
 }
 
+// a cast, a `sizeof` or a compound literal: node `node` (at `n`) typed
+def private type_name_expr(var r : CIr; var p : CParser; node : CNodeRec; n : int) : CirExpr? {
+    if (node.kind == CNode.CAST) {
+        return explicit_cast(r, p, node)
+    } elif (node.kind == CNode.SIZEOF_TYPE) {
+        let of_t = c_type_name_type(r, p, node.a)
+        return of_t < 0 ? null : sizeof_node(r, p, of_t, null, node.tok)
+    } elif (node.kind == CNode.SIZEOF_EXPR) {
+        var a = c_expr(r, p, node.a)
+        return a == null ? null : sizeof_node(r, p, a.t, a, node.tok)
+    }
+    return invoke(r.compound_literal, r, p, n)
+}
+
 //! The C-IR expression of parser expression node `n`, typed by pool types, with no conversion at
 //! its top; null with the error set at the first construct not typed yet.
 [arch(at="ARCHITECTURE_EXPRS.md#c-exprs-nodes")]
@@ -1047,14 +1062,8 @@ def c_expr(var r : CIr; var p : CParser; n : int) : CirExpr? {
         return subscript(r, p, node)
     } elif (kind == CNode.MEMBER) {
         return member_access(r, p, node)
-    } elif (kind == CNode.CAST) {
-        return explicit_cast(r, p, node)
-    } elif (kind == CNode.SIZEOF_TYPE) {
-        let of_t = c_type_name_type(r, p, node.a)
-        return of_t < 0 ? null : sizeof_node(r, p, of_t, null, node.tok)
-    } elif (kind == CNode.SIZEOF_EXPR) {
-        var a = c_expr(r, p, node.a)
-        return a == null ? null : sizeof_node(r, p, a.t, a, node.tok)
+    } elif (kind == CNode.CAST || kind == CNode.SIZEOF_TYPE || kind == CNode.SIZEOF_EXPR || kind == CNode.COMPOUND_LITERAL) {
+        return type_name_expr(r, p, node, n)
     }
     c_refuse(r, p, node.tok, "this expression")
     return null
@@ -1088,6 +1097,10 @@ def c_exprs_use(var r : CIr; var x : CirExpr?) {
     if (x.e == "enum_ref") {
         x.enum_t = c_types_use(r, x.enum_t)
         x.trait_v = 0ul
+        return
+    }
+    if (x.e == "compound_lit") {
+        c_exprs_use(r, x.init)
         return
     }
     if (x.e == "init_list") {

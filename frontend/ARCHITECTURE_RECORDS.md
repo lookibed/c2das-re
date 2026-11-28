@@ -29,9 +29,8 @@ own, which Dumper A names by the first `<tag><n>` from
 again is refused, as Dumper A binds its constants by place. A definition is built where a
 declaration, a member or the walk stands; one in a parameter list or a type name is refused, and
 so are a tag defined again in its own scope and a tag of another kind. glibc's `struct
-__jmp_buf_tag`, which Dumper A holds as the opaque `jmp_buf`, is refused, and with it `jmp_buf`. An
-initializer list of a struct or union, and an array of records initialized with elided braces,
-are refused: initializers of aggregates are A.3's. A record or enum with no tag that a typedef declares by its name alone
+__jmp_buf_tag`, which Dumper A holds as the opaque `jmp_buf`, is refused, and with it `jmp_buf`.
+A record's initializer is `ARCHITECTURE_INITS.md`'s. A record or enum with no tag that a typedef declares by its name alone
 (`typedef struct { ... } Q;`) is named by it; any other with no tag is named "", and an enum with
 no name is spelled `enum (unnamed at <file>:<line>:<col>)`, the place of its keyword, as clang
 spells it. A definition in an own header is built where the header stands; one the builder refuses

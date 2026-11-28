@@ -101,11 +101,8 @@ from another integer, `NoOp` from a pointer whose type differs only in qualifier
 another integer `PointerToIntegral`. A literal is converted, never retyped (`char c = 1` is an
 `IntegralCast` over `1`). The slots:
 
-- a scalar initializer, braced or not, and a list's items, each to its element type at its position
-  (an index designator sets it; the items in position order, a later one for a position replacing
-  an earlier one, as clang's semantic form holds them); a character array's string literal, braced
-  or not, is typed as the array itself (`char s[10] = "ab"` gives the literal `char[10]`), as clang
-  does; an array of arrays with elided braces is refused;
+- a scalar initializer, braced or not, and a list's items, each to the type of the position it
+  fills (`ARCHITECTURE_INITS.md`);
 - an assignment's right operand to the left one's type; a compound assignment's right operand
   promoted and converted to the computation type, the usual arithmetic conversions of the promoted
   left type and it (no node on the left operand), a shift's and a pointer's promoted alone;

@@ -3,7 +3,6 @@ options indenting = 4
 
 module c_types public
 
-require math
 require strings
 require daslib/strings_boost
 require c_parser public
@@ -61,6 +60,8 @@ struct CTypes {
     fn_name : string                        //!< the C name of the function being read
     fold : function<(var b : CTypes; var p : CParser; n : int; var v : int64&) : bool> //!< an integer constant expression's value; null for none
     tag_type : function<(var b : CTypes; var p : CParser; n : int) : int> //!< a struct, union or enum specifier's pool type (`c_records.das`); null for none
+    init_count : function<(var b : CTypes; var p : CParser; init, elem : int) : int> //!< the count an unsized array takes from an initializer list (`c_inits.das`); null for none
+    compound_literal : function<(var b : CTypes; var p : CParser; n : int) : CirExpr?> //!< a compound literal's C-IR (`c_inits.das`); null for none
     tags : table<int; int>                  //!< a tag's symbol to its pool record or enum type
     tag_undo : array<tuple<sym : int; was : int>>   //!< the tag bindings a block's end restores
     tag_marks : array<int>
@@ -641,12 +642,12 @@ def private string_bytes(var b : CTypes; var p : CParser; first, count : int) : 
     return bytes
 }
 
-// the count an unsized array of pool type `elem` takes from initializer `init`, the node after the
-// declarator's `=`: a string literal's bytes, braced or not for a character array; a list's items, a designator `[k]`
-// (an integer literal) moving the next item to `k`, and, for an array of arrays, each item braced
-// or a string; -1 for no initializer; -2 with the error set for any other
+//! The count an unsized array of pool type `elem` takes from initializer `init` (the node after a
+//! declarator's `=`, or a compound literal's list): a string literal's bytes, braced alone or not
+//! for a character array; a list's count by `init_count` (`c_inits.das`); -1 for no initializer;
+//! -2 with the error set for any other.
 [arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
-def private initializer_count(var b : CTypes; var p : CParser; init, elem : int) : int {
+def c_initializer_count(var b : CTypes; var p : CParser; init, elem : int) : int {
     return -1 if (init < 0)
     let n = p.ast.nodes[init]
     if (n.kind == CNode.STRING) {
@@ -655,35 +656,11 @@ def private initializer_count(var b : CTypes; var p : CParser; init, elem : int)
         refuse(b, p, n.tok, "an unsized array initialized by this expression")
         return -2
     }
-    var count = 0
-    var next = 0
-    var item = n.a
-    while (item >= 0) {
-        let it = p.ast.nodes[item]
-        let value = p.ast.nodes[it.b].kind
-        if (it.a >= 0) {
-            let desig = p.ast.nodes[it.a]
-            if (desig.kind != CNode.DESIG_INDEX || desig.b >= 0 || desig.next >= 0) {
-                refuse(b, p, it.tok, "an array sized by this designated initializer")
-                return -2
-            }
-            next = constant_value(b, p, desig.a, "array index")
-            return -2 if (next < 0)
-        } elif (count == 0 && it.next < 0 && value == CNode.STRING && b.pool[elem].k == "int" && b.pool[elem].w == 8) {
-            return string_bytes(b, p, p.ast.nodes[it.b].a, p.ast.nodes[it.b].b)
-        }
-        if (b.pool[elem].k == "array" && value != CNode.INIT_LIST && value != CNode.STRING) {
-            refuse(b, p, it.tok, "an unsized array of arrays initialized with elided braces")
-            return -2
-        } elif ((b.pool[b.unqualified[elem]].k == "struct" || b.pool[b.unqualified[elem]].k == "union") && value != CNode.INIT_LIST) {
-            refuse(b, p, it.tok, "an unsized array of records initialized with elided braces")
-            return -2
-        }
-        next++
-        count = max(count, next)
-        item = it.next
+    let first = n.a
+    if (first >= 0 && p.ast.nodes[first].next < 0 && p.ast.nodes[first].a < 0 && p.ast.nodes[p.ast.nodes[first].b].kind == CNode.STRING && b.pool[elem].k == "int" && b.pool[elem].w == 8) {
+        return string_bytes(b, p, p.ast.nodes[p.ast.nodes[first].b].a, p.ast.nodes[p.ast.nodes[first].b].b)
     }
-    return count
+    return invoke(b.init_count, b, p, init, elem)
 }
 
 //! The pool type declarator `d` gives `base`, C's inside-out reading; `adjust` makes an array or a
@@ -712,7 +689,7 @@ def c_declarator_type(var b : CTypes; var p : CParser; base, d : int; adjust : b
             refuse(b, p, n.tok, "a variable-length array")
             return -1
         }
-        let count = n.b >= 0 ? constant_value(b, p, n.b, "array size") : last ? initializer_count(b, p, init, base) : -1
+        let count = n.b >= 0 ? constant_value(b, p, n.b, "array size") : last ? c_initializer_count(b, p, init, base) : -1
         return -1 if (count == -2)
         return c_declarator_type(b, p, array_of(b, base, count), n.a, adjust, init)
     }

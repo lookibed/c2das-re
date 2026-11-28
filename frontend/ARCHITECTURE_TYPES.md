@@ -90,11 +90,8 @@ alike. Any other size - a variable one, which the spec leaves out of scope - is 
 An unsized array that has an initializer takes its count from it: a run of string literals gives
 its bytes - each escape one byte, a universal character name its UTF-8 bytes, the NUL included -
 and so does one braced alone for a character array; an initializer list gives one past the last
-position its items fill, each item the position after the one before, an index designator `[k]`
-(an integer constant expression) moving it to `k`; for an array of arrays each item is braced or a string
-literal. A prefixed (wide or UTF) string literal, any other designator (a range, a nested one, a
-non-constant index), an elided brace in an array of arrays or of records and any other initializer
-of an unsized array are refused.
+position it fills at its top (`ARCHITECTURE_INITS.md` section 57). A prefixed (wide or UTF) string
+literal and any other initializer of an unsized array are refused.
 
 
 ## 28. The own libc headers {#c-types-library}

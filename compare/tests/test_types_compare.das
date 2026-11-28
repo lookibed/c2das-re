@@ -137,12 +137,12 @@ def private compared(name, dialect : string) : string {
     return !empty(r.builder_error) ? "{shape} {r.builder_error}" : empty(r.difference) ? shape : "{shape} {r.difference}"
 }
 
-[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate's initializer and a constant array size refused", timeout = 600)]
+[test(description = "the fixtures through Dumper A and the builder under both dialects: every conversion group agrees in the table, the C-IR, the census and byte for byte; an aggregate's `offsetof` and a constant array size refused", timeout = 600)]
 def test_fixtures(t : T?) {
     for (dialect in ["linux", "msvc"]) {
         t |> run(dialect) @(t : T?) {
             t |> equal(compared("conversions.c", dialect), "true/true/true/true/false")
-            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:8:22: a braced scalar initializer of other than one value is not typed yet")
+            t |> equal(compared("aggregate.c", dialect), "false/false/false/false/true builder: {FIXTURES}/aggregate.c:8:31: this expression is not typed yet")
             t |> equal(compared("refused.c", dialect), "false/false/false/false/false builder: {FIXTURES}/refused.c:4:12: a prefixed string literal is not typed yet")
         }
     }

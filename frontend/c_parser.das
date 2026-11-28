@@ -804,12 +804,13 @@ def private init_list(var p : CParser) : int {
     var items = CList()
     while (!p.failed && kind(p) != int(CTok.RBRACE)) {
         let item_at = p.pos
-        let desigs = designators(p, true)
+        var desigs = designators(p, true)
         if (desigs >= 0) {
             take(p, CTok.ASSIGN)
         } elif (kind(p) == int(CTok.IDENTIFIER) && kind_at(p, 1) == int(CTok.COLON)) {
-            refuse(p, "the old GNU designator 'member:'")
-            break
+            // the old GNU `member:`, the designator `.member =`
+            desigs = node(p, CNode.DESIG_FIELD, p.pos, 0, sym(p))
+            p.pos += 2
         }
         let value = kind(p) == int(CTok.LBRACE) ? init_list(p) : c_assignment(p)
         c_append(p.ast, items, node(p, CNode.INIT_ITEM, item_at, 0, desigs, value))

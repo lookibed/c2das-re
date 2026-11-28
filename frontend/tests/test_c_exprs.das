@@ -286,7 +286,6 @@ def test_refusals(t : T?) {
     t |> equal(ir_of("void g(void) \{ sizeof(void); \}"), "error: t.c:1:16: sizeof of a type without a size is not typed yet")
     t |> equal(ir_of("void g(int x) \{ switch (x) \{ case x: ; \} \}"), "error: t.c:1:30: this case label is not typed yet")
     t |> equal(ir_of("int a[2] = \{[0 + x] = 1\};"), "error: t.c:1:18: the identifier 'x', which names no variable or function the builder knows, is not typed yet")
-    t |> equal(ir_of("int a[2][2] = \{1, 2\};"), "error: t.c:1:16: an initializer of an array of arrays with elided braces is not typed yet")
     t |> equal(ir_of("int n = \{1, 2\};"), "error: t.c:1:9: a braced scalar initializer of other than one value is not typed yet")
     t |> equal(ir_of("void g(void) \{ __func__; \}"), "error: t.c:1:16: this expression is not typed yet")
     t |> equal(ir_of("void g(void) \{ asm(\"nop\"); \}"), "error: t.c:1:16: this statement is not typed yet")

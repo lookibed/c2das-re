@@ -135,7 +135,7 @@ there. An argument list takes no trailing comma: `f(a,)` is `expected an express
 `sizeof`, `_Alignof` and `__alignof__` take a parenthesised type name, a compound literal or a
 unary expression; the alignment nodes keep which keyword was spelled. A compound literal's
 initializer list holds positional items, `.member` and `[index]` designators, GNU `[first ...
-last]` ranges and nested lists.
+last]` ranges, the old GNU `member:`, read as the field designator `.member =`, and nested lists.
 
 The GNU forms are nodes of their own: `a ?: b` is a conditional with no middle operand,
 `__extension__` wraps its operand, `__builtin_va_arg(e, T)`, `__builtin_offsetof(T, designators)`
@@ -151,7 +151,7 @@ reads `expected <what>, got '<token>'` (`got end of input` at the end). A constr
 not take reads `<construct> is not parsed`: a label address `&&label`, a computed goto `goto *`,
 `asm goto`, a nested function definition,
 `_Generic`, `__int128`, `_Atomic(T)`, `_Imaginary`, `__auto_type`,
-`__real__`, `__imag__`, `__label__`, and the old GNU designator `member:`. Every loop either
+`__real__`, `__imag__` and `__label__`. Every loop either
 consumes a token or stops.
 
 Recursion is bounded so that deep input ends in a located refusal, never in a stack overflow,

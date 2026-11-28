@@ -114,12 +114,15 @@ def test_declarators(t : T?) {
     }
 }
 
-[test(description = "init-declarator lists: expressions and initializer lists with designators, a declaration with no declarator, and `_Static_assert` with and without its message")]
+[test(description = "init-declarator lists: expressions and initializer lists with designators (the old GNU `member:` one too), a declaration with no declarator, and `_Static_assert` with and without its message")]
 def test_declarations(t : T?) {
     t |> equal(decls("static const int *p = 0, a[3] = \{1, [2] = 2\};"),
                "(decl 0 [(spec static) (spec const) (spec int)] [(init_decl (d_pointer (d_name p) []) (int 0) -) (init_decl (d_array 0 (d_name a) (int 3) []) (init_list [(init [] (int 1)) (init [(index_desig (int 2) -)] (int 2))]) -)])")
     t |> equal(decls("T s = \{ .x = 1, .y = \{ 2 \} \};"),
                "(decl 0 [(typedef_name T)] [(init_decl (d_name s) (init_list [(init [(field x)] (int 1)) (init [(field y)] (init_list [(init [] (int 2))]))]) -)])")
+    t |> equal(decls("T s = \{ x: 1, y : \{ 2 \} \};"),
+               "(decl 0 [(typedef_name T)] [(init_decl (d_name s) (init_list [(init [(field x)] (int 1)) (init [(field y)] (init_list [(init [] (int 2))]))]) -)])")
+    t |> equal(decls("T s = \{ x: \};"), "error: t.c:1:12: expected an expression, got '}'")
     t |> equal(decls("int x = 1, y = x + 1;"), "(decl 0 [(spec int)] [(init_decl (d_name x) (int 1) -) (init_decl (d_name y) (binary + (ident x) (int 1)) -)])")
     t |> equal(decls("int;"), "(decl 0 [(spec int)] [])")
     t |> equal(decls("_Static_assert(sizeof(int) == 4, \"int\");"), "(static_assert (binary == (sizeof_type (type_name [(spec int)] -)) (int 4)) (string \"int\"))")
@@ -215,7 +218,6 @@ def test_refusals(t : T?) {
     t |> equal(decls("_Atomic(int) x;"), "error: t.c:1:1: the _Atomic(type) specifier is not parsed")
     t |> equal(decls("__label__ l;"), "error: t.c:1:1: a local label declaration (__label__) is not parsed")
     t |> equal(decls("int x = _Generic(1, int: 2);"), "error: t.c:1:9: a generic selection (_Generic) is not parsed")
-    t |> equal(decls("T s = \{ x: 1 \};"), "error: t.c:1:9: the old GNU designator 'member:' is not parsed")
 }
 
 [test(description = "a malformed declaration ends with a located error at each position: specifiers, declarator, suffixes, initializer, asm label, list and end")]

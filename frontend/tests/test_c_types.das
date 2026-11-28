@@ -139,11 +139,8 @@ def test_refusals(t : T?) {
     t |> equal(types_of("int a[4294967296];"), "error: t.c:1:7: an array size below 0 or past 2^31 - 1 is not typed yet")
     t |> equal(types_of("int a[1 - 2];"), "error: t.c:1:7: an array size below 0 or past 2^31 - 1 is not typed yet")
     t |> equal(types_of("void f(int n, int (*a)[*]);"), "error: t.c:1:19: a variable-length array is not typed yet")
-    t |> equal(types_of("void f(int n) \{ int a[] = \{[n] = 1\}; \}"), "error: t.c:1:29: an array index other than an integer constant expression is not typed yet")
-    t |> equal(types_of("int a[] = \{[1 ... 2] = 1\};"), "error: t.c:1:12: an array sized by this designated initializer is not typed yet")
-    t |> equal(types_of("int a[][2] = \{[1][0] = 1\};"), "error: t.c:1:15: an array sized by this designated initializer is not typed yet")
+    t |> equal(types_of("void f(int n) \{ int a[] = \{[n] = 1\}; \}"), "error: t.c:1:28: an array index other than an integer constant expression is not typed yet")
     t |> equal(types_of("int s[] = L\"x\";"), "error: t.c:1:11: a prefixed string literal is not typed yet")
-    t |> equal(types_of("int m[][2] = \{1, 2, 3\};"), "error: t.c:1:15: an unsized array of arrays initialized with elided braces is not typed yet")
     t |> equal(types_of("char s[] = L\"x\";"), "error: t.c:1:12: a prefixed string literal is not typed yet")
     t |> equal(types_of("int s[] = (\{ 1; \});"), "error: t.c:1:11: an unsized array initialized by this expression is not typed yet")
 }

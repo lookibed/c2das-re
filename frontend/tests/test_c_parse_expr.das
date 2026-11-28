@@ -59,10 +59,11 @@ def test_postfix(t : T?) {
     t |> equal(parsed("a.b[1]->c(2)--"), "(postfix -- (call (member -> (index (member . (ident a) b) (int 1)) c) [(int 2)]))")
 }
 
-[test(description = "a compound literal holds its type name and its initializer list: positional items, member, index and GNU range designators, a nested list, a trailing comma, an empty list")]
+[test(description = "a compound literal holds its type name and its initializer list: positional items, member, index and GNU range designators, the old GNU `member:` designator, a nested list, a trailing comma, an empty list")]
 def test_compound_literal(t : T?) {
     t |> equal(parsed("(T)\{1, .x = 2, [3] = 4, [1 ... 2] = 5, \{6\}, \}"),
                "(compound_literal (type_name [(typedef_name T)] -) (init_list [(init [] (int 1)) (init [(field x)] (int 2)) (init [(index_desig (int 3) -)] (int 4)) (init [(index_desig (int 1) (int 2))] (int 5)) (init [] (init_list [(init [] (int 6))]))]))")
+    t |> equal(parsed("(T)\{x: 1\}"), "(compound_literal (type_name [(typedef_name T)] -) (init_list [(init [(field x)] (int 1))]))")
     t |> equal(parsed("(int[])\{\}"), "(compound_literal (type_name [(spec int)] (d_array 0 - - [])) (init_list []))")
     t |> equal(parsed("(T)\{.a.b[0] = 1\}.a"), "(member . (compound_literal (type_name [(typedef_name T)] -) (init_list [(init [(field a) (field b) (index_desig (int 0) -)] (int 1))])) a)")
 }
@@ -306,7 +307,6 @@ def test_refusals(t : T?) {
     t |> equal(parsed("__real__ x"), "error: t.c:1:1: __real__ is not parsed")
     t |> equal(parsed("__imag__ x"), "error: t.c:1:1: __imag__ is not parsed")
     t |> equal(parsed("__label__"), "error: t.c:1:1: a local label declaration (__label__) is not parsed")
-    t |> equal(parsed("(T)\{x: 1\}"), "error: t.c:1:5: the old GNU designator 'member:' is not parsed")
 }
 
 [test(description = "malformed input ends with a located error naming what was expected: truncated at each nesting level, unbalanced, or a stray token")]

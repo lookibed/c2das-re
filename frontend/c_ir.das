@@ -5,10 +5,10 @@ module c_ir public
 
 require strings
 require daslib/strings_boost
-require daslib/cmp
 require math
 require c_exprs public
 require c_records public
+require c_inits public
 
 //! A unit's C-IR from the parser's tree as Dumper A writes it (`ARCHITECTURE_TYPES.md`,
 //! `ARCHITECTURE_EXPRS.md`): its declarations, the statements of its function bodies, their
@@ -28,6 +28,8 @@ def c_ir_open(var r : CIr; target : CirTarget; library_dir : string) {
     r.ret = -1
     r.fold = @@c_fold_node
     r.tag_type = @@c_tag_type
+    r.init_count = @@c_init_count
+    r.compound_literal = @@c_compound_literal
     r.tu_prefix = ""
     r.linkage_names |> clear()
     r.file_scope_names |> clear()
@@ -59,82 +61,6 @@ def private used(var r : CIr; var p : CParser; var x : CirExpr?) : CirExpr? {
 def private value_of(var r : CIr; var p : CParser; n : int) : CirExpr? {
     var x = c_expr(r, p, n)
     return x == null ? null : c_rvalue(r, x)
-}
-
-// the initializer node `init` of an object of pool type `t`, converted as C11 6.7.9 says: a
-// character array's string literal typed as the array, a list's items each to its element type at
-// its position, in the order of the positions, a later item for a position replacing an earlier
-// one (clang's semantic form), a scalar's value (braced or not) by assignment
-[arch(at="ARCHITECTURE_EXPRS.md#c-exprs-slots")]
-def private initializer(var r : CIr; var p : CParser; init, t : int) : CirExpr? {
-    let n = p.ast.nodes[init]
-    let k = r.pool[t].k
-    let elem = k == "array" ? r.pool[t].elem : -1
-    let char_array = elem >= 0 && r.pool[elem].k == "int" && r.pool[elem].w == 8
-    if (n.kind == CNode.STRING && char_array) {
-        var s = c_string_literal(r, p, n.a, n.b)
-        if (s != null) {
-            s.t = t
-        }
-        return s
-    } elif (n.kind != CNode.INIT_LIST) {
-        var x = c_expr(r, p, init)
-        return x == null ? null : c_assigned(r, x, t)
-    } elif (k == "struct" || k == "union") {
-        c_refuse(r, p, n.tok, "an initializer list of a struct or union")
-        return null
-    } elif (k != "array") {
-        let item = n.a
-        if (item < 0 || p.ast.nodes[item].next >= 0 || p.ast.nodes[item].a >= 0) {
-            c_refuse(r, p, n.tok, "a braced scalar initializer of other than one value")
-            return null
-        }
-        return initializer(r, p, p.ast.nodes[item].b, t)
-    }
-    let first = n.a
-    if (char_array && first >= 0 && p.ast.nodes[first].next < 0 && p.ast.nodes[first].a < 0 && p.ast.nodes[p.ast.nodes[first].b].kind == CNode.STRING) {
-        return initializer(r, p, p.ast.nodes[first].b, t)
-    }
-    var x = new CirExpr(e = "init_list", t = t)
-    var pos = 0
-    var item = first
-    while (item >= 0) {
-        let it = p.ast.nodes[item]
-        if (it.a >= 0) {
-            var v = 0l
-            if (p.ast.nodes[it.a].kind != CNode.DESIG_INDEX || p.ast.nodes[it.a].next >= 0 || !c_fold_node(r, p, p.ast.nodes[it.a].a, v)) {
-                c_refuse(r, p, it.tok, "this designator")
-                return null
-            }
-            pos = int(v)
-        }
-        let value = p.ast.nodes[it.b]
-        let ek = r.pool[r.unqualified[elem]].k
-        if ((ek == "struct" || ek == "union") && value.kind != CNode.INIT_LIST) {
-            c_refuse(r, p, it.tok, "an initializer of an array of records with elided braces")
-            return null
-        } elif (r.pool[elem].k == "array" && value.kind != CNode.INIT_LIST && value.kind != CNode.STRING) {
-            c_refuse(r, p, it.tok, "an initializer of an array of arrays with elided braces")
-            return null
-        }
-        var v = initializer(r, p, it.b, elem)
-        return null if (v == null)
-        var placed = false
-        for (old in x.init_items) {
-            if (old.pos == pos) {
-                delete_expr(old.v)
-                old.v = v
-                placed = true
-            }
-        }
-        if (!placed) {
-            x.init_items |> push(CirInitItem(pos = pos, v = v))
-        }
-        pos++
-        item = it.next
-    }
-    sort(x.init_items, cmp_by(_.pos))
-    return x
 }
 
 // whether expression node `n` is a character constant under parentheses, as Dumper A marks a
@@ -461,7 +387,7 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         }
         c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked))
         let init = p.ast.nodes[id].b
-        var value = init >= 0 ? used(r, p, initializer(r, p, init, t)) : null
+        var value = init >= 0 ? used(r, p, c_initializer(r, p, init, t)) : null
         return false if (init >= 0 && value == null)
         var dims <- table_dims(r, p, d, t)
         var g = new CirDecl(k = "global", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), init = value, loc = at)

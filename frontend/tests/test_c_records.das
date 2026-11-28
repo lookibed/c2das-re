@@ -214,8 +214,6 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("void f(struct S \{ int a; \} s);"), "error: t.c:1:8: a struct defined in this place is not typed yet")
     t |> equal(cir_of("struct S \{ int; \};"), "error: t.c:1:12: a member declaration that declares no member is not typed yet")
     t |> equal(cir_of("struct S \{ float f : 3; \};"), "error: t.c:1:18: a bit-field of other than an integer type is not typed yet")
-    t |> equal(cir_of("struct S \{ int *p; \}; int x; struct S a[2] = \{ &x \};"), "error: t.c:1:48: an initializer of an array of records with elided braces is not typed yet")
-    t |> equal(cir_of("struct S \{ int a; \}; struct S a[] = \{ 1, 2 \};"), "error: t.c:1:39: an unsized array of records initialized with elided braces is not typed yet")
     t |> equal(cir_of("int n; struct S \{ int f : n; \};"), "error: t.c:1:27: a bit-field width other than an integer constant from 0 to 64 is not typed yet")
     t |> equal(cir_of("struct S \{ int a; \} __attribute__((aligned(sizeof(int))));"), "error: t.c:1:36: an `aligned` attribute of other than an integer literal is not typed yet")
     t |> equal(cir_of("enum E \{ A \} __attribute__((packed));"), "error: t.c:1:1: a packed or aligned enum is not typed yet")
@@ -228,6 +226,5 @@ def test_refusals(t : T?) {
     t |> equal(cir_of("struct S \{ struct T t; \};"), "error: t.c:1:21: member `t` has an incomplete type")
     t |> equal(cir_of("struct S \{ int a; \} __attribute__((ms_struct));"), "error: t.c:1:1: an `ms_struct` record is not laid out")
     t |> equal(cir_of("int f(void) \{ enum E \{ A \} a; return 0; \} enum E \{ B \};"), "error: t.c:1:43: an enum tag defined again in another scope is not typed yet")
-    t |> equal(cir_of("struct S \{ int a; \} s = \{ 1 \};"), "error: t.c:1:25: an initializer list of a struct or union is not typed yet")
     t |> equal(cir_of("struct __jmp_buf_tag \{ int a; \};"), "error: t.c:1:1: glibc's `struct __jmp_buf_tag`, which the C-IR holds as the opaque `jmp_buf`, is not typed yet")
 }

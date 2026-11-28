@@ -13,7 +13,8 @@ statements and function definitions (`ARCHITECTURE_PARSER.md`, sections 14 to 22
 table built from the parser's tree (`ARCHITECTURE_TYPES.md`, sections 24 to 28), and the
 expressions with their conversions and the unit's C-IR walk (`ARCHITECTURE_EXPRS.md`, sections 29
 to 36), with the names and places it gives (`ARCHITECTURE_NAMES.md`, sections 37 to 39), its
-records, unions and enums (`ARCHITECTURE_RECORDS.md`, sections 41 to 47), and
+records, unions and enums (`ARCHITECTURE_RECORDS.md`, sections 41 to 47), its initializers
+(`ARCHITECTURE_INITS.md`, sections 57 to 61), and
 the byte diff of two dumpers' C-IR (`ARCHITECTURE_DIFF.md`, section 40), and the record layout of
 `ARCHITECTURE_LAYOUT.md` and `ARCHITECTURE_LAYOUT_MSVC.md` (sections 50 to 56). No converter pass
 calls the preprocessor, the parser, the C-IR builder or the layout yet.
@@ -50,12 +51,14 @@ calls the preprocessor, the parser, the C-IR builder or the layout yet.
   definition, the walk that interns and anchors them, `dims` (`ARCHITECTURE_RECORDS.md`).
   `tests/test_c_records.das` - the table order, anchors, tag uses, library records, enums under
   both dialects, promotions, member access, `dims`, layout attributes, every refusal with its place.
+- `c_inits.das` - initializers and compound literals (`ARCHITECTURE_INITS.md`), reached from
+  `c_types.das` and `c_exprs.das` through hooks. `tests/test_c_inits.das` - every form, refusal.
 - `c_exprs.das` - expressions as C-IR nodes with every conversion clang makes, the integer
   constant folder, the identifier scopes (`ARCHITECTURE_EXPRS.md` sections 29 to 35).
 - `c_floats.das` - floating constants as Dumper A writes them, in das alone: big-integer rounding
   and the `%a` print (section 36).
 - `c_ir.das` - the unit's C-IR: the walk over declarations, definitions and bodies in Dumper A's
-  order, initializers, statements, the own headers' declarations, the names
+  order, statements, the own headers' declarations, the names
   (`ARCHITECTURE_TYPES.md` sections 24 and 28, `ARCHITECTURE_EXPRS.md` sections 33 and 35,
   `ARCHITECTURE_NAMES.md`).
 - `diff.das` - the byte diff of two C-IR texts, the macro fields and the producer set aside
