@@ -114,7 +114,9 @@ def private types_compatible_node(var r : CIr; var p : CParser; node : CNodeRec)
         c_refuse(r, p, node.tok, "a type trait over a function type with no parameter", " (whether it has a prototype is not in its type)")
         return null
     }
-    let same = c_composite(r, array_unqualified(r, a), array_unqualified(r, b)) >= 0
+    let ua = array_unqualified(r, a)
+    let ub = array_unqualified(r, b)
+    let same = c_composite(r, ua, ub) >= 0
     return new CirExpr(e = "int_lit", t = c_builtin(r, "int"), v = same ? "1" : "0")
 }
 

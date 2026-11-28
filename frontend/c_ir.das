@@ -419,6 +419,22 @@ def private object_name(var r : CIr; p : CParser; name : string; global, is_stat
     return hoisted
 }
 
+// initializer node `init` (-1 for none) of an object of pool type `t` into `value`, built with its
+// types used: a static object's (`statics`; `global` at file scope) a constant clang takes; false
+// with the error set
+def private object_initializer(var r : CIr; var p : CParser; init, t : int; global, statics : bool; var value : CirExpr?&) : bool {
+    return true if (init < 0)
+    r.init_static = statics
+    var built = c_initializer(r, p, init, t)
+    r.init_static = false
+    if (built != null && statics && !c_static_initializer(r, p, built, p.ast.nodes[init].tok, global)) {
+        delete_expr(built)
+        return false
+    }
+    value = used(r, p, built)
+    return value != null
+}
+
 // declaration node `decl` in Dumper A's order, per init-declarator its type, then its
 // initializer's or its parameters' types; `fn` the function holding a block declaration ("" at file
 // scope), `into` the block's statements: a local its `decl`, a hoisted `static` and an `extern` a
@@ -472,15 +488,8 @@ def private declaration(var r : CIr; var p : CParser; decl : int; fn : string; v
         return false if (empty(linked))
         c_ir_bind(r, sym, CId(t = t, old_style = -1, name = linked, automatic = !global && !is_static && !is_extern, thread_local = has_storage(p, n.a, CTok.THREAD_LOCAL)))
         let init = p.ast.nodes[id].b
-        r.init_static = global || is_static
-        var built = init >= 0 ? c_initializer(r, p, init, t) : null
-        r.init_static = false
-        if (built != null && (global || is_static) && !c_static_initializer(r, p, built, p.ast.nodes[init].tok, global)) {
-            delete_expr(built)
-            return false
-        }
-        var value = init >= 0 ? used(r, p, built) : null
-        return false if (init >= 0 && value == null)
+        var value : CirExpr? = null
+        return false if (!object_initializer(r, p, init, t, global, global || is_static, value))
         var dims <- table_dims(r, p, d, t)
         var g = new CirDecl(k = "global", name = linked, c_name = name, t = ti, is_static = key_exists(r.linkage_names, name), init = value, loc = at)
         g.dims <- dims
