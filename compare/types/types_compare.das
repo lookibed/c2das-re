@@ -76,7 +76,6 @@ def private reach(var w : OrderWalk; types : array<CirType>; idx : int) {
             reach(w, types, x)
         }
     }
-    return if (key_exists(w.seen, name))
     w.seen[name] = true
     w.names |> push(name)
 }
@@ -138,7 +137,7 @@ def declaration_order(tu : CirTu) : array<string> {
         let f = tu.decls[j]
         continue if (f.k != "func" || f.body == null)
         var i = j - 1
-        while (i >= 0 && !taken[i] && tu.decls[i].loc.file == f.loc.file && before(f.loc, tu.decls[i].loc)) {
+        while (i >= 0 && tu.decls[i].loc.file == f.loc.file && before(f.loc, tu.decls[i].loc)) {
             taken[i] = true
             i--
         }

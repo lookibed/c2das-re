@@ -19,7 +19,6 @@ struct CTypes {
     index : table<string; int>      //!< a table entry's key to its index
     pool : array<CirType>           //!< every type met, referring to other pool types
     pool_index : table<string; int> //!< a pool type's key to its index
-    used : array<int>               //!< per pool type, its table index; -1 while no use reached it
     typedefs : table<int; int>      //!< a typedef name's symbol to the pool type it names
     untyped : table<int; string>    //!< a library typedef name the builder does not type, and why
     undo : array<tuple<sym : int; was : int>>   //!< the bindings a block's end restores
@@ -40,29 +39,14 @@ struct CTypes {
 def c_types_open(var b : CTypes; target : CirTarget; library_dir : string) {
     b.tu.target = target
     b.library_dir = library_dir
-    b.tu.types |> clear()
-    b.index |> clear()
-    b.pool |> clear()
-    b.pool_index |> clear()
-    b.used |> clear()
-    b.typedefs |> clear()
-    b.untyped |> clear()
-    b.undo |> clear()
-    b.marks |> clear()
-    b.declared |> clear()
-    b.prior |> clear()
-    b.prototyped |> clear()
-    b.library_functions |> clear()
     b.old_style = -1
     b.unit_items = -1
-    b.err = ""
 }
 
-// the first error, at token `tok`: a construct the builder does not type yet, and `why` after it
+// the error at token `tok`: a construct the builder does not type yet, and `why` after it; every
+// refusal stops the unit, so it is the first
 def private refuse(var b : CTypes; var p : CParser; tok : int; what : string; why : string = "") {
-    if (empty(b.err)) {
-        b.err = "{c_where(p.unit, tok)}: {what} is not typed yet{why}"
-    }
+    b.err = "{c_where(p.unit, tok)}: {what} is not typed yet{why}"
 }
 
 //! The key a type is interned by, in the table or in the pool, as Dumper A keys it: an integer by
@@ -92,7 +76,6 @@ def private pooled(var b : CTypes; var t : CirType) : int {
     let idx = length(b.pool)
     b.pool |> emplace(t)
     b.pool_index[key] = idx
-    b.used |> push(-1)
     return idx
 }
 
@@ -112,7 +95,6 @@ def private intern(var b : CTypes; key : string; var t : CirType) : int {
 [arch(at="ARCHITECTURE_TYPES.md#c-types-order")]
 def c_types_use(var b : CTypes; pt : int) : int {
     return -1 if (pt < 0)
-    return b.used[pt] if (b.used[pt] >= 0)
     var t := b.pool[pt]
     if (t.k == "ptr") {
         t.to = c_types_use(b, t.to)
@@ -125,7 +107,6 @@ def c_types_use(var b : CTypes; pt : int) : int {
         }
     }
     let idx = intern(b, c_type_key(t), t)
-    b.used[pt] = idx
     return idx
 }
 
@@ -196,11 +177,11 @@ def private builtin_type(var b : CTypes; set : int) : int {
         }
         let target = b.tu.target
         let w = entry.w == -1 ? target.int_w : entry.w == -2 ? target.long_w : entry.w == -3 ? target.llong_w : entry.w == -4 ? 8 : entry.w
-        let sign = entry.w == -4 ? target.char_signed : entry.sign && !has_unsigned
+        let sign = entry.w != -4 && entry.sign && !has_unsigned
         let spell = has_unsigned && entry.w != 8 && entry.w != -4 ? "unsigned {entry.spell}" : entry.spell
         return int_type(b, w, sign, spell)
     }
-    return -1
+    panic("a builtin specifier set the parser admits has no type")
 }
 
 // the attribute words that change the type they stand on
@@ -274,12 +255,7 @@ def c_specifier_type(var b : CTypes; var p : CParser; specs : int) : int {
         at = n.next
     }
     return -1 if (!plain_attributes(b, p, specs))
-    return named if (named >= 0)
-    let t = builtin_type(b, set)
-    if (t < 0) {
-        refuse(b, p, p.ast.nodes[specs].tok, "this specifier list")
-    }
-    return t
+    return named >= 0 ? named : builtin_type(b, set)
 }
 
 // whether declarator `d` is at its end: none, its name, or parentheses around one
@@ -514,7 +490,7 @@ def private is_void_list(b : CTypes; p : CParser; param : int) : bool {
 // `float` a `double`
 def private promoted(var b : CTypes; pt : int) : int {
     assume t = b.pool[pt]
-    if (t.k == "int" && (t.w < b.tu.target.int_w || t.spell == "_Bool")) {
+    if (t.k == "int" && t.w < b.tu.target.int_w) {
         return int_type(b, b.tu.target.int_w, true, "int")
     } elif (t.k == "float" && t.w == 32) {
         var d = CirType(k = "float", w = 64, spell = "double")
@@ -524,11 +500,10 @@ def private promoted(var b : CTypes; pt : int) : int {
 }
 
 // the adjusted pool type of old-style parameter `ip` (an identifier list's name) of definition
-// `b.old_style`, from its declaration in the list: `int` for none; -1 with the error set for a
-// declaration whose attributes change its type
+// `b.old_style`, from its declaration in the list (the parser refuses a name it does not declare);
+// -1 with the error set for a declaration whose attributes change its type
 def private old_style_parameter(var b : CTypes; var p : CParser; ip : int) : int {
     let typing = p.ast.nodes[ip].b
-    return int_type(b, b.tu.target.int_w, true, "int") if (typing < 0)
     let old = declaration_of(p, p.ast.nodes[b.old_style].c, typing)
     var id = p.ast.nodes[old].b
     while (id >= 0 && p.ast.nodes[id].a != typing) {
@@ -594,18 +569,6 @@ def private scope_close(var b : CTypes) {
     b.undo |> resize(mark)
 }
 
-// each parameter type of function declarator `f` used again, as Dumper A reads each parameter's
-// declaration after the function's type
-def private parameters(var b : CTypes; var p : CParser; f : int) : bool {
-    return true if (p.ast.nodes[f].op == 2 || is_void_list(b, p, p.ast.nodes[f].b))
-    var param = p.ast.nodes[f].b
-    while (param >= 0) {
-        return false if (c_types_use(b, c_param_type(b, p, param)) < 0)
-        param = p.ast.nodes[param].next
-    }
-    return true
-}
-
 // whether specifier list `specs` holds `typedef`
 def private declares_typedef(p : CParser; specs : int) : bool {
     var at = specs
@@ -630,7 +593,7 @@ def private has_keyword(p : CParser; specs : int; k : CTok) : bool {
 // `init` as one the declarator spells is (`applied`): the declarator is the name alone
 [arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
 def private sized_by_initializer(var b : CTypes; var p : CParser; t, d, init : int) : int {
-    return t if (t < 0 || init < 0 || !is_end(p, d) || b.pool[t].k != "array" || b.pool[t].count >= 0)
+    return t if (t < 0 || !is_end(p, d) || b.pool[t].count >= 0)
     let count = initializer_count(b, p, init, b.pool[t].elem)
     return count == -2 ? -1 : array_of(b, b.pool[t].elem, count)
 }
@@ -654,7 +617,7 @@ def private gives_size(p : CParser; d, init : int) : bool {
 // Aggregates phase
 [arch(at="ARCHITECTURE_TYPES.md#c-types-arrays")]
 def private tentative(var b : CTypes; var p : CParser; t, sym, id : int) : int {
-    return t if (b.pool[t].k != "array" || b.pool[t].count >= 0)
+    return t if (b.pool[t].count >= 0)
     var after = false
     var decl = b.unit_items
     while (decl >= 0) {
@@ -696,7 +659,6 @@ def private linked(var b : CTypes; var p : CParser; t, sym, f, tok : int) : int 
         let lib = b.library_functions?[sym] ?? int2(-1, -1)
         let lib_base = c_specifier_type(b, p, p.ast.nodes[lib.x].a)
         prev = applied(b, p, lib_base, p.ast.nodes[lib.y].a, false)
-        return -1 if (prev < 0)
         prev_proto = has_prototype(p, c_name_function(p.ast, p.ast.nodes[lib.y].a))
     }
     let proto = has_prototype(p, f)
@@ -765,7 +727,6 @@ def private declaration(var b : CTypes; var p : CParser; decl : int; local : boo
         if (is_function) {
             b.declared[sym] = true
         }
-        return false if (f >= 0 && !parameters(b, p, f))
     }
     return true
 }
@@ -797,10 +758,7 @@ def private statement(var b : CTypes; var p : CParser; s : int) : bool {
     } elif (n.kind == CNode.CASE) {
         return statement(b, p, n.c)
     } elif (n.kind == CNode.FOR) {
-        scope_open(b)
-        let ok = statement(b, p, n.a) && statement(b, p, n.d)
-        scope_close(b)
-        return ok
+        return statement(b, p, n.a) && statement(b, p, n.d)
     }
     return true
 }
@@ -834,20 +792,15 @@ def private definition(var b : CTypes; var p : CParser; def_node : int) : bool {
     t = t < 0 ? t : linked(b, p, t, sym, f, p.ast.nodes[n.b].tok)
     return false if (c_types_use(b, t) < 0)
     b.declared[sym] = true
-    if (p.ast.nodes[f].op != 2) {
-        return parameters(b, p, f) && statement(b, p, n.d)
-    }
-    var param = p.ast.nodes[f].b
-    b.old_style = def_node
-    while (param >= 0) {
-        let pt = old_style_parameter(b, p, param)
-        if (pt < 0 || c_types_use(b, pt) < 0) {
-            b.old_style = -1
-            return false
+    if (p.ast.nodes[f].op == 2) {
+        var param = p.ast.nodes[f].b
+        b.old_style = def_node
+        while (param >= 0) {
+            c_types_use(b, old_style_parameter(b, p, param))
+            param = p.ast.nodes[param].next
         }
-        param = p.ast.nodes[param].next
+        b.old_style = -1
     }
-    b.old_style = -1
     return statement(b, p, n.d)
 }
 
@@ -882,9 +835,7 @@ def private library_declaration(var b : CTypes; var p : CParser; decl : int) {
             let t = plain_attributes(b, p, p.ast.nodes[id].d) ? applied(b, p, c_specifier_type(b, p, n.a), d, false) : -1
             if (t >= 0) {
                 bind(b, sym, t)
-                b.untyped |> erase(sym)
             } else {
-                b.typedefs |> erase(sym)
                 b.untyped[sym] = b.err
                 b.err = ""
             }
