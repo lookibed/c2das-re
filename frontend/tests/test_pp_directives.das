@@ -682,3 +682,62 @@ def test_provider_edges(t : T?) {
     t |> equal(stream(dotted), "m")
     t |> equal(dotted.files[0].path, "main.c")
 }
+
+// the bytes of `span` as a string
+def private span_text(span : tuple<data : uint8 const?; len : int>) : string {
+    return build_string() $(var out) {
+        for (i in range(span.len)) {
+            out |> write_char(int(unsafe(span.data[i])))
+        }
+    }
+}
+
+[test(description = "a token's spelling outlives its file: the tokens of an included file, kept past the include's end and more reads, are spelled from the buffer the unit keeps, splices removed")]
+def test_spelling_outlives_file(t : T?) {
+    var pp <- started([("main.c", "#include \"h.h\"\nafter more\n"), ("h.h", "in\\\nside 42 \"s\"\n")])
+    var kept : array<PpOutToken>
+    while (pp_next_token(pp)) {
+        kept |> push(pp.tok)
+        let spelled = pp_token_spelling(pp)
+        t |> equal(span_text(pp_token_span(pp)), spelled)
+    }
+    t |> equal(join([for (k in kept); pp_spelling_of(pp, k)], " "), "inside 42 \"s\" after more")
+    t |> equal(join([for (k in kept); span_text(pp_span_of(pp, k))], " "), "inside 42 \"s\" after more")
+    t |> equal(length(pp.closed), 2)
+    t |> success(kept[0].buffer != kept[3].buffer)
+    t |> equal(kept[0].spelled, PpSpelled.source)
+    t |> equal("{kept[0].at} {kept[0].len} {kept[0].tok.len}", "0 6 8")
+}
+
+[test(description = "a preprocessed unit read as the C tokens read it: each token's presumed file and line from the line markers, its column and its kept spelling, with no marker re-read by the reader")]
+def test_preprocessed_stream(t : T?) {
+    var pp <- started([("x.i", "# 1 \"x.c\"\n# 1 \"<built-in>\" 1\n# 1 \"x.c\" 2\nint a;\n# 5 \"h.h\" 1\nlong  b;\n# 2 \"x.c\" 2\nc\n")], "x.i")
+    var kept : array<PpOutToken>
+    while (pp_next_token(pp)) {
+        kept |> push(pp.tok)
+    }
+    let placed <- [for (k in kept); "{pp_spelling_of(pp, k)}@{pp.names[k.pname]}:{int64(k.pline)}:{k.tok.col}"]
+    t |> equal(join(placed, " "), "int@x.c:1:1 a@x.c:1:5 ;@x.c:1:6 long@h.h:5:1 b@h.h:5:7 ;@h.h:5:8 c@x.c:2:1")
+    t |> equal(diagnostics(pp), "")
+}
+
+[test(description = "the directive layer follows clang's diagnostics: a #line operand that is no number asks for a positive integer, __VA_OPT__ in a macro that is not variadic warns")]
+def test_clang_directive_messages(t : T?) {
+    var line <- started([("main.c", "#line \"x\"\n#line 0x10\n")])
+    stream(line)
+    t |> equal(diagnostics(line), "E 1:7 #line directive requires a positive integer argument | E 2:7 #line directive requires a simple digit sequence")
+    var va_opt <- started([("main.c", "#define F(x) #__VA_OPT__(x) __VA_OPT__(y)\n#define G(...) __VA_OPT__(x)\n")])
+    stream(va_opt)
+    t |> equal(diagnostics(va_opt), "W 1:15 __VA_OPT__ can only appear in the expansion of a variadic macro")
+}
+
+[test(description = "a macro defined, and a diagnostic met, in a group chosen past an #if left to PP.4 are marked so; outside every such group, in the same read, they are not")]
+def test_undecided_marks(t : T?) {
+    var pp <- started([("main.c", "#define A 1\n#if X > 1\n#define B 2\n#else\n#define C 3\n#error in\n#endif\n#define D 4\n#error out\nz\n")])
+    t |> equal(stream(pp), "z")
+    t |> equal(join([for (m in pp.macros); "{pp_name(pp, m.name)}{m.undecided ? "?" : ""}"], " "), "A C? D")
+    t |> equal(join([for (d in pp.diags); "{d.what}{d.undecided ? "?" : ""}"], " | "), "#if expression needs the PP.4 evaluator: X > 1 | #error in? | #error out")
+    var counted <- started([("main.c", "#if 1\n#endif\n#define g(x) x\n#if 0\n#elif 1\n#endif\n")])
+    stream(counted)
+    t |> equal(counted.directives_read, 6)
+}

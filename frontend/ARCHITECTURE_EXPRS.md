@@ -7,13 +7,13 @@ conversion clang makes, `c_floats.das`, which computes floating constants, and t
 enter the table. Dumper A writes what clang's tree holds (`converter/dumper_a.das`, `dump_expr`),
 so each rule here states what clang's semantic analysis puts in that tree.
 
-## 29. Nodes {#c-exprs-nodes}
+## 38. Nodes {#c-exprs-nodes}
 
 `c_expr` turns a parser expression into a C-IR node (`docs/c-ir-spec.md` section 6) whose `t` is
 a pool type (`ARCHITECTURE_TYPES.md` section 24), qualified as clang types the node: a reference
 has its declaration's type, a subscript and a dereference the pointer's target type. The node
-carries no conversion at its top; the context that uses it adds them (sections 30 to 33). The
-nodes: literals (section 34), a reference to a variable or function in scope (`CIr.ids`, bound by
+carries no conversion at its top; the context that uses it adds them (sections 39 to 42). The
+nodes: literals (section 43), a reference to a variable or function in scope (`CIr.ids`, bound by
 the walk: a variable from its declaration on, so its own initializer sees it), `un`, `bin`,
 `assign` with its operator, `cond`, `comma`, `call`, `index` (the base as the source writes it),
 `cast` for an explicit cast, and `sizeof_v` with Dumper A's size of the type (a scalar its width, a
@@ -22,7 +22,7 @@ elements). Parentheses set `paren`; `__extension__` is its operand. A reference,
 dereference of a volatile-qualified type set `vol`.
 
 A reference to a function an old-style definition defined has the type `R ()`, as clang's reference
-does, while its calls convert by the definition's promoted parameters (section 33); a declaration
+does, while its calls convert by the definition's promoted parameters (section 42); a declaration
 with no prototype keeps the type and prototype of an earlier one of the name (clang's composite
 type), and a block declaration of a function declared before binds its prototype for the calls in
 its block, though it adds no declaration (`int f(); ... { int f(double); f(1); }` converts the
@@ -33,20 +33,20 @@ reference has the type clang gives a builtin, `<builtin fn type>` (`c_builtin_fn
 Refused, at the construct's place: an identifier no variable or function in scope names (an enum
 constant among them, until the Aggregates phase), a builtin other than as a callee, GNU's `?:` with
 no middle operand, a member access, `va_arg`, `offsetof`, `__func__`, a compound literal,
-`_Alignof`, a statement expression other than a statement block (section 35), a dereference,
+`_Alignof`, a statement expression other than a statement block (section 44), a dereference,
 subscript or call of a value of the wrong type, a cast or a conditional of types clang refuses.
 
 Invalid C that clang rejects - with Dumper A's flags too, `-w` included, so Dumper A gives such a
 unit no C-IR - is never built: the builder stops at its place with `<place>: <what> is invalid C,
-which clang rejects` (`c_reject`). That covers a slot given a value it does not take (section 33),
+which clang rejects` (`c_reject`). That covers a slot given a value it does not take (section 42),
 the operands of a binary operator of a kind it does not take (`%`, the shifts and the bitwise
 operators integers; `*` and `/` arithmetic; `+` arithmetic, or a pointer and an integer; `-` that,
 or two pointers to compatible types; a comparison arithmetic, or a pointer and a pointer or an
 integer; `&&` and `||` scalars), a call whose argument count a prototype does not allow (fewer
 arguments than its parameters, or more when it is not variadic), and a `_Static_assert` whose
-condition is 0 (section 32).
+condition is 0 (section 41).
 
-## 30. Casts {#c-exprs-casts}
+## 39. Casts {#c-exprs-casts}
 
 A conversion is a `cast` node over its operand, typed by the result. `c_implicit` adds an implicit
 one as clang's `ImpCastExprToType` does: none when the operand has the result type already (the
@@ -61,7 +61,7 @@ qualifiers kept (`ArrayToPointerDecay`, a string literal's too), any other lvalu
 and a dereference of an object pointer are the lvalues. No conversion reaches the operand of `&`,
 `sizeof`, `++` and `--`, or an assignment's left operand.
 
-## 31. Operand conversions {#c-exprs-operands}
+## 40. Operand conversions {#c-exprs-operands}
 
 `c_promote` is clang's usual unary conversions: a value, then an integer narrower than `int`
 converted to `int` (C11 6.3.1.1p2; `float` stays `float`). `c_arith` is the usual arithmetic
@@ -96,7 +96,7 @@ rank. Rank follows the spelling (`long` above `int` at one width, `long long` ab
   type, and `int (*)(void)`, which is incompatible with it, are one type there.
 - `,`: both operands values; the right one's type. A `switch` controlling expression is promoted.
 
-## 32. Constants {#c-exprs-constants}
+## 41. Constants {#c-exprs-constants}
 
 `c_fold` evaluates an integer constant expression (C11 6.6) over typed nodes: integer and character
 literals, integer casts, `sizeof`, the unary, binary, logical and conditional operators, each step
@@ -109,7 +109,7 @@ constant. A `_Static_assert`'s condition is folded the same way where it stands,
 a block, and adds nothing to the C-IR: 0 is invalid C, and a condition the builder cannot fold yet
 is refused.
 
-## 33. Conversions to a slot's type {#c-exprs-slots}
+## 42. Conversions to a slot's type {#c-exprs-slots}
 
 `c_assigned` converts as by assignment (6.5.16.1, clang's copy initialization) to the slot's type
 unqualified: the operand a value, then arithmetic to arithmetic by the pair's kind (`IntegralCast`,
@@ -118,7 +118,7 @@ unqualified: the operand a value, then arithmetic to arithmetic by the pair's ki
 pointer whose type differs only in qualifiers at its pointer and array levels (`char *` to `const
 char *`, and `char **` to `const char **`, which clang takes with a warning), `BitCast` from a
 pointer to a compatible type or from or to a pointer to `void`; a pointer to `_Bool`
-`PointerToBoolean`. Every other pair is invalid C clang rejects (section 29): an integer other than
+`PointerToBoolean`. Every other pair is invalid C clang rejects (section 38): an integer other than
 a null pointer constant to a pointer and a pointer to an integer other than `_Bool` (clang's
 `int-conversion`, an error by default), a pointer to an incompatible type
 (`incompatible-pointer-types`; a pointer to an integer type of one rank but the other sign is no
@@ -150,7 +150,7 @@ own are part of it: `(const int (*)(void))` over `int (*)(void)` is a `BitCast`)
 kinds as above, `ToVoid`, `NullToPointer` for a null pointer constant integer to a pointer,
 `IntegralToPointer`, `PointerToIntegral`, `PointerToBoolean`, `BitCast` between other pointers.
 
-## 34. Literals {#c-exprs-literals}
+## 43. Literals {#c-exprs-literals}
 
 An integer literal takes the first type of its list that holds its value (6.4.4.1): decimal with no
 suffix `int`, `long`, `long long`; octal or hex with no suffix the signed and unsigned types of each
@@ -163,9 +163,9 @@ and a UTF-8 sequence of the source their code point), refused past its type's ra
 `is_char`. A string literal is `char[N]` of its bytes, escapes decoded, a universal
 character name as its UTF-8 bytes, adjacent literals joined, the NUL appended; a prefixed one is
 refused. A floating constant is `float` with `f`, `long double` with `l`, else `double`, its `v` by
-section 36.
+section 45.
 
-## 35. Order and statements {#c-exprs-order}
+## 44. Order and statements {#c-exprs-order}
 
 Dumper A interns a node's type before its operands' (`dump_expr_node` reads the node's type, then
 dumps its children), left to right, and a `sizeof`'s operand type, or its operand expression's
@@ -185,7 +185,7 @@ in `init_s`, an expression statement (and a `for`'s initializer and step, an `if
 `__extension__` and a cast to `void` - as its compound statement. Names are C.4's: the C-IR here
 keeps each declaration's own name, and the comparison sets names aside.
 
-## 36. Floating constants {#c-exprs-floats}
+## 45. Floating constants {#c-exprs-floats}
 
 Dumper A writes a floating constant as clang's decimal text of its value read back by the C
 library's `strtod` and printed by `%a`. `c_floats.das` does it in das alone, since the frontend

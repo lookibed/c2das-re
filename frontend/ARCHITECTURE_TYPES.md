@@ -23,7 +23,7 @@ The builder states a type once, in its pool (`CTypes.pool`), by the same structu
 indices, typedef names resolved, and uses it (`c_types_use`): the parts not yet in the table first,
 in that order, then the type. A qualified type is a pool entry of its own (`c_qualified`, keyed by
 its qualifier bits and its unqualified entry; an array's qualifiers on its element, C11 6.7.3p9),
-since a conversion depends on qualifiers (`ARCHITECTURE_EXPRS.md` section 33); its use is its
+since a conversion depends on qualifiers (`ARCHITECTURE_EXPRS.md` section 42); its use is its
 unqualified type's table entry, as Dumper A drops every qualifier. A function type's parameters
 are unqualified. Computing a type adds to the pool
 only; the table grows by uses, in the order Dumper A's walk reaches the same declarations:
@@ -32,11 +32,11 @@ only; the table grows by uses, in the order Dumper A's walk reaches the same dec
 - a typedef declaration: its type, then its `typedef` entry, keyed by the name, so a second
   typedef of one name - another block's, of another type - adds its type and shares the entry;
 - a variable declaration: its type, then its initializer's expression types
-  (`ARCHITECTURE_EXPRS.md` section 35);
+  (`ARCHITECTURE_EXPRS.md` section 44);
 - a function declaration: its type, then each parameter's adjusted type, which the function's type
   holds already; a definition then its body;
 - a body: its statements depth-first in source order, each expression where it stands
-  (`ARCHITECTURE_EXPRS.md` section 35), each declaration in it as at file scope -
+  (`ARCHITECTURE_EXPRS.md` section 44), each declaration in it as at file scope -
   `static` and `extern` locals alike - except that a block declaration of a function whose name a
   declaration before it declared (the unit's, or the own headers') adds nothing, as clang links it
   to that declaration;
@@ -114,7 +114,7 @@ non-literal index), an elided brace in an array of arrays and any other initiali
 array are refused.
 
 An array size other than an integer literal is refused here: `c_types.das` evaluates no constant
-expression, which `c_exprs.das` does over typed expressions (`ARCHITECTURE_EXPRS.md` section 32).
+expression, which `c_exprs.das` does over typed expressions (`ARCHITECTURE_EXPRS.md` section 41).
 
 ## 28. The own libc headers {#c-types-library}
 

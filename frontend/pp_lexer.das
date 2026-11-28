@@ -538,6 +538,14 @@ def pp_spelling(lx : PpLexer) : string {
     return slice(lx.flex.bytes, t.start, t.start + t.len)
 }
 
+//! The current token's bytes in the working buffer (`pp_buffer_data`): their offset and length,
+//! line splices removed.
+def pp_token_range(lx : PpLexer) : tuple<start : int; len : int> => (start = lx.flex.tok.start, len = lx.flex.tok.len)
+
+//! The first byte of the working buffer, the file past translation phase 2 with a zero after its
+//! last byte; it stays put while the lexer holds the file.
+def pp_buffer_data(lx : PpLexer) : uint8 const? => lx.flex.data
+
 //! The current token's bytes, line splices removed, equal `s`; nothing allocated.
 def pp_spelling_is(lx : PpLexer; s : string) : bool => text_is(lx.flex, s)
 
