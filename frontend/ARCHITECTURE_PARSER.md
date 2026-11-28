@@ -7,26 +7,27 @@ function definitions and whole units; its statements are `ARCHITECTURE_STATEMENT
 
 ## 14. The C tokens {#c-tokens}
 
-`c_tokens.das` turns the tokens the preprocessor hands out into C tokens (C11 5.1.1.2,
-translation phase 7). The unit holds a `Preprocessor` (`ARCHITECTURE_PP.md`) and reads it with
-`pp_next_token`. Its input is either a preprocessed unit, the text `clang -E` prints, which
-`c_tokens_open` gives the directive layer alone (`pp_start` over one file in memory, no macro
-expanded), or C source, which `c_tokens_expand_open` preprocesses with macro expansion
-(`pp_expand_start` over a file provider, `ARCHITECTURE_EXPAND.md`); `c_tokens_read` reads every
-token into `unit.toks`, an array of small plain structs, and ends it with one EOF token. A token
-is its kind (`CTok`), its symbol, where its spelling lies, and its presumed place: a file name id
+`c_tokens.das` turns the tokens the preprocessor hands out into C tokens (C11 5.1.1.2, translation
+phase 7). The unit holds a `Preprocessor` (`ARCHITECTURE_PP.md`) read with `pp_next_token`: over a
+preprocessed unit, the text `clang -E` prints (`c_tokens_open`: `pp_start` over one file in memory),
+or over C source with macro expansion (`c_tokens_expand_open`: `pp_expand_start` over a file
+provider). `c_tokens_read` reads every token into `unit.toks`, small plain structs, then one EOF.
+A token is its kind (`CTok`), its symbol, where its spelling lies, and its presumed place: a file name id
 (an index of the preprocessor's `names`: 0 the unit's own name, 1 the predefined macros' buffer,
 then each name a file, `#line` or a line marker gives), a line and a column. A token of the source
 stands at its own place; a token an expansion makes, a macro body's or an argument's, stands at the
-outermost macro name of its call, line and column, as clang's expansion location does.
+outermost macro name of its call, line and column, as clang's expansion location does, and is
+marked `expanded`. The end of a unit whose last token an expansion made stands after the call's
+`)`, the main file's lexer's last token.
 
 The spelling is kept where the preprocessor keeps it (`PpSpelled`): a file's working buffer, the
 macro body pool or a symbol, all valid for the unit's life, read through `pp_span_of`. A pasted or
 stringified token's spelling lies in the expansion's pool, which the next `pp_next_token` may
 clear, so it is copied into the unit's own `pool` as it is read. `c_span` gives a token's bytes,
 `c_spelling` a string of them, and `c_range_text` the text of a run of tokens: the bytes between
-its ends as written when every token is a source token of one file in order, else the spellings
-with a blank between each two.
+its ends as written when the tokens cover them - each read from one file, none an expansion's, with
+nothing but blanks between, so no directive, skipped group, comment or dropped argument - else the
+spellings with a blank between each two.
 
 Nothing is allocated per token. The token array and the pool grow by doubling; what a directive
 costs (a line marker's name, say) is the preprocessor's. Each open starts a new preprocessor and
@@ -54,13 +55,22 @@ neither is an error, `invalid numeric constant '<spelling>'`; so is an imaginary
 is not computed here. A punctuator keeps the kind `PpTok` gives it, so a digraph has the kind of
 the punctuator it spells. A character constant and a string literal stay one token each; adjacent
 string literals are joined by the parser. A `::`, which the pp-lexer reads as one token, is two
-`:` tokens, as clang reads it in C17. A `#`, a `##` and a pp-token of kind OTHER are errors.
+`:` tokens, as clang reads it in C17, the second a column on (at the macro name for an expansion's);
+`unit.splits` records each, so `c_token_index` maps a pragma's `emitted` count to a token. A `#`, a
+`##` and a pp-token of kind OTHER are errors.
 
 Directives are the preprocessor's: a line marker, `#line`, `#pragma` and every other directive
-are done there, and a `#` or `##` the preprocessor hands out is a stray token. The first error ends
-the read and `unit.err` holds it as `file:line:col: what`: a token's, or the first error of the
-preprocessor's diagnostics (`pp.diags`, a warning being none) or of the lexer's (`pp.lx.diags`),
-checked after each token is read, so the first error of the unit in reading order wins.
+are done there, and a `#` or `##` the preprocessor hands out is a stray token. A pragma the
+preprocessor records (`pp.pragmas`, `pp.packs`) is refused at its place, `the pragma '#pragma
+<text>' is not parsed`, unless the C-IR may pass it by (`PASSED_PRAGMAS`): a `GCC diagnostic`,
+`clang diagnostic`, `message` or `GCC warning` pragma and `#ident` change no C-IR. `pack` is refused
+until the record layout reads `pp.packs`; `#pragma GCC error "<text>"` is the error it asks for.
+
+The first error ends the read, `file:line:col: what` in `unit.err`: a token's, a pragma's, the
+preprocessor's (`pp.diags`, a warning being none) or the lexer's (`pp.lx.diags`, placed in its own
+file by that file's `#line` state, else its path). Of those one read meets the first in reading
+order wins: in one file the earlier place, an unterminated call or conditional (placed at its start)
+counted at the file's end; across files the one recorded first.
 
 ## 15. The tree {#c-ast}
 

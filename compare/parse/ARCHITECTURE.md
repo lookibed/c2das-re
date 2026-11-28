@@ -40,8 +40,8 @@ the meaning of the program is left to it (section 3).
   postfix chains, type names in odd places, GNU forms), `wildcards.c` (a `?` for one part of a
   type), `oldstyle.c` (old-style definitions), `param_bodies.c` (tag bodies inside declarators,
   some not compared), `forward.c` (tags declared with no body), `pragma.c` (pragmas `clang -E`
-  keeps, which the preprocessor's ledger takes), all `same`; `semantic.c` (a clang
-  semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
+  keeps that change no C-IR, which the preprocessor's ledger takes), all `same`; `semantic.c`
+  (a clang semantic difference, `differs`); `builtin.c` (library builtins, `differs` by a named cause only);
   `causes.c` (a builtin and a merged redeclaration, `differs` by named causes only);
   `refused.c` (`construct refused`); `imaginary.c` (a GNU imaginary constant, `parser refused`);
   `clang_refuses.c` (`clang refused`).

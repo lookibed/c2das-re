@@ -11,6 +11,7 @@ require ../converter/sidecar.das
 require ../perf/boxes.das
 require ../perf/perf_cli.das
 require ../perf/perf_lanes.das
+require harness
 require demo_run
 require fps
 
@@ -69,8 +70,8 @@ def fps_demos(demo : int) : array<int> => <- demo == 0 ? [1, 2, 3] : [demo]
 def commit_label(sha, status : string) : string => empty(strip(status)) ? sha : "{sha}-dirty"
 
 //! A capture before its runs: the commit of `sha` and `status`, the command, the machine (the box
-//! of `cpu`), the tools' version lines and the runs a cell.
-def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, spread_rule = spread_rule_of(samples), pinned_core = pinned_core(), clock = FPS_CLOCK)
+//! of `cpu`), the tools' version lines, the runs a cell and the final-line check with patch 0001 and its sha256.
+def new_capture(sha, status, command, cpu, platform, clang, daslang : string; samples : int) : FpsCapture => FpsCapture(commit = commit_label(sha, status), command = command, cpu = cpu, box = box_of(cpu), platform = platform, clang = clang, daslang = daslang, samples = samples, spread_rule = spread_rule_of(samples), pinned_core = pinned_core(), clock = FPS_CLOCK, speed_check = FINAL_LINE_CHECK, speed_patch = patch_list([PATCHES[0]]))
 
 // the run of `demo` under `lane`: the native build under the lane `NATIVE_LANE` (`sync_native`
 // or `native`), else the converted entry (`sync_entry` or `entry`) under the tier `lane`, the speed
@@ -94,6 +95,8 @@ def fps_sync(plan : FpsPlan; lane : string; demo : int) : FpsCell {
         cell.error = "sync build: {problem}"
         cell.desync = !empty(synced.sync.desync)
         to_log(LOG_ERROR, "doom: {cell.workload}, {lane}: {cell.error}\n")
+    } else {
+        to_log(LOG_INFO, "doom: {timed_evidence(spec, synced)}\n")
     }
     return <- cell
 }
@@ -108,7 +111,7 @@ def fps_sample(plan : FpsPlan; demo : int; var cell : FpsCell) : bool {
         to_log(LOG_ERROR, "doom: {cell.workload}, {cell.lane}: {cell.error}\n")
         return false
     }
-    to_log(LOG_INFO, "doom: {cell.workload}, {cell.lane}: {run.timing.tics} gametics in {run.timing.seconds} s\n")
+    to_log(LOG_INFO, "doom: {timed_evidence(spec, run)}\n")
     return true
 }
 

@@ -182,6 +182,7 @@ struct CUnit {
     pp : Preprocessor
     toks : array<CToken>
     pool : array<uint8>     //!< the `scratch` spellings of `toks`, copied before the next token is read
+    splits : array<int>     //!< per `::` read as two `:` tokens, its index among the preprocessor's tokens
     kind_of_sym : array<int> //!< per symbol, its C kind once known: a keyword's kind or IDENTIFIER; 0 before
     err : string            //!< the first error, `file:line:col: what`; "" when the tokens are clean
 }
@@ -213,20 +214,33 @@ def c_spelling(unit : CUnit; t : int) : string {
     }
 }
 
-//! The text of tokens `first` to `last`: the bytes between them as written when every one is a
-//! source token of one file in order, else their spellings with a blank between each two.
+// whether token `t` follows token `t - 1` in one file's bytes with nothing but blanks between them:
+// both read from the file, no expansion's, and no directive, skipped group or comment in between
+def private follows(unit : CUnit; data : uint8 const?; t : int) : bool {
+    let tok = unit.toks[t]
+    let prev = unit.toks[t - 1]
+    return false if (tok.spelled != PpSpelled.source || tok.expanded || tok.buffer != prev.buffer || tok.at < prev.at + prev.len)
+    for (i in range(prev.at + prev.len, tok.at)) {
+        let b = int(unsafe(data[i]))
+        return false if (b != ' ' && b != '\t' && b != '\n' && b != '\r' && b != '\v' && b != '\f')
+    }
+    return true
+}
+
+//! The text of tokens `first` to `last`: the bytes between them as written when the tokens cover
+//! them, each read from one file with nothing but blanks between, else their spellings with a blank
+//! between each two.
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
 def c_range_text(unit : CUnit; first, last : int) : string {
     let head = unit.toks[first]
-    var in_place = true
-    for (t in range(first, last + 1)) {
-        let tok = unit.toks[t]
-        in_place = in_place && tok.spelled == PpSpelled.source && tok.buffer == head.buffer && (t == first || tok.at >= unit.toks[t - 1].at + unit.toks[t - 1].len)
+    let data = head.spelled == PpSpelled.source ? pp_buffer_data(unit.pp, head.buffer) : null
+    var in_place = head.spelled == PpSpelled.source && !head.expanded
+    for (t in range(first + 1, last + 1)) {
+        in_place = in_place && follows(unit, data, t)
     }
     if (!in_place) {
         return join([for (t in range(first, last + 1)); c_spelling(unit, t)], " ")
     }
-    let data = pp_buffer_data(unit.pp, head.buffer)
     let stop = unit.toks[last].at + unit.toks[last].len
     return build_string() $(var out) {
         for (i in range(head.at, stop)) {
@@ -417,6 +431,7 @@ def private reset(var unit : CUnit) {
     unit.err = ""
     unit.toks |> clear()
     unit.pool |> clear()
+    unit.splits |> clear()
 }
 
 //! the keyword spellings interned once, so a token's kind is one index by its symbol
@@ -509,26 +524,112 @@ def private kept(var unit : CUnit; kind : int) : CToken {
     return tok
 }
 
-//! the first error among the preprocessor's diagnostics past `seen` and the lexer's past
-//! `lexer_seen`, into `unit.err`; a warning is no error
-def private diagnosed(var unit : CUnit; var seen, lexer_seen : int&) : bool {
-    while (seen < length(unit.pp.diags) && empty(unit.err)) {
-        let d & = unsafe(unit.pp.diags[seen])
-        if (d.severity != PpSeverity.warning) {
-            if (d.line == 0) {
-                unit.err = d.what
-            } else {
-                unit.err = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"
-            }
+//! The pragmas the C-IR may pass by, as the text after `pragma` starts: a diagnostic's, a message's
+//! and a warning's, which change no C-IR; `#ident` too. Any other pragma the preprocessor records is
+//! refused, `pack` until the record layout reads `pp.packs`.
+let PASSED_PRAGMAS <- fixed_array("GCC diagnostic", "clang diagnostic", "message", "GCC warning")
+
+//! the two diagnostics the preprocessor places at a construct's start but meets at its file's end
+let private MET_AT_END <- fixed_array("unterminated function-like macro invocation", "unterminated conditional directive")
+
+//! how far the read took each record the preprocessor fills
+struct private ReadMarks {
+    diags : int
+    lexer : int
+    pragmas : int
+    packs : int
+}
+
+//! an error the read met: where it met it in the file as read, and its text
+struct private Met {
+    file : int
+    line : int
+    col : int
+    at_end : bool       //!< placed at its construct, met at its file's end
+    text : string
+}
+
+// the presumed name and line of physical line `line` of file `file`: by the `#line` state of its
+// inclusion while it is read, else as its path names it
+def private presumed(unit : CUnit; file, line : int) : tuple<name : int; line : int> {
+    if (unit.pp.state.file == file) {
+        return (name = unit.pp.state.pname, line = int(uint(line) + unit.pp.state.line_delta))
+    }
+    for (k in range(length(unit.pp.frames))) {
+        let st & = unsafe(unit.pp.frames[length(unit.pp.frames) - 1 - k].state)
+        return (name = st.pname, line = int(uint(line) + st.line_delta)) if (st.file == file)
+    }
+    return (name = unit.pp.files[file].name, line = line)
+}
+
+// `what` placed at physical `line`:`col` of file `file`
+def private met_at(unit : CUnit; file, line, col : int; what : string) : Met {
+    let at = presumed(unit, file, line)
+    return Met(file = file, line = line, col = col, text = "{unit.pp.names[at.name]}:{at.line}:{col}: {what}")
+}
+
+// `m` in `best` when the read met it first: of one file, the earlier place, a construct met at the
+// file's end after every place; of two files, the one recorded first
+def private earliest(var best : Met; m : Met) {
+    if (empty(best.text)) {
+        best = m
+    } elif (m.file == best.file && (m.at_end != best.at_end ? best.at_end : m.line < best.line || (m.line == best.line && m.col < best.col))) {
+        best = m
+    }
+}
+
+// why pragma `pr` is refused, "" when the C-IR may pass it by
+def private pragma_refusal(pr : PpPragma) : string {
+    return "" if (pr.ident)
+    for (passed in PASSED_PRAGMAS) {
+        return "" if (pr.text == passed || starts_with(pr.text, "{passed} ") || starts_with(pr.text, "{passed}("))
+    }
+    return starts_with(pr.text, "GCC error") ? "#pragma {pr.text}" : "the pragma '#pragma {pr.text}' is not parsed"
+}
+
+//! the first error the read met past `marks`, into `unit.err`: the preprocessor's (a warning is
+//! none), the lexer's, a pragma's the C-IR does not pass by
+[arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
+def private diagnosed(var unit : CUnit; var marks : ReadMarks&) : bool {
+    var best : Met
+    for (k in range(marks.diags, length(unit.pp.diags))) {
+        let d & = unsafe(unit.pp.diags[k])
+        continue if (d.severity == PpSeverity.warning)
+        if (d.line == 0) {
+            earliest(best, Met(file = -1, text = d.what))
+        } else {
+            earliest(best, Met(file = d.file, line = d.line, col = d.col, at_end = has_value(MET_AT_END, d.what),
+                               text = "{unit.pp.names[d.pname]}:{int(d.pline)}:{d.col}: {d.what}"))
         }
-        seen++
     }
-    if (empty(unit.err) && lexer_seen < length(unit.pp.lx.diags)) {
-        let d & = unsafe(unit.pp.lx.diags[lexer_seen])
-        unit.err = "{unit.pp.names[unit.pp.state.pname]}:{int(uint(d.line) + unit.pp.state.line_delta)}:{d.col}: {d.what}"
+    for (k in range(marks.lexer, length(unit.pp.lx.diags))) {
+        let d & = unsafe(unit.pp.lx.diags[k])
+        earliest(best, met_at(unit, d.file, d.line, d.col, d.what))
     }
-    lexer_seen = length(unit.pp.lx.diags)
+    for (k in range(marks.pragmas, length(unit.pp.pragmas))) {
+        let pr & = unsafe(unit.pp.pragmas[k])
+        let why = pragma_refusal(pr)
+        if (!empty(why)) {
+            earliest(best, Met(file = pr.file, line = pr.line, col = pr.col, text = "{unit.pp.names[pr.pname]}:{int(pr.pline)}:{pr.col}: {why}"))
+        }
+    }
+    for (k in range(marks.packs, length(unit.pp.packs))) {
+        let pk & = unsafe(unit.pp.packs[k])
+        earliest(best, met_at(unit, pk.file, pk.line, pk.col, "the pragma '#pragma pack' is not parsed (the record layout does not read it yet)"))
+    }
+    marks = ReadMarks(diags = length(unit.pp.diags), lexer = length(unit.pp.lx.diags), pragmas = length(unit.pp.pragmas), packs = length(unit.pp.packs))
+    unit.err = best.text
     return !empty(unit.err)
+}
+
+//! The index in the unit's tokens of the preprocessor's token `emitted` (its count of the tokens
+//! before it, as a pragma's `emitted` gives it): past one more for each `::` split before it.
+def c_token_index(unit : CUnit; emitted : int) : int {
+    var at = emitted
+    for (k in unit.splits) {
+        at += k < emitted ? 1 : 0
+    }
+    return at
 }
 
 //! Read the unit's tokens to its end, as the preprocessor hands them out: identifiers become
@@ -537,20 +638,20 @@ def private diagnosed(var unit : CUnit; var seen, lexer_seen : int&) : bool {
 //! with EOF either way.
 [arch(at="ARCHITECTURE_PARSER.md#c-tokens")]
 def c_tokens_read(var unit : CUnit) : bool {
-    var seen = 0
-    var lexer_seen = 0
+    var marks : ReadMarks
     while (true) {
         let more = pp_next_token(unit.pp)
-        break if (diagnosed(unit, seen, lexer_seen) || !more)
+        break if (diagnosed(unit, marks) || !more)
         let pk = unit.pp.tok.tok.kind
         let kind = c_kind_of(unit)
         if (pk == int(PpTok.COLONCOLON)) {
             var colon = kept(unit, int(CTok.COLON))
             colon.len = 1
+            unit.splits |> push(unit.pp.emitted - 1)
             unit.toks |> push(colon) // nolint:STYLE012 - the colons append to the unit's tokens
             unit.toks |> push(CToken(kind = colon.kind, sym = -1, spelled = colon.spelled, buffer = colon.buffer, at = colon.at + 1, len = 1,
                                      read_file = colon.read_file, read_line = colon.read_line, expanded = colon.expanded,
-                                     file = colon.file, line = colon.line, col = colon.col + 1))
+                                     file = colon.file, line = colon.line, col = colon.expanded ? colon.col : colon.col + 1))
             continue
         } elif (kind == int(CTok.EOF)) {
             let what = pk == int(PpTok.PP_NUMBER) ? "invalid numeric constant" : pk == int(PpTok.IDENTIFIER) ? "invalid universal character name in" : "stray"
@@ -568,6 +669,14 @@ def c_tokens_read(var unit : CUnit) : bool {
         end.read_file = last.read_file
         end.read_line = last.read_line
         end.col = last.col + last.len
+        if (last.expanded) {
+            // after the call's `)`, the last token the main file's lexer read
+            end.file = unit.pp.state.pname
+            end.line = int(uint(unit.pp.lx.tok.line) + unit.pp.state.line_delta)
+            end.col = unit.pp.lx.tok.col + unit.pp.lx.tok.len
+            end.read_file = unit.pp.files[unit.pp.lx.file].name
+            end.read_line = unit.pp.lx.tok.line
+        }
     }
     unit.toks |> push(end)
     return empty(unit.err)
